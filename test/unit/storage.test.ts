@@ -28,13 +28,20 @@ afterEach(async () => {
 
 describe('storage paths', () => {
   it('honors XDG paths and documented fallbacks', () => {
+    // These wrappers answer for the host platform; the per-platform matrix
+    // lives in test/unit/platform-paths.test.ts.
+    const darwin = process.platform === 'darwin'
+    const dataFallback = darwin
+      ? '/home/test/Library/Application Support/StrataMD'
+      : '/home/test/.local/share/stratamd'
+    const socketFallback = darwin
+      ? '/home/test/Library/Caches/StrataMD/run/stratamd.sock'
+      : '/home/test/.cache/stratamd/run/stratamd.sock'
     expect(getDataDirectory({ XDG_DATA_HOME: '/data', HOME: '/home/test' })).toBe('/data/stratamd')
-    expect(getDataDirectory({ HOME: '/home/test' })).toBe('/home/test/.local/share/stratamd')
+    expect(getDataDirectory({ HOME: '/home/test' })).toBe(dataFallback)
     expect(getRuntimeSocketPath({ XDG_RUNTIME_DIR: '/run/user/7' })).toBe('/run/user/7/stratamd.sock')
-    expect(getRuntimeSocketPath({ HOME: '/home/test' })).toBe('/home/test/.cache/stratamd/run/stratamd.sock')
-    expect(getRuntimeSocketPath({ HOME: '/home/test', XDG_CACHE_HOME: '/other-cache' })).toBe(
-      '/home/test/.cache/stratamd/run/stratamd.sock',
-    )
+    expect(getRuntimeSocketPath({ HOME: '/home/test' })).toBe(socketFallback)
+    expect(getRuntimeSocketPath({ HOME: '/home/test', XDG_CACHE_HOME: '/other-cache' })).toBe(socketFallback)
   })
 })
 

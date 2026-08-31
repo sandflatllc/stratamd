@@ -17,6 +17,12 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Ubuntu 24.04 runners restrict unprivileged user namespaces, so any
+      # Electron started outside Playwright (the dictionary fetch, the
+      # second-instance spec's direct spawn) needs the setuid sandbox helper
+      # configured; without this it dies with the SUID sandbox error.
+      - run: sudo chown root node_modules/electron/dist/chrome-sandbox
+      - run: sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
       # The spellcheck e2e spec seeds Hunspell dictionaries from the profile;
       # a fresh runner has none, so fetch en-US through Electron's own path.
       - run: xvfb-run --auto-servernum npx electron scripts/fetch-spell-dictionary.mjs

@@ -505,6 +505,7 @@ describe('local setup', () => {
       : { status: 0, stdout: '', stderr: '' }
 
     await expect(setup({
+      platform: 'linux',
       home,
       executable: join(process.cwd(), 'bin', 'stratamd'),
       environment: { HOME: home, XDG_DATA_HOME: join(home, 'data') },

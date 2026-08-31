@@ -194,9 +194,10 @@ export class ThemeStore {
 
 /** Fonts installed on the machine, bundled families first. Falls back to the bundled list when the platform query is unavailable. */
 export async function listInstalledFonts(
-  run: (file: string, args: string[]) => Promise<{ stdout: string }> = (file, args) => execFileAsync(file, args, { maxBuffer: 8 * 1024 * 1024 })
+  run: (file: string, args: string[]) => Promise<{ stdout: string }> = (file, args) => execFileAsync(file, args, { maxBuffer: 8 * 1024 * 1024 }),
+  platform?: string,
 ): Promise<string[]> {
-  const families = await queryInstalledFontFamilies(run)
+  const families = await queryInstalledFontFamilies(run, platform)
   if (families === null) return [...BUNDLED_FONTS]
   return orderFontFamilies(families)
 }
