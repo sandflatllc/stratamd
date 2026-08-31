@@ -1,7 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario, documentEndKey, lineEndKey, lineStartKey, primaryKey, selectTextInVisualEditor } from './harness'
+import { Scenario, documentEndKey, lineEndKey, lineStartKey, primaryKey, selectTextInVisualEditor, selectToLineEndKey } from './harness'
 
 /**
  * PRD §6.3 undo: one timeline of typing and application steps, in both
@@ -48,7 +48,7 @@ async function typeLineAfter(page: Page, paragraphText: string, text: string): P
 async function deleteLine(page: Page, paragraphText: string): Promise<void> {
   await editorOf(page).locator('p').filter({ hasText: paragraphText }).last().click()
   await page.keyboard.press(lineStartKey)
-  await page.keyboard.press('Shift+End')
+  await page.keyboard.press(selectToLineEndKey)
   await page.keyboard.press('Backspace')
   await page.keyboard.press('Backspace')
   await page.waitForTimeout(GROUP_GAP)
@@ -215,7 +215,7 @@ test.describe('undo and redo timeline', () => {
 
     await page.keyboard.press('ArrowUp')
     await page.keyboard.press(lineStartKey)
-    await page.keyboard.press('Shift+End')
+    await page.keyboard.press(selectToLineEndKey)
     await page.keyboard.press('Backspace')
     await page.keyboard.press('Backspace')
     await page.waitForTimeout(GROUP_GAP)
