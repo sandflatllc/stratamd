@@ -32,6 +32,10 @@ jobs:
       # a fresh runner has none, so fetch en-US through Electron's own path.
       - run: xvfb-run --auto-servernum npx electron scripts/fetch-spell-dictionary.mjs
       - run: xvfb-run --auto-servernum pnpm check
+      # `stratamd setup` registers desktop and MIME associations through
+      # update-desktop-database/update-mime-database; the runner image ships
+      # without them, so the packaged-CLI test's real setup run needs both.
+      - run: sudo apt-get install -y desktop-file-utils shared-mime-info
       - run: xvfb-run --auto-servernum pnpm test:packaged
 
   macos:
