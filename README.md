@@ -1,8 +1,17 @@
-# StrataMD
+<p align="center">
+  <img src="resources/stratamd-logo.svg" width="460" alt="StrataMD — the folded-S mark beside the StrataMD wordmark">
+</p>
 
-**StrataMD makes reading what your agents write suck less.**
+<p align="center"><b>StrataMD makes reading what your agents write suck less.</b></p>
 
-![StrataMD mark](resources/stratamd-icon.svg)
+<p align="center">
+  <a href="LICENSE"><img src="resources/readme/badge-license.svg" alt="MIT license"></a>
+  <img src="resources/readme/badge-linux.svg" alt="Linux">
+  <img src="resources/readme/badge-stack.svg" alt="Electron + TypeScript">
+  <img src="resources/readme/badge-agents.svg" alt="Works with any agent">
+</p>
+
+<img src="resources/readme/divider.svg" width="100%" alt="">
 
 Markdown sucks to read! Built-in Markdown readers make it worse. But trusting an agent to write a good plan without checking it is a huge gamble.
 
@@ -14,6 +23,8 @@ Agents misunderstand requirements. They add architecture the project doesn't nee
 
 *Screenshots open at their full captured resolution.*
 
+<img src="resources/readme/divider.svg" width="100%" alt="">
+
 ## Markdown you can actually skim
 
 Agent plans don't need to be read like a book. Most of the time, you just need to understand the structure, catch the parts that look obviously wrong, and stop the agent where they started to go wrong.
@@ -21,6 +32,8 @@ Agent plans don't need to be read like a book. Most of the time, you just need t
 StrataMD renders rich Markdown instead of making you read Markdown syntax. Headings look like headings. Code, bold text, links, lists, tables, and quotes are easy to distinguish at a glance. That visual separation makes it much easier to keep your place and notice when something doesn't belong.
 
 You can write and edit in the rendered document, then switch to source when the Markdown itself matters.
+
+<img src="resources/readme/divider.svg" width="100%" alt="">
 
 ## Make it look like yours
 
@@ -39,6 +52,8 @@ Themes can also use separate background and panel effects chosen from eight opti
 Themes are plain JSON files. Copy an included theme, change a few values in the live panel, or ask an agent to inspect the active theme and help tune it while you watch the result.
 
 [![A rendered document beside StrataMD's live controls for colors, fonts, layout, and effects](docs/screenshots/product/states/theme-panel--workspace.png)](docs/screenshots/product/states/theme-panel--workspace.png)
+
+<img src="resources/readme/divider.svg" width="100%" alt="">
 
 ## Work with agents inside the document
 
@@ -62,6 +77,8 @@ When you press **Send**, the preview shows the exact changes, notes, and annotat
 
 [![The Send preview showing separate context prepared for Codex and Claude](docs/screenshots/product/states/send-preview--detail.png)](docs/screenshots/product/states/send-preview--detail.png)
 
+<img src="resources/readme/divider.svg" width="100%" alt="">
+
 ## Let agents work together
 
 More than one agent can join the same document. Have Codex draft a plan and Claude review it, or the other way around. The reviewer can question an assumption, leave comments, and propose replacements directly where the problem appears. You decide which agents see one another's work, and their contributions stay separate and attributed.
@@ -72,7 +89,7 @@ Lead does not make the work invisible. Decisions made by the Lead still appear a
 
 [![The full StrataMD window in the Candyfloss theme with selected text, an open comment thread, reviewable changes, and two attached agents](docs/screenshots/product/states/collaboration.png)](docs/screenshots/product/states/collaboration.png)
 
----
+<img src="resources/readme/divider.svg" width="100%" alt="">
 
 ## How to use StrataMD
 
@@ -98,6 +115,8 @@ Review the work, continue the round, or save
 6. Save when the document is ready.
 
 **Send** and **Save** are separate actions. Sending gives an agent its next round of context. It does not write the document to disk.
+
+<img src="resources/readme/divider.svg" width="100%" alt="">
 
 ## How it works
 
@@ -162,6 +181,8 @@ Markdown that the visual editor cannot safely represent, such as frontmatter, HT
 
 </details>
 
+<img src="resources/readme/divider.svg" width="100%" alt="">
+
 ## Trying StrataMD
 
 StrataMD currently builds from source on Linux. macOS and Windows support are planned, but they are not available yet.
@@ -184,11 +205,15 @@ The setup command is safe to repeat. `stratamd setup --remove` removes the PATH 
 
 </details>
 
+<img src="resources/readme/divider.svg" width="100%" alt="">
+
 ## Why this exists
 
 I built StrataMD because I spend a lot of time planning work with agents, and I was not reading enough of their plans. Markdown was miserable to read in the tools I had, so I skimmed less carefully and trusted the agent more. That caused problems. When I did read the plans, even a quick skim caught bad assumptions, unnecessary work, and places where the agent had misunderstood what I wanted.
 
 I wanted an editor where the structure was obvious, the document could look the way I wanted, and responding to an agent did not require another long explanation in chat. StrataMD makes my own work better. If your workflow looks anything like mine, I think it's worth using.
+
+<img src="resources/readme/divider.svg" width="100%" alt="">
 
 ## Project status
 
@@ -197,3 +222,9 @@ StrataMD is an early-stage personal project. There is no public package or auto-
 The [product specification](docs/PRD.md) contains the complete behavior, edge cases, and design decisions for anyone who wants to understand the implementation, contribute, or fork the project. The bundled [agent skill](skills/stratamd/SKILL.md) contains the collaboration loop from the agent's side.
 
 Bug reports, questions, and opinions can go to <dillonc@sandflatllc.com>.
+
+<img src="resources/readme/divider.svg" width="100%" alt="">
+
+<p align="center">
+  <img src="resources/stratamd-icon.svg" width="56" alt="The StrataMD folded-S icon">
+</p>
