@@ -13,6 +13,7 @@ permissions:
 jobs:
   mac-app:
     runs-on: macos-14
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

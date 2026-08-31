@@ -7,6 +7,7 @@ on:
 jobs:
   linux:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -31,6 +32,7 @@ jobs:
 
   macos:
     runs-on: macos-14
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -43,6 +45,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm test:packaged
+      # Playwright traces and screenshots are the only way to see a Mac-only
+      # e2e failure without owning a Mac.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: mac-test-results
+          path: test-results/
+          retention-days: 7
       # ditto keeps execute bits and bundle structure; upload-artifact alone
       # strips permissions. The zip is what a tester downloads and dequarantines.
       - run: ditto -c -k --keepParent dist/mac*/StrataMD.app StrataMD-mac.zip

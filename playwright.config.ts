@@ -9,6 +9,10 @@ export default defineConfig({
   // Shared CI runners stall long enough to trip timing-sensitive specs that
   // are deterministic on real machines; retried passes report as flaky.
   retries: process.env.CI ? 2 : 0,
+  // A systemic failure times out every attempt of every spec; the global cap
+  // turns that into a failed step with a readable per-test log instead of a
+  // job the runner kills with nothing persisted.
+  globalTimeout: process.env.CI ? 40 * 60_000 : 0,
   reporter: 'list',
   use: {
     trace: 'retain-on-failure',
