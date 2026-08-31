@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { Scenario } from './harness'
+import { Scenario, lineEndKey } from './harness'
 
 // Crash containment end to end (docs/plans/completed/crash-hardening-plan.md §9). The harness
 // sets STRATAMD_CRASH_PROBE, so every boundary renders a hidden probe button
@@ -72,7 +72,7 @@ test('a root crash right after typing keeps the newest keystrokes through reload
     const page = await scenario.launch()
     const editor = page.getByRole('textbox', { name: /document editor/i })
     await editor.click()
-    await page.keyboard.press('End')
+    await page.keyboard.press(lineEndKey)
     await page.keyboard.type(' SURVIVES')
     // Crash before the 180 ms mirror debounce fires: only the module-scope
     // pending buffer and the root boundary's flush can save these keystrokes.

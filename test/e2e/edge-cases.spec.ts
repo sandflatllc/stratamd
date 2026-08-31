@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { chmod, readFile, readdir, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario, documentStartKey, primaryKey, save, send, setSource } from './harness'
+import { Scenario, documentStartKey, lineEndKey, primaryKey, save, send, setSource } from './harness'
 
 test('Save permission failure keeps disk and shadow unchanged and shows the error', async ({}, testInfo) => {
   const original = '# Permission\n\nSaved on disk.\n'
@@ -137,7 +137,7 @@ test('a document over 2 MB opens in the full visual editor while review and Send
 
     await visual.focus()
     await page.keyboard.press(documentStartKey)
-    await page.keyboard.press('End')
+    await page.keyboard.press(lineEndKey)
     await page.keyboard.insertText(' updated')
     await value.waitForBuffer(withOwnerEdit)
     await expect(page.getByRole('button', { name: /^Send(?:\b|$)/i })).toBeEnabled()

@@ -76,6 +76,9 @@ export function primaryKey(key: string): string {
 }
 export const documentStartKey = macHost ? 'Meta+ArrowUp' : 'Control+Home'
 export const documentEndKey = macHost ? 'Meta+ArrowDown' : 'Control+End'
+// On a Mac, Home and End scroll without moving the caret; Command+arrow moves it.
+export const lineStartKey = macHost ? 'Meta+ArrowLeft' : 'Home'
+export const lineEndKey = macHost ? 'Meta+ArrowRight' : 'End'
 
 /** X11 and ozone settings apply only on Linux; a Mac host launches plainly. */
 export const launchArgs: string[] = macHost ? [] : ['--ozone-platform=x11']

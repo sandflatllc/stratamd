@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario, expectPayload, primaryKey, selectTextInVisualEditor, setSource } from './harness'
+import { Scenario, expectPayload, lineEndKey, primaryKey, selectTextInVisualEditor, setSource } from './harness'
 
 async function tabTo(page: Page, target: Locator, limit = 120): Promise<void> {
   await expect(target).toBeVisible()
@@ -205,7 +205,7 @@ test('the theme panel floats over a live app, writes only chosen keys, follows a
 
     // The document stays editable behind the panel.
     await page.getByRole('textbox', { name: /Document editor/i }).click()
-    await page.keyboard.press('End')
+    await page.keyboard.press(lineEndKey)
     await page.keyboard.type(' More.')
     await expect(page.locator('.editor-island .ProseMirror')).toContainText('More.')
 

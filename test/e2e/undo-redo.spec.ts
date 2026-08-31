@@ -1,7 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario, documentEndKey, primaryKey, selectTextInVisualEditor } from './harness'
+import { Scenario, documentEndKey, lineEndKey, lineStartKey, primaryKey, selectTextInVisualEditor } from './harness'
 
 /**
  * PRD §6.3 undo: one timeline of typing and application steps, in both
@@ -39,7 +39,7 @@ async function agentWritesBuffer(value: Scenario, next: string): Promise<void> {
 }
 async function typeLineAfter(page: Page, paragraphText: string, text: string): Promise<void> {
   await editorOf(page).locator('p').filter({ hasText: paragraphText }).last().click()
-  await page.keyboard.press('End')
+  await page.keyboard.press(lineEndKey)
   await page.waitForTimeout(GROUP_GAP)
   await page.keyboard.press('Enter')
   await page.keyboard.type(text)
@@ -47,7 +47,7 @@ async function typeLineAfter(page: Page, paragraphText: string, text: string): P
 }
 async function deleteLine(page: Page, paragraphText: string): Promise<void> {
   await editorOf(page).locator('p').filter({ hasText: paragraphText }).last().click()
-  await page.keyboard.press('Home')
+  await page.keyboard.press(lineStartKey)
   await page.keyboard.press('Shift+End')
   await page.keyboard.press('Backspace')
   await page.keyboard.press('Backspace')
@@ -214,7 +214,7 @@ test.describe('undo and redo timeline', () => {
     await value.waitForBuffer(afterTyping)
 
     await page.keyboard.press('ArrowUp')
-    await page.keyboard.press('Home')
+    await page.keyboard.press(lineStartKey)
     await page.keyboard.press('Shift+End')
     await page.keyboard.press('Backspace')
     await page.keyboard.press('Backspace')

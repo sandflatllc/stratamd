@@ -52,48 +52,20 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: node node_modules/electron/install.js
-      # DIAGNOSTIC (revert before merge): the Electron launch hangs so hard on
-      # this runner that a hung child holding the step's output pipes defeats
-      # even GitHub's step timeout. Write output to a file, watchdog from the
-      # parent shell, kill the tree, then print the log and the survivors.
-      - run: pnpm build
-        timeout-minutes: 8
-      - run: |
-          set +e
-          (DEBUG=pw:browser* pnpm exec playwright test test/e2e/edge-cases.spec.ts --retries=0 --timeout=20000 > smoke.log 2>&1) &
-          PW=$!
-          for i in $(seq 1 60); do kill -0 $PW 2>/dev/null || break; sleep 5; done
-          if kill -0 $PW 2>/dev/null; then
-            echo "=== SMOKE HUNG after 5 minutes; surviving processes: ==="
-            ps aux | grep -iE "electron|playwright|node" | grep -v grep
-            pkill -9 -f playwright; pkill -9 -f -i electron; sleep 2
-          fi
-          wait $PW; code=$?
-          echo "=== smoke exit code: $code ==="
-          tail -c 100000 smoke.log
-          exit $code
-        timeout-minutes: 12
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: mac-smoke-log
-          path: smoke.log
-          retention-days: 7
+      - run: pnpm check
+      - run: pnpm test:packaged
       # Playwright traces and screenshots are the only way to see a Mac-only
       # e2e failure without owning a Mac.
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
           name: mac-test-results
           path: test-results/
           retention-days: 7
       # ditto keeps execute bits and bundle structure; upload-artifact alone
       # strips permissions. The zip is what a tester downloads and dequarantines.
-      # DIAGNOSTIC (revert before merge): no packaged build in the smoke run.
       - run: ditto -c -k --keepParent dist/mac*/StrataMD.app StrataMD-mac.zip
-        if: false
       - uses: actions/upload-artifact@v4
-        if: false
         with:
           name: StrataMD-mac
           path: StrataMD-mac.zip

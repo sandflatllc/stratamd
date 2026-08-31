@@ -1,7 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario, documentEndKey, primaryKey } from './harness'
+import { Scenario, documentEndKey, lineEndKey, primaryKey } from './harness'
 
 /**
  * docs/plans/completed/cold-tab-plan.md §9: with STRATAMD_EDITOR_CACHE=0 every tab switch
@@ -31,7 +31,7 @@ function editorOf(page: Page) {
 }
 async function typeLineAfter(page: Page, paragraphText: string, text: string): Promise<void> {
   await editorOf(page).locator('p').filter({ hasText: paragraphText }).last().click()
-  await page.keyboard.press('End')
+  await page.keyboard.press(lineEndKey)
   await page.waitForTimeout(GROUP_GAP)
   await page.keyboard.press('Enter')
   await page.keyboard.type(text)

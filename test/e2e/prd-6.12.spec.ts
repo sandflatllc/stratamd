@@ -7,6 +7,7 @@ import {
   copyForAgent,
   expectPayload,
   externalText,
+  lineEndKey,
   primaryKey,
   projectRoot,
   save,
@@ -215,14 +216,14 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
 
     const editor = value.page!.getByRole('textbox', { name: /document editor/i })
     await editor.locator('p').filter({ hasText: 'Base.' }).click({ position: { x: 4, y: 8 } })
-    await value.page!.keyboard.press('End')
+    await value.page!.keyboard.press(lineEndKey)
     await value.page!.keyboard.type(' Owner')
     await value.waitForBuffer(ownerEdit)
 
     await agentWritesBuffer(value, 'agent-a', externalEdit)
     await waitForReviewAction(value, 'Keep')
     await editor.locator('p').filter({ hasText: 'Base.' }).click({ position: { x: 4, y: 8 } })
-    await value.page!.keyboard.press('End')
+    await value.page!.keyboard.press(lineEndKey)
     await value.page!.keyboard.type(' Later')
     await value.waitForBuffer(laterEdit)
 
