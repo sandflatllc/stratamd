@@ -11,6 +11,8 @@
 #include <fcntl.h>
 #include <sys/param.h>
 #include <sys/un.h>
+/* getpeereid is declared in unistd.h on Darwin. */
+#include <unistd.h>
 #endif
 
 static napi_value get_peer_uid(napi_env env, napi_callback_info info) {
