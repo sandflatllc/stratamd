@@ -1,0 +1,113 @@
+{
+  "name": "stratamd",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "A local Linux markdown editor for working with AI agents",
+  "type": "module",
+  "main": "./out/main/index.js",
+  "bin": {
+    "stratamd": "./bin/stratamd"
+  },
+  "scripts": {
+    "build:native": "node-gyp rebuild --directory native/peercred",
+    "dev": "pnpm build:native && electron-vite dev",
+    "build": "pnpm build:native && electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm build:native && vitest run",
+    "test:watch": "pnpm build:native && vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "pnpm build && playwright test",
+    "perf:micro": "node --expose-gc --disable-warning=ExperimentalWarning --experimental-strip-types --experimental-transform-types --experimental-loader ./src/cli/typescript-loader.ts ./test/performance/microbench.ts",
+    "perf:stacking": "pnpm build:native && vitest run --config vitest.performance.config.ts",
+    "perf:smoke": "pnpm build && STRATAMD_PERF_PROFILE=smoke node scripts/run-performance.mjs",
+    "perf:stress": "pnpm build && STRATAMD_PERF_PROFILE=stress node scripts/run-performance.mjs",
+    "perf:idle": "pnpm build && STRATAMD_PERF_PROFILE=idle node scripts/run-performance.mjs",
+    "perf:tabs": "pnpm build && STRATAMD_PERF_PROFILE=tabs node scripts/run-performance.mjs",
+    "perf:check": "STRATAMD_PERF_ENFORCE=1 pnpm perf:smoke",
+    "check": "pnpm typecheck && pnpm test && pnpm test:e2e",
+    "build:linux": "pnpm build && electron-builder --linux dir",
+    "test:packaged": "pnpm build:linux && STRATAMD_PACKAGED_ROOT=dist/linux-unpacked vitest run test/integration/packaged-cli.test.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "build": {
+    "appId": "local.stratamd.app",
+    "productName": "StrataMD",
+    "asar": true,
+    "files": [
+      "out/**/*",
+      "bin/stratamd",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": "resources"
+      },
+      {
+        "from": "native/peercred/build/Release/peercred.node",
+        "to": "peercred.node"
+      }
+    ],
+    "extraFiles": [
+      {
+        "from": "bin/stratamd",
+        "to": "stratamd"
+      }
+    ],
+    "linux": {
+      "target": ["dir"],
+      "category": "Utility",
+      "icon": "resources/stratamd-icon.svg",
+      "executableName": "stratamd-app"
+    }
+  },
+  "dependencies": {
+    "@fontsource/baloo-2": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@fontsource/nunito": "^5.3.0",
+    "@parcel/watcher": "^2.6.0",
+    "diff": "^9.0.0",
+    "fast-glob": "^3.3.3",
+    "ignore": "^7.0.6",
+    "mdast-util-from-markdown": "^2.0.3",
+    "mdast-util-frontmatter": "^2.0.1",
+    "mdast-util-gfm": "^3.1.0",
+    "mdast-util-to-markdown": "^2.1.2",
+    "micromark-extension-frontmatter": "^2.0.0",
+    "micromark-extension-gfm": "^3.0.0",
+    "prosemirror-commands": "^1.7.2",
+    "prosemirror-history": "^1.5.0",
+    "prosemirror-inputrules": "^1.5.1",
+    "prosemirror-keymap": "^1.2.3",
+    "prosemirror-model": "^1.25.11",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-tables": "^1.8.5",
+    "prosemirror-transform": "^1.12.0",
+    "prosemirror-view": "^1.42.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zod": "^4.5.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/diff": "^8.0.0",
+    "@types/node": "^26.4.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^5.2.0",
+    "@vitest/coverage-v8": "^4.1.11",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "node-gyp": "^13.0.2",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^7.3.6",
+    "vitest": "^4.1.11"
+  }
+}

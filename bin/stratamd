@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+
+script_path=$(readlink -f "$0")
+project_root=$(CDPATH= cd -- "$(dirname -- "$script_path")/.." && pwd)
+launcher_dir=$(dirname -- "$script_path")
+
+if [ -x "$launcher_dir/stratamd-app" ] && [ -f "$launcher_dir/resources/app.asar" ]; then
+  export ELECTRON_RUN_AS_NODE=1
+  export STRATAMD_APP_EXECUTABLE="$launcher_dir/stratamd-app"
+  export STRATAMD_CLI_EXECUTABLE="$script_path"
+  exec "$launcher_dir/stratamd-app" \
+    "$launcher_dir/resources/app.asar/out/main/cli.js" "$@"
+elif [ -n "${STRATAMD_NODE:-}" ]; then
+  node_executable=$STRATAMD_NODE
+elif [ -x "$project_root/node_modules/electron/dist/electron" ]; then
+  node_executable=$project_root/node_modules/electron/dist/electron
+else
+  node_executable=node
+fi
+
+export ELECTRON_RUN_AS_NODE=1
+exec "$node_executable" --disable-warning=ExperimentalWarning \
+  --experimental-strip-types \
+  --experimental-transform-types \
+  --experimental-loader "$project_root/src/cli/typescript-loader.ts" \
+  "$project_root/src/cli/index.ts" "$@"

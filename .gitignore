@@ -1,0 +1,19 @@
+node_modules/
+dist/
+out/
+build/
+.stratamd/
+release/
+coverage/
+playwright-report/
+test-results/
+.vite/
+native/peercred/build/
+*.log
+.env
+.env.*
+.directory
+.claude/
+
+# Working plan documents stay local; the PRD is the durable spec.
+docs/plans/

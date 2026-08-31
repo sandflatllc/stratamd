@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Baloo 2',sans-serif;background:#0a0810;overflow:hidden}
+a{color:#7fb0ff}a:hover{color:#a8c8ff}
+*{box-sizing:border-box}
+::selection{background:#5c4a8f;color:#fff}
+::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#4a4172;border-radius:5px}::-webkit-scrollbar-track{background:transparent}
+@keyframes glow1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(120px,-70px) scale(1.25)}}
+@keyframes glow2{0%,100%{transform:translate(0,0) scale(1.1)}50%{transform:translate(-90px,60px) scale(0.9)}}
+@keyframes glow3{0%,100%{transform:translate(0,0)}50%{transform:translate(60px,90px)}}
+@keyframes rise{0%{transform:translateY(20px);opacity:0}12%{opacity:.7}88%{opacity:.7}100%{transform:translateY(-105vh);opacity:0}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+@keyframes popIn{0%{transform:scale(.7) translateY(10px);opacity:0}65%{transform:scale(1.05) translateY(-3px)}100%{transform:scale(1) translateY(0);opacity:1}}
+@keyframes slideA{0%{transform:translateY(16px);opacity:0}100%{transform:translateY(0);opacity:1}}
+@keyframes slideB{0%{transform:translateY(16px);opacity:0}100%{transform:translateY(0);opacity:1}}
+@keyframes toastIn{0%{transform:translateY(24px) scale(.85);opacity:0}70%{transform:translateY(-4px) scale(1.03)}100%{transform:translateY(0) scale(1);opacity:1}}
+@keyframes pulseDot{0%,100%{opacity:.35;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
+@keyframes flashRing{0%{box-shadow:0 0 0 3px rgba(155,92,255,.7)}100%{box-shadow:0 0 0 16px transparent}}
+@keyframes checkPop{0%{transform:scale(0) rotate(-30deg)}70%{transform:scale(1.4) rotate(8deg)}100%{transform:scale(1) rotate(0)}}
+@keyframes scanPulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes wobble{0%,100%{transform:rotate(0)}25%{transform:rotate(-3deg)}75%{transform:rotate(3deg)}}
+@keyframes bgShift{0%,100%{background-position:0% 0%}50%{background-position:100% 100%}}
+@keyframes innerA{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(34px,-24px) scale(1.18)}}
+@keyframes innerB{0%,100%{transform:translate(0,0) scale(1.08)}50%{transform:translate(-28px,20px) scale(0.9)}}
+@keyframes moteWander{0%,100%{transform:translate(0,0)}25%{transform:translate(16px,-20px)}50%{transform:translate(-10px,-34px)}75%{transform:translate(-18px,-12px)}}
+</style></helmet>
+
+<div style="--pink:#FF5C8A;--tang:#FFB03A;--mint:#3DC97C;--sky:#4F8DFF;--grape:#9B5CFF;--bg:#0a0810;--card:#241e3b;--card2:#312a50;--line:#463c6e;--text:#f4f3f6;--dim:#a8a6b0;height:100vh;position:relative;background:radial-gradient(1400px 900px at 30% -10%,#141026,#0a0810 60%)">
+
+<sc-if value="{{ motionOn }}" hint-placeholder-val="{{ true }}">
+<div style="position:absolute;inset:0;overflow:hidden;pointer-events:none">
+  <div style="position:absolute;inset:0;background:linear-gradient(120deg,rgba(155,92,255,.08),rgba(255,92,138,.05) 30%,rgba(79,141,255,.07) 60%,rgba(61,201,124,.05));background-size:300% 300%;animation:bgShift 34s ease-in-out infinite"></div>
+  <div style="position:absolute;left:9px;bottom:-20px;width:9px;height:9px;border-radius:50%;background:rgba(255,92,138,.4);animation:rise 26s linear infinite"></div>
+  <div style="position:absolute;left:11px;bottom:-20px;width:6px;height:6px;border-radius:50%;background:rgba(255,176,58,.35);animation:rise 33s linear 11s infinite"></div>
+  <div style="position:absolute;left:247px;bottom:-20px;width:8px;height:8px;border-radius:50%;background:rgba(61,201,124,.35);animation:rise 29s linear 5s infinite"></div>
+  <div style="position:absolute;left:243px;bottom:-20px;width:5px;height:5px;border-radius:50%;background:rgba(155,92,255,.4);animation:rise 24s linear 16s infinite"></div>
+  <div style="position:absolute;left:52%;bottom:-20px;width:7px;height:7px;border-radius:50%;background:rgba(79,141,255,.35);animation:rise 31s linear 8s infinite"></div>
+  <div style="position:absolute;left:70%;bottom:-20px;width:10px;height:10px;border-radius:50%;background:rgba(255,176,58,.28);animation:rise 27s linear 19s infinite"></div>
+  <div style="position:absolute;right:330px;bottom:-20px;width:7px;height:7px;border-radius:50%;background:rgba(255,92,138,.32);animation:rise 30s linear 3s infinite"></div>
+  <div style="position:absolute;right:10px;bottom:-20px;width:9px;height:9px;border-radius:50%;background:rgba(155,92,255,.38);animation:rise 25s linear 14s infinite"></div>
+  <div style="position:absolute;right:13px;bottom:-20px;width:6px;height:6px;border-radius:50%;background:rgba(61,201,124,.32);animation:rise 35s linear 7s infinite"></div>
+</div>
+</sc-if>
+
+<div style="position:relative;height:100vh;display:flex;flex-direction:column;padding:18px 26px 16px;gap:16px">
+
+  <!-- Top bar -->
+  <div style="display:flex;align-items:center;gap:16px">
+    <div style="display:flex;align-items:center;background:#f4f0fe;border:1px solid #e2dbf3;border-radius:999px;padding:4px 13px;box-shadow:0 10px 30px -14px rgba(0,0,0,.6)">
+      <img src="../../resources/stratamd-logo.svg" alt="StrataMD" style="display:block;width:112px;height:auto" />
+    </div>
+    <div style="display:flex;gap:8px">
+      <div onClick="{{ openPlan }}" style="{{ planTabStyle }}" style-hover="transform:translateY(-2px)">plan.md<sc-if value="{{ planBadge }}" hint-placeholder-val="{{ false }}"><span style="background:var(--grape);color:#fff;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:800;margin-left:7px">{{ planPendingN }}</span></sc-if><span onClick="{{ tabClose }}" title="Close tab" style="margin-left:8px;color:var(--dim);font-weight:800;cursor:pointer;border-radius:50%;padding:0 6px;transition:all .15s" style-hover="background:rgba(255,92,138,.2);color:var(--pink)">×</span></div>
+      <div onClick="{{ openNotes }}" style="{{ notesTabStyle }}" style-hover="transform:translateY(-2px)">notes.md<sc-if value="{{ notesBadge }}" hint-placeholder-val="{{ true }}"><span style="background:var(--sky);color:#fff;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:800;margin-left:7px">{{ notesPendingN }}</span></sc-if></div>
+    </div>
+    <div style="flex:1"></div>
+    <span style="font-size:13px;font-weight:600;color:var(--dim)">{{ statusLeft }}</span>
+    <span style="font-size:12px;font-weight:600;color:#8b8994;font-family:'JetBrains Mono',monospace">Ctrl+Enter</span>
+    <sc-if value="{{ attachedOn }}" hint-placeholder-val="{{ true }}"><span onClick="{{ openComposer }}" title="{{ sendTitle }}" style="{{ sendBtnStyle }}" style-hover="{{ sendHover }}" style-active="transform:scale(.93)">Send ↗</span></sc-if>
+    <sc-if value="{{ detachedOn }}" hint-placeholder-val="{{ false }}"><span onClick="{{ copyForAgent }}" title="No agent attached — renders a delivery for the clipboard recipient" style="font-size:16px;font-weight:800;color:var(--pink);border:2px solid var(--pink);padding:7px 22px;border-radius:999px;cursor:pointer;transition:all .2s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(255,92,138,.15);transform:scale(1.06)" style-active="transform:scale(.9)">Copy for agent ⧉</span></sc-if>
+    <span style="width:1px;height:22px;background:var(--line);margin:0 4px"></span>
+    <span style="display:flex;gap:8px">
+      <span title="Minimize" style="width:26px;height:26px;border-radius:50%;background:var(--card2);color:var(--dim);display:grid;place-items:center;font-size:13px;font-weight:800;cursor:pointer;line-height:1;transition:all .15s" style-hover="background:#3d3563;color:var(--text)" style-active="transform:scale(.88)">–</span>
+      <span title="Maximize" style="width:26px;height:26px;border-radius:50%;background:var(--card2);color:var(--dim);display:grid;place-items:center;font-size:9px;font-weight:800;cursor:pointer;line-height:1;transition:all .15s" style-hover="background:#3d3563;color:var(--text)" style-active="transform:scale(.88)">□</span>
+      <span title="Close" style="width:26px;height:26px;border-radius:50%;background:var(--card2);color:var(--dim);display:grid;place-items:center;font-size:13px;font-weight:800;cursor:pointer;line-height:1;transition:all .15s" style-hover="background:var(--pink);color:#fff" style-active="transform:scale(.88)">×</span>
+    </span>
+  </div>
+
+  <!-- Main row -->
+  <div style="flex:1;display:flex;min-height:0">
+
+    <!-- Explorer island -->
+    <div style="{{ exStyle }}">
+      <sc-if value="{{ motionOn }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;inset:0;pointer-events:none;z-index:-1">
+        <div style="position:absolute;bottom:-60px;left:-50px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,rgba(61,201,124,.12),transparent 70%);filter:blur(22px);animation:innerA 14s ease-in-out infinite"></div>
+        <div style="position:absolute;top:30%;right:-40px;width:150px;height:150px;border-radius:50%;background:radial-gradient(circle,rgba(155,92,255,.1),transparent 70%);filter:blur(20px);animation:innerB 18s ease-in-out 2s infinite"></div>
+        <div style="position:absolute;top:58%;left:24px;width:5px;height:5px;border-radius:50%;background:rgba(255,176,58,.3);animation:moteWander 16s ease-in-out infinite"></div>
+      </div>
+      </sc-if>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:0 6px 10px">
+        <span style="font-size:14px;font-weight:800;color:var(--text)">Files</span>
+        <span style="display:flex;gap:3px">
+          <span onClick="{{ doScan }}" title="Scan — create a ghost for every file that lacks one" style="font-size:12px;font-weight:800;color:var(--mint);cursor:pointer;padding:3px 10px;border-radius:999px;transition:all .15s" style-hover="background:rgba(61,201,124,.15)" style-active="transform:scale(.88)">Scan</span>
+          <span onClick="{{ doRefresh }}" title="Refresh — rescan for new and removed files" style="font-size:13px;font-weight:700;color:var(--dim);cursor:pointer;padding:3px 8px;border-radius:999px;transition:all .2s" style-hover="background:var(--card2);color:var(--text)" style-active="transform:rotate(180deg)">⟳</span>
+        </span>
+      </div>
+      <div style="font-size:13px;color:var(--dim);padding:2px 8px 4px;font-weight:700">▾ ~/work/strata</div>
+      <div style="{{ scanAnim }}">
+        <div onClick="{{ openPlan }}" style="{{ planFileStyle }}" style-hover="background:var(--card2)" style-active="transform:scale(.96)">plan.md</div>
+        <div onClick="{{ openNotes }}" style="{{ notesFileStyle }}" style-hover="background:var(--card2)" style-active="transform:scale(.96)">notes.md</div>
+        <div onClick="{{ clickSpec }}" style="font-size:14px;font-weight:600;padding:6px 12px;margin-left:10px;border-radius:11px;color:var(--dim);cursor:pointer;transition:all .15s" style-hover="background:var(--card2)" style-active="transform:scale(.96)">spec.md</div>
+        <sc-if value="{{ missingVisible }}" hint-placeholder-val="{{ true }}">
+        <div onClick="{{ clickMissing }}" title="File no longer on disk — entry kept until forgotten" style="display:flex;align-items:center;font-size:14px;font-weight:600;padding:6px 12px;margin-left:10px;border-radius:11px;color:#73717d;cursor:pointer;transition:all .15s" style-hover="background:var(--card2)"><span style="text-decoration:line-through">old-draft.md</span><span style="flex:1"></span><span onClick="{{ forgetMissing }}" title="Forget — delete the ghost entry and unreferenced blobs" style="font-size:10px;font-weight:800;color:var(--dim);padding:2px 8px;border-radius:999px;transition:all .15s" style-hover="background:rgba(255,92,138,.2);color:var(--pink)">forget</span></div>
+        </sc-if>
+        <div onClick="{{ addFolder }}" style="font-size:13px;font-weight:700;padding:6px 12px;margin:4px 0 0 10px;border-radius:11px;color:var(--mint);cursor:pointer;transition:all .15s" style-hover="background:rgba(61,201,124,.12)" style-active="transform:scale(.96)">+ Add folder</div>
+      </div>
+      <div style="flex:1"></div>
+      <div style="font-size:12px;font-weight:600;color:var(--dim);padding:8px 10px;background:var(--card2);border-radius:13px;line-height:1.5">{{ explorerNote }}</div>
+    </div>
+
+    <!-- Editor -->
+    <div onMouseDown="{{ dragEx }}" title="Drag to resize" style="width:18px;flex:none;cursor:col-resize;display:grid;place-items:center"><div style="width:4px;height:46px;border-radius:2px;background:var(--line)"></div></div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:24px;box-shadow:0 20px 50px -20px rgba(0,0,0,.6);overflow:hidden;position:relative;isolation:isolate">
+      <sc-if value="{{ motionOn }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;inset:0;pointer-events:none;z-index:-1">
+        <div style="position:absolute;top:-100px;right:-80px;width:460px;height:460px;border-radius:50%;background:radial-gradient(circle,rgba(155,92,255,.09),transparent 70%);filter:blur(34px);animation:glow1 22s ease-in-out infinite"></div>
+        <div style="position:absolute;bottom:-140px;left:-90px;width:520px;height:520px;border-radius:50%;background:radial-gradient(circle,rgba(255,92,138,.07),transparent 70%);filter:blur(40px);animation:glow2 27s ease-in-out 3s infinite"></div>
+        <div style="position:absolute;top:44%;left:34%;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(79,141,255,.06),transparent 70%);filter:blur(34px);animation:glow3 31s ease-in-out 6s infinite"></div>
+        <div style="position:absolute;top:24%;left:12%;width:6px;height:6px;border-radius:50%;background:rgba(255,176,58,.18);animation:moteWander 19s ease-in-out infinite"></div>
+        <div style="position:absolute;top:66%;right:16%;width:8px;height:8px;border-radius:50%;background:rgba(61,201,124,.15);animation:moteWander 23s ease-in-out 5s infinite reverse"></div>
+        <div style="position:absolute;top:82%;left:56%;width:5px;height:5px;border-radius:50%;background:rgba(255,92,138,.18);animation:moteWander 17s ease-in-out 9s infinite"></div>
+      </div>
+      </sc-if>
+      <div style="display:flex;align-items:center;gap:3px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap">
+        <span onClick="{{ tbBold }}" title="Bold · Ctrl+B" style="font-weight:800;font-size:15px;width:34px;height:32px;display:grid;place-items:center;border-radius:10px;cursor:pointer;color:var(--dim);transition:all .15s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(255,92,138,.16);color:var(--pink);transform:scale(1.12)" style-active="transform:scale(.85)">B</span>
+        <span onClick="{{ tbItalic }}" title="Italic · Ctrl+I" style="font-style:italic;font-weight:700;font-size:15px;width:34px;height:32px;display:grid;place-items:center;border-radius:10px;cursor:pointer;color:var(--dim);transition:all .15s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(255,176,58,.16);color:var(--tang);transform:scale(1.12)" style-active="transform:scale(.85)">I</span>
+        <span onClick="{{ tbCode }}" title="Code · Ctrl+Shift+C" style="font-family:'JetBrains Mono',monospace;font-size:12px;width:38px;height:32px;display:grid;place-items:center;border-radius:10px;cursor:pointer;color:var(--dim);transition:all .15s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(61,201,124,.16);color:var(--mint);transform:scale(1.12)" style-active="transform:scale(.85)">&lt;/&gt;</span>
+        <span onClick="{{ tbLink }}" title="Link · Ctrl+K" style="font-size:15px;font-weight:700;width:34px;height:32px;display:grid;place-items:center;border-radius:10px;cursor:pointer;color:var(--dim);text-decoration:underline;transition:all .15s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(79,141,255,.16);color:var(--sky);transform:scale(1.12)" style-active="transform:scale(.85)">a</span>
+        <span style="width:1px;height:20px;background:var(--line);margin:0 8px"></span>
+        <span onClick="{{ tbH }}" title="Heading level · Ctrl+1..6" style="font-weight:800;font-size:14px;width:34px;height:32px;display:grid;place-items:center;border-radius:10px;cursor:pointer;color:var(--dim);transition:all .15s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(155,92,255,.16);color:var(--grape);transform:scale(1.12)" style-active="transform:scale(.85)">H</span>
+        <span onClick="{{ tbList }}" title="Bullet list · Ctrl+Shift+8" style="font-size:17px;width:34px;height:32px;display:grid;place-items:center;border-radius:10px;cursor:pointer;color:var(--dim);transition:all .15s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(255,92,138,.16);color:var(--pink);transform:scale(1.12)" style-active="transform:scale(.85)">≔</span>
+        <span onClick="{{ tbOl }}" title="Ordered list · Ctrl+Shift+7" style="font-size:12px;font-weight:800;width:30px;height:32px;display:grid;place-items:center;border-radius:10px;cursor:pointer;color:var(--dim);transition:all .15s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(255,176,58,.16);color:var(--tang);transform:scale(1.12)" style-active="transform:scale(.85)">1.</span>
+        <span onClick="{{ tbTask }}" title="Task list" style="font-size:13px;font-weight:800;width:30px;height:32px;display:grid;place-items:center;border-radius:10px;cursor:pointer;color:var(--dim);transition:all .15s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(61,201,124,.16);color:var(--mint);transform:scale(1.12)" style-active="transform:scale(.85)">☑</span>
+        <span onClick="{{ tbQuote }}" title="Blockquote" style="font-size:15px;font-weight:800;width:30px;height:32px;display:grid;place-items:center;border-radius:10px;cursor:pointer;color:var(--dim);transition:all .15s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(155,92,255,.16);color:var(--grape);transform:scale(1.12)" style-active="transform:scale(.85)">❝</span>
+        <span onClick="{{ tbTable }}" title="Table" style="font-size:14px;width:30px;height:32px;display:grid;place-items:center;border-radius:10px;cursor:pointer;color:var(--dim);transition:all .15s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(79,141,255,.16);color:var(--sky);transform:scale(1.12)" style-active="transform:scale(.85)">⊞</span>
+        <span onClick="{{ tbCb }}" title="Fenced code block" style="font-size:13px;width:30px;height:32px;display:grid;place-items:center;border-radius:10px;cursor:pointer;color:var(--dim);transition:all .15s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(255,92,138,.16);color:var(--pink);transform:scale(1.12)" style-active="transform:scale(.85)">▤</span>
+        <span onClick="{{ tbImg }}" title="Image" style="font-size:12px;width:30px;height:32px;display:grid;place-items:center;border-radius:10px;cursor:pointer;color:var(--dim);transition:all .15s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(255,176,58,.16);color:var(--tang);transform:scale(1.12)" style-active="transform:scale(.85)">▣</span>
+        <span onClick="{{ tbHr }}" title="Horizontal rule" style="font-size:14px;font-weight:800;width:30px;height:32px;display:grid;place-items:center;border-radius:10px;cursor:pointer;color:var(--dim);transition:all .15s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(61,201,124,.16);color:var(--mint);transform:scale(1.12)" style-active="transform:scale(.85)">—</span>
+        <div style="flex:1"></div>
+        <span onClick="{{ toggleSource }}" title="Source view · Ctrl+/" style="{{ srcBtnStyle }}" style-hover="color:var(--text)" style-active="transform:scale(.9)">{ } source</span>
+        <span onClick="{{ doSave }}" title="Save · Ctrl+S — pending agent edits stay reviewable" style="font-size:14px;font-weight:800;padding:6px 18px;border-radius:999px;cursor:pointer;color:var(--text);background:var(--card2);transition:all .18s cubic-bezier(.34,1.56,.64,1);margin-left:8px" style-hover="transform:scale(1.06);background:#332c4f" style-active="transform:scale(.9)">Save</span>
+      </div>
+
+      <sc-if value="{{ bannerOn }}" hint-placeholder-val="{{ false }}">
+      <div style="{{ bannerStyle }}"><span style="flex:1">{{ bannerText }}</span><span onClick="{{ dismissBanner }}" style="cursor:pointer;font-weight:800;padding:0 7px;border-radius:50%;transition:all .15s" style-hover="background:rgba(255,255,255,.12)">×</span></div>
+      </sc-if>
+      <div ref="{{ editorRef }}" onMouseUp="{{ onSelect }}" style="flex:1;overflow-y:auto;position:relative;padding:34px 46px 80px;cursor:text">
+      <div style="{{ docAnim }}">
+
+      <sc-if value="{{ isPlanVisual }}" hint-placeholder-val="{{ true }}">
+        <div style="{{ docColStyle }}">
+          <div onMouseDown="{{ dragDoc }}" title="Drag to set text width — wider for tables" style="position:absolute;right:-26px;top:6px;width:18px;height:70px;cursor:col-resize;display:grid;place-items:center"><div style="width:4px;height:46px;border-radius:2px;background:var(--line)"></div></div>
+          <div onClick="{{ toggleFm }}" style="font-size:13px;font-family:'JetBrains Mono',monospace;color:#8b8994;background:var(--card2);border-radius:12px;padding:8px 16px;margin-bottom:24px;cursor:pointer;transition:all .15s;display:inline-block" style-hover="color:var(--dim)" title="YAML frontmatter — raw block, byte-preserved, editable in source view">{{ fmLabel }}</div>
+          <h1 style="font-size:40px;font-weight:800;color:var(--text);margin:0 0 20px;letter-spacing:-.02em">Rollout plan</h1>
+
+          <p style="font-size:21px;line-height:1.7;color:#dbdade;font-weight:500;margin:0 0 18px">We ship the importer first, <span style="{{ h1Wrap }}"><span style="{{ h1Del }}">then the sync layer</span><span> </span><span style="{{ h1Ins }}">then the export path</span><sc-if value="{{ h1Pending }}" hint-placeholder-val="{{ true }}"><span style="display:inline-flex;gap:6px;align-items:center;margin:0 6px;vertical-align:4px"><span style="font-size:12px;font-weight:800;background:var(--grape);color:#fff;border-radius:999px;padding:2px 11px">Claude</span><span onClick="{{ keepH1 }}" title="Keep — advance the ghost for this hunk" style="font-size:12px;font-weight:800;color:#0e2418;background:var(--mint);border-radius:999px;padding:2px 12px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15);box-shadow:0 4px 14px -2px rgba(61,201,124,.6)" style-active="transform:scale(.85)">Keep</span><span onClick="{{ revertH1 }}" title="Revert — restore the ghost's text" style="font-size:12px;font-weight:800;color:var(--pink);border:2px solid var(--pink);border-radius:999px;padding:0 11px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15);background:rgba(255,92,138,.15)" style-active="transform:scale(.85)">Revert</span></span></sc-if></span> keeping the CLI stable across both. Agents attach with one command and collect deliveries whenever they call back.</p>
+
+          <p style="font-size:21px;line-height:1.7;color:#dbdade;font-weight:500;margin:0 0 18px">The test corpus covers <span style="{{ sugWrap }}"><span style="{{ sugDel }}">every construct</span><span> </span><span style="{{ sugIns }}">each construct</span><sc-if value="{{ sugPending }}" hint-placeholder-val="{{ true }}"><span style="display:inline-flex;gap:6px;align-items:center;margin:0 6px;vertical-align:4px"><span style="font-size:12px;font-weight:800;background:var(--grape);color:#fff;border-radius:999px;padding:2px 11px">Claude · suggestion</span><span onClick="{{ acceptSug }}" title="Accept — replaces the span, author gets an accepted event" style="font-size:12px;font-weight:800;color:#0e2418;background:var(--mint);border-radius:999px;padding:2px 12px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15);box-shadow:0 4px 14px -2px rgba(61,201,124,.6)" style-active="transform:scale(.85)">Accept</span><span onClick="{{ rejectSug }}" style="font-size:12px;font-weight:800;color:var(--pink);border:2px solid var(--pink);border-radius:999px;padding:0 11px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15);background:rgba(255,92,138,.15)" style-active="transform:scale(.85)">Reject</span></span></sc-if></span> in §6.1 plus real documents that round-tripped badly.</p>
+
+          <p style="font-size:21px;line-height:1.7;color:#dbdade;font-weight:500;margin:0 0 22px">While attached, agents write only to the buffer file; <span onClick="{{ toggleQ }}" style="{{ qStyle }}" style-hover="filter:brightness(1.15)">the document on disk is yours to save</span>. A save never marks their pending edits as reviewed.</p>
+
+          <div style="font-size:24px;font-weight:800;color:var(--text);margin:26px 0 12px">Next steps</div>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:26px">
+            <div style="display:flex;gap:12px;align-items:center;font-size:20px;font-weight:500;color:#dbdade"><span onClick="{{ toggleT1 }}" style="{{ t1Box }}" style-hover="transform:scale(1.2) rotate(6deg)"><sc-if value="{{ t1 }}" hint-placeholder-val="{{ false }}"><span style="color:#0e2418;font-size:13px;font-weight:900;animation:checkPop .4s cubic-bezier(.34,1.56,.64,1)">✓</span></sc-if></span><span style="{{ t1Text }}">Wire the watcher to the ghost store</span></div>
+            <div style="display:flex;gap:12px;align-items:center;font-size:20px;font-weight:500;color:#dbdade"><span onClick="{{ toggleT2 }}" style="{{ t2Box }}" style-hover="transform:scale(1.2) rotate(6deg)"><sc-if value="{{ t2 }}" hint-placeholder-val="{{ true }}"><span style="color:#0e2418;font-size:13px;font-weight:900;animation:checkPop .4s cubic-bezier(.34,1.56,.64,1)">✓</span></sc-if></span><span style="{{ t2Text }}">Land the byte-preserving save</span></div>
+            <sc-if value="{{ h2Visible }}" hint-placeholder-val="{{ true }}">
+            <div style="{{ h2Row }}"><span style="width:22px;height:22px;border-radius:8px;border:2.5px solid #5c5288;display:inline-grid;place-items:center;flex:none"></span><span>Write the corpus README</span><sc-if value="{{ h2Pending }}" hint-placeholder-val="{{ true }}"><span style="display:inline-flex;gap:6px;align-items:center;margin-left:8px"><span title="No tag was set before this write — author unknown" style="font-size:12px;font-weight:800;background:#5c5288;color:#d5cfe8;border-radius:999px;padding:2px 11px">external</span><span onClick="{{ keepH2 }}" style="font-size:12px;font-weight:800;color:#0e2418;background:var(--mint);border-radius:999px;padding:2px 12px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15);box-shadow:0 4px 14px -2px rgba(61,201,124,.6)" style-active="transform:scale(.85)">Keep</span><span onClick="{{ revertH2 }}" style="font-size:12px;font-weight:800;color:var(--pink);border:2px solid var(--pink);border-radius:999px;padding:0 11px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15);background:rgba(255,92,138,.15)" style-active="transform:scale(.85)">Revert</span></span></sc-if></div>
+            </sc-if>
+          </div>
+
+          <div style="font-family:'JetBrains Mono',monospace;font-size:15px;background:#1d1731;border:1px solid var(--line);border-radius:14px;padding:16px 22px;color:#bebcc6">stratamd attach plan.md --as ag_7f3k</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isPlanSource }}" hint-placeholder-val="{{ false }}">
+        <div style="{{ docColStyle }}"><pre style="font-family:'JetBrains Mono',monospace;font-size:16px;line-height:1.8;color:#dbdade;margin:0;white-space:pre-wrap;animation:slideA .3s ease-out"><span style="color:#8b8994">---
+title: Rollout plan
+owner: me
+---</span>
+
+# Rollout plan
+
+We ship the importer first, <span style="{{ srcDel }}">then the sync layer</span> <span style="{{ srcIns }}">then the export path</span> keeping the CLI
+stable across both. Agents attach with one command and collect
+deliveries whenever they call back.
+
+The test corpus covers every construct in §6.1 plus real documents
+that round-tripped badly.
+
+## Next steps
+
+- [{{ t1Mark }}] Wire the watcher to the ghost store
+- [{{ t2Mark }}] Land the byte-preserving save</pre></div>
+      </sc-if>
+
+      <sc-if value="{{ isNotes }}" hint-placeholder-val="{{ false }}">
+        <div style="{{ docColStyle }}">
+          <div onMouseDown="{{ dragDoc }}" title="Drag to set text width — wider for tables" style="position:absolute;right:-26px;top:6px;width:18px;height:70px;cursor:col-resize;display:grid;place-items:center"><div style="width:4px;height:46px;border-radius:2px;background:var(--line)"></div></div>
+          <h1 style="font-size:40px;font-weight:800;color:var(--text);margin:0 0 20px;letter-spacing:-.02em">Meeting notes</h1>
+          <p style="font-size:21px;line-height:1.7;color:#dbdade;font-weight:500;margin:0 0 18px">Agreed to keep the delivery queue per attachment. <span style="{{ n1Wrap }}"><span style="{{ n1Ins }}">Haru will draft the resync flow before Friday.</span><sc-if value="{{ n1Pending }}" hint-placeholder-val="{{ true }}"><span style="display:inline-flex;gap:6px;align-items:center;margin:0 6px;vertical-align:4px"><span style="font-size:12px;font-weight:800;background:var(--sky);color:#fff;border-radius:999px;padding:2px 11px">Haru</span><span onClick="{{ keepN1 }}" style="font-size:12px;font-weight:800;color:#0e2418;background:var(--mint);border-radius:999px;padding:2px 12px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15)" style-active="transform:scale(.85)">Keep</span><span onClick="{{ revertN1 }}" style="font-size:12px;font-weight:800;color:var(--pink);border:2px solid var(--pink);border-radius:999px;padding:0 11px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15);background:rgba(255,92,138,.15)" style-active="transform:scale(.85)">Revert</span></span></sc-if></span></p>
+          <p style="font-size:21px;line-height:1.7;color:#dbdade;font-weight:500;margin:0">Open question on idle expiry: <span style="{{ n2Wrap }}"><span style="{{ n2Del }}">default should be 8 hours</span><span> </span><span style="{{ n2Ins }}">default stays 24 hours; attachments with unacked deliveries never expire</span><sc-if value="{{ n2Pending }}" hint-placeholder-val="{{ true }}"><span style="display:inline-flex;gap:6px;align-items:center;margin:0 6px;vertical-align:4px"><span style="font-size:12px;font-weight:800;background:var(--sky);color:#fff;border-radius:999px;padding:2px 11px">Haru · mixed</span><span onClick="{{ keepN2 }}" style="font-size:12px;font-weight:800;color:#0e2418;background:var(--mint);border-radius:999px;padding:2px 12px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15)" style-active="transform:scale(.85)">Keep</span><span onClick="{{ revertN2 }}" style="font-size:12px;font-weight:800;color:var(--pink);border:2px solid var(--pink);border-radius:999px;padding:0 11px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15);background:rgba(255,92,138,.15)" style-active="transform:scale(.85)">Revert</span></span></sc-if></span>.</p>
+        </div>
+      </sc-if>
+      </div>
+
+      <sc-if value="{{ selMenuOn }}" hint-placeholder-val="{{ false }}">
+        <div style="{{ selMenuStyle }}">
+          <span onClick="{{ annComment }}" style="font-size:14px;font-weight:800;padding:7px 14px;border-radius:999px;cursor:pointer;color:#241f31;transition:all .15s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(36,31,49,.1);transform:scale(1.08)" style-active="transform:scale(.9)">Comment <span style="opacity:.5;font-family:'JetBrains Mono',monospace;font-size:11px">C</span></span>
+          <span onClick="{{ annQuestion }}" style="font-size:14px;font-weight:800;padding:7px 14px;border-radius:999px;cursor:pointer;color:#241f31;transition:all .15s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(36,31,49,.1);transform:scale(1.08)" style-active="transform:scale(.9)">Question <span style="opacity:.5;font-family:'JetBrains Mono',monospace;font-size:11px">Q</span></span>
+          <span onClick="{{ annSuggest }}" style="font-size:14px;font-weight:800;padding:7px 14px;border-radius:999px;cursor:pointer;color:#241f31;transition:all .15s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(36,31,49,.1);transform:scale(1.08)" style-active="transform:scale(.9)">Suggest <span style="opacity:.5;font-family:'JetBrains Mono',monospace;font-size:11px">S</span></span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ composeOn }}" hint-placeholder-val="{{ false }}">
+        <div style="{{ composeStyle }}">
+          <div style="font-size:13px;font-weight:800;color:var(--grape);text-transform:capitalize;margin-bottom:6px">{{ composeKind }}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--dim);background:var(--card2);border-left:4px solid var(--grape);border-radius:0 9px 9px 0;padding:6px 11px;margin-bottom:10px;font-style:italic">“{{ composeQuote }}”</div>
+          <textarea value="{{ composeText }}" onChange="{{ setComposeText }}" placeholder="{{ composePlaceholder }}" style="width:100%;border:2px solid var(--line);background:#1d1731;color:var(--text);border-radius:12px;padding:9px 12px;font-size:14px;font-weight:500;font-family:'Baloo 2',sans-serif;resize:none;outline:none;height:64px" style-focus="border-color:var(--grape)"></textarea>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:9px">
+            <span onClick="{{ cancelCompose }}" style="font-size:13px;font-weight:700;color:var(--dim);padding:6px 12px;border-radius:999px;cursor:pointer;transition:all .15s" style-hover="background:var(--card2)">Cancel</span>
+            <span onClick="{{ addAnnotation }}" style="font-size:13px;font-weight:800;color:#fff;background:var(--grape);padding:6px 18px;border-radius:999px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.1);box-shadow:0 6px 18px -4px rgba(155,92,255,.6)" style-active="transform:scale(.9)">Add</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ qOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;top:280px;left:52%;width:330px;background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:0 20px 50px -16px rgba(0,0,0,.7);padding:18px;z-index:30;animation:popIn .3s cubic-bezier(.34,1.56,.64,1)">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px"><span style="font-size:12px;font-weight:800;background:rgba(255,176,58,.2);color:var(--tang);border-radius:999px;padding:3px 12px">question · you</span></div>
+          <div style="font-size:16px;font-weight:600;color:var(--text);line-height:1.55;margin-bottom:12px">Should Save also advance the ghost for my own edits inside a pending hunk?</div>
+          <sc-for list="{{ qReplies }}" as="r" hint-placeholder-count="1">
+            <div style="border-left:3px solid var(--grape);padding:3px 0 3px 12px;margin-bottom:10px;animation:popIn .3s cubic-bezier(.34,1.56,.64,1)">
+              <div style="font-size:12px;font-weight:800;color:var(--grape);margin-bottom:2px">{{ r.who }}</div>
+              <div style="font-size:14px;font-weight:500;color:#dbdade;line-height:1.5">{{ r.text }}</div>
+            </div>
+          </sc-for>
+          <div style="display:flex;gap:8px;margin-top:6px">
+            <input value="{{ replyText }}" onChange="{{ setReplyText }}" onKeyDown="{{ replyKey }}" placeholder="Reply…" style="flex:1;border:2px solid var(--line);background:#1d1731;color:var(--text);border-radius:12px;padding:8px 12px;font-size:14px;font-weight:500;font-family:'Baloo 2',sans-serif;outline:none" style-focus="border-color:var(--grape)">
+            <span onClick="{{ sendReply }}" style="font-size:14px;font-weight:800;color:#fff;background:var(--grape);padding:8px 14px;border-radius:12px;cursor:pointer;align-self:center;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.12)" style-active="transform:scale(.85)">↵</span>
+          </div>
+          <div onClick="{{ resolveQ }}" style="font-size:13px;font-weight:700;color:var(--dim);text-align:center;margin-top:11px;cursor:pointer;padding:6px;border-radius:999px;transition:all .15s" style-hover="background:rgba(61,201,124,.15);color:var(--mint)">✓ Resolve thread</div>
+        </div>
+      </sc-if>
+      </div>
+    </div>
+
+    <!-- Right islands -->
+    <div onMouseDown="{{ dragRail }}" title="Drag to resize" style="width:18px;flex:none;cursor:col-resize;display:grid;place-items:center"><div style="width:4px;height:46px;border-radius:2px;background:var(--line)"></div></div>
+    <div style="{{ railStyle }}">
+      <div ref="{{ chRef }}" style="{{ chIslStyle }}">
+        <sc-if value="{{ motionOn }}" hint-placeholder-val="{{ true }}">
+        <div style="position:absolute;inset:0;pointer-events:none;z-index:-1">
+          <div style="position:absolute;top:-50px;right:-60px;width:190px;height:190px;border-radius:50%;background:radial-gradient(circle,rgba(155,92,255,.12),transparent 70%);filter:blur(20px);animation:innerB 15s ease-in-out infinite"></div>
+          <div style="position:absolute;bottom:14px;left:20px;width:5px;height:5px;border-radius:50%;background:rgba(255,92,138,.28);animation:moteWander 18s ease-in-out 4s infinite"></div>
+        </div>
+        </sc-if>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span style="font-size:15px;font-weight:800;color:var(--text)">Changes</span>
+          <sc-if value="{{ anyPending }}" hint-placeholder-val="{{ true }}"><span onClick="{{ markReviewed }}" title="Mark reviewed — keeps all remaining pending hunks" style="font-size:12px;font-weight:800;color:var(--mint);cursor:pointer;padding:3px 11px;border-radius:999px;transition:all .15s" style-hover="background:rgba(61,201,124,.15)" style-active="transform:scale(.88)">Mark reviewed</span></sc-if>
+        </div>
+        <sc-for list="{{ changes }}" as="c" hint-placeholder-count="3">
+          <div onClick="{{ c.jump }}" title="Jump to hunk" style="display:flex;flex-direction:column;gap:3px;padding:9px 11px;border-radius:14px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1);margin-bottom:5px" style-hover="background:var(--card2);transform:translateX(5px)" style-active="transform:scale(.96)">
+            <div style="display:flex;gap:6px;align-items:center"><span style="{{ c.dotStyle }}"></span><span style="{{ c.authorStyle }}">{{ c.author }}</span><span style="font-size:11px;font-weight:600;color:#8b8994">{{ c.kind }}</span></div>
+            <div style="font-size:14px;font-weight:600;color:#dbdade;line-height:1.4">{{ c.label }}</div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ reviewCardOn }}" hint-placeholder-val="{{ false }}">
+        <div style="background:var(--card2);border-radius:14px;padding:10px 12px;margin-bottom:5px;animation:popIn .3s cubic-bezier(.34,1.56,.64,1)">
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px"><span style="width:9px;height:9px;border-radius:50%;background:#7a7292;flex:none"></span><span style="font-size:12px;font-weight:800;color:#b2b0ba">external</span><span style="font-size:11px;font-weight:600;color:#8b8994">table · can't render inline</span></div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.6;margin:4px 0 8px"><div style="color:#f395b3">− owner: me</div><div style="color:#d5beff">+ owner: fable</div></div>
+          <div style="display:flex;gap:6px"><span onClick="{{ keepRC }}" style="font-size:11px;font-weight:800;color:#0e2418;background:var(--mint);border-radius:999px;padding:2px 12px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.1)" style-active="transform:scale(.88)">Keep</span><span onClick="{{ revertRC }}" style="font-size:11px;font-weight:800;color:var(--pink);border:2px solid var(--pink);border-radius:999px;padding:0 11px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(255,92,138,.15)" style-active="transform:scale(.88)">Revert</span></div>
+        </div>
+        </sc-if>
+        <sc-if value="{{ noPending }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:14px;font-weight:700;color:var(--dim);text-align:center;padding:12px 0 8px;animation:popIn .4s cubic-bezier(.34,1.56,.64,1)">All caught up <span style="color:var(--mint)">✓</span><br><span style="font-size:12px;font-weight:600">shadow matches ghost</span></div>
+        </sc-if>
+      </div>
+
+      <div onMouseDown="{{ dragCh }}" title="Drag to resize" style="height:14px;flex:none;cursor:row-resize;display:grid;place-items:center"><div style="width:46px;height:4px;border-radius:2px;background:var(--line)"></div></div>
+      <div ref="{{ annRef }}" style="{{ annIslStyle }}">
+        <sc-if value="{{ motionOn }}" hint-placeholder-val="{{ true }}">
+        <div style="position:absolute;inset:0;pointer-events:none;z-index:-1">
+          <div style="position:absolute;bottom:-60px;left:-50px;width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,rgba(255,176,58,.1),transparent 70%);filter:blur(20px);animation:innerA 17s ease-in-out 2s infinite"></div>
+          <div style="position:absolute;top:20px;right:24px;width:5px;height:5px;border-radius:50%;background:rgba(79,141,255,.3);animation:moteWander 20s ease-in-out infinite reverse"></div>
+        </div>
+        </sc-if>
+        <div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:10px">Annotations</div>
+        <sc-for list="{{ anns }}" as="a" hint-placeholder-count="2">
+          <div onClick="{{ a.click }}" style="display:flex;gap:8px;align-items:baseline;padding:7px 10px;border-radius:12px;margin-bottom:3px;animation:popIn .3s cubic-bezier(.34,1.56,.64,1);transition:all .15s;cursor:pointer" style-hover="background:var(--card2)">
+            <span style="{{ a.chipStyle }}">{{ a.kind }}</span>
+            <span style="{{ a.quoteStyle }}">{{ a.quote }}</span>
+          </div>
+        </sc-for>
+        <sc-if value="{{ hasResolved }}" hint-placeholder-val="{{ false }}"><div onClick="{{ clearResolved }}" style="font-size:12px;font-weight:700;color:var(--dim);text-align:center;padding:5px;border-radius:999px;cursor:pointer;transition:all .15s" style-hover="background:var(--card2);color:var(--text)">Clear resolved (1)</div></sc-if>
+        <sc-if value="{{ noAnns }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:13px;font-weight:600;color:#8b8994;text-align:center;padding:8px 0">Select text to comment</div>
+        </sc-if>
+      </div>
+
+      <div onMouseDown="{{ dragAnn }}" title="Drag to resize" style="height:14px;flex:none;cursor:row-resize;display:grid;place-items:center"><div style="width:46px;height:4px;border-radius:2px;background:var(--line)"></div></div>
+      <div style="background:var(--card);border:1px solid var(--line);border-radius:22px;padding:16px 15px;box-shadow:0 16px 40px -18px rgba(0,0,0,.55);position:relative;isolation:isolate;overflow:hidden;flex:none">
+        <sc-if value="{{ motionOn }}" hint-placeholder-val="{{ true }}">
+        <div style="position:absolute;inset:0;pointer-events:none;z-index:-1">
+          <div style="position:absolute;top:-40px;left:-50px;width:170px;height:170px;border-radius:50%;background:radial-gradient(circle,rgba(79,141,255,.11),transparent 70%);filter:blur(18px);animation:innerB 16s ease-in-out 5s infinite"></div>
+          <div style="position:absolute;bottom:18px;right:30px;width:6px;height:6px;border-radius:50%;background:rgba(61,201,124,.28);animation:moteWander 21s ease-in-out 7s infinite"></div>
+        </div>
+        </sc-if>
+        <div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:10px">Attached agents</div>
+        <sc-for list="{{ agents }}" as="g" hint-placeholder-count="2">
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:14px;margin-bottom:4px;transition:all .15s" style-hover="background:var(--card2)">
+            <span style="{{ g.avatarStyle }}">{{ g.initial }}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:15px;font-weight:800;color:var(--text)">{{ g.name }} <span style="font-size:11px;font-weight:600;color:#8b8994">{{ g.since }}</span></div>
+              <div style="display:flex;align-items:center;gap:5px"><span style="{{ g.stateDot }}"></span><span style="font-size:12px;font-weight:600;color:var(--dim)">{{ g.stateLabel }}</span></div>
+            </div>
+            <span onClick="{{ g.nudge }}" title="Nudge — copies a re-attach prompt to the clipboard" style="font-size:12px;font-weight:800;cursor:pointer;color:var(--dim);padding:4px 10px;border-radius:999px;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="color:#fff;background:var(--grape);animation:wobble .4s ease-in-out" style-active="transform:scale(.85)">nudge</span>
+          </div>
+        </sc-for>
+        <sc-if value="{{ noAgents }}" hint-placeholder-val="{{ false }}"><div style="font-size:13px;font-weight:600;color:#8b8994;text-align:center;padding:8px 4px;line-height:1.5">No agents attached.<br>Send becomes Copy for agent.</div></sc-if>
+        <div style="font-size:11px;font-weight:600;color:#8b8994;padding:6px 10px 0;line-height:1.5">idle expiry 24h · unacked deliveries never expire</div>
+      </div>
+
+      <div style="border:1.5px dashed var(--line);border-radius:22px;padding:12px 14px;flex:none;margin-top:14px">
+        <div style="font-size:11px;font-weight:800;color:#8b8994;margin-bottom:8px">Prototype demos — PRD states</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          <span onClick="{{ demoConflict }}" style="font-size:11px;font-weight:700;color:var(--dim);background:var(--card2);border-radius:999px;padding:4px 11px;cursor:pointer;transition:all .15s" style-hover="color:var(--text);transform:scale(1.06)" style-active="transform:scale(.92)">Conflict</span>
+          <span onClick="{{ demoRecovery }}" style="font-size:11px;font-weight:700;color:var(--dim);background:var(--card2);border-radius:999px;padding:4px 11px;cursor:pointer;transition:all .15s" style-hover="color:var(--text);transform:scale(1.06)" style-active="transform:scale(.92)">Crash recovery</span>
+          <span onClick="{{ demoDeleted }}" style="font-size:11px;font-weight:700;color:var(--dim);background:var(--card2);border-radius:999px;padding:4px 11px;cursor:pointer;transition:all .15s" style-hover="color:var(--text);transform:scale(1.06)" style-active="transform:scale(.92)">File deleted</span>
+          <span onClick="{{ demoUtf8 }}" style="font-size:11px;font-weight:700;color:var(--dim);background:var(--card2);border-radius:999px;padding:4px 11px;cursor:pointer;transition:all .15s" style-hover="color:var(--text);transform:scale(1.06)" style-active="transform:scale(.92)">Invalid UTF-8</span>
+          <span onClick="{{ demoCeiling }}" style="font-size:11px;font-weight:700;color:var(--dim);background:var(--card2);border-radius:999px;padding:4px 11px;cursor:pointer;transition:all .15s" style-hover="color:var(--text);transform:scale(1.06)" style-active="transform:scale(.92)">Size ceiling</span>
+          <span onClick="{{ demoDetach }}" style="font-size:11px;font-weight:700;color:var(--dim);background:var(--card2);border-radius:999px;padding:4px 11px;cursor:pointer;transition:all .15s" style-hover="color:var(--text);transform:scale(1.06)" style-active="transform:scale(.92)">{{ detachLabel }}</span>
+        </div>
+      </div>
+      <div style="font-size:12px;font-weight:600;color:#8b8994;text-align:center;font-family:'JetBrains Mono',monospace;margin-top:12px">buffer.md mirrored · saved {{ savedAgo }}</div>
+    </div>
+  </div>
+</div>
+
+<sc-if value="{{ composerOn }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ closeComposer }}" style="position:fixed;inset:0;background:rgba(12,9,20,.6);backdrop-filter:blur(6px);z-index:50;display:grid;place-items:center">
+    <div onClick="{{ stopProp }}" style="width:560px;background:var(--card);border:1px solid var(--line);border-radius:24px;box-shadow:0 40px 100px -24px rgba(0,0,0,.8);padding:26px 28px;animation:popIn .34s cubic-bezier(.34,1.56,.64,1)">
+      <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:2px">Send changes</div>
+      <div style="font-size:13px;font-weight:600;color:var(--dim);margin-bottom:16px">Snapshots the buffer and queues one delivery per recipient · does not save</div>
+      <textarea value="{{ note }}" onChange="{{ setNote }}" onKeyDown="{{ noteKey }}" placeholder="Note for the recipients (optional)…" style="width:100%;border:2px solid var(--line);background:#1d1731;color:var(--text);border-radius:14px;padding:11px 14px;font-size:15px;font-weight:500;font-family:'Baloo 2',sans-serif;resize:none;outline:none;height:70px" style-focus="border-color:var(--grape)"></textarea>
+      <div style="display:flex;gap:10px;margin:14px 0">
+        <sc-for list="{{ recipients }}" as="r" hint-placeholder-count="2">
+          <div onClick="{{ r.toggle }}" style="{{ r.style }}" style-hover="transform:translateY(-2px)" style-active="transform:scale(.95)"><span style="{{ r.dot }}"></span>{{ r.name }}</div>
+        </sc-for>
+      </div>
+      <sc-if value="{{ queuedNotice }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;font-weight:700;color:var(--dim);background:var(--card2);border-radius:10px;padding:7px 12px;margin:-4px 0 12px">Claude already has d_0193 queued — this delivery will follow it.</div></sc-if>
+      <div onClick="{{ toggleExt }}" style="display:flex;gap:11px;align-items:flex-start;padding:11px 13px;background:rgba(255,176,58,.1);border:1.5px solid rgba(255,176,58,.35);border-radius:14px;cursor:pointer;transition:all .15s" style-hover="background:rgba(255,176,58,.16)">
+        <span style="{{ extBox }}"><sc-if value="{{ incExt }}" hint-placeholder-val="{{ false }}"><span style="color:#241503;font-size:11px;font-weight:900;animation:checkPop .3s cubic-bezier(.34,1.56,.64,1)">✓</span></sc-if></span>
+        <div><div style="font-size:14px;font-weight:800;color:var(--tang)">Include changes not made by me</div>
+        <div style="font-size:12.5px;font-weight:600;color:#c79b52;line-height:1.45;margin-top:2px">1 of your changes builds on changes not made by you.</div></div>
+      </div>
+      <div style="margin-top:15px">
+        <div style="display:flex;gap:5px;margin-bottom:7px;align-items:center">
+          <span style="font-size:12px;font-weight:800;color:var(--dim);margin-right:5px">Exact text per recipient</span>
+          <sc-for list="{{ prevTabs }}" as="p" hint-placeholder-count="2">
+            <span onClick="{{ p.pick }}" style="{{ p.style }}" style-active="transform:scale(.92)">{{ p.name }}</span>
+          </sc-for>
+        </div>
+        <pre style="font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.65;background:#1d1731;border:1px solid var(--line);border-radius:14px;padding:12px 16px;color:#bebcc6;margin:0;max-height:150px;overflow-y:auto;white-space:pre-wrap">{{ previewText }}</pre>
+      </div>
+      <div style="display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:16px">
+        <span style="font-size:12px;font-weight:600;color:#8b8994;font-family:'JetBrains Mono',monospace">Ctrl+Enter</span>
+        <span onClick="{{ closeComposer }}" style="font-size:15px;font-weight:700;color:var(--dim);padding:8px 14px;border-radius:999px;cursor:pointer;transition:all .15s" style-hover="background:var(--card2)">Cancel</span>
+        <span onClick="{{ doSend }}" style="font-size:15px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--pink),var(--grape));padding:9px 26px;border-radius:999px;cursor:pointer;transition:all .2s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.08);box-shadow:0 10px 28px -6px rgba(255,92,138,.55)" style-active="transform:scale(.9)">Send</span>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ revertConfirmOn }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ cancelRevertConfirm }}" style="position:fixed;inset:0;background:rgba(12,9,20,.6);backdrop-filter:blur(6px);z-index:60;display:grid;place-items:center">
+    <div onClick="{{ stopProp }}" style="width:430px;background:var(--card);border:1px solid var(--line);border-radius:22px;box-shadow:0 40px 100px -24px rgba(0,0,0,.8);padding:24px 26px;animation:popIn .3s cubic-bezier(.34,1.56,.64,1)">
+      <div style="font-size:19px;font-weight:800;color:var(--text);margin-bottom:6px">Revert a mixed hunk?</div>
+      <div style="font-size:14px;font-weight:500;color:#dbdade;line-height:1.6;margin-bottom:16px">You've edited inside this pending hunk. Reverting restores the ghost's text and <span style="color:var(--pink);font-weight:700">discards your edits inside it</span>. The revert reaches agents as your hunk on their next delivery.</div>
+      <div style="display:flex;justify-content:flex-end;gap:10px">
+        <span onClick="{{ cancelRevertConfirm }}" style="font-size:14px;font-weight:700;color:var(--dim);padding:7px 14px;border-radius:999px;cursor:pointer;transition:all .15s" style-hover="background:var(--card2)">Cancel</span>
+        <span onClick="{{ confirmRevertN2 }}" style="font-size:14px;font-weight:800;color:#fff;background:var(--pink);padding:8px 20px;border-radius:999px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.07);box-shadow:0 8px 22px -6px rgba(255,92,138,.6)" style-active="transform:scale(.92)">Revert &amp; discard</span>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ conflictOn }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ pickMine }}" style="position:fixed;inset:0;background:rgba(12,9,20,.6);backdrop-filter:blur(6px);z-index:60;display:grid;place-items:center">
+    <div onClick="{{ stopProp }}" style="width:560px;background:var(--card);border:1px solid var(--line);border-radius:22px;box-shadow:0 40px 100px -24px rgba(0,0,0,.8);padding:24px 26px;animation:popIn .3s cubic-bezier(.34,1.56,.64,1)">
+      <div style="font-size:19px;font-weight:800;color:var(--text);margin-bottom:4px">External write conflicts with your edits</div>
+      <div style="font-size:13px;font-weight:600;color:var(--dim);margin-bottom:16px">plan.md changed on disk while you had unsaved edits in 1 block. Pick a side per block.</div>
+      <div style="display:flex;gap:12px">
+        <div onClick="{{ pickMine }}" style="flex:1;background:#1d1731;border:2px solid rgba(255,92,138,.4);border-radius:16px;padding:14px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="border-color:var(--pink);transform:translateY(-2px)" style-active="transform:scale(.97)">
+          <div style="font-size:11px;font-weight:800;color:var(--pink);margin-bottom:6px">YOURS · unsaved</div>
+          <div style="font-size:13px;font-weight:500;color:#dbdade;line-height:1.55">The importer is ready for real files.</div>
+          <div style="font-size:12px;font-weight:800;color:var(--pink);margin-top:10px">Keep mine →</div>
+        </div>
+        <div onClick="{{ pickIncoming }}" style="flex:1;background:#1d1731;border:2px solid var(--line);border-radius:16px;padding:14px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="border-color:#7a7292;transform:translateY(-2px)" style-active="transform:scale(.97)">
+          <div style="font-size:11px;font-weight:800;color:#b2b0ba;margin-bottom:6px">INCOMING · external</div>
+          <div style="font-size:13px;font-weight:500;color:#dbdade;line-height:1.55">The importer needs more soak time before real files.</div>
+          <div style="font-size:12px;font-weight:800;color:#b2b0ba;margin-top:10px">Take incoming →</div>
+        </div>
+      </div>
+      <div style="font-size:11px;font-weight:600;color:#8b8994;margin-top:12px">Non-conflicting blocks were already applied and are pending review.</div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ recoveryOn }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;background:rgba(12,9,20,.6);backdrop-filter:blur(6px);z-index:60;display:grid;place-items:center">
+    <div style="width:470px;background:var(--card);border:1px solid var(--line);border-radius:22px;box-shadow:0 40px 100px -24px rgba(0,0,0,.8);padding:24px 26px;animation:popIn .3s cubic-bezier(.34,1.56,.64,1)">
+      <div style="font-size:19px;font-weight:800;color:var(--text);margin-bottom:6px">Recover unsaved edits?</div>
+      <div style="font-size:14px;font-weight:500;color:#dbdade;line-height:1.6;margin-bottom:6px">buffer.md is newer than the last save of plan.md — it looks like the app closed with unsaved edits.</div>
+      <div style="font-size:12px;font-weight:600;color:#8b8994;margin-bottom:16px">StrataMD never silently overwrites either side.</div>
+      <div style="display:flex;justify-content:flex-end;gap:10px">
+        <span onClick="{{ doDiscardRec }}" style="font-size:14px;font-weight:800;color:var(--pink);border:2px solid var(--pink);padding:6px 16px;border-radius:999px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(255,92,138,.15)" style-active="transform:scale(.94)">Discard — use disk</span>
+        <span onClick="{{ doRecover }}" style="font-size:14px;font-weight:800;color:#0e2418;background:var(--mint);padding:8px 20px;border-radius:999px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.07);box-shadow:0 8px 22px -6px rgba(61,201,124,.6)" style-active="transform:scale(.92)">Recover buffer</span>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ closeDlgOn }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ dlgCancel }}" style="position:fixed;inset:0;background:rgba(12,9,20,.6);backdrop-filter:blur(6px);z-index:60;display:grid;place-items:center">
+    <div onClick="{{ stopProp }}" style="width:440px;background:var(--card);border:1px solid var(--line);border-radius:22px;box-shadow:0 40px 100px -24px rgba(0,0,0,.8);padding:24px 26px;animation:popIn .3s cubic-bezier(.34,1.56,.64,1)">
+      <div style="font-size:19px;font-weight:800;color:var(--text);margin-bottom:6px">Close plan.md?</div>
+      <div style="font-size:14px;font-weight:500;color:#dbdade;line-height:1.6;margin-bottom:16px">You have unsaved edits. Pending review survives either way; Discard resets buffer.md to disk, so buffer-only pending hunks disappear on the next open.</div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;align-items:center">
+        <span onClick="{{ dlgCancel }}" style="font-size:14px;font-weight:700;color:var(--dim);padding:7px 12px;border-radius:999px;cursor:pointer;transition:all .15s" style-hover="background:var(--card2)">Cancel</span>
+        <span onClick="{{ dlgDiscard }}" style="font-size:14px;font-weight:800;color:var(--pink);border:2px solid var(--pink);padding:6px 16px;border-radius:999px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(255,92,138,.15)" style-active="transform:scale(.94)">Discard</span>
+        <span onClick="{{ dlgSave }}" style="font-size:14px;font-weight:800;color:#0e2418;background:var(--mint);padding:8px 20px;border-radius:999px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.07);box-shadow:0 8px 22px -6px rgba(61,201,124,.6)" style-active="transform:scale(.92)">Save</span>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;bottom:30px;left:50%;transform:translateX(-50%);z-index:80;background:#f4f0fe;color:#241f31;font-size:14px;font-weight:700;padding:11px 20px;border-radius:999px;box-shadow:0 16px 44px -10px rgba(0,0,0,.7);animation:toastIn .38s cubic-bezier(.34,1.56,.64,1);display:flex;gap:10px;align-items:center;max-width:70vw"><span style="width:9px;height:9px;border-radius:50%;background:var(--pink);flex:none"></span>{{ toast }}</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:900},&quot;animatedBackground&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Feel&quot;}}">
+class Component extends DCLogic {
+  state = {
+    tab: 'plan', view: 'visual', fmOpen: false,
+    h1: 'pending', sug: 'pending', h2: 'pending', n1: 'pending', n2: 'pending',
+    userHunk: true, sendable: true, flash: null,
+    t1: false, t2: true,
+    qOpen: false, qResolved: false, replyText: '',
+    qReplies: [{ who: 'Claude', text: 'No — Save only advances your own hunks; regions overlapping a pending hunk stay pending (§6.1).' }],
+    selMenu: null, compose: null, composeText: '',
+    userAnns: [],
+    composerOn: false, note: '', recClaude: true, recHaru: true, incExt: false, prevTab: 0,
+    claudeState: 'working', haruState: 'waiting',
+    toast: '', scanning: false, savedAgo: '4m ago', docKey: 0,
+    banner: null, conflictOn: false, recoveryOn: false, revertConfirmOn: false, closeDlgOn: false,
+    reviewCard: 'pending', missingGone: false, resolvedCleared: false, attached: true,
+    exW: 212, railW: 300, chH: null, annH: null, docW: 860
+  };
+  editorRef = React.createRef();
+  chRef = React.createRef();
+  annRef = React.createRef();
+  startDrag(e, key, axis, min, max, invert, ref) {
+    e.preventDefault();
+    const startPos = axis === 'x' ? e.clientX : e.clientY;
+    let startVal = this.state[key];
+    if (startVal == null && ref && ref.current) startVal = ref.current.offsetHeight;
+    const move = (ev) => {
+      const d = ((axis === 'x' ? ev.clientX : ev.clientY) - startPos) * (invert ? -1 : 1);
+      this.setState({ [key]: Math.max(min, Math.min(max, startVal + d)) });
+    };
+    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  }
+  toastTimer = null;
+  say(msg) {
+    clearTimeout(this.toastTimer);
+    this.setState({ toast: msg });
+    this.toastTimer = setTimeout(() => this.setState({ toast: '' }), 2800);
+  }
+  flashHunk(id) {
+    this.setState({ flash: id });
+    setTimeout(() => this.setState(s => s.flash === id ? { flash: null } : null), 700);
+  }
+  componentDidMount() {
+    this.onKey = (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); this.state.composerOn ? this.send() : this.setState({ composerOn: true }); }
+      else if (e.key === '/' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); this.toggleSourceView(); }
+      else if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); this.save(); }
+      else if (e.key === 'Escape') this.setState({ composerOn: false, selMenu: null, compose: null, qOpen: false, conflictOn: false, recoveryOn: false, revertConfirmOn: false, closeDlgOn: false });
+      else if (this.state.selMenu && !this.state.compose) {
+        const k = e.key.toLowerCase();
+        if (k === 'c') this.startCompose('comment');
+        else if (k === 'q') this.startCompose('question');
+        else if (k === 's') this.startCompose('suggestion');
+      }
+    };
+    window.addEventListener('keydown', this.onKey);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this.onKey); }
+  toggleSourceView() {
+    if (this.state.tab !== 'plan') return this.say('Source view · mocked for plan.md only');
+    this.setState(s => ({ view: s.view === 'visual' ? 'source' : 'visual', selMenu: null, compose: null }));
+  }
+  startCompose(kind) {
+    const m = this.state.selMenu; if (!m) return;
+    this.setState({ compose: { kind, quote: m.text, x: m.x, y: m.y }, selMenu: null, composeText: '' });
+  }
+  save() {
+    const pend = this.countPending();
+    this.setState({ userHunk: false, savedAgo: 'just now' });
+    this.say(pend > 0 ? `Saved — byte-preserving; ${pend} pending hunk${pend > 1 ? 's' : ''} stay reviewable` : 'Saved — byte-identical outside your edits');
+  }
+  countPending() {
+    const s = this.state;
+    return (s.tab === 'plan' ? ['h1', 'sug', 'h2'] : ['n1', 'n2']).filter(k => s[k] === 'pending').length;
+  }
+  send() {
+    const s = this.state;
+    if (!s.recClaude && !s.recHaru) return this.say('Pick at least one recipient');
+    const names = [s.recClaude && 'Claude', s.recHaru && 'Haru'].filter(Boolean);
+    this.setState({
+      composerOn: false, note: '', sendable: false,
+      claudeState: s.recClaude ? 'pending' : s.claudeState,
+      haruState: s.recHaru ? 'pending' : s.haruState
+    });
+    this.say(`Snapshot frozen · delivery d_0193 queued for ${names.join(' and ')}`);
+    if (s.recHaru) setTimeout(() => { this.setState({ haruState: 'waiting' }); this.say('Haru collected and acknowledged d_0193 — baseline advanced'); }, 2600);
+  }
+  hunkStyles(state, id, insBg, insColor) {
+    const flash = this.state.flash === id ? 'flashRing .7s ease-out' : 'none';
+    return {
+      wrap: { borderRadius: 6, animation: flash, transition: 'all .3s' },
+      del: state === 'pending' ? { textDecoration: 'line-through', background: 'rgba(255,92,138,.14)', color: '#f395b3', borderRadius: 6, padding: '1px 5px' }
+        : state === 'reverted' ? {} : { display: 'none' },
+      ins: state === 'pending' ? { background: insBg, color: insColor, borderRadius: 6, padding: '1px 5px', fontWeight: 700 }
+        : state === 'kept' ? {} : { display: 'none' }
+    };
+  }
+  renderVals() {
+    const s = this.state;
+    const set = (patch) => () => this.setState(patch);
+    const act = (key, val, msg) => () => { this.flashHunk(key); setTimeout(() => this.setState({ [key]: val }), 260); this.say(msg); };
+    const isPlan = s.tab === 'plan', isNotes = s.tab === 'notes';
+    const h1 = this.hunkStyles(s.h1, 'h1', 'rgba(155,92,255,.22)', '#d5beff');
+    const sug = this.hunkStyles(s.sug, 'sug', 'rgba(155,92,255,.22)', '#d5beff');
+    const n1 = this.hunkStyles(s.n1, 'n1', 'rgba(79,141,255,.2)', '#b0ccff');
+    const n2 = this.hunkStyles(s.n2, 'n2', 'rgba(79,141,255,.2)', '#b0ccff');
+    const tab = (on) => ({ padding: '8px 20px', borderRadius: 999, fontSize: 15, fontWeight: 800, cursor: 'pointer', transition: 'all .2s cubic-bezier(.34,1.56,.64,1)', background: on ? '#f4f0fe' : 'var(--card)', color: on ? '#241f31' : 'var(--dim)', border: '1px solid ' + (on ? '#f4f0fe' : 'var(--line)'), boxShadow: on ? '0 8px 24px -8px rgba(244,240,254,.35)' : 'none' });
+    const file = (on) => ({ fontSize: 14, fontWeight: on ? 800 : 600, padding: '6px 12px', marginLeft: 10, borderRadius: 11, cursor: 'pointer', transition: 'all .15s', background: on ? 'rgba(155,92,255,.18)' : 'transparent', color: on ? '#d5beff' : 'var(--dim)' });
+    const box = (on) => ({ width: 22, height: 22, borderRadius: 8, border: on ? 'none' : '2.5px solid #5c5288', background: on ? 'var(--mint)' : 'transparent', display: 'inline-grid', placeItems: 'center', cursor: 'pointer', flex: 'none', transition: 'all .2s cubic-bezier(.34,1.56,.64,1)', boxShadow: on ? '0 4px 14px -3px rgba(61,201,124,.5)' : 'none' });
+    const done = (on) => on ? { textDecoration: 'line-through', color: '#73717d', transition: 'all .25s' } : { transition: 'all .25s' };
+    const jump = (tabName, key) => () => { this.setState({ tab: tabName, view: 'visual' }); this.flashHunk(key); };
+    const dot = (c) => ({ width: 9, height: 9, borderRadius: '50%', background: c, flex: 'none' });
+    const authorStyle = (c) => ({ fontSize: 12, fontWeight: 800, color: c });
+    const changes = [];
+    if (isPlan) {
+      if (s.h1 === 'pending') changes.push({ author: 'Claude', kind: 'edit · buffer.md', label: 'sync layer → export path', dotStyle: dot('#9B5CFF'), authorStyle: authorStyle('#d5beff'), jump: jump('plan', 'h1') });
+      if (s.sug === 'pending') changes.push({ author: 'Claude', kind: 'suggestion', label: 'every construct → each construct', dotStyle: dot('#9B5CFF'), authorStyle: authorStyle('#d5beff'), jump: jump('plan', 'sug') });
+      if (s.h2 === 'pending') changes.push({ author: 'external', kind: 'insert', label: '+ Write the corpus README', dotStyle: dot('#7a7292'), authorStyle: authorStyle('#b2b0ba'), jump: jump('plan', 'h2') });
+      if (s.userHunk) changes.push({ author: 'you', kind: 'edit', label: 'Tightened the intro paragraph', dotStyle: dot('#FF5C8A'), authorStyle: authorStyle('#ff9dbb'), jump: jump('plan', 'none') });
+    } else {
+      if (s.n1 === 'pending') changes.push({ author: 'Haru', kind: 'insert · buffer.md', label: '+ resync flow before Friday', dotStyle: dot('#4F8DFF'), authorStyle: authorStyle('#b0ccff'), jump: jump('notes', 'n1') });
+      if (s.n2 === 'pending') changes.push({ author: 'Haru', kind: 'edit · buffer.md', label: '8 hours → 24 hours + never expire', dotStyle: dot('#4F8DFF'), authorStyle: authorStyle('#b0ccff'), jump: jump('notes', 'n2') });
+    }
+    const planPendingN = ['h1', 'sug', 'h2'].filter(k => s[k] === 'pending').length + (s.reviewCard === 'pending' ? 1 : 0);
+    const notesPendingN = ['n1', 'n2'].filter(k => s[k] === 'pending').length;
+    const anyPendingHere = isPlan ? planPendingN > 0 : notesPendingN > 0;
+    const chipS = (bg, c) => ({ fontSize: 11, fontWeight: 800, background: bg, color: c, borderRadius: 999, padding: '2px 10px', flex: 'none' });
+    const quoteS = { fontSize: 13, fontWeight: 600, color: '#dbdade', lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+    const anns = [];
+    if (!s.qResolved && isPlan) anns.push({ kind: 'question', quote: '“the document on disk is yours to save”', chipStyle: chipS('rgba(255,176,58,.2)', '#FFB03A'), quoteStyle: quoteS, click: set({ qOpen: true }) });
+    if (s.sug === 'pending' && isPlan) anns.push({ kind: 'suggestion', quote: '“every construct” → “each construct”', chipStyle: chipS('rgba(155,92,255,.2)', '#d5beff'), quoteStyle: quoteS, click: jump('plan', 'sug') });
+    if (isPlan) anns.push({ kind: 'orphaned', quote: '“the importer needs a long preamble…”', chipStyle: chipS('rgba(122,114,146,.25)', '#b2b0ba'), quoteStyle: quoteS, click: () => this.say('Orphaned — quote no longer matches; a suggestion cannot be accepted (no fuzzy apply)') });
+    s.userAnns.forEach(a => anns.push({ kind: a.kind, quote: '“' + a.quote + '”', chipStyle: chipS('rgba(255,92,138,.2)', '#ff9dbb'), quoteStyle: quoteS, click: () => this.say('Anchored: exact quote + 32 chars of context') }));
+    const stDot = (st) => st === 'waiting' ? { width: 9, height: 9, borderRadius: '50%', background: '#9B5CFF', animation: 'pulseDot 1.6s ease-in-out infinite' }
+      : st === 'pending' ? { width: 9, height: 9, borderRadius: '50%', background: '#FFB03A' }
+      : { width: 9, height: 9, borderRadius: '50%', background: '#8b8994' };
+    const stLabel = (st) => st === 'waiting' ? 'waiting — attach call open' : st === 'pending' ? 'delivery queued, unacked' : 'working — nothing queued';
+    const av = (bg) => ({ width: 34, height: 34, borderRadius: 12, background: bg, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 15, fontWeight: 800, flex: 'none' });
+    const agents = !s.attached ? [] : [
+      { name: 'Claude', since: '32m', initial: 'C', avatarStyle: av('#9B5CFF'), stateDot: stDot(s.claudeState), stateLabel: stLabel(s.claudeState), nudge: () => this.say('Copied: Run `stratamd attach --as ag_7f3k` and continue.') },
+      { name: 'Haru', since: '9m', initial: 'H', avatarStyle: av('#4F8DFF'), stateDot: stDot(s.haruState), stateLabel: stLabel(s.haruState), nudge: () => this.say('Copied: Run `stratamd attach --as ag_2b9x` and continue.') }
+    ];
+    const chip = (on, color, glow) => ({ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 800, padding: '8px 18px', borderRadius: 999, cursor: 'pointer', transition: 'all .18s cubic-bezier(.34,1.56,.64,1)', border: '2px solid ' + (on ? color : 'var(--line)'), background: on ? 'rgba(255,255,255,.04)' : 'transparent', color: on ? '#fff' : 'var(--dim)', boxShadow: on ? '0 6px 18px -6px ' + glow : 'none' });
+    const recipients = [
+      { name: 'Claude', toggle: set({ recClaude: !s.recClaude }), style: chip(s.recClaude, '#9B5CFF', 'rgba(155,92,255,.5)'), dot: { width: 10, height: 10, borderRadius: '50%', background: s.recClaude ? '#9B5CFF' : '#5c5288' } },
+      { name: 'Haru', toggle: set({ recHaru: !s.recHaru }), style: chip(s.recHaru, '#4F8DFF', 'rgba(79,141,255,.5)'), dot: { width: 10, height: 10, borderRadius: '50%', background: s.recHaru ? '#4F8DFF' : '#5c5288' } }
+    ];
+    const selNames = [s.recClaude && 'Claude', s.recHaru && 'Haru'].filter(Boolean);
+    const prevTabs = selNames.map((n, i) => ({ name: n, pick: set({ prevTab: i }), style: { fontSize: 12, fontWeight: 800, padding: '3px 12px', borderRadius: 999, cursor: 'pointer', transition: 'all .15s', background: s.prevTab === i ? '#9B5CFF' : 'var(--card2)', color: s.prevTab === i ? '#fff' : 'var(--dim)' } }));
+    const prevName = selNames[Math.min(s.prevTab, Math.max(selNames.length - 1, 0))] || '—';
+    const noteLine = s.note.trim() ? '\nnote: ' + s.note.trim() + '\n' : '';
+    const previewText = 'While attached, write only to the buffer file:\n~/.local/share/stratamd/docs/9f2c…/buffer.md.\nThe document /home/u/work/strata/plan.md is the user\'s to save.\n' + noteLine +
+      '\n--- you (baseline s41 → s44) ---\n@@ -12,3 +12,2 @@\n- The importer needs a long preamble before it can\n- be trusted with real files.\n+ The importer is ready for real files.' +
+      (prevName === 'Haru' ? '\n\n@@ -30,1 +29,2 @@\n+ Open question logged on idle expiry.' : '') +
+      (s.incExt ? '\n\n--- external (included by you) ---\n@@ -22,0 +22,1 @@\n+ - [ ] Write the corpus README' : '');
+    const selMenu = s.selMenu, compose = s.compose;
+    return {
+      motionOn: this.props.animatedBackground ?? true,
+      isPlanVisual: isPlan && s.view === 'visual', isPlanSource: isPlan && s.view === 'source', isNotes,
+      openPlan: set({ tab: 'plan', selMenu: null, compose: null, docKey: s.docKey + 1 }),
+      openNotes: set({ tab: 'notes', view: 'visual', selMenu: null, compose: null, qOpen: false, docKey: s.docKey + 1 }),
+      planTabStyle: tab(isPlan), notesTabStyle: tab(isNotes),
+      planFileStyle: file(isPlan), notesFileStyle: file(isNotes),
+      planBadge: !isPlan && planPendingN > 0, notesBadge: !isNotes && notesPendingN > 0,
+      planPendingN, notesPendingN,
+      docAnim: { animation: (s.docKey % 2 ? 'slideA' : 'slideB') + ' .34s cubic-bezier(.3,1.2,.5,1)' },
+      fmLabel: s.fmOpen ? '▾ ---  title: Rollout plan · owner: me  ---' : '▸ --- frontmatter · 2 keys ---',
+      toggleFm: set({ fmOpen: !s.fmOpen }),
+      doScan: () => { this.setState({ scanning: true }); setTimeout(() => { this.setState({ scanning: false }); this.say('Scan complete — ghost created for spec.md'); }, 900); },
+      doRefresh: () => this.say('Refreshed — no new or removed files'),
+      scanAnim: s.scanning ? { animation: 'scanPulse .45s ease-in-out 2' } : {},
+      clickSpec: () => this.say('Would open spec.md in a new tab — mock shows plan.md and notes.md'),
+      clickMissing: () => this.say('File no longer on disk — entry kept until you Forget it'),
+      explorerNote: s.scanning ? 'Scanning ~/work/strata…' : 'Ghosts up to date · 4 files · 1 missing',
+      tbBold: () => this.say('Bold · Ctrl+B'), tbItalic: () => this.say('Italic · Ctrl+I'), tbCode: () => this.say('Code span · Ctrl+Shift+C'), tbLink: () => this.say('Link · Ctrl+K'), tbH: () => this.say('Heading level · Ctrl+1..6'), tbList: () => this.say('Bullet list · Ctrl+Shift+8'),
+      toggleSource: () => this.toggleSourceView(),
+      srcBtnStyle: { fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", padding: '5px 14px', borderRadius: 999, cursor: 'pointer', transition: 'all .15s', background: s.view === 'source' ? 'rgba(155,92,255,.2)' : 'transparent', color: s.view === 'source' ? '#d5beff' : 'var(--dim)' },
+      doSave: () => this.save(),
+      editorRef: this.editorRef,
+      h1Wrap: h1.wrap, h1Del: h1.del, h1Ins: h1.ins, h1Pending: s.h1 === 'pending',
+      keepH1: act('h1', 'kept', 'Kept — ghost advanced for this hunk'),
+      revertH1: act('h1', 'reverted', 'Reverted — ghost text restored; Claude sees it as your hunk next delivery'),
+      sugWrap: sug.wrap, sugDel: sug.del, sugIns: sug.ins, sugPending: s.sug === 'pending',
+      acceptSug: act('sug', 'kept', 'Accepted — recorded as your change; Claude receives "accepted"'),
+      rejectSug: act('sug', 'reverted', 'Rejected — Claude receives "rejected"'),
+      h2Visible: s.h2 !== 'reverted', h2Pending: s.h2 === 'pending',
+      h2Row: { display: 'flex', gap: 12, alignItems: 'center', fontSize: 20, fontWeight: 500, color: '#dbdade', background: s.h2 === 'pending' ? 'rgba(155,92,255,.1)' : 'transparent', borderRadius: 12, padding: s.h2 === 'pending' ? '5px 10px' : 0, margin: s.h2 === 'pending' ? '0 -10px' : 0, animation: this.state.flash === 'h2' ? 'flashRing .7s ease-out' : 'none', transition: 'all .3s' },
+      keepH2: act('h2', 'kept', 'Kept — untagged external hunk applied to the ghost'),
+      revertH2: act('h2', 'reverted', 'Reverted — the insertion is removed from the buffer'),
+      n1Wrap: n1.wrap, n1Ins: n1.ins, n1Pending: s.n1 === 'pending',
+      keepN1: act('n1', 'kept', 'Kept — ghost advanced'), revertN1: act('n1', 'reverted', 'Reverted'),
+      n2Wrap: n2.wrap, n2Del: n2.del, n2Ins: n2.ins, n2Pending: s.n2 === 'pending',
+      keepN2: act('n2', 'kept', 'Kept — your edits inside the mixed hunk are preserved'), revertN2: set({ revertConfirmOn: true }),
+      t1: s.t1, t2: s.t2, toggleT1: set({ t1: !s.t1, userHunk: true, sendable: true }), toggleT2: set({ t2: !s.t2, userHunk: true, sendable: true }),
+      t1Box: box(s.t1), t2Box: box(s.t2), t1Text: done(s.t1), t2Text: done(s.t2),
+      t1Mark: s.t1 ? 'x' : ' ', t2Mark: s.t2 ? 'x' : ' ',
+      srcDel: { textDecoration: 'line-through', background: 'rgba(255,92,138,.14)', color: '#f395b3', borderRadius: 4 },
+      srcIns: { background: 'rgba(155,92,255,.22)', color: '#d5beff', borderRadius: 4 },
+      qStyle: { background: s.qResolved ? 'transparent' : 'rgba(255,176,58,.16)', borderBottom: s.qResolved ? 'none' : '3px solid #FFB03A', cursor: 'pointer', borderRadius: 4, transition: 'all .3s', padding: '0 3px' },
+      toggleQ: set({ qOpen: !s.qOpen }), qOpen: s.qOpen && isPlan && s.view === 'visual',
+      qReplies: s.qReplies, replyText: s.replyText,
+      setReplyText: (e) => this.setState({ replyText: e.target.value }),
+      replyKey: (e) => { if (e.key === 'Enter') this.postReply(); },
+      sendReply: () => this.postReply(),
+      resolveQ: () => { this.setState({ qOpen: false, qResolved: true, sendable: true }); this.say('Resolved — hidden from default view, kept until cleared'); },
+      onSelect: () => {
+        setTimeout(() => {
+          const sel = window.getSelection();
+          const txt = sel ? sel.toString().trim() : '';
+          if (!txt || txt.length < 3 || !this.editorRef.current) { if (this.state.selMenu) this.setState({ selMenu: null }); return; }
+          const r = sel.getRangeAt(0).getBoundingClientRect();
+          const host = this.editorRef.current.getBoundingClientRect();
+          this.setState({ selMenu: { text: txt.slice(0, 60), x: r.left - host.left + r.width / 2, y: r.top - host.top + this.editorRef.current.scrollTop - 52 }, compose: null });
+        }, 10);
+      },
+      selMenuOn: !!selMenu,
+      selMenuStyle: selMenu ? { position: 'absolute', left: Math.max(12, selMenu.x - 150), top: Math.max(8, selMenu.y), display: 'flex', gap: 2, background: '#f4f0fe', borderRadius: 999, padding: 5, boxShadow: '0 14px 40px -8px rgba(0,0,0,.6)', zIndex: 40, animation: 'popIn .24s cubic-bezier(.34,1.56,.64,1)' } : {},
+      annComment: () => this.startCompose('comment'),
+      annQuestion: () => this.startCompose('question'),
+      annSuggest: () => this.startCompose('suggestion'),
+      composeOn: !!compose,
+      composeStyle: compose ? { position: 'absolute', left: Math.max(12, Math.min(compose.x - 160, 480)), top: compose.y + 50, width: 330, background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 18, boxShadow: '0 20px 50px -14px rgba(0,0,0,.7)', padding: 15, zIndex: 40, animation: 'popIn .28s cubic-bezier(.34,1.56,.64,1)' } : {},
+      composeKind: compose ? compose.kind : '', composeQuote: compose ? compose.quote : '',
+      composePlaceholder: compose && compose.kind === 'suggestion' ? 'Replacement markdown…' : 'Your note…',
+      composeText: s.composeText, setComposeText: (e) => this.setState({ composeText: e.target.value }),
+      cancelCompose: set({ compose: null }),
+      addAnnotation: () => {
+        if (!compose) return;
+        this.setState({ userAnns: [...s.userAnns, { kind: compose.kind, quote: compose.quote }], compose: null, userHunk: true, sendable: true });
+        this.say(compose.kind === 'suggestion' ? 'Suggestion added — delivered on your next Send' : 'Annotation anchored — quote + 32 chars of context');
+      },
+      changes, anyPending: anyPendingHere, noPending: changes.length === 0,
+      markReviewed: () => { this.setState(isPlan ? { h1: s.h1 === 'pending' ? 'kept' : s.h1, h2: s.h2 === 'pending' ? 'kept' : s.h2, reviewCard: s.reviewCard === 'pending' ? 'kept' : s.reviewCard } : { n1: s.n1 === 'pending' ? 'kept' : s.n1, n2: s.n2 === 'pending' ? 'kept' : s.n2 }); this.say('Marked reviewed — pending hunks kept; suggestions still need Accept or Reject'); },
+      anns, noAnns: anns.length === 0,
+      agents, savedAgo: s.savedAgo,
+      statusLeft: (isPlan ? planPendingN : notesPendingN) + ' pending',
+      openComposer: () => { if (this.sendEnabled()) this.setState({ composerOn: true, prevTab: 0 }); else this.say('Nothing to send — no user hunks or new annotations since last Send'); },
+      sendTitle: this.sendEnabled() ? 'Send · Ctrl+Enter — snapshots the buffer, does not save' : 'Enabled when you have hunks, annotations, replies, or resolutions',
+      sendBtnStyle: { fontSize: 16, fontWeight: 800, color: '#fff', background: this.sendEnabled() ? 'linear-gradient(135deg,#FF5C8A,#9B5CFF)' : '#3a3452', padding: '9px 26px', borderRadius: 999, cursor: 'pointer', transition: 'all .2s cubic-bezier(.34,1.56,.64,1)', boxShadow: this.sendEnabled() ? '0 10px 26px -8px rgba(255,92,138,.5)' : 'none' },
+      sendHover: this.sendEnabled() ? { transform: 'scale(1.08)', boxShadow: '0 14px 34px -8px rgba(255,92,138,.65)' } : {},
+      composerOn: s.composerOn,
+      closeComposer: set({ composerOn: false }),
+      stopProp: (e) => e.stopPropagation(),
+      note: s.note, setNote: (e) => this.setState({ note: e.target.value }),
+      noteKey: (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); this.send(); } },
+      recipients, toggleExt: set({ incExt: !s.incExt }), incExt: s.incExt,
+      extBox: { width: 20, height: 20, borderRadius: 7, border: s.incExt ? 'none' : '2.5px solid rgba(255,176,58,.5)', background: s.incExt ? '#FFB03A' : 'transparent', display: 'inline-grid', placeItems: 'center', flex: 'none', marginTop: 1, transition: 'all .2s' },
+      prevTabs, previewText,
+      doSend: () => this.send(),
+      tbOl: () => this.say('Ordered list · Ctrl+Shift+7'), tbTask: () => this.say('Task list — interactive checkboxes'), tbQuote: () => this.say('Blockquote'), tbTable: () => this.say('Table'), tbCb: () => this.say('Fenced code block'), tbImg: () => this.say('Image — local paths only; remote URLs show a placeholder'), tbHr: () => this.say('Horizontal rule'),
+      tabClose: (e) => { e.stopPropagation(); this.setState({ closeDlgOn: true }); },
+      closeDlgOn: s.closeDlgOn,
+      dlgSave: () => { this.setState({ closeDlgOn: false, savedAgo: 'just now', userHunk: false }); this.say('Saved and closed — pending hunks persist for the next open'); },
+      dlgDiscard: () => { this.setState({ closeDlgOn: false }); this.say('Discarded — buffer.md reset to disk; buffer-only pending hunks gone next open'); },
+      dlgCancel: set({ closeDlgOn: false }),
+      missingVisible: !s.missingGone,
+      forgetMissing: (e) => { e.stopPropagation(); this.setState({ missingGone: true }); this.say('Forgotten — ghost entry and unreferenced blobs deleted'); },
+      addFolder: () => this.say('Folder picker — added folders are scanned for *.md, honoring .gitignore'),
+      bannerOn: !!s.banner,
+      bannerText: s.banner === 'deleted' ? 'plan.md was deleted on disk — the tab stays open; Save will recreate it.' : s.banner === 'utf8' ? 'Invalid UTF-8 — opened read-only in source view; no ghost written.' : 'Document is over the 2 MB ceiling — source view only; review mode and Send still work.',
+      bannerStyle: { display: 'flex', alignItems: 'center', gap: 10, padding: '9px 18px', fontSize: 13, fontWeight: 700, background: s.banner === 'utf8' ? 'rgba(255,92,138,.12)' : 'rgba(255,176,58,.12)', color: s.banner === 'utf8' ? '#FF5C8A' : '#FFB03A', borderBottom: '1px solid var(--line)' },
+      dismissBanner: set({ banner: null }),
+      reviewCardOn: isPlan && s.reviewCard === 'pending',
+      keepRC: () => { this.setState({ reviewCard: 'kept' }); this.say('Kept — ghost advanced for the table hunk'); },
+      revertRC: () => { this.setState({ reviewCard: 'reverted' }); this.say('Reverted — ghost text restored in the table'); },
+      hasResolved: s.qResolved && !s.resolvedCleared,
+      clearResolved: () => { this.setState({ resolvedCleared: true }); this.say('Resolved annotations cleared from the store'); },
+      attachedOn: s.attached, detachedOn: !s.attached, noAgents: !s.attached,
+      copyForAgent: () => this.say('Copied for agent — first copy is the whole buffer; later copies are changes since the previous copy'),
+      queuedNotice: s.claudeState === 'pending' && s.recClaude,
+      conflictOn: s.conflictOn, recoveryOn: s.recoveryOn, revertConfirmOn: s.revertConfirmOn,
+      pickMine: () => { this.setState({ conflictOn: false }); this.say('Kept your block — the incoming hunk was discarded'); },
+      pickIncoming: () => { this.setState({ conflictOn: false }); this.say('Took incoming — applied and shown as a pending external hunk'); },
+      doRecover: () => { this.setState({ recoveryOn: false }); this.say('Recovered — shadow set from buffer.md'); },
+      doDiscardRec: () => { this.setState({ recoveryOn: false }); this.say('Discarded — shadow set from disk; buffer reset'); },
+      cancelRevertConfirm: set({ revertConfirmOn: false }),
+      confirmRevertN2: () => { this.setState({ revertConfirmOn: false }); this.flashHunk('n2'); setTimeout(() => this.setState({ n2: 'reverted' }), 260); this.say('Reverted — your edits inside the hunk were discarded'); },
+      demoConflict: set({ conflictOn: true }), demoRecovery: set({ recoveryOn: true }),
+      demoDeleted: set({ banner: 'deleted' }), demoUtf8: set({ banner: 'utf8' }), demoCeiling: set({ banner: 'ceiling' }),
+      demoDetach: () => { this.setState({ attached: !s.attached }); this.say(s.attached ? 'All agents detached — Send becomes Copy for agent' : 'Agents re-attached'); },
+      detachLabel: s.attached ? 'detach agents' : 're-attach agents',
+      exStyle: { width: s.exW, flex: 'none', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 22, padding: '16px 12px 14px', display: 'flex', flexDirection: 'column', boxShadow: '0 16px 40px -18px rgba(0,0,0,.55)', position: 'relative', isolation: 'isolate', overflow: 'hidden' },
+      railStyle: { width: s.railW, flex: 'none', display: 'flex', flexDirection: 'column', overflowY: 'auto', paddingBottom: 4 },
+      chIslStyle: { background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 22, padding: '16px 15px', boxShadow: '0 16px 40px -18px rgba(0,0,0,.55)', position: 'relative', isolation: 'isolate', flex: 'none', height: s.chH == null ? 'auto' : s.chH, overflowY: s.chH == null ? 'hidden' : 'auto', overflowX: 'hidden' },
+      annIslStyle: { background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 22, padding: '16px 15px', boxShadow: '0 16px 40px -18px rgba(0,0,0,.55)', position: 'relative', isolation: 'isolate', flex: 'none', height: s.annH == null ? 'auto' : s.annH, overflowY: s.annH == null ? 'hidden' : 'auto', overflowX: 'hidden' },
+      chRef: this.chRef, annRef: this.annRef,
+      dragEx: (e) => this.startDrag(e, 'exW', 'x', 160, 340, false),
+      dragRail: (e) => this.startDrag(e, 'railW', 'x', 240, 440, true),
+      dragCh: (e) => this.startDrag(e, 'chH', 'y', 120, 520, false, this.chRef),
+      dragAnn: (e) => this.startDrag(e, 'annH', 'y', 90, 420, false, this.annRef),
+      dragDoc: (e) => this.startDrag(e, 'docW', 'x', 620, 1600, false),
+      docColStyle: { maxWidth: s.docW, margin: '0 auto', position: 'relative' },
+      toast: s.toast
+    };
+  }
+  sendEnabled() { return this.state.sendable && (this.state.userHunk || this.state.userAnns.length > 0); }
+  postReply() {
+    const t = this.state.replyText.trim(); if (!t) return;
+    this.setState({ qReplies: [...this.state.qReplies, { who: 'you', text: t }], replyText: '', userHunk: true, sendable: true });
+  }
+}
+</script>
+</body>
+</html>
