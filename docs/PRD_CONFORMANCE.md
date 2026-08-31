@@ -1,6 +1,6 @@
 # PRD conformance ledger
 
-`docs/PRD.md`, draft v16 dated 2026-08-31, is the source of truth. This ledger is an index, not a substitute. A passing row proves only the cited requirement. Product signoff still requires rereading §§6 through 12 and running the full suite.
+`docs/PRD.md`, draft v17 dated 2026-08-31, is the source of truth. This ledger is an index, not a substitute. A passing row proves only the cited requirement. Product signoff still requires rereading §§6 through 12 and running the full suite.
 
 References:
 
@@ -16,7 +16,7 @@ References:
 - `U` means a focused Vitest test is required for pure state, parser, serializer, storage, or protocol behavior.
 - `E` means an additional Electron test is required beyond the 15 release scenarios.
 - `S` means a static source or build-policy check is required.
-- `M` means a Linux or visual check cannot be established completely in the headless suite.
+- `M` means a host-specific or visual check cannot be established completely in the headless suite (on macOS this is the manual checklist in `docs/plans/open/mac-plan.md` §8).
 
 An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implementation.
 
@@ -89,7 +89,7 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.7-04 | Composer selects all agents by default and shows a checklist for multiple agents. | `A15`; `SC` recipient deselection |
 | 6.7-05 | The composer lists per-recipient items with checkboxes: user changes and comments checked, changes not made by the user unchecked, one shared selection across recipients. | `E` item list and defaults |
 | 6.7-06 | Composer gives the exact count/warning for user changes based on unseen external content, beside the external group. | `E` warning and preview |
-| 6.7-07 | Ctrl+Enter sends from the composer. | `E` keyboard send |
+| 6.7-07 | Ctrl/Cmd+Enter sends from the composer. | `E` keyboard send |
 | 6.7-08 | The Exact text view exactly equals delivered `text`, exclusions included. | `E` preview-to-payload equality |
 | 6.7-09 | Send does not save. | `A15` |
 | 6.7-10 | Send freezes and persists one ordered delivery per selected recipient; later edits/Sends cannot mutate it. | `A01`, `A12` |
@@ -103,7 +103,7 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.7-14 | Copy for agent has its own baseline, starts full, then incremental, moves only after clipboard success, and ignores Save. | `A13`; `U` clipboard failure |
 | 6.7-15 | A message queues, wakes a blocked attach, persists across restart, repeats until acknowledged, and its acknowledgment moves no baseline or cursor. | `AC` message round trip; `U` empty-range endpoints both queue orders |
 | 6.7-16 | One unacknowledged message per sender→recipient pair; multi-recipient send is all-or-nothing with nothing enqueued on failure. | `U` blocked-pair three-recipient case |
-| 6.8-01 | Executable/setup/remove/default/MIME/icon behavior is repeatable and agent help is verbatim §7. | `S` verbatim help; `U` setup idempotence; `M` desktop integration |
+| 6.8-01 | Executable/setup/remove/default behavior is repeatable per platform (Linux desktop entry, icon, and MIME; macOS link-only with the bundle association) and agent help is verbatim §7. | `S` verbatim help; `U` setup idempotence per platform; `M` desktop and Finder integration |
 | 6.8-02 | CLI runs as plain Node with `ELECTRON_RUN_AS_NODE=1`, not as a browser launch. | `S` bootstrap; `M` process check |
 | 6.8-03 | A generic harness needs only repeatable commands, stdout, and an id; timeout zero polls immediately. | `A01`, `A12` |
 | 6.8-04 | Only attach blocks by design; default is 600 seconds; cold open/attach returns when session exists. | `U` timing/argument cases; `E` cold launch |
@@ -126,10 +126,10 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.9-10 | A second path launch opens a tab in the existing instance. | `RS` process/tab assertion |
 | 6.9-11 | Each tab owns a session; initial pathless attach/state targets the focused tab. | `SC` multi-tab routing |
 | 6.9-12 | Explorer, CLI, file manager, and drag/drop can open files. | `RS` explorer/drop; `A07` CLI; `M` file manager |
-| 6.9-13 | MIME covers both extensions and default handler changes only after explicit `setup --default`. | `U` generated entries; `M` desktop database |
+| 6.9-13 | Both extensions are associated (Linux MIME database; macOS bundle declaration) and the default handler changes only by explicit owner action (`setup --default` on Linux; Finder steps it prints on macOS). | `U` generated entries and bundle configuration; `M` desktop database and Finder |
 | 6.9-14 | Keyboard reaches every review, annotation, composer, conflict, and banner control. | `SC` keyboard-only flows |
 | 6.9-15 | XDG config/fallback persists every named setting. | `U` schema/path matrix; `SC` font/color/panel restart |
-| 6.9-16 | Explorer, editor, and right rail zoom text independently by hovered pane via Ctrl+=/−/wheel within 0.5–2.0; window zoom is disabled; one `Reset zoom` text button restores 1.0 and appears only while zoomed. | `U` factor clamp/normalize; `SC` hover-targeted shortcuts, reset, restart |
+| 6.9-16 | Explorer, editor, and right rail zoom text independently by hovered pane via Ctrl/Cmd+=/−/wheel within 0.5–2.0; window zoom is disabled; one `Reset zoom` text button restores 1.0 and appears only while zoomed. | `U` factor clamp/normalize; `SC` hover-targeted shortcuts, reset, restart |
 | 6.9-17 | Rail rows are compact maps: author/kind/two-line change rows, formatted snippets never raw syntax, plain-everyday copy per the v15 vocabulary with tooltips included and no file paths in rows, click centers the target with no new jump decoration. | `AC` review board; `E` copy strings |
 | 6.9-18 | The thread panel floats, moves, resizes with persisted size and unpersisted position, opens beside the span (orphans at last session position or centered), defaults ~660px with 330px minimum, and matches editor body type size. | `AC` long-document thread and resize persistence |
 | 6.9-19 | The annotation composer resizes with persisted size at unchanged defaults and position. | `AC` composer resize |
@@ -206,7 +206,7 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.13-05 | The floating panel never dims the app, is movable and resizable with persisted geometry, edits only the active theme, and offers exactly Revert to when opened, New from this, Use default, Delete, rename. | `SC` panel geometry/restart, swatch to file, external highlight, revert |
 | 6.13-06 | `stratamd state` reports the active theme; `stratamd theme` prints set and default values with descriptions and problems, offline. | `A` CLI on a sparse file |
 | 6.13-07 | Ambient background and window styles come from the animation handoff's eight options at two scales, colors mixed from accents, gated by the toggle and reduced motion. | `U` element counts per style/scale; `SC` style switch; `M` handoff parity |
-| 6.13-08 | Fonts list through `fc-list`; no renderer permission is requested. | `U` fc-list parsing/fallback; `E` permission denial unchanged |
+| 6.13-08 | Fonts list through the platform inventory (`fc-list` on Linux, the system font query on macOS) with the bundled fallback; no renderer permission is requested. | `U` parsing/fallback for both platforms' output; `E` permission denial unchanged |
 
 ## §7 agent contract
 
@@ -251,7 +251,7 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | ID | Requirement | Verification |
 |---|---|---|
 | 9-01 | Only Save writes document and nothing is written beside it. | `A04`, `A11`, `A15`; `U` directory inventory |
-| 9-02 | XDG/fallback layout, realpath hash, object addressing, and 0700/0600 modes match the tree. | `U` layout/mode test; `M` Linux permissions |
+| 9-02 | XDG/fallback layout on both platforms (macOS data under `~/Library/Application Support/StrataMD`), realpath hash, object addressing, and 0700/0600 modes match the tree. | `U` layout/mode matrix for Linux and Darwin; `M` host permissions |
 | 9-03 | Meta updates atomically, including annotation/review consistency across faults. | `U` write fault injection |
 | 9-04 | GC removes only unreferenced blobs and caps history at 200 without dropping referenced snapshots. | `U` reference/GC matrix |
 | 9-05 | Forget from UI/CLI removes entry and only unreferenced blobs. | `U` forget; `E` explorer action |
@@ -283,10 +283,10 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 
 | ID | Requirement | Verification |
 |---|---|---|
-| 11-01 | Only the owner's Linux workstation and listed local filesystems are supported. | `M` ext4/btrfs/xfs/tmpfs matrix |
+| 11-01 | Only the owner's Linux workstation, Macs on macOS 13 or newer, and listed local filesystems are supported. | `M` ext4/btrfs/xfs/tmpfs and APFS matrix |
 | 11-02 | Setup and setup-remove are the only install lifecycle. | `U` idempotent setup; `M` desktop state |
 | 11-03 | App makes no network calls and renderer never fetches remote resources. | `S` URL/CSP scan; `E` deny/log all requests |
-| 11-04 | Socket/store are same-user only; agent ids attribute rather than authenticate. | `U` peer UID and modes; `M` Linux ownership |
+| 11-04 | Socket/store are same-user only (`SO_PEERCRED` on Linux, `getpeereid` on macOS); agent ids attribute rather than authenticate. | `U` peer UID and modes; `M` host ownership |
 | 11-05 | Only the Lead's save writes documents through StrataMD and everything it writes stays pending; suggestions require user or Lead acceptance with Lead accepts left pending; direct/buffer writes remain reviewable. | `A03`, `A15`; `AC` Lead save; `E` command boundary |
 | 11-06 | Missing or ambiguous annotation quotes fail instead of creating orphans. | `U` exit-3 cases |
 

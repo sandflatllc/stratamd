@@ -1,6 +1,6 @@
 # StrataMD product requirements
 
-Status: draft v16 · 2026-08-31 · personal Linux tool
+Status: draft v17 · 2026-08-31 · personal Linux and macOS tool
 
 ## 1. Summary
 
@@ -8,7 +8,7 @@ StrataMD is a desktop markdown editor for writing documents *with* AI agents. Yo
 
 StrataMD knows nothing about the harness. You type "attach to the doc I have open in Strata" in T3 Code, Haru, Claude Code, or anything else that can run a command, and the agent becomes a participant in that edit session.
 
-It runs as a local desktop app on the owner's Linux workstation, with a `stratamd` CLI on PATH.
+It runs as a local desktop app on the owner's Linux workstation or a Mac on macOS 13 or newer, with a `stratamd` CLI on PATH.
 
 ## 2. Goals
 
@@ -17,7 +17,7 @@ It runs as a local desktop app on the owner's Linux workstation, with a `stratam
 3. **Agent attaches itself.** One command is the whole integration. No host protocol, no adapters, no required environment variables.
 4. **See every agent edit.** StrataMD keeps a private copy of the last version of each document you reviewed, so edits made outside the editor are shown as track-changes for you to keep or revert.
 5. **Two-way annotation layer.** You and agents comment, question, and suggest on quoted text. Nothing is ever written inside or beside the document.
-6. **Run locally.** Owner's Linux workstation only; local setup provides the CLI and desktop integration.
+6. **Run locally.** The owner's own machines only, Linux and macOS; local setup provides the CLI and desktop integration.
 
 ## 3. Non-goals
 
@@ -25,7 +25,7 @@ It runs as a local desktop app on the owner's Linux workstation, with a `stratam
 - Not an IDE. No terminal. The explorer shows markdown files only.
 - Not a chat client. Conversation with the agent stays in the harness. StrataMD never starts a thread, picks a model, or lists agents.
 - No cloud component, accounts, or telemetry.
-- No macOS or Windows support, public packages, installer, auto-updater, or release pipeline.
+- No Windows support, installer, or auto-updater. The Mac build ships as an unsigned zip on a GitHub Release; no signing, notarization, DMG, or update channel.
 - No attempt to preserve every markdown dialect in the visual editor. Unsupported constructs render as raw blocks and round-trip byte-for-byte.
 - No attempt to identify which process wrote a file. Attribution of external edits is best-effort (§13).
 
@@ -68,7 +68,7 @@ It runs as a local desktop app on the owner's Linux workstation, with a `stratam
 
 - Visual (WYSIWYG) editing of CommonMark + GFM. Editable visually: headings (ATX and setext), paragraphs, emphasis, strong, strikethrough, code spans, links, autolinks, images, lists (ordered, bullet, loose, tight, nested), task lists with interactive checkboxes, tables, fenced and indented code blocks, blockquotes, horizontal rules, hard and soft line breaks, escapes, and entities.
 - Rendered as raw blocks, byte-preserved, editable in source view only: YAML frontmatter (collapsible), footnotes, wiki links `[[...]]`, HTML blocks (never rendered as HTML), math, and link reference definitions.
-- Formatting toolbar and keyboard shortcuts for all visually editable constructs, following common editor conventions (Ctrl+B bold, Ctrl+I italic, Ctrl+K link, Ctrl+Shift+C code, Ctrl+1..6 heading level, Ctrl+Shift+7/8 ordered/bullet list, Ctrl+S save, Ctrl+Enter send, Ctrl+/ source view).
+- Formatting toolbar and keyboard shortcuts for all visually editable constructs, following common editor conventions with the platform's primary modifier — Ctrl on Linux, Cmd on macOS (Ctrl/Cmd+B bold, Ctrl/Cmd+I italic, Ctrl/Cmd+K link, Ctrl/Cmd+Shift+C code, Ctrl/Cmd+1..6 heading level, Ctrl/Cmd+Shift+7/8 ordered/bullet list, Ctrl/Cmd+S save, Ctrl/Cmd+Enter send, Ctrl/Cmd+/ source view).
 - Spellcheck is the platform's. Code spans and code blocks are rendered with `spellcheck="false"` so paths and identifiers inside them are never flagged; prose is checked as the platform checks it.
 - Source view toggle (raw markdown, same buffer). Syntax typed in source view that the visual schema cannot represent becomes a raw block.
 - Local images resolve relative to the document and render from disk through a main-process handler that only serves paths under the document's directory or an explorer folder. Remote images and any other remote URL are never fetched; a placeholder is shown.
@@ -80,7 +80,7 @@ It runs as a local desktop app on the owner's Linux workstation, with a `stratam
 ### 6.2 Buffer file and external changes
 
 - The shadow is mirrored to `buffer.md` in the document's ghost entry on every change, debounced, written atomically (temp and rename). Agents read it to see unsaved edits and write to it to propose edits. A write to `buffer.md` is merged into the shadow exactly like an external change to the document; the document on disk is untouched until the user saves.
-- Every payload tells attached agents to edit the buffer only. StrataMD does not prevent writes to the document, since Linux offers no enforceable lock against rename-based writes. It handles them as external changes.
+- Every payload tells attached agents to edit the buffer only. StrataMD does not prevent writes to the document, since neither Linux nor macOS offers an enforceable lock against rename-based writes. It handles them as external changes.
 - StrataMD ignores its own writes by content hash: a watcher event whose content equals the last mirror or Save it wrote is not an external change.
 - **External change handling.** When the document or `buffer.md` changes on disk while open:
   1. Read the file and compare its hash to the last known contents; ignore if equal.
@@ -104,7 +104,7 @@ It runs as a local desktop app on the owner's Linux workstation, with a `stratam
 - Pending hunks, their status, and authorship are persisted, so partial review survives close and restart. On open, pending hunks are recomputed as diff(ghost, shadow); persisted authorship is kept where the hunk still matches, otherwise the hunk is `external`. Closing a tab with pending hunks leaves them for the next open; the tab shows a count.
 - **Crash recovery.** On open, if `buffer.md` differs from the document and is newer than the last Save, the user is offered **Recover** (shadow = buffer) or **Discard** (shadow = disk, buffer reset). StrataMD never silently overwrites either side.
 - **Close.** Closing a tab with unsaved edits offers Save, Discard, or Cancel. Discard resets `buffer.md` to disk; pending hunks that existed only in the buffer disappear on the next open by the recompute rule above.
-- Renaming or moving a document while open: the session and its ghost entry follow the new realpath. While closed: the new path is a new document, seeded by the ghost seeding rule; the old entry remains until forgotten (§9).
+- Renaming or moving a document while open: the session and its ghost entry follow the new realpath, read from the open file descriptor (`/proc` on Linux, `F_GETPATH` on macOS). While closed: the new path is a new document, seeded by the ghost seeding rule; the old entry remains until forgotten (§9).
 
 ### 6.4 Explorer
 
@@ -148,7 +148,7 @@ It runs as a local desktop app on the owner's Linux workstation, with a `stratam
   - what each recipient gets, one tab per selected recipient since baselines differ, as individual items with checkboxes: the user's changes and comments checked by default, changes not made by the user unchecked by default (this replaces the old global include-external toggle), grouped and rendered like the changes and annotations panels. One selection applies to every recipient that would receive the item.
   - a warning when any user hunk in this Send sits on top of an external segment the recipient has not seen: "N of your changes build on changes not made by you," beside that group
   - an **Exact text** view, one toggle away, showing the delivered `text` (§8). What is shown is what is delivered.
-  - `Ctrl+Enter` sends
+  - `Ctrl/Cmd+Enter` sends
   - the composer resizes from its corner and remembers its size; it zooms like the panes (§6.9)
 - **Deselecting an item skips it**: the delivery excludes it, the recipient's baseline and cursor still advance past it on acknowledgment, and it is not offered again. The agent still sees the resulting text in the buffer. A recipient whose delivery would carry no items shows "Nothing new for this agent" and receives the note, if any. A recipient needing a full resync shows a plain catch-up notice in place of checkboxes; item selection does not apply to it.
 - **A stale preview cannot send.** Each preview carries a token of the document state it was computed against; Send compares it and refuses with a plain error when the document changed in between, and the composer previews again. The frozen delivery therefore always equals the preview the user saw.
@@ -164,7 +164,7 @@ It runs as a local desktop app on the owner's Linux workstation, with a `stratam
 
 The commands and their semantics are in §7. Requirements:
 
-- `stratamd` is the app executable. `stratamd setup` links it onto PATH, installs the `.desktop` entry and icon, and registers the MIME association; `stratamd setup --remove` undoes all of it. Both are safe to repeat. `stratamd --agent-help` prints §7 verbatim.
+- `stratamd` is the app executable. `stratamd setup` links it onto PATH; on Linux it also installs the `.desktop` entry and icon and registers the MIME association, while on macOS the `.app` bundle itself declares the association. `stratamd setup --remove` undoes what setup did on that platform — on macOS that is only the link, and deleting the `.app` completes removal. Both are safe to repeat. `stratamd --agent-help` prints §7 verbatim.
 - The CLI runs as plain Node (`ELECTRON_RUN_AS_NODE=1`), so a command costs a process start, not a browser launch.
 - What a harness needs: the ability to run a command repeatedly, capture its stdout, and carry a short id between runs. Harnesses that cannot hold a command open use `--timeout 0`, which returns at once with a queued delivery or `{"event":"timeout"}`.
 - `attach` is the only command that blocks by design, for at most `--timeout` seconds (default 600). `open` and `attach` also block for app launch when no instance is running, returning as soon as the session exists, before the window paints.
@@ -192,11 +192,11 @@ The commands and their semantics are in §7. Requirements:
   - **The thread panel, decided 2026-08-30.** One thread surface: a floating, movable, user-resizable panel like the theme panel, opened by an annotation row click or an in-editor highlight click, positioned beside the annotated span at open and clamped to the viewport; an orphan opens it at its most recent position this session, else centered, and shows the original quote. Size persists; position never does. Default width about twice the old popover's 330px, minimum 330px; body text at the editor's main body size, tracking the editor pane's zoom. It shows the thread, replies, a reply box, and Resolve for any unresolved annotation; resolving from the panel closes it (decided 2026-08-30). The annotation composer is user-resizable with its size persisted; its default size and selection-anchored position are unchanged.
   - **User-facing copy, decided 2026-08-30.** Every label, chip, counter, tooltip, and dialog uses plain everyday words; the audience works with agents, not necessarily with code. Internal vocabulary (buffer, ghost, shadow, orphaned, external, delivery, on disk) appears only in this PRD and the code.
   - **Save state and counts, decided 2026-08-30.** The editor always shows whether it matches the saved file: the Save button reads "Save" (accented) while unsaved changes exist and a quiet "Saved" otherwise; the tab carries an unsaved dot beside its name, distinct from its count badge; the rail footer reads "Unsaved changes · last saved 3 minutes ago" or "Everything saved · 3 minutes ago". The changes panel groups rows, each group with its own count: **Proposed** (suggestions, not in the text until accepted; Accept/Reject), **Unsaved** (applied in the editor, lands on the next Save; Keep/Revert), **Saved** (in the file, awaiting review; Keep/Revert). Below them, the save history (§6.7) under a "Saves" heading with rows labeled "Last save" or "Saved <time>", authors as "you and Claude" (anonymous reads "someone else"), an expanded row's count as "N changes", and "Nothing changed" for an empty round. A hunk is classified by comparing its shadow region against disk on each publish; if that cost proves too high under measurement, the fallback is a whole-panel unsaved marker driven by the document's dirty state. The annotations panel header counts open annotations and, when present, those on removed text. The top bar keeps the total pending count and tints it while anything counted is unsaved. Reverting a Saved hunk restores text the file does not have, so the document reads unsaved until the next Save.
-  - Per-pane text zoom. The explorer, the editor, and the right rail each carry an independent text-size factor (default 1.0, steps of 0.1, range 0.5–2.0). Ctrl+= and Ctrl+- change the factor of the pane under the pointer, or the editor when the pointer is over no pane; Ctrl+wheel changes the pane under the pointer by one step per wheel notch, accumulating trackpad deltas so a gesture does not skip steps. The window itself never zooms: the Electron default menu's zoom roles are removed and pinch zoom is locked. A single text button in the top bar, `Reset zoom`, returns all panes to 1.0; it is shown only while some pane is off 1.0, it is the only zoom control drawn, and no zoom icons are added. Only type scales; panel widths, spacing, and the editor toolbar row do not. Factors persist in `settings.json`.
+  - Per-pane text zoom. The explorer, the editor, and the right rail each carry an independent text-size factor (default 1.0, steps of 0.1, range 0.5–2.0). Ctrl/Cmd+= and Ctrl/Cmd+- change the factor of the pane under the pointer, or the editor when the pointer is over no pane; Ctrl/Cmd+wheel changes the pane under the pointer by one step per wheel notch, accumulating trackpad deltas so a gesture does not skip steps. The window itself never zooms: the Electron default menu's zoom roles are removed and pinch zoom is locked. A single text button in the top bar, `Reset zoom`, returns all panes to 1.0; it is shown only while some pane is off 1.0, it is the only zoom control drawn, and no zoom icons are added. Only type scales; panel widths, spacing, and the editor toolbar row do not. Factors persist in `settings.json`.
 - Single instance: launching with a path while running opens a new tab in the existing instance.
 - Tabs for multiple open documents; each tab is one session. The **focused** document is what `attach` and `state` target when no file is given on an initial call. Each tab retains its scroll position across switches, in visual and source view.
 - Open from the explorer, CLI, file manager, or drag-drop.
-- The `.desktop` entry declares `MimeType=text/markdown;`; `.md` and `.markdown` map to that type through the shared MIME database. Making StrataMD the default handler is a separate step (`stratamd setup --default`) done only when the owner requests it.
+- On Linux the `.desktop` entry declares `MimeType=text/markdown;`; `.md` and `.markdown` map to that type through the shared MIME database. On macOS the `.app` bundle declares both extensions (role Editor, rank Alternate) and Launch Services learns the association from it. Making StrataMD the default handler is a separate step done only when the owner requests it: `stratamd setup --default` records it on Linux, and on macOS prints the Finder steps (Open With → Change All) for the user to complete by hand.
 - The keyboard reaches and operates every review action, annotation thread, composer tab, conflict, and banner.
 - Config in `$XDG_CONFIG_HOME/stratamd` (fallback `~/.config/stratamd`). `settings.json`: active theme id, whether to keep resolved annotations, attachment idle timeout, explorer folders, panel sizes and document measure, theme panel position and size, thread panel and annotation composer sizes, per-pane text zoom, ambient motion on/off.
 
@@ -286,7 +286,7 @@ Each must hold before the product is done.
 - The theme panel is a floating, movable, resizable panel inside the window that never dims or blocks the app; the open document, explorer, and rail are the live preview, and the panel's position and size persist. It opens from a **Theme** text button in the top bar, which also opens `Theme sample.md` as an ordinary tab: a document containing every construct in §6.1 whose text says which theme value colors it, written to the config directory and rendered like any other file. The panel shows a dropdown of available themes, a sample strip for the states the open document may not be showing (attribution, controls, review colors, popovers, inner surfaces), and the values in eight groups - Fonts, Surfaces, Interface text, Document text, Controls and status, Reviewed changes, Authors and outside changes, Decoration and motion - each group with a one-line explanation. Every row shows its job label, an always-visible description of exactly what it colors, and its control: a swatch that opens the system color picker, a searchable dropdown of installed fonts, the two effect style dropdowns, or the visibility and speed sliders. Hovering a row outlines every one of its targets, and only its targets, in the live app and the strip; effect rows isolate only the ambient elements assigned to that slot. The panel always edits the active theme. A file holds only the values its authors chose; unchosen values show greyed as defaults, and **Use default** removes a chosen one. Revert to when opened, New from this, Use default, Delete, and rename are the only actions. Delete removes the active user theme after a second click to confirm and falls back to the built-in theme.
 - Themes are a shared editing surface for the user and agents, last write wins, no conflict handling by design. `stratamd state` reports the active theme; `stratamd theme [id]` prints a theme's set values, default values with descriptions, and problems, and works without the app running. An agent asked to complete a theme reads the file, keeps the values already set, writes the rest, and verifies with `stratamd theme`. Changes an agent makes while the panel is open are highlighted in it.
 - Ambient follows `docs/design/animations-handoff.md`: a theme chooses a background style and a window style from its eight options (`Rising motes`, `Aurora drift`, `Starfield`, `Grid drift`, `Glow orbs`, `Shimmer sweep`, `Breathing tint`, `None`) and sets intensity and speed. Every element, placement, and timing is the handoff's; colors are mixed from the theme's five `effects` slots. The ambient motion toggle and `prefers-reduced-motion` render neither layer; `None` skips one layer; typing pauses both.
-- Installed fonts are listed through `fc-list`; the renderer requests no browser permissions.
+- Installed fonts are listed by the platform — `fc-list` on Linux, the system font inventory on macOS — with the bundled families as the fallback either way; the renderer requests no browser permissions.
 
 ## 7. Agent contract
 
@@ -486,7 +486,7 @@ Printed to stdout as one JSON object when `attach`, `state`, or `changes` return
 
 StrataMD writes the document only on Save. Nothing is ever written beside it.
 
-Ghost store, in `$XDG_DATA_HOME/stratamd` (fallback `~/.local/share/stratamd`), directories `0700`, files `0600`:
+Ghost store, in `$XDG_DATA_HOME/stratamd` when set; otherwise `~/.local/share/stratamd` on Linux and `~/Library/Application Support/StrataMD` on macOS. Directories `0700`, files `0600`:
 
 ```
 docs/<first 12 hex of sha256 of realpath>/   # short so the buffer path is cheap in every payload; salted on collision
@@ -505,16 +505,16 @@ logs/stratamd.log             # failure log: one JSON line per warning or error,
 - Blobs are garbage-collected when no `meta.json` references them. Segment history is capped (default 200 segments per document, oldest dropped after their snapshots are no longer referenced by a baseline or delivery). The save history is never capped; its snapshots are referenced and retained.
 - **Forget document** (explorer context menu, or `stratamd forget <file>`) deletes the entry and its unreferenced blobs.
 
-Config, in `$XDG_CONFIG_HOME/stratamd` (fallback `~/.config/stratamd`): `settings.json` (§6.9) and `themes/<id>.json`, one file per user theme (§6.13).
+Config, in `$XDG_CONFIG_HOME/stratamd` (fallback `~/.config/stratamd`) on both platforms — agents edit these files directly and existing instructions name the location, so it deliberately does not move on macOS: `settings.json` (§6.9) and `themes/<id>.json`, one file per user theme (§6.13).
 - `meta.json` carries a format version; the app migrates older entries on open.
 
 ## 10. Architecture
 
 - **Electron.** CLI, socket server, and editor share one language and one binary.
 - **Main process** owns file I/O, the shadow, the ghost store, explorer scanning, diffing, file watching, the single-instance and agent socket, and config.
-- **Renderer** owns the editor, explorer, annotation overlay, changes panel, attachments panel, and composer. Loaded from a custom `app://` protocol; context isolation and sandbox on; no Node integration; CSP allows only `app://` and the local-image handler; new windows denied and navigation denied outside the app's own `app://` origin (crash recovery reloads through it); every IPC message validated by sender and argument; external links opened with `xdg-open` only for `http`, `https`, and `mailto`.
+- **Renderer** owns the editor, explorer, annotation overlay, changes panel, attachments panel, and composer. Loaded from a custom `app://` protocol; context isolation and sandbox on; no Node integration; CSP allows only `app://` and the local-image handler; new windows denied and navigation denied outside the app's own `app://` origin (crash recovery reloads through it); every IPC message validated by sender and argument; external links opened through the OS opener (Electron's `shell.openExternal`) only for `http`, `https`, and `mailto`.
 - **Editor** is built directly on the ProseMirror toolkit (document model, transactions, selection, undo, IME, DOM reconciliation, position mapping). The markdown schema, the source-span-tracking parser, and the byte-preserving serializer are StrataMD's own and must satisfy §6.1. No prebuilt markdown editor layer.
-- **Socket:** `$XDG_RUNTIME_DIR/stratamd.sock` (fallback: `~/.cache/stratamd/run/stratamd.sock` in a `0700` directory), mode `0600`; the CLI derives the path the same way and needs no discovery file. Peer credentials checked (`SO_PEERCRED` uid must match). `attach` is a request the main process answers immediately or holds open until a delivery, close, or timeout; attachment state is independent of the connection.
+- **Socket:** an absolute `$XDG_RUNTIME_DIR/stratamd.sock` when set; otherwise `~/.cache/stratamd/run/stratamd.sock` on Linux, and an absolute `$TMPDIR/stratamd.sock`, else `~/Library/Caches/StrataMD/run/stratamd.sock`, on macOS — StrataMD-owned fallback directories are `0700`, the socket mode `0600`; the CLI derives the path the same way and needs no discovery file. Peer credentials checked: the kernel-reported peer uid must match (`SO_PEERCRED` on Linux, `getpeereid` on macOS). `attach` is a request the main process answers immediately or holds open until a delivery, close, or timeout; attachment state is independent of the connection.
 - **Diff:** Myers line diff between snapshots. Block-level byte preservation on serialize keeps diffs minimal.
 
 ### 10.1 Stack
@@ -522,7 +522,7 @@ Config, in `$XDG_CONFIG_HOME/stratamd` (fallback `~/.config/stratamd`): `setting
 | Concern | Choice | Why |
 |---|---|---|
 | Language | TypeScript throughout | One language across main, renderer, CLI. |
-| Build | electron-vite; electron-builder only for the local unpacked build | Fast dev loop; no distributable artifacts are produced (§3). |
+| Build | electron-vite; electron-builder for the Linux unpacked build and the macOS `.app` | Fast dev loop; CI checks both hosts and a version tag publishes the Mac zip (§3). |
 | Markdown parsing | micromark + mdast-util-from-markdown with the GFM and frontmatter extensions | Every node carries exact source offsets, which the byte-preserving serializer needs. `prosemirror-markdown` (markdown-it) exposes only block line ranges and is not used. |
 | Serializer | StrataMD's own, per block; `mdast-util-to-markdown` for edited blocks, configured to match the file's detected conventions (bullet char, emphasis char, list indent) | Unchanged blocks emit original bytes; edited blocks should look like their neighbors. If `mdast-util-to-markdown` cannot match a file's style closely enough, the affected node types get hand-written serializers. |
 | Editor | `prosemirror-model/state/view/transform/history/keymap/inputrules/commands`, `prosemirror-tables` | The toolkit only; schema is StrataMD's. |
@@ -534,7 +534,7 @@ Config, in `$XDG_CONFIG_HOME/stratamd` (fallback `~/.config/stratamd`): `setting
 
 ## 11. Environment and security
 
-- The only target is the owner's current Linux workstation, running from a local checkout or build, on local filesystems (ext4, btrfs, xfs, tmpfs). Network and virtualized filesystems are unsupported.
+- The targets are the owner's current Linux workstation, running from a local checkout or build, on local filesystems (ext4, btrfs, xfs, tmpfs), and Macs on macOS 13 or newer (Electron's minimum) on APFS or HFS+. Network and virtualized filesystems are unsupported.
 - `stratamd setup` and `stratamd setup --remove` are the only install and uninstall steps (§6.8).
 - Everything is local. No network calls; the renderer never fetches remote resources.
 - The agent socket and the ghost store are reachable only by processes running as the same user. Agent ids attribute; they do not authenticate.
@@ -546,6 +546,7 @@ Config, in `$XDG_CONFIG_HOME/stratamd` (fallback `~/.config/stratamd`): `setting
 Everything in §6–§11 is in scope; the product is done when all of it exists, every scenario in §6.12 holds, and:
 
 - An agent given only §7 can attach, read the document and comments, respond with annotations, and receive the user's next round without any other instruction, from any harness that can run commands and capture their output.
+- The full check — types, unit, integration, the E2E suite, and the packaged CLI test — is green on both hosts in CI.
 - No Send is lost: every delivery is returned until acknowledged, across document close and app restart.
 - Editing and saving a file with no changes produces a byte-identical file.
 - An agent never receives its own edits back, and never receives another agent's or editor's changes as changes, unless the user includes external changes in a Send or tells it to run `stratamd changes`.
@@ -568,4 +569,4 @@ Decisions that are not derivable from the requirements, with the alternative tha
 - **Send does not save.** Rejected: saving on Send. Agents read the buffer, so there is no reason to couple sharing with persistence; the user saves when they choose.
 - **Scan and checkpoint share one seeding rule.** Rejected: giving non-git files an empty ghost so agent-created files show as insertions. Outside git there is no way to tell an agent-created file from the user's own old one, and showing an entire old document as one pending insertion is noise. Inside git, absence from `HEAD` is the signal.
 - **No milestones.** The full specification is the scope; nothing in it is deferred. Milestones invite deferring items and declaring completion with pieces missing.
-- **Linux only, local filesystems only.** macOS and Windows were dropped to remove whole toolchains; network filesystems were excluded because their watch semantics are unreliable and the product depends on detecting external writes.
+- **Local filesystems only; platforms added deliberately, one at a time.** macOS and Windows were originally dropped to remove whole toolchains. macOS was added in v17 (2026-08-31) once the port carried its own path, socket, menu, and packaging code with tests and a CI job of its own; Windows remains out. Network filesystems stay excluded because their watch semantics are unreliable and the product depends on detecting external writes.

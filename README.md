@@ -185,9 +185,26 @@ Markdown that the visual editor cannot safely represent, such as frontmatter, HT
 
 ## Trying StrataMD
 
-StrataMD currently builds from source on Linux. macOS and Windows support are planned, but they are not available yet.
+StrataMD runs on Linux (built from source) and on Macs running macOS 13 or newer (a download). Windows support is planned, but it is not available yet.
 
-If you want to try it, give your agent a link to this repository and ask it to install StrataMD and add the bundled skill. That is probably easier than walking through the setup yourself.
+If you want to try it on Linux, give your agent a link to this repository and ask it to install StrataMD and add the bundled skill. That is probably easier than walking through the setup yourself.
+
+<details>
+<summary>Mac setup</summary>
+
+Download **StrataMD-mac.zip** from the [latest release](https://github.com/sandflatllc/stratamd/releases/latest), unzip it, and drag StrataMD to your Applications folder.
+
+The first time you open it, macOS will say it can't check the app for malicious software, because this build isn't registered with Apple yet. Open **System Settings → Privacy & Security**, scroll down, click **Open Anyway**, and open StrataMD again. You only have to do this once.
+
+To get the `stratamd` command in your terminal:
+
+```bash
+/Applications/StrataMD.app/Contents/Resources/bin/stratamd setup
+```
+
+The setup command is safe to repeat. If you move the app, run it again. `stratamd setup --remove` removes the command; deleting the app removes everything else.
+
+</details>
 
 <details>
 <summary>Manual Linux setup</summary>
@@ -217,7 +234,7 @@ I wanted an editor where the structure was obvious, the document could look the 
 
 ## Project status
 
-StrataMD is an early-stage personal project. There is no public package or auto-updater yet.
+StrataMD is an early-stage personal project. The Mac app is published on [GitHub Releases](https://github.com/sandflatllc/stratamd/releases); there is no package-manager entry or auto-updater yet.
 
 The [product specification](docs/PRD.md) contains the complete behavior, edge cases, and design decisions for anyone who wants to understand the implementation, contribute, or fork the project. The bundled [agent skill](skills/stratamd/SKILL.md) contains the collaboration loop from the agent's side.
 

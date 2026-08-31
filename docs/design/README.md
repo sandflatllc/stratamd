@@ -1,7 +1,7 @@
 # Handoff: StrataMD editor UI
 
 ## Overview
-Full UI design for StrataMD, a Linux desktop markdown editor for writing documents with AI agents (Electron + React + Tailwind, no component library — see `PRD.md` §10.1). The design covers the app shell, WYSIWYG editor with track-changes review mode, annotations, the Send composer, attachments panel, and explorer.
+Full UI design for StrataMD, a desktop markdown editor for writing documents with AI agents (Electron + React + Tailwind, no component library — see `PRD.md` §10.1). The design covers the app shell, WYSIWYG editor with track-changes review mode, annotations, the Send composer, attachments panel, and explorer.
 
 ## About the Design Files
 `StrataMD App v2.dc.html` is a **design reference created in HTML** — an interactive prototype showing intended look and behavior, not production code. The task is to **recreate this design in the StrataMD codebase** (Electron renderer, React, Tailwind, ProseMirror for the editor surface) using its established patterns. The prototype's document area is a static mock; in production it is a ProseMirror view with the same visual treatment. The logic in the file is plain React class-component state — port the behavior, not the file.
@@ -51,7 +51,7 @@ Motion (all cubic-bezier(.34,1.56,.64,1) "springy" unless noted):
 
 ## Layout (app shell)
 Full-viewport dark canvas; three floating "windows" over it in one flex row. **All panels are user-resizable**: the two gutters between columns carry vertical pill drag-handles (explorer width 160–340px, right rail 240–440px; editor takes the rest); horizontal pill handles below the Changes and Annotations islands set their heights (they scroll internally once constrained); a vertical pill handle at the top-right of the document column sets the text measure (620–1600px, stays centered — widen for tables). Persist all sizes in settings.
-Window controls are drawn in-app, which implies `frame: false` in Electron. On KDE/Wayland that costs native title-bar drag, tiling shortcuts, and the window menu unless drag regions (`-webkit-app-region: drag` on top-bar dead space) and double-click-to-maximize are handled manually. Record this decision in the PRD or switch to the native frame and drop the drawn controls.
+The prototype draws its own window controls, which would imply `frame: false` in Electron. Resolved in the PRD (§6.9): the app uses the native frame on every platform — KDE draws the title bar on Linux, macOS shows its own traffic lights — and the drawn – □ × controls are dropped; the top bar is an in-window toolbar row. The next item's drawn-control description is the prototype's, kept for the record.
 
 1. **Top bar** (not a window): logo pill containing the fixed-color StrataMD horizontal lockup, document tabs as pills (active = near-white `#f4f0fe` pill w/ dark text; inactive = card bg; pending-count badge in the owning agent's color), spacer, status text ("N pending"), `Ctrl+Enter` hint, **Send** gradient pill, divider, then **Linux window controls on the RIGHT**: – □ × as 26px circles (`--card2`, hover `#3d3563`; close hovers pink `#FF5C8A`). No mac traffic lights.
 2. **Explorer window** 212px fixed: "Files" title + Scan (mint) + Refresh; folder tree (md files only per PRD §6.4); active file row tinted grape; missing file struck-through; footer status chip.
