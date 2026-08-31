@@ -1,3 +1,5 @@
+// Canonicalizes TMPDIR before any scenario path derives from it (macOS /var symlink).
+import '../setup-tmpdir'
 import { _electron as electron, expect, type ElectronApplication, type Page, type TestInfo } from '@playwright/test'
 import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { constants } from 'node:fs'
