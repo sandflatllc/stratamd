@@ -82,15 +82,8 @@ export const lineEndKey = macHost ? 'Meta+ArrowRight' : 'End'
 // Shift+End on a Mac extends the selection to the end of the document, not the line.
 export const selectToLineEndKey = macHost ? 'Shift+Meta+ArrowRight' : 'Shift+End'
 
-/**
- * X11 and ozone settings apply only on Linux. On a Mac the window is occluded
- * whenever no one is at the screen (every CI runner), and Chromium then stops
- * producing frames — scroll events from programmatic scrolls never fire, so
- * anything recorded from them (scroll offsets) silently stays stale.
- */
-export const launchArgs: string[] = macHost
-  ? ['--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling']
-  : ['--ozone-platform=x11']
+/** X11 and ozone settings apply only on Linux; a Mac host launches plainly. */
+export const launchArgs: string[] = macHost ? [] : ['--ozone-platform=x11']
 const linuxLaunchEnv = { ELECTRON_OZONE_PLATFORM_HINT: 'x11' }
 
 function parseJson(value: string): unknown {
