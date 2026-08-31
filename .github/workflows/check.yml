@@ -18,6 +18,10 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # pnpm's build-script approval does not reliably run electron's install
+      # script, which downloads the binary; run it explicitly so dist/ exists
+      # before anything depends on it.
+      - run: node node_modules/electron/install.js
       # Ubuntu 24.04 runners restrict unprivileged user namespaces, so any
       # Electron started outside Playwright (the dictionary fetch, the
       # second-instance spec's direct spawn) needs the setuid sandbox helper
@@ -43,6 +47,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: node node_modules/electron/install.js
       - run: pnpm check
       - run: pnpm test:packaged
       # Playwright traces and screenshots are the only way to see a Mac-only

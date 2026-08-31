@@ -24,6 +24,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: node node_modules/electron/install.js
       # Builds the .app and proves the packaged CLI and bundle layout work.
       - run: pnpm test:packaged
       - run: ditto -c -k --keepParent dist/mac*/StrataMD.app StrataMD-mac.zip
