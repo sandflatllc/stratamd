@@ -52,20 +52,26 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: node node_modules/electron/install.js
-      - run: pnpm check
-      - run: pnpm test:packaged
+      # DIAGNOSTIC (revert before merge): every spec times out at launch on
+      # this runner, so run one spec with Playwright's Electron stderr
+      # visible instead of grinding the full suite into the global timeout.
+      - run: pnpm build
+      - run: DEBUG=pw:browser* npx playwright test test/e2e/edge-cases.spec.ts --retries=0 --timeout=20000
       # Playwright traces and screenshots are the only way to see a Mac-only
       # e2e failure without owning a Mac.
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: mac-test-results
           path: test-results/
           retention-days: 7
       # ditto keeps execute bits and bundle structure; upload-artifact alone
       # strips permissions. The zip is what a tester downloads and dequarantines.
+      # DIAGNOSTIC (revert before merge): no packaged build in the smoke run.
       - run: ditto -c -k --keepParent dist/mac*/StrataMD.app StrataMD-mac.zip
+        if: false
       - uses: actions/upload-artifact@v4
+        if: false
         with:
           name: StrataMD-mac
           path: StrataMD-mac.zip
