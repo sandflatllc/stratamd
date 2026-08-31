@@ -103,7 +103,12 @@ test.describe('cold tabs (STRATAMD_EDITOR_CACHE=0)', () => {
     await expect(editorOf(page).locator('p').first()).toBeVisible()
     await page.evaluate(() => {
       const pane = document.querySelector<HTMLElement>('.editor-scroll')
-      if (pane) pane.scrollTop = 600
+      if (!pane) return
+      pane.scrollTop = 600
+      // A user scroll always fires this event. A programmatic set only fires
+      // it on the next frame, and an occluded window (a CI runner) may never
+      // produce one, so the recorder would silently miss the position.
+      pane.dispatchEvent(new Event('scroll'))
     })
     await expect.poll(() => page.evaluate(() => document.querySelector<HTMLElement>('.editor-scroll')?.scrollTop ?? 0)).toBeGreaterThan(400)
 
