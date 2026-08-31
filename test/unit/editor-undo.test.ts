@@ -92,15 +92,15 @@ describe('undo timeline coordinator', () => {
 })
 
 describe('editor keymap routing', () => {
-  it('binds Ctrl-z to the editor undo and both redo shortcuts to the editor redo', () => {
+  it('binds Mod-z to the editor undo and both redo shortcuts to the editor redo', () => {
     const undoStep = vi.fn(() => true)
     const redoStep = vi.fn(() => true)
     const keymap = createEditorKeymap({ undo: undoStep, redo: redoStep })
     const state = typedState()
 
-    expect(keymap['Ctrl-z']!(state, () => undefined)).toBe(true)
-    expect(keymap['Shift-Ctrl-z']!(state, () => undefined)).toBe(true)
-    expect(keymap['Ctrl-y']!(state, () => undefined)).toBe(true)
+    expect(keymap['Mod-z']!(state, () => undefined)).toBe(true)
+    expect(keymap['Shift-Mod-z']!(state, () => undefined)).toBe(true)
+    expect(keymap['Mod-y']!(state, () => undefined)).toBe(true)
     expect(undoStep).toHaveBeenCalledOnce()
     expect(redoStep).toHaveBeenCalledTimes(2)
     expect(state.doc.textContent).toBe('one user')

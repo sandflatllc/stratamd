@@ -63,6 +63,22 @@ export const projectRoot = resolve(here, '../..')
 export const mainEntry = join(projectRoot, 'out/main/index.js')
 export const cliEntry = join(projectRoot, 'bin/stratamd')
 
+/**
+ * Shortcut helpers so specs never hard-code a platform modifier
+ * (mac-plan §6): Command on a Mac host, Control elsewhere, and the Mac
+ * arrow-key equivalents of Home and End.
+ */
+const macHost = process.platform === 'darwin'
+export function primaryKey(key: string): string {
+  return `${macHost ? 'Meta' : 'Control'}+${key}`
+}
+export const documentStartKey = macHost ? 'Meta+ArrowUp' : 'Control+Home'
+export const documentEndKey = macHost ? 'Meta+ArrowDown' : 'Control+End'
+
+/** X11 and ozone settings apply only on Linux; a Mac host launches plainly. */
+export const launchArgs: string[] = macHost ? [] : ['--ozone-platform=x11']
+const linuxLaunchEnv = { ELECTRON_OZONE_PLATFORM_HINT: 'x11' }
+
 function parseJson(value: string): unknown {
   const trimmed = value.trim()
   return trimmed ? JSON.parse(trimmed) : undefined
@@ -112,7 +128,7 @@ export class Scenario {
       XDG_RUNTIME_DIR: runtime,
       XDG_DATA_HOME: data,
       XDG_CONFIG_HOME: config,
-      ELECTRON_OZONE_PLATFORM_HINT: 'x11',
+      ...(macHost ? {} : linuxLaunchEnv),
       // Every e2e run checks each merged view update against the full view.
       // Performance profiles measure the production protocol, so verify mode
       // (which ships the full view beside every patch) stays off for them.
@@ -144,7 +160,7 @@ export class Scenario {
       await this.writeSettings({})
     }
     this.app = await electron.launch({
-      args: ['--ozone-platform=x11', mainEntry, file],
+      args: [...launchArgs, mainEntry, file],
       cwd: projectRoot,
       env: this.env
     })
@@ -157,7 +173,7 @@ export class Scenario {
   async launchEmpty(): Promise<Page> {
     await access(mainEntry, constants.R_OK)
     this.app = await electron.launch({
-      args: ['--ozone-platform=x11', mainEntry],
+      args: [...launchArgs, mainEntry],
       cwd: projectRoot,
       env: this.env
     })
@@ -286,7 +302,7 @@ export function expectPayload(result: CliResult): Payload {
 export async function sourceEditor(page: Page) {
   const source = page.getByRole('textbox', { name: /source editor/i })
   if (await source.count()) return source.first()
-  await page.keyboard.press('Control+/')
+  await page.keyboard.press(primaryKey('/'))
   await expect(source).toBeVisible()
   return source
 }
@@ -341,7 +357,7 @@ export async function copyForAgent(page: Page): Promise<void> {
 
 export async function selectTextInVisualEditor(page: Page, exactText: string): Promise<void> {
   const source = page.getByRole('textbox', { name: /source editor/i })
-  if (await source.isVisible().catch(() => false)) await page.keyboard.press('Control+/')
+  if (await source.isVisible().catch(() => false)) await page.keyboard.press(primaryKey('/'))
 
   const editor = page.getByRole('textbox', { name: /document editor/i })
   await expect(editor).toBeVisible()

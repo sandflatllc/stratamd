@@ -20,20 +20,20 @@ function run(command: Command, state: EditorState): EditorState {
 }
 
 describe('editor commands and keymap', () => {
-  it('exposes every required Linux shortcut', () => {
+  it('exposes every required shortcut through the platform Mod binding', () => {
     const keys = createEditorKeymap()
     expect(keys).toEqual(expect.objectContaining({
-      'Ctrl-b': expect.any(Function),
-      'Ctrl-i': expect.any(Function),
-      'Ctrl-k': expect.any(Function),
-      'Shift-Ctrl-c': expect.any(Function),
-      'Ctrl-1': expect.any(Function),
-      'Ctrl-6': expect.any(Function),
-      'Shift-Ctrl-7': expect.any(Function),
-      'Shift-Ctrl-8': expect.any(Function),
-      'Ctrl-s': expect.any(Function),
-      'Ctrl-Enter': expect.any(Function),
-      'Ctrl-/': expect.any(Function),
+      'Mod-b': expect.any(Function),
+      'Mod-i': expect.any(Function),
+      'Mod-k': expect.any(Function),
+      'Shift-Mod-c': expect.any(Function),
+      'Mod-1': expect.any(Function),
+      'Mod-6': expect.any(Function),
+      'Shift-Mod-7': expect.any(Function),
+      'Shift-Mod-8': expect.any(Function),
+      'Mod-s': expect.any(Function),
+      'Mod-Enter': expect.any(Function),
+      'Mod-/': expect.any(Function),
       'Shift-Enter': expect.any(Function),
       Tab: expect.any(Function),
       'Shift-Tab': expect.any(Function),

@@ -1,20 +1,50 @@
 #!/bin/sh
 set -eu
 
-script_path=$(readlink -f "$0")
+# Portable symlink resolution: readlink -f is GNU/newer-BSD only, and the
+# setup link must resolve to the installed script wherever it lives.
+resolve_path() {
+  target=$1
+  while [ -L "$target" ]; do
+    link=$(readlink "$target")
+    case $link in
+      /*) target=$link ;;
+      *) target=$(dirname -- "$target")/$link ;;
+    esac
+  done
+  printf '%s\n' "$(CDPATH= cd -- "$(dirname -- "$target")" && pwd)/$(basename -- "$target")"
+}
+
+script_path=$(resolve_path "$0")
 project_root=$(CDPATH= cd -- "$(dirname -- "$script_path")/.." && pwd)
 launcher_dir=$(dirname -- "$script_path")
 
+# Packaged layouts. Linux unpacked: the script sits beside the GUI binary and
+# resources/app.asar. macOS: the script is copied to
+# StrataMD.app/Contents/Resources/bin, so the GUI binary is ../../MacOS/StrataMD
+# and the archive is ../app.asar (mac-plan §4.4).
 if [ -x "$launcher_dir/stratamd-app" ] && [ -f "$launcher_dir/resources/app.asar" ]; then
+  app_executable="$launcher_dir/stratamd-app"
+  app_asar="$launcher_dir/resources/app.asar"
+elif [ -x "$launcher_dir/../../MacOS/StrataMD" ] && [ -f "$launcher_dir/../app.asar" ]; then
+  app_executable=$(CDPATH= cd -- "$launcher_dir/../../MacOS" && pwd)/StrataMD
+  app_asar=$(CDPATH= cd -- "$launcher_dir/.." && pwd)/app.asar
+else
+  app_executable=''
+  app_asar=''
+fi
+
+if [ -n "$app_executable" ]; then
   export ELECTRON_RUN_AS_NODE=1
-  export STRATAMD_APP_EXECUTABLE="$launcher_dir/stratamd-app"
+  export STRATAMD_APP_EXECUTABLE="$app_executable"
   export STRATAMD_CLI_EXECUTABLE="$script_path"
-  exec "$launcher_dir/stratamd-app" \
-    "$launcher_dir/resources/app.asar/out/main/cli.js" "$@"
+  exec "$app_executable" "$app_asar/out/main/cli.js" "$@"
 elif [ -n "${STRATAMD_NODE:-}" ]; then
   node_executable=$STRATAMD_NODE
 elif [ -x "$project_root/node_modules/electron/dist/electron" ]; then
   node_executable=$project_root/node_modules/electron/dist/electron
+elif [ -x "$project_root/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron" ]; then
+  node_executable=$project_root/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron
 else
   node_executable=node
 fi

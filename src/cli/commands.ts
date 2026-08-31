@@ -471,10 +471,25 @@ async function writeLine(stream: NodeJS.WritableStream, value: unknown): Promise
 async function defaultLaunchApp(): Promise<void> {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
   const configured = process.env.STRATAMD_APP_EXECUTABLE
-  const executable = configured || resolve(root, 'node_modules', 'electron', 'dist', 'electron')
-  try {
-    await access(executable)
-  } catch {
+  // Development fallbacks cover both electron layouts: the Linux binary and
+  // the Mac app bundle.
+  const candidates = configured
+    ? [configured]
+    : [
+        resolve(root, 'node_modules', 'electron', 'dist', 'electron'),
+        resolve(root, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron'),
+      ]
+  let executable: string | undefined
+  for (const candidate of candidates) {
+    try {
+      await access(candidate)
+      executable = candidate
+      break
+    } catch {
+      // Try the next layout.
+    }
+  }
+  if (!executable) {
     throw new SocketUnavailableError('StrataMD application executable was not found', 'ENOENT')
   }
 
@@ -619,7 +634,8 @@ export async function runCli(argv: string[], runtime: CliRuntime = {}): Promise<
         remove: parsed.remove,
         makeDefault: parsed.makeDefault,
         environment,
-        home: environment.HOME || homedir()
+        home: environment.HOME || homedir(),
+        report: (text) => writeText(io.stdout, text)
       })
       return 0
     }

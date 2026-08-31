@@ -3,6 +3,7 @@ import type { AttachmentView, PanelSize, SendChangeItem, SendDocumentToken, Send
 import { AGENT_COLORS, previewTabIndex } from '../model'
 import { InlineMarkdown } from '../inlineMarkdown'
 import { useDialogFocus } from '../useDialogFocus'
+import { hasPrimaryModifier, primaryModifierLabel } from '../../shared/primary-modifier'
 
 interface SendComposerProps {
   attachments: AttachmentView[]
@@ -177,7 +178,7 @@ export function SendComposer({ attachments, size, zoom, onSize, onCancel, onPrev
 
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
-      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && selected.length > 0) {
+      if (event.key === 'Enter' && hasPrimaryModifier(event) && selected.length > 0) {
         event.preventDefault()
         submit()
       }
@@ -311,7 +312,7 @@ export function SendComposer({ attachments, size, zoom, onSize, onCancel, onPrev
               : itemsView()}
         </div>
         {send.error && <div className="send-error" role="alert">{send.error}</div>}
-        <div className="modal-actions"><kbd>Ctrl+Enter</kbd><button type="button" className="quiet-button composer-cancel" onClick={onCancel}>Cancel</button><button type="button" className="gradient-button composer-send" disabled={selected.length === 0 || send.phase !== 'idle'} onClick={submit}>{send.phase === 'idle' ? 'Send' : 'Sending…'}</button></div>
+        <div className="modal-actions"><kbd>{primaryModifierLabel()}+Enter</kbd><button type="button" className="quiet-button composer-cancel" onClick={onCancel}>Cancel</button><button type="button" className="gradient-button composer-send" disabled={selected.length === 0 || send.phase !== 'idle'} onClick={submit}>{send.phase === 'idle' ? 'Send' : 'Sending…'}</button></div>
         <button type="button" tabIndex={-1} className="send-composer-resize" aria-label="Resize" onPointerDown={startResize} />
       </section>
     </div>

@@ -32,7 +32,7 @@ const imageMimeTypes = new Set([
 
 /**
  * A Markdown image source is local only when it has no URL scheme. Absolute
- * and relative Linux paths are both passed to the main process for its final
+ * and relative POSIX paths are both passed to the main process for its final
  * realpath and allowed-root check.
  */
 export function isLocalImageSource(source: string): boolean {

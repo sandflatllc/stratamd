@@ -558,7 +558,8 @@ function callbackCommand(callback: (() => unknown) | undefined): Command {
 }
 
 /**
- * Complete Linux keymap for one editor view. Callers may pass the result
+ * Complete keymap for one editor view; Mod is Command on macOS and Control
+ * elsewhere. Callers may pass the result
  * directly to prosemirror-keymap's keymap().
  */
 export function createEditorKeymap(
@@ -571,26 +572,26 @@ export function createEditorKeymap(
     Enter: chainCommands(commands.splitListItem, baseKeymap.Enter!),
     Tab: chainCommands(goToNextCell(1), commands.sinkListItem),
     'Shift-Tab': chainCommands(goToNextCell(-1), commands.liftListItem),
-    'Ctrl-b': commands.toggleStrong,
-    'Ctrl-i': commands.toggleEmphasis,
-    'Ctrl-k': callbackCommand(callbacks.editLink),
-    'Shift-Ctrl-c': commands.toggleInlineCode,
-    'Ctrl-0': commands.setParagraph,
-    'Ctrl-1': commands.setHeading(1),
-    'Ctrl-2': commands.setHeading(2),
-    'Ctrl-3': commands.setHeading(3),
-    'Ctrl-4': commands.setHeading(4),
-    'Ctrl-5': commands.setHeading(5),
-    'Ctrl-6': commands.setHeading(6),
-    'Shift-Ctrl-7': commands.toggleOrderedList,
-    'Shift-Ctrl-8': commands.toggleBulletList,
+    'Mod-b': commands.toggleStrong,
+    'Mod-i': commands.toggleEmphasis,
+    'Mod-k': callbackCommand(callbacks.editLink),
+    'Shift-Mod-c': commands.toggleInlineCode,
+    'Mod-0': commands.setParagraph,
+    'Mod-1': commands.setHeading(1),
+    'Mod-2': commands.setHeading(2),
+    'Mod-3': commands.setHeading(3),
+    'Mod-4': commands.setHeading(4),
+    'Mod-5': commands.setHeading(5),
+    'Mod-6': commands.setHeading(6),
+    'Shift-Mod-7': commands.toggleOrderedList,
+    'Shift-Mod-8': commands.toggleBulletList,
     'Shift-Enter': commands.insertHardBreak,
-    'Ctrl-s': callbackCommand(callbacks.save),
-    'Ctrl-Enter': callbackCommand(callbacks.send),
-    'Ctrl-/': callbackCommand(callbacks.toggleSource),
-    'Ctrl-z': callbackCommand(callbacks.undo),
-    'Shift-Ctrl-z': callbackCommand(callbacks.redo),
-    'Ctrl-y': callbackCommand(callbacks.redo),
+    'Mod-s': callbackCommand(callbacks.save),
+    'Mod-Enter': callbackCommand(callbacks.send),
+    'Mod-/': callbackCommand(callbacks.toggleSource),
+    'Mod-z': callbackCommand(callbacks.undo),
+    'Shift-Mod-z': callbackCommand(callbacks.redo),
+    'Mod-y': callbackCommand(callbacks.redo),
   }
 }
 

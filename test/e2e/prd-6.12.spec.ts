@@ -7,6 +7,7 @@ import {
   copyForAgent,
   expectPayload,
   externalText,
+  primaryKey,
   projectRoot,
   save,
   selectTextInVisualEditor,
@@ -174,7 +175,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     // The watcher raises the same conflict on its own within ~100 ms, and the
     // conflict modal's backdrop covers the Save button. Drive Save from the
     // keyboard so this holds whichever side wins the race.
-    await value.page!.keyboard.press('Control+s')
+    await value.page!.keyboard.press(primaryKey('s'))
 
     const dialog = value.page!.getByRole('dialog', { name: /External write conflicts with your edits/i })
     await expect(dialog).toBeVisible()
@@ -226,12 +227,12 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     await value.waitForBuffer(laterEdit)
 
     await editor.focus()
-    await value.page!.keyboard.press('Control+z')
+    await value.page!.keyboard.press(primaryKey('z'))
     await value.waitForBuffer(externalEdit)
     await expect(value.page!.getByRole('button', { name: /^Keep(?:\b|$)/i })).toHaveCount(1)
 
     await editor.focus()
-    await value.page!.keyboard.press('Control+z')
+    await value.page!.keyboard.press(primaryKey('z'))
     await expect.poll(async () => (await value.state()).document).toBe(ownerEdit)
     await expect(value.page!.getByRole('button', { name: /^Keep(?:\b|$)/i })).toHaveCount(0)
     // The reversal reaches the agent as a user hunk on the next Send.
@@ -241,7 +242,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
 
     // Send ends the application history; typing history continues across it.
     await editor.focus()
-    await value.page!.keyboard.press('Control+z')
+    await value.page!.keyboard.press(primaryKey('z'))
     await value.waitForBuffer(original)
   })
 

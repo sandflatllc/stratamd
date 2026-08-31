@@ -1,7 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario } from './harness'
+import { Scenario, documentEndKey, primaryKey } from './harness'
 
 /**
  * docs/plans/completed/cold-tab-plan.md §9: with STRATAMD_EDITOR_CACHE=0 every tab switch
@@ -39,11 +39,11 @@ async function typeLineAfter(page: Page, paragraphText: string, text: string): P
 }
 async function undo(page: Page): Promise<void> {
   await editorOf(page).focus()
-  await page.keyboard.press('Control+z')
+  await page.keyboard.press(primaryKey('z'))
 }
 async function redo(page: Page): Promise<void> {
   await editorOf(page).focus()
-  await page.keyboard.press('Control+Shift+z')
+  await page.keyboard.press(primaryKey('Shift+z'))
 }
 /** Undo (or redo) until the buffer matches, tolerating multi-group bursts. */
 async function stepUntilBuffer(value: Scenario, direction: 'undo' | 'redo', expected: string): Promise<void> {
@@ -118,11 +118,11 @@ test.describe('cold tabs (STRATAMD_EDITOR_CACHE=0)', () => {
     const value = await coldScenario(testInfo, BASE)
     const page = await value.launch()
     await editorOf(page).focus()
-    await page.keyboard.press('Control+/')
+    await page.keyboard.press(primaryKey('/'))
     const source = page.getByRole('textbox', { name: /source editor/i })
     await expect(source).toBeVisible()
     await source.focus()
-    await page.keyboard.press('Control+End')
+    await page.keyboard.press(documentEndKey)
     await page.keyboard.type('Extra line.\n')
     await page.waitForTimeout(GROUP_GAP)
     const afterTyping = `${BASE}Extra line.\n`
@@ -133,7 +133,7 @@ test.describe('cold tabs (STRATAMD_EDITOR_CACHE=0)', () => {
     await expect(source).toBeVisible()
     await source.focus()
     for (let presses = 0; presses < 6 && (await bufferText(value)) !== BASE; presses += 1) {
-      await page.keyboard.press('Control+z')
+      await page.keyboard.press(primaryKey('z'))
       await page.waitForTimeout(150)
     }
     await value.waitForBuffer(BASE)

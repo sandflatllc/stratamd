@@ -1,7 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario, selectTextInVisualEditor } from './harness'
+import { Scenario, documentEndKey, primaryKey, selectTextInVisualEditor } from './harness'
 
 /**
  * PRD §6.3 undo: one timeline of typing and application steps, in both
@@ -55,11 +55,11 @@ async function deleteLine(page: Page, paragraphText: string): Promise<void> {
 }
 async function undo(page: Page): Promise<void> {
   await editorOf(page).focus()
-  await page.keyboard.press('Control+z')
+  await page.keyboard.press(primaryKey('z'))
 }
 async function redo(page: Page): Promise<void> {
   await editorOf(page).focus()
-  await page.keyboard.press('Control+Shift+z')
+  await page.keyboard.press(primaryKey('Shift+z'))
 }
 
 async function typeTwoLinesDeleteOne(value: Scenario): Promise<{ afterTyping: string; afterDelete: string }> {
@@ -200,12 +200,12 @@ test.describe('undo and redo timeline', () => {
     const value = await scenario(testInfo, BASE)
     const page = await value.launch()
     await editorOf(page).focus()
-    await page.keyboard.press('Control+/')
+    await page.keyboard.press(primaryKey('/'))
     const source = page.getByRole('textbox', { name: /source editor/i })
     await expect(source).toBeVisible()
 
     await source.focus()
-    await page.keyboard.press('Control+End')
+    await page.keyboard.press(documentEndKey)
     await page.keyboard.type('First line.\n')
     await page.waitForTimeout(GROUP_GAP)
     await page.keyboard.type('Second line.\n')
@@ -223,12 +223,12 @@ test.describe('undo and redo timeline', () => {
     await value.waitForBuffer(afterDelete)
 
     await source.focus()
-    await page.keyboard.press('Control+z')
+    await page.keyboard.press(primaryKey('z'))
     await value.waitForBuffer(afterTyping)
     expect(await source.inputValue()).toBe(afterTyping)
     expect(await source.evaluate((node) => (node as HTMLTextAreaElement).selectionStart)).toBe(afterTyping.indexOf('Second line.'))
 
-    await page.keyboard.press('Control+/')
+    await page.keyboard.press(primaryKey('/'))
     await redo(page)
     await value.waitForBuffer(afterDelete)
   })

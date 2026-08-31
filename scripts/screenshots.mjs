@@ -86,7 +86,7 @@ await writeFile(join(config, 'stratamd/settings.json'), JSON.stringify({
 }, null, 2))
 
 const env = Object.fromEntries(Object.entries(process.env).filter(([key, value]) => !['ELECTRON_RUN_AS_NODE', 'WAYLAND_DISPLAY'].includes(key) && value !== undefined))
-Object.assign(env, { XDG_RUNTIME_DIR: runtime, XDG_DATA_HOME: data, XDG_CONFIG_HOME: config, ELECTRON_OZONE_PLATFORM_HINT: 'x11' })
+Object.assign(env, { XDG_RUNTIME_DIR: runtime, XDG_DATA_HOME: data, XDG_CONFIG_HOME: config, ...(process.platform === 'darwin' ? {} : { ELECTRON_OZONE_PLATFORM_HINT: 'x11' }) })
 
 function run(args) {
   return new Promise((done, fail) => {
@@ -106,7 +106,8 @@ async function payload(args) {
   return result.stdout.trim() ? JSON.parse(result.stdout) : undefined
 }
 
-const app = await electron.launch({ args: ['--ozone-platform=x11', mainEntry, doc], cwd: root, env })
+const primaryModifier = process.platform === 'darwin' ? 'Meta' : 'Control'
+const app = await electron.launch({ args: [...(process.platform === 'darwin' ? [] : ['--ozone-platform=x11']), mainEntry, doc], cwd: root, env })
 const page = await app.firstWindow()
 await page.waitForLoadState('domcontentloaded')
 await page.setViewportSize(viewport)
@@ -254,7 +255,7 @@ await shot(join(stateDir, 'collaboration.png'))
 await page.getByRole('button', { name: /Close thread/i }).click()
 
 await page.evaluate(() => window.strata.selectTheme('isotope'))
-await page.keyboard.press('Control+/')
+await page.keyboard.press(`${primaryModifier}+/`)
 const sourceEditor = page.getByRole('textbox', { name: /source editor/i })
 await expect(sourceEditor).toBeVisible()
 const sourceRatio = await sourceEditor.evaluate((element, needle) => {
@@ -273,7 +274,7 @@ await page.screenshot({ path: join(stateDir, 'source-review.png'), animations: '
 console.log(`wrote ${join(stateDir, 'source-review.png').replace(`${root}/`, '')}`)
 await page.screenshot({ path: join(stateDir, 'source-review--workspace.png'), animations: 'disabled', clip: workspaceClip })
 console.log(`wrote ${join(stateDir, 'source-review--workspace.png').replace(`${root}/`, '')}`)
-await page.keyboard.press('Control+/')
+await page.keyboard.press(`${primaryModifier}+/`)
 await expect(page.locator('.ProseMirror')).toBeVisible()
 
 // 5. Per-recipient Send preview in the context of the complete app window.

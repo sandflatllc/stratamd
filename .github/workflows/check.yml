@@ -1,0 +1,44 @@
+name: check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: xvfb-run --auto-servernum pnpm check
+      - run: xvfb-run --auto-servernum pnpm test:packaged
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test:packaged
+      # ditto keeps execute bits and bundle structure; upload-artifact alone
+      # strips permissions. The zip is what a tester downloads and dequarantines.
+      - run: ditto -c -k --keepParent dist/mac*/StrataMD.app StrataMD-mac.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StrataMD-mac
+          path: StrataMD-mac.zip
+          retention-days: 14

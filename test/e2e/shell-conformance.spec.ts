@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario, expectPayload, selectTextInVisualEditor, setSource } from './harness'
+import { Scenario, expectPayload, primaryKey, selectTextInVisualEditor, setSource } from './harness'
 
 async function tabTo(page: Page, target: Locator, limit = 120): Promise<void> {
   await expect(target).toBeVisible()
@@ -82,14 +82,14 @@ test('per-pane text zoom follows the hovered pane, resets from one button, and p
     await expect(reset).toBeHidden()
 
     await explorer.hover()
-    await page.keyboard.press('Control+Equal')
-    await page.keyboard.press('Control+Equal')
+    await page.keyboard.press(primaryKey('Equal'))
+    await page.keyboard.press(primaryKey('Equal'))
     await expect.poll(() => zoomOf(explorer)).toBe('1.2')
     expect(await zoomOf(editor)).toBe('1')
     await expect(page.locator('.explorer .panel-heading h2')).toHaveCSS('font-size', '18px')
 
     await rail.hover()
-    await page.keyboard.press('Control+Minus')
+    await page.keyboard.press(primaryKey('Minus'))
     await expect.poll(() => zoomOf(rail)).toBe('0.9')
 
     const editorBox = await editor.boundingBox()
@@ -322,7 +322,7 @@ test('production renderer blocks a remote image without making a remote request'
     const markdown = `# Images\n\n![Remote tracker](${remoteUrl})\n`
     await setSource(page, markdown)
     await value.waitForBuffer(markdown)
-    await page.keyboard.press('Control+/')
+    await page.keyboard.press(primaryKey('/'))
 
     await expect(page.locator('.strata-image--blocked')).toContainText('Remote image blocked')
     expect(remoteRequests).toEqual([])
@@ -373,7 +373,7 @@ test('keyboard operates composer recipient previews and an annotation thread', a
     await setSource(page, edited)
     await value.waitForBuffer(edited)
 
-    await page.keyboard.press('Control+Enter')
+    await page.keyboard.press(primaryKey('Enter'))
     const composer = page.getByRole('dialog', { name: /Send changes/i })
     await expect(composer).toBeVisible()
     const previewTabs = composer.getByRole('tablist', { name: /What each agent receives/i })
@@ -454,7 +454,7 @@ for (const decision of ['mine', 'incoming'] as const) {
       await setSource(page, mine)
       await value.waitForBuffer(mine)
       await value.atomicWrite(value.file, incoming)
-      await page.keyboard.press('Control+s')
+      await page.keyboard.press(primaryKey('s'))
 
       const dialog = page.getByRole('dialog', { name: /External write conflicts with your edits/i })
       await expect(dialog).toBeVisible()

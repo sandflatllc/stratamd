@@ -17,6 +17,7 @@ import {
   type ThemeValues
 } from '../shared/theme-keys'
 import { BUNDLED_THEMES, nestThemeValues } from '../shared/bundled-themes'
+import { fontFamiliesFromFcList, queryInstalledFontFamilies } from '../platform/fonts'
 import { getConfigDirectory } from './settings'
 import { atomicWriteFile, ensurePrivateDirectory, PRIVATE_FILE_MODE, type StorageEnvironment } from './storage'
 
@@ -191,26 +192,17 @@ export class ThemeStore {
   }
 }
 
-/** Fonts installed on the machine, bundled families first. Falls back to the bundled list when fc-list is unavailable. */
+/** Fonts installed on the machine, bundled families first. Falls back to the bundled list when the platform query is unavailable. */
 export async function listInstalledFonts(
   run: (file: string, args: string[]) => Promise<{ stdout: string }> = (file, args) => execFileAsync(file, args, { maxBuffer: 8 * 1024 * 1024 })
 ): Promise<string[]> {
-  let stdout = ''
-  try {
-    stdout = (await run('fc-list', ['--format', '%{family}\n'])).stdout
-  } catch {
-    return [...BUNDLED_FONTS]
-  }
-  return orderFontFamilies(stdout)
+  const families = await queryInstalledFontFamilies(run)
+  if (families === null) return [...BUNDLED_FONTS]
+  return orderFontFamilies(families)
 }
 
-export function orderFontFamilies(fcListOutput: string): string[] {
-  const families = new Set<string>()
-  for (const line of fcListOutput.split('\n')) {
-    // fc-list separates localized family names with commas; the first is canonical.
-    const family = line.split(',')[0]?.trim()
-    if (family) families.add(family)
-  }
+export function orderFontFamilies(installed: string | readonly string[]): string[] {
+  const families = new Set(typeof installed === 'string' ? fontFamiliesFromFcList(installed) : installed)
   for (const bundled of BUNDLED_FONTS) families.delete(bundled)
   return [...BUNDLED_FONTS, ...[...families].sort((a, b) => a.localeCompare(b))]
 }

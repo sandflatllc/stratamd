@@ -45,6 +45,7 @@ import { createSourceSpanPlugin } from './source-spans.js'
 import type { ColdEditorState, EditorMode, EditorRestoreState, EditorSelection, ParsedEditorMarkdown, StrataEditorHandle } from './types.js'
 import { CHAIN_HISTORY_META, LocalHistoryChain } from './local-history.js'
 import { EditorUndoCoordinator, replaceDocumentProgrammatically } from './undo.js'
+import { hasOnlyPrimaryModifier, hasPrimaryModifier } from '../shared/primary-modifier.js'
 
 export * from './annotations.js'
 export * from './commands.js'
@@ -602,7 +603,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
   view.dom.ownerDocument.addEventListener('selectionchange', handleDocumentSelection)
 
   const handleSelectedEditorShortcut = (event: KeyboardEvent): void => {
-    if (!event.ctrlKey || event.altKey || event.metaKey) return
+    if (!hasOnlyPrimaryModifier(event) || event.altKey) return
     const domSelection = view.dom.ownerDocument.getSelection()
     if (!domSelection?.anchorNode || !domSelection.focusNode) return
     if (!view.dom.contains(domSelection.anchorNode) || !view.dom.contains(domSelection.focusNode)) return
@@ -823,7 +824,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     options.onChange?.(currentMarkdown, 'edit')
   })
   source.addEventListener('keydown', (event) => {
-    if (!event.ctrlKey) return
+    if (!hasPrimaryModifier(event)) return
     const key = event.key.toLowerCase()
     if (key === 's') { event.preventDefault(); save() }
     else if (event.key === 'Enter') { event.preventDefault(); send() }

@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process'
 import type { ContextMenuParams, IpcMain, IpcMainEvent, IpcMainInvokeEvent, WebContents } from 'electron'
 import { z } from 'zod'
 import type { AppView, SpellingContext, StrataApi, BufferOrigin } from '../shared/contracts'
@@ -155,7 +154,7 @@ export interface RegisteredIpc {
 
 export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
   const allowedRendererUrls = options.allowedRendererUrls ?? ['app://stratamd/']
-  const openExternal = options.openExternal ?? openWithXdg
+  const openExternal = options.openExternal ?? openExternalUrl
   const verify = process.env.STRATAMD_VIEW_VERIFY === '1'
   let lastSent: SyncedView | null = null
   let nextSeq = 0
@@ -274,14 +273,10 @@ export function isAllowedExternalUrl(url: string): boolean {
   }
 }
 
-export async function openWithXdg(url: string): Promise<void> {
+export async function openExternalUrl(url: string): Promise<void> {
   if (!isAllowedExternalUrl(url)) throw new Error('Only http, https, and mailto links can be opened externally')
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn('xdg-open', [url], { detached: true, stdio: 'ignore' })
-    child.once('error', reject)
-    child.once('spawn', () => {
-      child.unref()
-      resolve()
-    })
-  })
+  // Imported lazily: this module also loads under vitest, where the electron
+  // runtime is unavailable and tests inject their own openExternal.
+  const { shell } = await import('electron')
+  await shell.openExternal(url)
 }

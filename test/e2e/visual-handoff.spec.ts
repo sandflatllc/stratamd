@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario, setSource } from './harness'
+import { Scenario, primaryKey, setSource } from './harness'
 
 const DOCUMENT = `---
 owner: me
@@ -89,7 +89,7 @@ test('populated renderer preserves the handoff tokens, controls, and motion poli
     await expect(page.locator('.strata-source-frontmatter')).toContainText('owner: me')
     await expect(page.locator('.strata-source-layer')).toHaveCSS('animation-name', 'slide-a')
     await page.screenshot({ path: testInfo.outputPath('handoff-source-review.png'), fullPage: true })
-    await page.keyboard.press('Control+/')
+    await page.keyboard.press(primaryKey('/'))
     await expect(page.getByRole('textbox', { name: /source editor/i })).toBeHidden()
     await expect(page.locator('.ProseMirror')).toBeVisible()
     await expect(page.getByRole('button', { name: /^Send(?:\b|$)/i })).toBeVisible()

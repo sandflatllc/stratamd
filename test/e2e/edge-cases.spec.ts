@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { chmod, readFile, readdir, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario, save, send, setSource } from './harness'
+import { Scenario, documentStartKey, primaryKey, save, send, setSource } from './harness'
 
 test('Save permission failure keeps disk and shadow unchanged and shows the error', async ({}, testInfo) => {
   const original = '# Permission\n\nSaved on disk.\n'
@@ -17,7 +17,7 @@ test('Save permission failure keeps disk and shadow unchanged and shows the erro
     const before = await page.evaluate(async () => (await window.strata.getState()).activeDocument)
 
     await chmod(dirname(value.file), 0o500)
-    await page.keyboard.press('Control+s')
+    await page.keyboard.press(primaryKey('s'))
     await expect(page.getByRole('status')).toContainText(/EACCES|permission denied/i)
 
     expect(await readFile(value.file, 'utf8')).toBe(original)
@@ -39,7 +39,7 @@ test('deleted while open keeps the tab and attachment, then Save recreates the e
     expect((await value.attach('agent-a', 'Agent A')).event).toBe('initial')
 
     const source = page.getByRole('textbox', { name: /source editor/i })
-    await page.keyboard.press('Control+/')
+    await page.keyboard.press(primaryKey('/'))
     await expect(source).toBeVisible()
     await source.fill(shadow)
     await value.waitForBuffer(shadow)
@@ -136,7 +136,7 @@ test('a document over 2 MB opens in the full visual editor while review and Send
     await expect(page.getByRole('button', { name: /^Keep change /i }).first()).toBeVisible({ timeout: 10_000 })
 
     await visual.focus()
-    await page.keyboard.press('Control+Home')
+    await page.keyboard.press(documentStartKey)
     await page.keyboard.press('End')
     await page.keyboard.insertText(' updated')
     await value.waitForBuffer(withOwnerEdit)

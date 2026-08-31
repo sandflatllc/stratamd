@@ -1,6 +1,7 @@
 import type { DocumentTabView } from '../../shared/contracts'
 import { AGENT_COLORS, textColorFor } from '../model'
 import { Logo } from './Logo'
+import { primaryModifierLabel } from '../../shared/primary-modifier'
 
 interface TopBarProps {
   tabs: DocumentTabView[]
@@ -56,7 +57,7 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
       <button type="button" className="text-action theme-button" onClick={onOpenTheme}>Theme</button>
       {zoomed && <button type="button" className="text-action reset-zoom" onClick={onResetZoom}>Reset zoom</button>}
       <span className="pending-status" data-unsaved={pendingUnsaved}>{pending} pending</span>
-      <kbd>Ctrl+Enter</kbd>
+      <kbd>{primaryModifierLabel()}+Enter</kbd>
       {hasAgents ? (
         <button type="button" className="send-button" data-enabled={canSend} onClick={onSend} disabled={!canSend}>Send ↗</button>
       ) : (

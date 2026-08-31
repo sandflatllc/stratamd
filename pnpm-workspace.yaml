@@ -1,0 +1,7 @@
+allowBuilds:
+  # File watching ships a prebuilt binary per platform; its install script picks one.
+  '@parcel/watcher': true
+  # electron-vite's bundler compiles a platform binary on install.
+  esbuild: true
+  # Windows installer tooling pulled in by electron-builder; StrataMD has no Windows target.
+  electron-winstaller: false

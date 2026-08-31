@@ -11,9 +11,12 @@ import {
   stat,
   unlink,
 } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { createHash, randomBytes } from 'node:crypto'
+import {
+  getDataDirectory as getPlatformDataDirectory,
+  getSocketLocation,
+} from '../platform/paths.js'
 
 export const CURRENT_META_VERSION = 2
 export const PRIVATE_DIRECTORY_MODE = 0o700
@@ -152,16 +155,11 @@ export function sha256(content: string | Uint8Array): string {
   return createHash('sha256').update(content).digest('hex')
 }
 
-function environmentHome(env: StorageEnvironment, explicitHome?: string): string {
-  return explicitHome ?? env.HOME ?? homedir()
-}
-
 export function getDataDirectory(
   env: StorageEnvironment = process.env,
   homeDirectory?: string,
 ): string {
-  const base = env.XDG_DATA_HOME || join(environmentHome(env, homeDirectory), '.local', 'share')
-  return join(base, 'stratamd')
+  return getPlatformDataDirectory({ env, ...(homeDirectory ? { home: homeDirectory } : {}) })
 }
 
 export const getDataRoot = getDataDirectory
@@ -170,20 +168,16 @@ export function getRuntimeSocketPath(
   env: StorageEnvironment = process.env,
   homeDirectory?: string,
 ): string {
-  if (env.XDG_RUNTIME_DIR) return join(env.XDG_RUNTIME_DIR, 'stratamd.sock')
-  // The CLI contract fixes this fallback exactly; XDG_CACHE_HOME must not make
-  // independently started client and server processes derive different paths.
-  const cache = join(environmentHome(env, homeDirectory), '.cache')
-  return join(cache, 'stratamd', 'run', 'stratamd.sock')
+  return getSocketLocation({ env, ...(homeDirectory ? { home: homeDirectory } : {}) }).path
 }
 
 export async function prepareRuntimeSocketPath(
   env: StorageEnvironment = process.env,
   homeDirectory?: string,
 ): Promise<string> {
-  const path = getRuntimeSocketPath(env, homeDirectory)
-  if (!env.XDG_RUNTIME_DIR) await ensurePrivateDirectory(dirname(path))
-  return path
+  const location = getSocketLocation({ env, ...(homeDirectory ? { home: homeDirectory } : {}) })
+  if (location.ownedParent) await ensurePrivateDirectory(dirname(location.path))
+  return location.path
 }
 
 export async function ensurePrivateDirectory(path: string): Promise<void> {

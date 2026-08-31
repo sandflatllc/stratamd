@@ -1,6 +1,6 @@
 import { connect } from 'node:net'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { getSocketLocation } from '../platform/paths.js'
 import {
   type CommandRequest,
   type CommandResponse
@@ -10,12 +10,7 @@ export function socketPathForEnvironment(
   environment: NodeJS.ProcessEnv = process.env,
   home = homedir()
 ): string {
-  const runtimeDirectory = environment.XDG_RUNTIME_DIR
-  if (runtimeDirectory && runtimeDirectory.startsWith('/')) {
-    return join(runtimeDirectory, 'stratamd.sock')
-  }
-
-  return join(home, '.cache', 'stratamd', 'run', 'stratamd.sock')
+  return getSocketLocation({ env: environment, home }).path
 }
 
 export class SocketUnavailableError extends Error {
