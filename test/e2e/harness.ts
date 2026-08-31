@@ -117,8 +117,9 @@ export class Scenario {
     const file = join(documentRoot, name)
     const data = join(runtime, 'data')
     const config = join(runtime, 'config')
+    const userData = join(runtime, 'user-data')
 
-    await Promise.all([mkdir(documentRoot, { recursive: true }), mkdir(data, { recursive: true }), mkdir(config, { recursive: true })])
+    await Promise.all([mkdir(documentRoot, { recursive: true }), mkdir(data, { recursive: true }), mkdir(config, { recursive: true }), mkdir(userData, { recursive: true })])
     await writeFile(file, content)
     const inheritedEnvironment = Object.fromEntries(
       Object.entries(process.env).filter(
@@ -130,6 +131,9 @@ export class Scenario {
       XDG_RUNTIME_DIR: runtime,
       XDG_DATA_HOME: data,
       XDG_CONFIG_HOME: config,
+      // Isolates Electron's profile and its single-instance lock per scenario;
+      // XDG_CONFIG_HOME only achieves that on Linux.
+      STRATAMD_USER_DATA: userData,
       ...(macHost ? {} : linuxLaunchEnv),
       // Every e2e run checks each merged view update against the full view.
       // Performance profiles measure the production protocol, so verify mode

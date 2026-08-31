@@ -278,6 +278,11 @@ function imageRoots(view: AppView): string[] {
 }
 
 if (!process.env.VITEST) {
+  // Electron derives userData from XDG_CONFIG_HOME only on Linux, so on macOS
+  // every unpackaged instance shares ~/Library/Application Support/Electron —
+  // including the single-instance lock, which makes concurrent test scenarios
+  // quit each other. The harness names an isolated directory directly.
+  if (process.env.STRATAMD_USER_DATA) app.setPath('userData', process.env.STRATAMD_USER_DATA)
   installFailureLogging()
   installOpenFileQueue()
   void createStrataApplication({
