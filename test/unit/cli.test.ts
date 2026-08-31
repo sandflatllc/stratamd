@@ -438,15 +438,16 @@ describe('command parsing and output', () => {
 
 describe('XDG paths', () => {
   it('uses XDG_RUNTIME_DIR when absolute and the private cache fallback otherwise', () => {
+    // socketPathForEnvironment answers for the host platform; the full
+    // per-platform matrix lives in test/unit/platform-paths.test.ts.
+    const fallback = process.platform === 'darwin'
+      ? '/home/me/Library/Caches/StrataMD/run/stratamd.sock'
+      : '/home/me/.cache/stratamd/run/stratamd.sock'
     expect(socketPathForEnvironment({ XDG_RUNTIME_DIR: '/run/user/1000' }, '/home/me')).toBe(
       '/run/user/1000/stratamd.sock'
     )
-    expect(socketPathForEnvironment({}, '/home/me')).toBe(
-      '/home/me/.cache/stratamd/run/stratamd.sock'
-    )
-    expect(socketPathForEnvironment({ XDG_RUNTIME_DIR: 'relative' }, '/home/me')).toBe(
-      '/home/me/.cache/stratamd/run/stratamd.sock'
-    )
+    expect(socketPathForEnvironment({}, '/home/me')).toBe(fallback)
+    expect(socketPathForEnvironment({ XDG_RUNTIME_DIR: 'relative' }, '/home/me')).toBe(fallback)
   })
 })
 
@@ -457,6 +458,7 @@ describe('local setup', () => {
     const data = join(home, 'data')
     const executable = join(process.cwd(), 'bin', 'stratamd')
     const options = {
+      platform: 'linux',
       home,
       executable,
       environment: { HOME: home, XDG_DATA_HOME: data, XDG_CONFIG_HOME: join(home, 'config') },
@@ -529,6 +531,7 @@ describe('local setup', () => {
       return { status: 0, stdout: '', stderr: '' }
     }
     const options = {
+      platform: 'linux',
       home,
       executable: join(process.cwd(), 'bin', 'stratamd'),
       environment: {
@@ -570,6 +573,7 @@ describe('local setup', () => {
       return { status: 0, stdout: '', stderr: '' }
     }
     const options = {
+      platform: 'linux',
       home,
       executable: join(process.cwd(), 'bin', 'stratamd'),
       environment: { HOME: home, XDG_DATA_HOME: join(home, 'data'), XDG_CONFIG_HOME: config },
@@ -586,5 +590,34 @@ describe('local setup', () => {
     expect(await readFile(mimeapps, 'utf8')).toBe(
       '[Default Applications]\ntext/markdown=fallback.desktop;\ntext/plain=text.desktop;\n'
     )
+  })
+
+  it('on macOS manages only the PATH link and prints the Finder steps for defaults', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'stratamd-setup-mac-'))
+    temporaryDirectories.push(home)
+    const notices: string[] = []
+    const options = {
+      platform: 'darwin',
+      home,
+      executable: join(process.cwd(), 'bin', 'stratamd'),
+      environment: { HOME: home, PATH: '/usr/bin:/bin' },
+      // Any command invocation on macOS would be a bug; there is no desktop machinery.
+      commandRunner: (() => { throw new Error('setup must not run commands on macOS') }) satisfies SetupCommandRunner,
+      report: (text: string) => { notices.push(text) },
+    }
+
+    await setup(options)
+    await setup(options)
+    const { readlink, stat } = await import('node:fs/promises')
+    expect(await readlink(join(home, '.local', 'bin', 'stratamd'))).toBe(options.executable)
+    await expect(stat(join(home, 'data', 'applications', 'stratamd.desktop'))).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(notices.join('')).toContain('.local/bin is not on your PATH')
+
+    notices.length = 0
+    await setup({ ...options, makeDefault: true })
+    expect(notices.join('')).toContain('Change All')
+
+    await setup({ ...options, remove: true })
+    await expect(stat(join(home, '.local', 'bin', 'stratamd'))).rejects.toMatchObject({ code: 'ENOENT' })
   })
 })

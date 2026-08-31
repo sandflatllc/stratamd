@@ -63,6 +63,15 @@ async function storedApplication(store: GhostStore, path: string): Promise<Store
   }
 }
 
+/**
+ * /proc-visible descriptor counts are the Linux leak check; other hosts have
+ * no /proc, so count assertions expect zero there and the portable check is
+ * that closing the document succeeds (mac-plan §4.9).
+ */
+function trackedCount(count: number): number {
+  return process.platform === 'linux' ? count : 0
+}
+
 async function trackedDescriptors(path: string): Promise<string[]> {
   if (process.platform !== 'linux') return []
   const descriptors = await readdir('/proc/self/fd')
@@ -443,7 +452,7 @@ describe('StrataApplication', () => {
       attachments: { ag_move: expect.objectContaining({ id: 'ag_move' }) },
     })
     expect(await store.hasDocument(path)).toBe(false)
-    expect(await trackedDescriptors(moved)).toHaveLength(1)
+    expect(await trackedDescriptors(moved)).toHaveLength(trackedCount(1))
 
     await expect(app.closeDocument(moved)).resolves.toBe('closed')
     expect(await trackedDescriptors(moved)).toEqual([])
@@ -456,7 +465,7 @@ describe('StrataApplication', () => {
     await value.app.openDocument(value.path)
     await value.app.updateBuffer(value.path, '# Save then move\n\nEdited.\n')
     await value.app.save(value.path)
-    expect(await trackedDescriptors(value.path)).toHaveLength(1)
+    expect(await trackedDescriptors(value.path)).toHaveLength(trackedCount(1))
 
     await rename(value.path, moved)
     await value.app.recheckFocused()
@@ -468,7 +477,7 @@ describe('StrataApplication', () => {
     })
     expect(await value.store.loadMeta(moved)).toMatchObject({ realpath: moved })
     expect(await trackedDescriptors(value.path)).toEqual([])
-    expect(await trackedDescriptors(moved)).toHaveLength(1)
+    expect(await trackedDescriptors(moved)).toHaveLength(trackedCount(1))
     await expect(value.app.closeDocument(moved)).resolves.toBe('closed')
     expect(await trackedDescriptors(moved)).toEqual([])
   })
@@ -494,12 +503,12 @@ describe('StrataApplication', () => {
       realpath: path,
       attachments: { ag_delete: expect.objectContaining({ id: 'ag_delete' }) },
     })
-    expect(await trackedDescriptors(path)).toHaveLength(1)
+    expect(await trackedDescriptors(path)).toHaveLength(trackedCount(1))
 
     await app.save(path)
     expect(await readFile(path, 'utf8')).toBe(shadow)
     expect((await app.getState()).activeDocument).toMatchObject({ deleted: false })
-    expect(await trackedDescriptors(path)).toHaveLength(1)
+    expect(await trackedDescriptors(path)).toHaveLength(trackedCount(1))
     await expect(app.closeDocument(path)).resolves.toBe('closed')
     expect(await trackedDescriptors(path)).toEqual([])
   })

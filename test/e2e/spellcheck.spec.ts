@@ -16,6 +16,9 @@ import { primaryKey, save, selectVisualEditorRange, Scenario } from './harness'
  * machine that has none.
  */
 async function seedDictionaries(scenario: Scenario): Promise<void> {
+  // macOS spellchecks through the native engine; there are no Hunspell
+  // dictionaries to seed (mac-plan §4.8).
+  if (process.platform === 'darwin') return
   const candidates = [
     process.env.STRATAMD_SPELL_DICTIONARIES,
     join(homedir(), '.config/stratamd/Dictionaries'),

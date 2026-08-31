@@ -17,6 +17,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The spellcheck e2e spec seeds Hunspell dictionaries from the profile;
+      # a fresh runner has none, so fetch en-US through Electron's own path.
+      - run: xvfb-run --auto-servernum npx electron scripts/fetch-spell-dictionary.mjs
       - run: xvfb-run --auto-servernum pnpm check
       - run: xvfb-run --auto-servernum pnpm test:packaged
 
