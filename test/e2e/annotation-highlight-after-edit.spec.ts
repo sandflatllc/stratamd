@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { cp, mkdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario, projectRoot } from './harness'
+import { Scenario, lineStartKey, projectRoot } from './harness'
 
 const clip = (value: string | null | undefined): string => value ? `${value.slice(0, 40)}...${value.slice(-24)}` : String(value)
 const norm = (value: string): string => value.replace(/\s+/g, ' ').trim()
@@ -37,7 +37,7 @@ async function run(testInfo: import('@playwright/test').TestInfo, typeFirst: str
     if (typeFirst) {
       const point = await caretAt((blocks) => blocks.find((el) => el.tagName === 'P')!)
       await page.mouse.click(point.x, point.y)
-      await page.keyboard.press('Home')
+      await page.keyboard.press(lineStartKey)
       await page.keyboard.type(typeFirst)
       await page.waitForTimeout(800)
       log(`typed ${typeFirst.length} chars at the start of the first paragraph`)

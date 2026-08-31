@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, resolve } from 'node:path'
 import { open, realpath, stat, type FileHandle } from 'node:fs/promises'
+import { pathForDescriptor } from '../platform/descriptor-path'
 import type {
   AgentIdentity,
   AnnotationView,
@@ -2669,9 +2670,10 @@ async function openTrackedDocument(path: string): Promise<{
 }
 
 async function pathForTrackedDocument(session: OpenDocumentSession): Promise<string | null> {
-  if (process.platform !== 'linux' || !session.documentHandle) return null
+  if (!session.documentHandle) return null
   try {
-    const candidate = await realpath(`/proc/self/fd/${session.documentHandle.fd}`)
+    const candidate = await pathForDescriptor(session.documentHandle.fd)
+    if (!candidate) return null
     const [handleInfo, candidateInfo] = await Promise.all([
       session.documentHandle.stat({ bigint: true }),
       stat(candidate, { bigint: true }),

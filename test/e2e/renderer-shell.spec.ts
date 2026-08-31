@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { spawn } from 'node:child_process'
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario, mainEntry, projectRoot, setSource } from './harness'
+import { launchArgs, Scenario, mainEntry, projectRoot, setSource } from './harness'
 
 test('blank shell opens the first document from the explorer and drag and drop', async ({}, testInfo) => {
   const value = await Scenario.create(testInfo, '# First document\n\nOpen from the shell.\n', 'first.md')
@@ -119,6 +119,7 @@ test('socket open recreates the BrowserWindow after the last window closes', asy
 })
 
 test('second-instance path launch recreates the BrowserWindow', async ({}, testInfo) => {
+  test.setTimeout(60_000)
   const value = await Scenario.create(testInfo, '# First\n', 'first.md')
   const second = join(dirname(value.file), 'second.md')
   await writeFile(second, '# Second\n')
@@ -128,15 +129,25 @@ test('second-instance path launch recreates the BrowserWindow', async ({}, testI
     await page.close()
     await expect.poll(() => value.app!.windows().length).toBe(0)
     const opened = value.app!.waitForEvent('window')
-    const child = spawn(executable, ['--ozone-platform=x11', mainEntry, second], {
+    const child = spawn(executable, [...launchArgs, mainEntry, second], {
       cwd: projectRoot,
       env: value.env,
     })
-    await new Promise<void>((resolveChild, rejectChild) => {
+    let childOutput = ''
+    child.stdout?.setEncoding('utf8')
+    child.stderr?.setEncoding('utf8')
+    child.stdout?.on('data', (chunk: string) => { childOutput += chunk })
+    child.stderr?.on('data', (chunk: string) => { childOutput += chunk })
+    const childExit = await new Promise<number | null>((resolveChild, rejectChild) => {
       child.once('error', rejectChild)
-      child.once('close', () => resolveChild())
+      child.once('close', (code) => resolveChild(code))
     })
-    const replacement = await opened
+    const replacement = await Promise.race([
+      opened,
+      new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error(
+        `No replacement window arrived. Second instance exited ${childExit}. Output:\n${childOutput}`,
+      )), 30_000)),
+    ])
     await replacement.waitForLoadState('domcontentloaded')
     await expect(replacement.getByText('second.md', { exact: false }).first()).toBeVisible()
   } finally {

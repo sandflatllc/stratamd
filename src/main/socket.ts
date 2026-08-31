@@ -12,8 +12,8 @@ import {
   type CommandResponse,
   type SocketCommandHandler
 } from '../cli/protocol.js'
-import { socketPathForEnvironment } from '../cli/socket-client.js'
-import { peerUidFromSocket } from './peer-credentials.js'
+import { getSocketLocation } from '../platform/paths.js'
+import { peerUidFromSocket } from '../platform/unix-support.js'
 
 export interface CommandSocketServerOptions {
   handler: SocketCommandHandler
@@ -149,17 +149,14 @@ function rejectPeer(socket: Socket, message: string): void {
 export async function createCommandSocketServer(
   options: CommandSocketServerOptions
 ): Promise<CommandSocketServer> {
-  const path = options.socketPath ?? socketPathForEnvironment()
+  const location = getSocketLocation()
+  const path = options.socketPath ?? location.path
   const uid = options.uid ?? process.getuid?.()
   if (!Number.isSafeInteger(uid) || uid! < 0) {
-    throw new Error('StrataMD requires a Linux process uid for its command socket')
+    throw new Error('StrataMD requires a Unix process uid for its command socket')
   }
   const maxBytes = options.maxRequestBytes ?? MAX_REQUEST_BYTES
-  await prepareSocketPath(
-    path,
-    uid,
-    options.socketPath === undefined && !process.env.XDG_RUNTIME_DIR?.startsWith('/')
-  )
+  await prepareSocketPath(path, uid, options.socketPath === undefined && location.ownedParent)
 
   const connections = new Set<Socket>()
 
@@ -170,7 +167,7 @@ export async function createCommandSocketServer(
     try {
       const observed = (options.getPeerUid ?? peerUidFromSocket)(socket)
       if (!Number.isSafeInteger(observed) || observed! < 0) {
-        throw new Error('SO_PEERCRED did not return a uid')
+        throw new Error('Peer credentials did not include a uid')
       }
       peerUid = observed!
     } catch {

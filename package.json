@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
-  "description": "A local Linux markdown editor for working with AI agents",
+  "description": "A local markdown editor for working with AI agents",
   "type": "module",
   "main": "./out/main/index.js",
   "bin": {
     "stratamd": "./bin/stratamd"
   },
   "scripts": {
-    "build:native": "node-gyp rebuild --directory native/peercred",
+    "build:native": "node-gyp rebuild --directory native/unix-support",
     "dev": "pnpm build:native && electron-vite dev",
     "build": "pnpm build:native && electron-vite build",
     "preview": "electron-vite preview",
@@ -28,7 +28,9 @@
     "perf:check": "STRATAMD_PERF_ENFORCE=1 pnpm perf:smoke",
     "check": "pnpm typecheck && pnpm test && pnpm test:e2e",
     "build:linux": "pnpm build && electron-builder --linux dir",
-    "test:packaged": "pnpm build:linux && STRATAMD_PACKAGED_ROOT=dist/linux-unpacked vitest run test/integration/packaged-cli.test.ts"
+    "build:mac": "pnpm build && node scripts/mac-icon.mjs && electron-builder --mac dir",
+    "build:packaged": "node scripts/build-packaged.mjs",
+    "test:packaged": "pnpm build:packaged && STRATAMD_PACKAGED_TEST=1 vitest run test/integration/packaged-cli.test.ts"
   },
   "engines": {
     "node": ">=22"
@@ -48,21 +50,43 @@
         "to": "resources"
       },
       {
-        "from": "native/peercred/build/Release/peercred.node",
-        "to": "peercred.node"
+        "from": "native/unix-support/build/Release/unix_support.node",
+        "to": "unix-support.node"
       }
     ],
-    "extraFiles": [
+    "fileAssociations": [
       {
-        "from": "bin/stratamd",
-        "to": "stratamd"
+        "ext": ["md", "markdown"],
+        "name": "Markdown document",
+        "role": "Editor",
+        "rank": "Alternate"
       }
     ],
     "linux": {
       "target": ["dir"],
       "category": "Utility",
       "icon": "resources/stratamd-icon.svg",
-      "executableName": "stratamd-app"
+      "executableName": "stratamd-app",
+      "extraFiles": [
+        {
+          "from": "bin/stratamd",
+          "to": "stratamd"
+        }
+      ]
+    },
+    "mac": {
+      "target": ["dir"],
+      "category": "public.app-category.productivity",
+      "icon": "resources/stratamd.icns",
+      "minimumSystemVersion": "13.0",
+      "hardenedRuntime": false,
+      "identity": null,
+      "extraResources": [
+        {
+          "from": "bin/stratamd",
+          "to": "bin/stratamd"
+        }
+      ]
     }
   },
   "dependencies": {

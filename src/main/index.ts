@@ -2,8 +2,9 @@ import { join, dirname } from 'node:path'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu } from 'electron'
 import type { AppView, StrataApi } from '../shared/contracts'
 import { createStrataApplication } from './application'
+import { buildApplicationMenu } from './application-menu'
 import { logError, logWarn } from './log'
-import { isAllowedExternalUrl, openWithXdg, registerStrataIpc, spellingContext, type RegisteredIpc } from './ipc'
+import { isAllowedExternalUrl, openExternalUrl, registerStrataIpc, spellingContext, type RegisteredIpc } from './ipc'
 import { IPC } from '../preload/channels'
 import { documentPathsFromArgv } from './session'
 import { APP_HOST, installAppProtocol, installLocalImageProtocol, registerPrivilegedSchemes } from './protocols'
@@ -25,6 +26,28 @@ export interface StartMainOptions {
 }
 
 registerPrivilegedSchemes()
+
+/**
+ * Finder opens arrive as `open-file` events, possibly before initialization
+ * finishes (docs/plans/open/mac-plan.md §4.5). The listener must exist before
+ * anything awaits, so bootstrap installs it synchronously; paths queue until
+ * startStrataMain adopts them into the same path command opens use.
+ */
+const pendingOpenFiles: string[] = []
+let openFileHandler: ((path: string) => void) | null = null
+
+export function installOpenFileQueue(): void {
+  app.on('open-file', (event, path) => {
+    event.preventDefault()
+    if (openFileHandler) openFileHandler(path)
+    else pendingOpenFiles.push(path)
+  })
+}
+
+function adoptOpenFileHandler(handler: (path: string) => void): void {
+  openFileHandler = handler
+  for (const path of pendingOpenFiles.splice(0)) handler(path)
+}
 
 /**
  * Failure recording and bounded recovery (docs/plans/completed/crash-hardening-plan.md §6).
@@ -85,8 +108,9 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
   }
 
   await app.whenReady()
-  // Zoom is per pane in the renderer (PRD §6.9); the default menu's window zoom roles must not exist.
-  Menu.setApplicationMenu(null)
+  // Zoom is per pane in the renderer (PRD §6.9); the default menu's window
+  // zoom roles must not exist. Linux keeps no menu; macOS gets the minimal one.
+  Menu.setApplicationMenu(buildApplicationMenu())
   installAppProtocol({ rendererRoot, ...(options.devServerUrl ? { devServerUrl: options.devServerUrl } : {}) })
   installLocalImageProtocol({
     allowedRoots: async () => {
@@ -214,6 +238,9 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
 
   mainWindow = await ensureWindow()
   await openLaunchDocuments(options.argv ?? process.argv.slice(1))
+  adoptOpenFileHandler((path) => {
+    void options.api.openDocument(path).then(showAndFocus)
+  })
 
   app.on('activate', () => {
     void showAndFocus()
@@ -227,7 +254,7 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
   return mainWindow
 }
 
-export function hardenWindow(window: BrowserWindow, openExternal = openWithXdg): void {
+export function hardenWindow(window: BrowserWindow, openExternal = openExternalUrl): void {
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) void openExternal(url).catch(() => undefined)
     return { action: 'deny' }
@@ -251,7 +278,13 @@ function imageRoots(view: AppView): string[] {
 }
 
 if (!process.env.VITEST) {
+  // Electron derives userData from XDG_CONFIG_HOME only on Linux, so on macOS
+  // every unpackaged instance shares ~/Library/Application Support/Electron —
+  // including the single-instance lock, which makes concurrent test scenarios
+  // quit each other. The harness names an isolated directory directly.
+  if (process.env.STRATAMD_USER_DATA) app.setPath('userData', process.env.STRATAMD_USER_DATA)
   installFailureLogging()
+  installOpenFileQueue()
   void createStrataApplication({
     clipboardWrite: async (text) => clipboard.writeText(text),
     selectFolder: async () => {

@@ -16,6 +16,7 @@ import { Toast } from './components/Toast'
 import { TopBar } from './components/TopBar'
 import { ambientStyles, clampPanelSize, clampThemePanel, EMPTY_VIEW, hasUnsavedCounted, isZoomed, pendingCount, rendererThemeStyle, stepZoom, type NumericPanelKey } from './model'
 import { flushPendingBuffer, peekPendingBuffer, setPendingBuffer } from './pendingBuffer'
+import { hasPrimaryModifier } from '../shared/primary-modifier'
 
 interface AppProps { createEditor: RendererEditorFactory }
 
@@ -102,6 +103,8 @@ export function App({ createEditor }: AppProps) {
     let wheelPane: PaneId | null = null
     let wheelTotal = 0
     const wheel = (event: WheelEvent) => {
+      // ctrlKey on a wheel event is the zoom gesture on every platform:
+      // Chromium synthesizes it for trackpad pinches, including on macOS.
       if (!event.ctrlKey) return
       event.preventDefault()
       const pane = paneOf(event.target)
@@ -115,7 +118,7 @@ export function App({ createEditor }: AppProps) {
       wheelTotal = 0
     }
     const key = (event: KeyboardEvent) => {
-      if (!event.ctrlKey || event.altKey) return
+      if (!hasPrimaryModifier(event) || event.altKey) return
       const direction = event.key === '=' || event.key === '+' ? 1 : event.key === '-' || event.key === '_' ? -1 : 0
       if (direction === 0) return
       event.preventDefault()
@@ -233,13 +236,13 @@ export function App({ createEditor }: AppProps) {
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (!document) return
-      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !composer) {
+      if (event.key === 'Enter' && hasPrimaryModifier(event) && !composer) {
         event.preventDefault()
         void perform(openComposer)
-      } else if (event.key.toLowerCase() === 's' && (event.ctrlKey || event.metaKey)) {
+      } else if (event.key.toLowerCase() === 's' && hasPrimaryModifier(event)) {
         event.preventDefault()
         void perform(saveDocument, document.pendingHunks.length > 0 ? `Saved. ${document.pendingHunks.length} change${document.pendingHunks.length === 1 ? '' : 's'} still waiting for review.` : 'Saved.')
-      } else if (event.key === '/' && (event.ctrlKey || event.metaKey)) {
+      } else if (event.key === '/' && hasPrimaryModifier(event)) {
         event.preventDefault()
         if (document.sourceOnly) report('This document can only open in source view.')
         else void perform(() => window.strata.setSourceMode(document.path, !document.sourceMode))

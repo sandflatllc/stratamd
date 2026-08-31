@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario, setSource } from './harness'
+import { Scenario, primaryKey, setSource } from './harness'
 
 const DOCUMENT = `---
 owner: me
@@ -89,7 +89,7 @@ test('populated renderer preserves the handoff tokens, controls, and motion poli
     await expect(page.locator('.strata-source-frontmatter')).toContainText('owner: me')
     await expect(page.locator('.strata-source-layer')).toHaveCSS('animation-name', 'slide-a')
     await page.screenshot({ path: testInfo.outputPath('handoff-source-review.png'), fullPage: true })
-    await page.keyboard.press('Control+/')
+    await page.keyboard.press(primaryKey('/'))
     await expect(page.getByRole('textbox', { name: /source editor/i })).toBeHidden()
     await expect(page.locator('.ProseMirror')).toBeVisible()
     await expect(page.getByRole('button', { name: /^Send(?:\b|$)/i })).toBeVisible()
@@ -138,8 +138,8 @@ test('populated renderer preserves the handoff tokens, controls, and motion poli
     expect(visual.animationStates).not.toContain('idle')
     expect(visual.send.backgroundImage).toContain('linear-gradient')
     expect(visual.keep.background).toBe('rgb(61, 201, 124)')
-    expect(visual.revert.borderColor).toBe('rgb(255, 92, 138)')
-    expect(visual.revert.color).toBe('rgb(255, 92, 138)')
+    expect(visual.revert.borderColor).toBe('rgb(255, 154, 146)')
+    expect(visual.revert.color).toBe('rgb(255, 154, 146)')
     expect(visual.keep.borderRadius).toBe('999px')
     expect(visual.keep.fontSize).toBe('12px')
     expect(Math.abs(visual.bold.top - visual.save.top)).toBeLessThan(8)
@@ -147,7 +147,7 @@ test('populated renderer preserves the handoff tokens, controls, and motion poli
     await page.locator('.strata-review-controls button:first-of-type').hover()
     await expect(page.locator('.strata-review-controls button:first-of-type')).not.toHaveCSS('box-shadow', 'none')
     await page.locator('.strata-review-controls button:last-of-type').hover()
-    await expect(page.locator('.strata-review-controls button:last-of-type')).toHaveCSS('background-color', /rgba\(255, 92, 138, 0\.15\)|color\(srgb 1 0\.36\d* 0\.54\d* \/ 0\.15\)/)
+    await expect(page.locator('.strata-review-controls button:last-of-type')).toHaveCSS('background-color', /rgba\(255, 154, 146, 0\.15\)|color\(srgb 1 0\.60\d* 0\.57\d* \/ 0\.15\)/)
     await page.locator('[data-task-checkbox="true"]').first().hover()
     await expect(page.locator('[data-task-checkbox="true"]').first()).not.toHaveCSS('transform', 'none')
     await expect(page.locator('.tool-bullet-list')).toHaveCSS('font-size', '17px')

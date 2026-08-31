@@ -1,0 +1,72 @@
+name: check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # pnpm's build-script approval does not reliably run electron's install
+      # script, which downloads the binary; run it explicitly so dist/ exists
+      # before anything depends on it.
+      - run: node node_modules/electron/install.js
+      # Ubuntu 24.04 runners restrict unprivileged user namespaces, so any
+      # Electron started outside Playwright (the dictionary fetch, the
+      # second-instance spec's direct spawn) needs the setuid sandbox helper
+      # configured; without this it dies with the SUID sandbox error.
+      - run: sudo chown root node_modules/electron/dist/chrome-sandbox
+      - run: sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+      # The spellcheck e2e spec seeds Hunspell dictionaries from the profile;
+      # a fresh runner has none, so fetch en-US through Electron's own path.
+      - run: xvfb-run --auto-servernum npx electron scripts/fetch-spell-dictionary.mjs
+      - run: xvfb-run --auto-servernum pnpm check
+      # `stratamd setup` registers desktop and MIME associations through
+      # update-desktop-database/update-mime-database; the runner image ships
+      # without them, so the packaged-CLI test's real setup run needs both.
+      - run: sudo apt-get install -y desktop-file-utils shared-mime-info
+      - run: xvfb-run --auto-servernum pnpm test:packaged
+
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node node_modules/electron/install.js
+      - run: pnpm check
+      - run: pnpm test:packaged
+      # Playwright traces and screenshots are the only way to see a Mac-only
+      # e2e failure without owning a Mac.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: mac-test-results
+          path: test-results/
+          retention-days: 7
+      # ditto keeps execute bits and bundle structure; upload-artifact alone
+      # strips permissions. The zip is what a tester downloads and dequarantines.
+      - run: ditto -c -k --keepParent dist/mac*/StrataMD.app StrataMD-mac.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StrataMD-mac
+          path: StrataMD-mac.zip
+          retention-days: 14

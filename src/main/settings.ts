@@ -1,6 +1,6 @@
-import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { readFile } from 'node:fs/promises'
+import { getConfigDirectory as getPlatformConfigDirectory } from '../platform/paths.js'
 import {
   atomicWriteFile,
   ensurePrivateDirectory,
@@ -91,16 +91,11 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   ambientMotion: true,
 })
 
-function configHome(env: StorageEnvironment, explicitHome?: string): string {
-  return explicitHome ?? env.HOME ?? homedir()
-}
-
 export function getConfigDirectory(
   env: StorageEnvironment = process.env,
   homeDirectory?: string,
 ): string {
-  const base = env.XDG_CONFIG_HOME || join(configHome(env, homeDirectory), '.config')
-  return join(base, 'stratamd')
+  return getPlatformConfigDirectory({ env, ...(homeDirectory ? { home: homeDirectory } : {}) })
 }
 
 export function getSettingsPath(

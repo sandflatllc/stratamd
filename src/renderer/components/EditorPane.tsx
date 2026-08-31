@@ -68,22 +68,48 @@ export function EditorPane(props: EditorPaneProps) {
   // suggestions land one IPC hop later and attach by exact word match.
   useEffect(() => window.strata.onSpelling?.(setSpelling), [])
   useEffect(() => { setBannerDismissed(false) }, [document.path, document.deleted, document.invalidUtf8])
-  // Runs after EditorMount's effect built the editor, so restored offsets are
-  // clamped against the real content height. Offsets are recorded live on
-  // scroll; teardown ordering would otherwise read a collapsed container.
+  // Offsets are recorded live on scroll; teardown ordering would otherwise
+  // read a collapsed container.
   useEffect(() => {
     const node = scroll.current
     if (!node) return
     const sourceNode = node.querySelector<HTMLTextAreaElement>('.strata-source-editor')
     const offsets = savedScroll.get(document.path) ?? { pane: 0, source: 0 }
     savedScroll.set(document.path, offsets)
+    // A rebuilt editor can still be filling in below this effect, in which
+    // case the browser clamps the restored offset against a short pane and it
+    // silently lands at 0. Reapply as the pane grows until the offset sticks;
+    // any real interaction means the user has taken over, so stop.
+    let restoreTarget: number | null = offsets.pane > 0 ? offsets.pane : null
+    const observer = new ResizeObserver(() => {
+      if (restoreTarget === null) return
+      node.scrollTop = restoreTarget
+      if (node.scrollTop >= restoreTarget) settle()
+    })
+    const settle = () => {
+      restoreTarget = null
+      observer.disconnect()
+      node.removeEventListener('wheel', settle)
+      node.removeEventListener('mousedown', settle)
+      node.removeEventListener('touchstart', settle)
+      node.removeEventListener('keydown', settle)
+    }
     node.scrollTop = offsets.pane
     if (sourceNode) sourceNode.scrollTop = offsets.source
-    const recordPane = () => { offsets.pane = node.scrollTop }
+    if (restoreTarget !== null && node.scrollTop >= restoreTarget) restoreTarget = null
+    if (restoreTarget !== null) {
+      for (const child of node.children) observer.observe(child)
+      node.addEventListener('wheel', settle, { passive: true })
+      node.addEventListener('mousedown', settle)
+      node.addEventListener('touchstart', settle, { passive: true })
+      node.addEventListener('keydown', settle)
+    }
+    const recordPane = () => { if (restoreTarget === null) offsets.pane = node.scrollTop }
     const recordSource = () => { if (sourceNode) offsets.source = sourceNode.scrollTop }
     node.addEventListener('scroll', recordPane, { passive: true })
     sourceNode?.addEventListener('scroll', recordSource, { passive: true })
     return () => {
+      settle()
       node.removeEventListener('scroll', recordPane)
       sourceNode?.removeEventListener('scroll', recordSource)
     }

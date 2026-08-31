@@ -1,0 +1,11 @@
+allowBuilds:
+  # The Electron binary (and its chrome-sandbox helper) downloads in the
+  # install script; skipping it leaves dist/ empty until first invocation,
+  # which broke CI's sandbox-helper configuration step.
+  electron: true
+  # File watching ships a prebuilt binary per platform; its install script picks one.
+  '@parcel/watcher': true
+  # electron-vite's bundler compiles a platform binary on install.
+  esbuild: true
+  # Windows installer tooling pulled in by electron-builder; StrataMD has no Windows target.
+  electron-winstaller: false

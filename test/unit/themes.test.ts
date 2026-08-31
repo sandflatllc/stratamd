@@ -236,8 +236,10 @@ describe('installed fonts', () => {
     expect(orderFontFamilies('Noto Sans,Noto Sans CJK\nBaloo 2\nAbel\nAbel\n\nZilla Slab')).toEqual(['Baloo 2', 'JetBrains Mono', 'Abel', 'Noto Sans', 'Zilla Slab'])
   })
 
-  it('falls back to the bundled families when fc-list is unavailable', async () => {
+  it('falls back to the bundled families when the platform font query is unavailable', async () => {
     expect(await listInstalledFonts(async () => { throw new Error('ENOENT') })).toEqual(['Baloo 2', 'JetBrains Mono'])
-    expect(await listInstalledFonts(async () => ({ stdout: 'Abel\n' }))).toEqual(['Baloo 2', 'JetBrains Mono', 'Abel'])
+    expect(await listInstalledFonts(async () => ({ stdout: 'Abel\n' }), 'linux')).toEqual(['Baloo 2', 'JetBrains Mono', 'Abel'])
+    const profiler = JSON.stringify({ SPFontsDataType: [{ typefaces: [{ family: 'Abel' }] }] })
+    expect(await listInstalledFonts(async () => ({ stdout: profiler }), 'darwin')).toEqual(['Baloo 2', 'JetBrains Mono', 'Abel'])
   })
 })

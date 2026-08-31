@@ -17,6 +17,8 @@ import {
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { getCliLinkPath } from '../platform/paths.js'
+import { isDarwin } from '../platform/runtime.js'
 import { CommandFailure } from './protocol.js'
 
 const MANAGED_MARKER = 'Managed by StrataMD setup'
@@ -284,6 +286,44 @@ export interface SetupOptions {
   home?: string
   executable?: string
   commandRunner?: SetupCommandRunner
+  platform?: string
+  report?: (text: string) => void | Promise<void>
+}
+
+/**
+ * macOS setup manages only the PATH link. Launch Services learns the document
+ * association from the .app bundle itself, and choosing the default app is a
+ * user action in Finder — a deliberate product difference from Linux, where a
+ * stable command can change and restore the default (mac-plan §4.3).
+ */
+async function setupDarwin(
+  options: SetupOptions,
+  environment: NodeJS.ProcessEnv,
+  home: string,
+  executable: string,
+): Promise<void> {
+  const report = options.report ?? (() => undefined)
+  const link = getCliLinkPath(home)
+
+  if (options.remove) {
+    await removeLink(link, executable)
+    return
+  }
+
+  await access(executable, constants.X_OK)
+  await installLink(link, executable)
+  const onPath = (environment.PATH ?? '').split(':').includes(dirname(link))
+  if (!onPath) {
+    await report(`${dirname(link)} is not on your PATH. Add it to your shell profile to run stratamd by name.\n`)
+  }
+  if (options.makeDefault) {
+    await report(
+      'StrataMD cannot change the default app for Markdown files on macOS. To finish:\n'
+      + '  1. In Finder, select any .md file and choose File > Get Info.\n'
+      + '  2. Under "Open with", choose StrataMD.\n'
+      + '  3. Click "Change All…" to apply it to every Markdown file.\n'
+    )
+  }
 }
 
 export async function setup(options: SetupOptions = {}): Promise<void> {
@@ -295,9 +335,12 @@ export async function setup(options: SetupOptions = {}): Promise<void> {
       ?? environment.STRATAMD_CLI_EXECUTABLE
       ?? join(root, 'bin', 'stratamd')
   )
+  if (options.platform ? options.platform === 'darwin' : isDarwin()) {
+    return setupDarwin(options, environment, home, executable)
+  }
   const userData = dataHome(environment, home)
   const runner = options.commandRunner ?? defaultCommandRunner
-  const link = join(home, '.local', 'bin', 'stratamd')
+  const link = getCliLinkPath(home)
   const desktop = join(userData, 'applications', 'stratamd.desktop')
   const icon = join(userData, 'icons', 'hicolor', 'scalable', 'apps', 'stratamd-icon.svg')
   const mime = join(userData, 'mime', 'packages', 'stratamd.xml')

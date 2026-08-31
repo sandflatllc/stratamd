@@ -8,7 +8,9 @@ coverage/
 playwright-report/
 test-results/
 .vite/
-native/peercred/build/
+native/unix-support/build/
+# Generated during build:mac from resources/stratamd-icon.svg; never checked in.
+resources/stratamd.icns
 *.log
 .env
 .env.*

@@ -19,14 +19,16 @@ interface ToolbarProps {
   onSave(): void
 }
 
+const PRIMARY = primaryModifierLabel()
+
 const tools: Array<{ command: EditorCommand; label: string; icon: string; shortcut?: string }> = [
-  { command: 'bold', label: 'Bold', icon: 'B', shortcut: 'Ctrl+B' },
-  { command: 'italic', label: 'Italic', icon: 'I', shortcut: 'Ctrl+I' },
-  { command: 'code', label: 'Code span', icon: '</>', shortcut: 'Ctrl+Shift+C' },
-  { command: 'link', label: 'Link', icon: 'a', shortcut: 'Ctrl+K' },
+  { command: 'bold', label: 'Bold', icon: 'B', shortcut: `${PRIMARY}+B` },
+  { command: 'italic', label: 'Italic', icon: 'I', shortcut: `${PRIMARY}+I` },
+  { command: 'code', label: 'Code span', icon: '</>', shortcut: `${PRIMARY}+Shift+C` },
+  { command: 'link', label: 'Link', icon: 'a', shortcut: `${PRIMARY}+K` },
   { command: 'strikethrough', label: 'Strikethrough', icon: 'S' },
-  { command: 'bullet-list', label: 'Bullet list', icon: '≔', shortcut: 'Ctrl+Shift+8' },
-  { command: 'ordered-list', label: 'Ordered list', icon: '1.', shortcut: 'Ctrl+Shift+7' },
+  { command: 'bullet-list', label: 'Bullet list', icon: '≔', shortcut: `${PRIMARY}+Shift+8` },
+  { command: 'ordered-list', label: 'Ordered list', icon: '1.', shortcut: `${PRIMARY}+Shift+7` },
   { command: 'task-list', label: 'Task list', icon: '☑' },
   { command: 'blockquote', label: 'Blockquote', icon: '❝' },
   { command: 'table', label: 'Table', icon: '⊞' },
@@ -130,7 +132,7 @@ export function Toolbar({ source, sourceOnly, readOnly, dirty, onCommand, onTogg
       {tools.slice(0, 4).map(renderTool)}
       <span className="toolbar-divider" aria-hidden="true" />
       <details className="heading-menu">
-        <summary aria-label="Heading level" title="Heading level · Ctrl+1…6">H</summary>
+        <summary aria-label="Heading level" title={`Heading level · ${PRIMARY}+1…6`}>H</summary>
         <div role="menu" aria-label="Heading levels">
           <button type="button" role="menuitem" disabled={readOnly || source} onClick={(event) => chooseBlockStyle(event, 'paragraph')}>Paragraph</button>
           {[1, 2, 3, 4, 5, 6].map((level) => <button type="button" role="menuitem" disabled={readOnly || source} key={level} onClick={(event) => chooseBlockStyle(event, `heading-${level}` as EditorCommand)}>Heading {level}</button>)}
@@ -138,9 +140,10 @@ export function Toolbar({ source, sourceOnly, readOnly, dirty, onCommand, onTogg
       </details>
       {tools.slice(4).map(renderTool)}
       <div className="toolbar-spacer" />
-      <button type="button" className={`source-toggle ${source ? 'active' : ''}`} disabled={sourceOnly} title={sourceOnly ? 'This document can only open in source view' : 'Source view · Ctrl+/'} onClick={onToggleSource}>{'{ }'} source</button>
+      <button type="button" className={`source-toggle ${source ? 'active' : ''}`} disabled={sourceOnly} title={sourceOnly ? 'This document can only open in source view' : `Source view · ${PRIMARY}+/`} onClick={onToggleSource}>{'{ }'} source</button>
       <button type="button" className="save-button" data-dirty={dirty} disabled={readOnly} onClick={onSave}>{dirty ? 'Save' : 'Saved'}</button>
     </div>
   )
 }
 import type { MouseEvent } from 'react'
+import { primaryModifierLabel } from '../../shared/primary-modifier'

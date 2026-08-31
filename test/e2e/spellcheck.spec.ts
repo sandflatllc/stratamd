@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { copyFile, mkdir, readdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { save, selectVisualEditorRange, Scenario } from './harness'
+import { primaryKey, save, selectVisualEditorRange, Scenario } from './harness'
 
 // The annotate menu's spelling column (docs/plans/completed/spellcheck-plan.md): Electron
 // detects and suggests, the pill renders, a click corrects through the normal
@@ -16,6 +16,9 @@ import { save, selectVisualEditorRange, Scenario } from './harness'
  * machine that has none.
  */
 async function seedDictionaries(scenario: Scenario): Promise<void> {
+  // macOS spellchecks through the native engine; there are no Hunspell
+  // dictionaries to seed (mac-plan §4.8).
+  if (process.platform === 'darwin') return
   const candidates = [
     process.env.STRATAMD_SPELL_DICTIONARIES,
     join(homedir(), '.config/stratamd/Dictionaries'),
@@ -123,9 +126,9 @@ test('right-click corrects a misspelling through the annotate menu and learns ne
     await scenario.waitForBuffer(corrected)
 
     // The correction is one normal edit step for undo, redo, and save.
-    await page.keyboard.press('Control+z')
+    await page.keyboard.press(primaryKey('z'))
     await scenario.waitForBuffer(sample)
-    await page.keyboard.press('Control+Shift+z')
+    await page.keyboard.press(primaryKey('Shift+z'))
     await scenario.waitForBuffer(corrected)
     await save(page)
     await expect.poll(() => readFile(scenario.file, 'utf8')).toBe(corrected)
