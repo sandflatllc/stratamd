@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="resources/stratamd-logo.svg" width="460" alt="StrataMD — the folded-S mark beside the StrataMD wordmark">
+  <img src="resources/readme/wordmark.svg" width="430" alt="StrataMD — the folded-S icon and wordmark in a white pill">
 </p>
 
 <p align="center"><b>StrataMD makes reading what your agents write suck less.</b></p>
