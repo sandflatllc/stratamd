@@ -22,6 +22,20 @@ export function isAnnotationDismissKey(key: string): boolean {
   return key === 'Escape'
 }
 
+/**
+ * True when the keystroke is headed into a text field outside the editor, which
+ * owns its letters (the thread-panel reply, the send note). The editor's own
+ * surfaces — the visual editor and the source textarea — keep the pill's
+ * advertised C/Q/S keys.
+ */
+function claimedByTextField(target: EventTarget | null): boolean {
+  if (!(target instanceof Element) || target.closest('[data-prosemirror-host]')) return false
+  return target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement
+    || (target instanceof HTMLElement && target.isContentEditable)
+}
+
 export function AnnotationComposer({ selection, spelling, size, zoom, onSize, onDismiss, onSubmit, onReplaceWord, onAddToDictionary }: AnnotationComposerProps) {
   const [kind, setKind] = useState<AnnotationKind | null>(null)
   const [text, setText] = useState('')
@@ -39,6 +53,10 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
         return
       }
       if (kind) return
+      // Bare letters only: Ctrl+C over the selection is the platform copy and
+      // Ctrl+S the save, never the pill's hotkeys.
+      if (event.ctrlKey || event.metaKey || event.altKey) return
+      if (claimedByTextField(event.target)) return
       const next = event.key.toLowerCase()
       if (next === 'c' || next === 'q' || next === 's') {
         if (next === 's' && !selection.singleBlock) return
