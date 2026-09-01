@@ -15,13 +15,13 @@
 
 Markdown sucks to read! Built-in Markdown readers make it worse. But trusting an agent to write a good plan without checking it is a huge gamble.
 
-Agents misunderstand requirements. They add architecture the project doesn't need, remove things nobody asked them to touch, and confidently plan around the wrong idea. The faster you can spot that, the less time you spend fixing mistakes.
+Agents misunderstand requirements. They add architecture the project doesn't need, remove things nobody asked them to touch, and spend far too much time planning around the wrong idea. The faster you can spot that, the less time you spend fixing mistakes.
 
 **StrataMD** is a visual Markdown editor for people who work and plan with AI agents. It makes agent-written documents easier to skim, gives you a precise way to respond inside them, and lets the agents you already use join the document when you want them there.
 
 [![StrataMD showing three agents reviewing a plan with saved and unsaved changes, annotations, suggestions, and a queued update](docs/screenshots/product/states/hero-active-review.png)](docs/screenshots/product/states/hero-active-review.png)
 
-*Screenshots open at their full captured resolution.*
+
 
 <img src="resources/readme/divider.svg" width="100%" alt="">
 
@@ -185,7 +185,7 @@ Markdown that the visual editor cannot safely represent, such as frontmatter, HT
 
 ## Trying StrataMD
 
-StrataMD runs on Linux (built from source) and on Macs running macOS 13 or newer (a download). Windows support is planned, but it is not available yet.
+StrataMD is primarily a Linux app and builds from source. A macOS 13 or newer build is available as a `.zip` download. StrataMD also runs on Windows through WSL, but no native Windows port is planned.
 
 If you want to try it on Linux, give your agent a link to this repository and ask it to install StrataMD and add the bundled skill. That is probably easier than walking through the setup yourself.
 
