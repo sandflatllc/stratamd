@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import type { DocumentTabView } from '../../shared/contracts'
 import { AGENT_COLORS, textColorFor } from '../model'
 import { Logo } from './Logo'
 import { primaryModifierLabel } from '../../shared/primary-modifier'
+import { PathContextMenu, type PathContextMenuState } from './PathContextMenu'
 
 interface TopBarProps {
   tabs: DocumentTabView[]
@@ -13,6 +14,7 @@ interface TopBarProps {
   pendingUnsaved: boolean
   onOpenTab(path: string): void
   onCloseTab(tab: DocumentTabView): void
+  onCopyPath(path: string): void
   onSend(): void
   onCopy(): void
   zoomed: boolean
@@ -20,9 +22,16 @@ interface TopBarProps {
   onOpenTheme(): void
 }
 
-export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onSend, onCopy, zoomed, onResetZoom, onOpenTheme }: TopBarProps) {
+export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onSend, onCopy, zoomed, onResetZoom, onOpenTheme }: TopBarProps) {
   const tabStrip = useRef<HTMLDivElement>(null)
+  const [menu, setMenu] = useState<PathContextMenuState | null>(null)
   const activePath = tabs.find((tab) => tab.active)?.path
+  const openMenu = (event: ReactMouseEvent, path: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setMenu({ x: event.clientX, y: event.clientY, path })
+  }
+  const closeMenu = () => setMenu(null)
   useEffect(() => {
     tabStrip.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [activePath])
@@ -47,6 +56,7 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
             key={tab.path}
             title={tab.name}
             onClick={() => onOpenTab(tab.path)}
+            onContextMenu={(event) => openMenu(event, tab.path)}
           >
             <span className="tab-name">{tab.name}</span>
             {tab.dirty && <span className="tab-dirty-dot" aria-label="Unsaved changes" title="Unsaved changes" />}
@@ -68,6 +78,7 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
           </button>
         ))}
       </div>
+      {menu && <PathContextMenu menu={menu} onCopyPath={onCopyPath} onClose={closeMenu} />}
       <div className="topbar-spacer" />
       <button type="button" className="text-action theme-button" onClick={onOpenTheme}>Theme</button>
       {zoomed && <button type="button" className="text-action reset-zoom" onClick={onResetZoom}>Reset zoom</button>}

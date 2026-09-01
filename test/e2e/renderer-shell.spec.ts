@@ -49,7 +49,7 @@ test('blank shell opens the first document from the explorer and drag and drop',
   }
 })
 
-test('explorer root shows parent/name with a full-path tooltip and copies paths from a right-click menu', async ({}, testInfo) => {
+test('explorer and document tabs copy full paths from a right-click menu', async ({}, testInfo) => {
   const value = await Scenario.create(testInfo, '# Paths\n\nCopy me.\n', 'paths.md')
   const folder = dirname(value.file)
   const segments = folder.split('/').filter(Boolean)
@@ -67,6 +67,13 @@ test('explorer root shows parent/name with a full-path tooltip and copies paths 
     await expect(page.getByRole('menuitem', { name: 'Copy full path' })).toBeHidden()
 
     await page.getByRole('button', { name: /paths\.md/i }).click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Copy full path' }).click()
+    await expect.poll(() => value.app!.evaluate(({ clipboard }) => clipboard.readText())).toBe(value.file)
+
+    await page.getByRole('button', { name: /paths\.md/i }).click()
+    await value.app!.evaluate(({ clipboard }) => clipboard.writeText('sentinel'))
+    const tab = page.getByRole('tab', { name: /paths\.md/i })
+    await tab.click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Copy full path' }).click()
     await expect.poll(() => value.app!.evaluate(({ clipboard }) => clipboard.readText())).toBe(value.file)
   } finally {

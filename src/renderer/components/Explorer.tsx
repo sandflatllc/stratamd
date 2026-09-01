@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react'
+import { useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react'
 import type { ExplorerFileView, ExplorerFolderView } from '../../shared/contracts'
 import { explorerTree, type ExplorerTreeNode } from '../model'
 import { AmbientDecor } from './AmbientDecor'
+import { PathContextMenu, type PathContextMenuState } from './PathContextMenu'
 
 interface ExplorerProps {
   folders: ExplorerFolderView[]
@@ -21,32 +22,6 @@ export function rootFolderLabel(path: string): { parent: string; name: string } 
   const name = parts.at(-1) ?? path
   const parent = parts.at(-2)
   return { parent: parent === undefined ? '' : `${parent}/`, name }
-}
-
-interface ContextMenuState { x: number; y: number; path: string }
-
-function ContextMenu({ menu, onCopyPath, onClose }: { menu: ContextMenuState; onCopyPath(path: string): void; onClose(): void }) {
-  const root = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    root.current?.querySelector('button')?.focus()
-    const away = (event: Event) => { if (!root.current?.contains(event.target as Node)) onClose() }
-    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
-    window.addEventListener('pointerdown', away, true)
-    window.addEventListener('contextmenu', away, true)
-    window.addEventListener('keydown', key)
-    window.addEventListener('blur', onClose)
-    return () => {
-      window.removeEventListener('pointerdown', away, true)
-      window.removeEventListener('contextmenu', away, true)
-      window.removeEventListener('keydown', key)
-      window.removeEventListener('blur', onClose)
-    }
-  }, [onClose])
-  return (
-    <div ref={root} className="context-menu" role="menu" style={{ left: menu.x, top: menu.y }}>
-      <button type="button" role="menuitem" onClick={() => { onCopyPath(menu.path); onClose() }}>Copy full path</button>
-    </div>
-  )
 }
 
 function FileRow({ file, depth, activePath, onOpen, onForget, onContextMenu }: {
@@ -123,7 +98,7 @@ function Subtree({ node, depth, activePath, toggled, onToggle, onOpen, onForget,
 
 export function Explorer({ folders, activePath, scanning, onOpen, onScan, onRefresh, onAddFolder, onForget, onCopyPath }: ExplorerProps) {
   const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set())
-  const [menu, setMenu] = useState<ContextMenuState | null>(null)
+  const [menu, setMenu] = useState<PathContextMenuState | null>(null)
   const openMenu = (event: ReactMouseEvent, path: string) => {
     event.preventDefault()
     event.stopPropagation()
@@ -161,7 +136,7 @@ export function Explorer({ folders, activePath, scanning, onOpen, onScan, onRefr
         <button type="button" className="add-folder" onClick={onAddFolder}>+ Add folder</button>
       </div>
       <div className="explorer-spacer" />
-      {menu && <ContextMenu menu={menu} onCopyPath={onCopyPath} onClose={closeMenu} />}
+      {menu && <PathContextMenu menu={menu} onCopyPath={onCopyPath} onClose={closeMenu} />}
       <div className="explorer-note">{scanning ? 'Scanning markdown files…' : files.length > 0 ? `Ghosts up to date · ${files.length} file${files.length === 1 ? '' : 's'}${missing ? ` · ${missing} missing` : ''}` : '0 markdown files'}</div>
     </aside>
   )
