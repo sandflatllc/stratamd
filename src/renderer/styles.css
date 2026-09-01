@@ -170,14 +170,17 @@ button:disabled { opacity: .42; cursor: not-allowed; }
 .logo-pill { display: flex; align-items: center; border: 1px solid var(--brand-border); border-radius: 999px; padding: 4px 13px; background: var(--brand-surface); box-shadow: 0 10px 30px -14px color-mix(in srgb, var(--surfaces-window) 60%, transparent); }
 .stratamd-logo { display: block; width: 112px; height: auto; }
 .strata-loader { display: block; width: 72px; height: 72px; object-fit: contain; }
-.tabs { display: flex; min-width: 0; gap: 8px; overflow: hidden; }
-.tab { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 8px 13px 8px 20px; background: var(--card); color: var(--dim); font-size: 15px; font-weight: 800; cursor: pointer; transition: all .2s cubic-bezier(.34,1.56,.64,1); }
+/* Padding and matching negative margins keep the hover lift and active shadow inside the clip box. */
+.tabs { display: flex; min-width: 0; gap: 8px; overflow-x: auto; overflow-y: hidden; padding: 4px 4px 12px; margin: -4px -4px -12px; }
+.tabs::-webkit-scrollbar { height: 6px; }
+.tab { display: flex; flex: 0 0 auto; align-items: center; max-width: 220px; border: 1px solid var(--line); border-radius: 999px; padding: 8px 13px 8px 20px; background: var(--card); color: var(--dim); font-size: 15px; font-weight: 800; white-space: nowrap; cursor: pointer; transition: all .2s cubic-bezier(.34,1.56,.64,1); }
+.tab-name { overflow: hidden; text-overflow: ellipsis; }
 .tab:hover { transform: translateY(-2px); }
 .tab:active { transform: scale(.96); }
 .tab-active { border-color: var(--surfaces-overlay); background: var(--surfaces-overlay); color: var(--surfaces-overlay-text); box-shadow: 0 8px 24px -8px color-mix(in srgb, var(--surfaces-overlay) 35%, transparent); }
-.tab-badge { margin-left: 7px; border-radius: 999px; padding: 1px 9px; background: var(--controls-selected); color: var(--controls-selected-text); font-size: 12px; }
-.tab-dirty-dot { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--controls-warning); }
-.tab-close { margin-left: 6px; border-radius: 50%; padding: 0 6px; color: var(--dim); }
+.tab-badge { flex-shrink: 0; margin-left: 7px; border-radius: 999px; padding: 1px 9px; background: var(--controls-selected); color: var(--controls-selected-text); font-size: 12px; }
+.tab-dirty-dot { display: inline-block; flex-shrink: 0; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--controls-warning); }
+.tab-close { flex-shrink: 0; margin-left: 6px; border-radius: 50%; padding: 0 6px; color: var(--dim); }
 .tab-close:hover { color: var(--controls-danger); background: color-mix(in srgb, var(--controls-danger) 20%, transparent); }
 .tab-close:active { transform: scale(.82); }
 .topbar-spacer, .toolbar-spacer, .explorer-spacer { flex: 1; }

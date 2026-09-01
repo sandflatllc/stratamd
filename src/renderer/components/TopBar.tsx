@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import type { DocumentTabView } from '../../shared/contracts'
 import { AGENT_COLORS, textColorFor } from '../model'
 import { Logo } from './Logo'
@@ -20,10 +21,23 @@ interface TopBarProps {
 }
 
 export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onSend, onCopy, zoomed, onResetZoom, onOpenTheme }: TopBarProps) {
+  const tabStrip = useRef<HTMLDivElement>(null)
+  const activePath = tabs.find((tab) => tab.active)?.path
+  useEffect(() => {
+    tabStrip.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [activePath])
   return (
     <header className="topbar">
       <Logo />
-      <div className="tabs" role="tablist" aria-label="Open documents">
+      <div
+        className="tabs"
+        role="tablist"
+        aria-label="Open documents"
+        ref={tabStrip}
+        onWheel={(event) => {
+          if (event.deltaY !== 0 && event.deltaX === 0) event.currentTarget.scrollLeft += event.deltaY
+        }}
+      >
         {tabs.map((tab) => (
           <button
             type="button"
@@ -31,9 +45,10 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
             aria-selected={tab.active}
             className={`tab ${tab.active ? 'tab-active' : ''}`}
             key={tab.path}
+            title={tab.name}
             onClick={() => onOpenTab(tab.path)}
           >
-            <span>{tab.name}</span>
+            <span className="tab-name">{tab.name}</span>
             {tab.dirty && <span className="tab-dirty-dot" aria-label="Unsaved changes" title="Unsaved changes" />}
             {tab.pendingCount > 0 && <span className="tab-badge" style={tab.pendingColor ? { background: AGENT_COLORS[tab.pendingColor], color: textColorFor(AGENT_COLORS[tab.pendingColor]) } : undefined}>{tab.pendingCount}</span>}
             <span
