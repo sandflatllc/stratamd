@@ -56,6 +56,9 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
             key={tab.path}
             title={tab.name}
             onClick={() => onOpenTab(tab.path)}
+            // A middle click closes the tab; its mousedown default would start autoscroll.
+            onMouseDown={(event) => { if (event.button === 1) event.preventDefault() }}
+            onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); onCloseTab(tab) } }}
             onContextMenu={(event) => openMenu(event, tab.path)}
           >
             <span className="tab-name">{tab.name}</span>
@@ -82,7 +85,7 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
       <div className="topbar-spacer" />
       <button type="button" className="text-action theme-button" onClick={onOpenTheme}>Theme</button>
       {zoomed && <button type="button" className="text-action reset-zoom" onClick={onResetZoom}>Reset zoom</button>}
-      <span className="pending-status" data-unsaved={pendingUnsaved}>{pending} pending</span>
+      <span className="pending-status" data-unsaved={pendingUnsaved} title="Next change · F7. Previous change · Shift+F7">{pending} pending</span>
       <kbd>{primaryModifierLabel()}+Enter</kbd>
       {hasAgents ? (
         <button type="button" className="send-button" data-enabled={canSend} onClick={onSend} disabled={!canSend}>Send ↗</button>

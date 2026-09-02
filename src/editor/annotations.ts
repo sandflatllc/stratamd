@@ -1,6 +1,7 @@
 import type { Node as ProseMirrorNode } from 'prosemirror-model'
 import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from 'prosemirror-state'
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view'
+import { reviewControlLabel } from './review.js'
 
 export type AnnotationKind = 'comment' | 'question' | 'suggestion'
 export type AnnotationStatus = 'open' | 'resolved' | 'orphaned'
@@ -35,6 +36,8 @@ interface AnnotationPluginState {
   active: string | null
   /** A handle drag in progress; the range it previews replaces the stored one until release. */
   adjusting: AnnotationAdjustment | null
+  /** The annotation briefly ringed after a jump; a decoration so a redraw keeps it. */
+  flashing: string | null
   decorations: DecorationSet
 }
 
@@ -50,6 +53,7 @@ const annotationKey = new PluginKey<AnnotationPluginState>('stratamd-annotations
 const annotationMeta = 'stratamd-annotation-ranges'
 const activeMeta = 'stratamd-annotation-active'
 const adjustMeta = 'stratamd-annotation-adjust'
+const flashMeta = 'stratamd-annotation-flash'
 
 export const ANNOTATION_HANDLE_CLASS = 'strata-annotation-handle'
 
@@ -101,6 +105,7 @@ function annotationDecorations(
   actions: AnnotationActions,
   active: string | null = null,
   adjusting: AnnotationAdjustment | null = null,
+  flashing: string | null = null,
 ): DecorationSet {
   const decorations: Decoration[] = []
   const ranges = adjusting
@@ -113,7 +118,7 @@ function annotationDecorations(
     const depth = visible.filter((other) => other.id !== range.id && other.from <= from && other.to >= to).length
     const isActive = range.id === active
     const attrs: Record<string, string> = {
-      class: `strata-annotation strata-annotation-${range.kind} strata-annotation-depth-${Math.min(depth, 5)}${range.kind === 'suggestion' ? ' strata-suggestion-deletion' : ''}${isActive ? ' is-active' : ''}${adjusting?.id === range.id ? ' is-adjusting' : ''}`,
+      class: `strata-annotation strata-annotation-${range.kind} strata-annotation-depth-${Math.min(depth, 5)}${range.kind === 'suggestion' ? ' strata-suggestion-deletion' : ''}${isActive ? ' is-active' : ''}${adjusting?.id === range.id ? ' is-adjusting' : ''}${range.id === flashing ? ' is-flashing' : ''}`,
       'data-annotation-id': range.id,
       'data-annotation-author': range.author,
     }
@@ -159,7 +164,7 @@ function annotationDecorations(
           const button = document.createElement('button')
           button.type = 'button'
           button.textContent = label
-          button.setAttribute('aria-label', `${label} suggestion ${range.id}`)
+          button.setAttribute('aria-label', reviewControlLabel(label, 'suggestion', range.author, presentation.replacementText || presentation.deletedText))
           if (callback) button.addEventListener('click', () => callback(range.id))
           controls.append(button)
         }
@@ -178,6 +183,7 @@ export function createAnnotationPlugin(initialRanges: readonly AnnotationRange[]
         ranges: initialRanges,
         active: null,
         adjusting: null,
+        flashing: null,
         decorations: annotationDecorations(state.doc, initialRanges, actions),
       }),
       apply(transaction, value, _oldState, newState) {
@@ -199,11 +205,14 @@ export function createAnnotationPlugin(initialRanges: readonly AnnotationRange[]
           }
         }
         if (active !== null && !ranges.some((range) => range.id === active && range.status === 'open')) adjusting = null
+        const flash = transaction.getMeta(flashMeta) as { id: string | null } | undefined
+        const flashing = flash ? flash.id : value.flashing
         return {
           ranges,
           active,
           adjusting,
-          decorations: annotationDecorations(newState.doc, ranges, actions, active, adjusting),
+          flashing,
+          decorations: annotationDecorations(newState.doc, ranges, actions, active, adjusting, flashing),
         }
       },
     },
@@ -398,4 +407,9 @@ export function anchorContext(text: string, from: number, to: number): Annotatio
     prefix: text.slice(Math.max(0, from - 32), from),
     suffix: text.slice(to, Math.min(text.length, to + 32)),
   }
+}
+
+/** Rings one annotation (null clears); the class rides on the decoration so a redraw keeps it. */
+export function setAnnotationFlash(transaction: Transaction, id: string | null): Transaction {
+  return transaction.setMeta(flashMeta, { id }).setMeta('addToHistory', false)
 }

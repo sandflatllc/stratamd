@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import type { AgentIdentity, AnnotationView, PanelSize } from '../../shared/contracts'
-import { AGENT_COLORS, THREAD_PANEL_LIMITS, USER_ANNOTATION_COLOR } from '../model'
+import { absoluteTime, AGENT_COLORS, THREAD_PANEL_LIMITS, threadTime, USER_ANNOTATION_COLOR } from '../model'
 import { InlineMarkdown } from '../inlineMarkdown'
+import { useClock } from '../useClock'
+import { claimEscape, isEscapeClaimed } from '../escape'
 
 // The one thread surface (PRD §6.9): a floating, movable, user-resizable panel
 // on the theme-panel pattern, opened beside the annotated span by rail rows and
@@ -17,6 +19,8 @@ export interface SpanAnchor {
 
 interface ThreadPanelProps {
   annotation: AnnotationView
+  /** Keys the reply draft, so a draft survives closing and reopening the thread while the app runs. */
+  documentPath: string
   /** Client coordinates of the annotated span at open time; null for orphans. */
   anchor: SpanAnchor | null
   /** Where an orphan opens when the panel has not been opened this session. */
@@ -27,11 +31,21 @@ interface ThreadPanelProps {
   onSize(size: PanelSize, commit: boolean): void
   onReply(text: string): void
   onResolve(): void
+  /** Accept or reject an open suggestion from the thread (PRD §6.5). */
+  onAccept(): void
+  onReject(): void
   onClose(): void
 }
 
 /** The panel's most recent position this session; runtime state, never persisted. */
 let lastSessionPosition: { x: number; y: number } | null = null
+
+/** Unsent replies per thread, kept while the app runs (PRD §6.9 drafts). */
+const replyDrafts = new Map<string, string>()
+
+export function replyDraftKey(documentPath: string, annotationId: string): string {
+  return `${documentPath}\n${annotationId}`
+}
 
 function clampToViewport(x: number, y: number, width: number, height: number): { x: number; y: number } {
   return {
@@ -64,14 +78,39 @@ function authorColor(author: 'user' | AgentIdentity): string {
   return author === 'user' ? USER_ANNOTATION_COLOR : AGENT_COLORS[author.color]
 }
 
-export function ThreadPanel({ annotation, anchor, fallbackCenter, size, zoom, onSize, onReply, onResolve, onClose }: ThreadPanelProps) {
-  const [reply, setReply] = useState('')
+function ThreadTime({ time, now }: { time: number | undefined; now: number }) {
+  const relative = threadTime(time, now)
+  if (!relative) return null
+  return <time className="thread-time" dateTime={new Date(time!).toISOString()} title={absoluteTime(time!)}>{relative}</time>
+}
+
+export function ThreadPanel({ annotation, documentPath, anchor, fallbackCenter, size, zoom, onSize, onReply, onResolve, onAccept, onReject, onClose }: ThreadPanelProps) {
+  const draftKey = replyDraftKey(documentPath, annotation.id)
+  const [reply, setReply] = useState(() => replyDrafts.get(draftKey) ?? '')
   const [position, setPosition] = useState(() => initialPosition(anchor, size.width, fallbackCenter))
   const root = useRef<HTMLElement>(null)
+  const now = useClock()
 
   useEffect(() => {
     lastSessionPosition = position
   }, [position])
+
+  useEffect(() => {
+    if (reply) replyDrafts.set(draftKey, reply)
+    else replyDrafts.delete(draftKey)
+  }, [draftKey, reply])
+
+  // Escape closes the panel unless a surface above it (the annotate menu, the
+  // find bar, a dialog, the theme panel) already claimed the key.
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || isEscapeClaimed(event)) return
+      claimEscape(event)
+      onClose()
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [onClose])
 
   // Once rendered, re-clamp with the real height (the estimate opens tall threads too low).
   useLayoutEffect(() => {
@@ -132,6 +171,7 @@ export function ThreadPanel({ annotation, anchor, fallbackCenter, size, zoom, on
   }
 
   const orphaned = annotation.status === 'orphaned'
+  const openSuggestion = annotation.kind === 'suggestion' && annotation.status === 'open'
   const style: CSSProperties = {
     left: position.x,
     top: position.y,
@@ -145,6 +185,7 @@ export function ThreadPanel({ annotation, anchor, fallbackCenter, size, zoom, on
         <span className={`annotation-chip chip-${orphaned ? 'orphaned' : annotation.kind}`} title={orphaned ? 'The text this was attached to was removed' : undefined}>
           {orphaned ? 'text removed' : annotation.kind} · {authorName(annotation.author)}
         </span>
+        <ThreadTime time={annotation.createdAt} now={now} />
         <button type="button" className="popover-close" aria-label="Close thread" onClick={onClose}>×</button>
       </header>
       <div className="thread-panel-scroll">
@@ -156,15 +197,34 @@ export function ThreadPanel({ annotation, anchor, fallbackCenter, size, zoom, on
         <p><InlineMarkdown text={annotation.text} /></p>
         {annotation.replies.map((item) => (
           <div className="reply" style={{ borderColor: authorColor(item.author) }} key={item.id}>
-            <strong style={{ color: authorColor(item.author) }}>{authorName(item.author)}</strong>
+            <strong style={{ color: authorColor(item.author) }}>{authorName(item.author)}<ThreadTime time={item.createdAt} now={now} /></strong>
             <span><InlineMarkdown text={item.text} /></span>
           </div>
         ))}
       </div>
       <div className="reply-box">
-        <input value={reply} onChange={(event) => setReply(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submit() }} placeholder="Reply…" aria-label="Reply" />
+        <textarea
+          rows={1}
+          value={reply}
+          onChange={(event) => setReply(event.target.value)}
+          onKeyDown={(event) => {
+            // Enter sends; Shift+Enter makes a new line.
+            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+              event.preventDefault()
+              submit()
+            }
+          }}
+          placeholder="Reply… (Shift+Enter for a new line)"
+          aria-label="Reply"
+        />
         <button type="button" aria-label="Send reply" onClick={submit}>↵</button>
       </div>
+      {openSuggestion && (
+        <div className="thread-panel-actions">
+          <button type="button" className="keep-button" onClick={onAccept}>Accept</button>
+          <button type="button" className="revert-button" onClick={onReject}>Reject</button>
+        </div>
+      )}
       {annotation.status !== 'resolved' && <button type="button" className="resolve-button" onClick={onResolve}>✓ Resolve thread</button>}
       <button type="button" className="thread-panel-resize" aria-label="Resize thread panel" onPointerDown={startResize} />
     </section>

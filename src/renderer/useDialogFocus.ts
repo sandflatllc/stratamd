@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react'
+import { claimEscape } from './escape'
 
 // An explicit tabindex="-1" opts an element out of the tab ring (the composer's
 // pointer-only resize handle); the trap must not wrap onto it.
@@ -29,7 +30,7 @@ export function useDialogFocus<T extends HTMLElement>(dialogRef: RefObject<T | n
 
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        event.preventDefault()
+        claimEscape(event)
         event.stopPropagation()
         escapeRef.current?.()
         return

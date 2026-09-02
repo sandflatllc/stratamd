@@ -230,12 +230,15 @@ export interface MirrorWriter {
 export interface DebouncedMirrorOptions {
   writer: MirrorWriter
   onWritten?: (content: string) => void
+  /** Called once per failed write; the content is retried on the next schedule or flush. */
+  onError?: (error: unknown, content: string) => void
   debounceMs?: number
 }
 
 export class DebouncedMirror {
   readonly #writer: MirrorWriter
   readonly #onWritten?: DebouncedMirrorOptions['onWritten']
+  readonly #onError?: DebouncedMirrorOptions['onError']
   readonly #debounceMs: number
   #timer: ReturnType<typeof setTimeout> | null = null
   #content: string | null = null
@@ -244,6 +247,7 @@ export class DebouncedMirror {
   constructor(options: DebouncedMirrorOptions) {
     this.#writer = options.writer
     this.#onWritten = options.onWritten
+    this.#onError = options.onError
     this.#debounceMs = options.debounceMs ?? 80
   }
 
@@ -252,7 +256,9 @@ export class DebouncedMirror {
     if (this.#timer) clearTimeout(this.#timer)
     this.#timer = setTimeout(() => {
       this.#timer = null
-      void this.flush()
+      // A failure here has already been reported through onError; the
+      // content stays queued for the next write.
+      this.flush().catch(() => {})
     }, this.#debounceMs)
   }
 
@@ -264,11 +270,18 @@ export class DebouncedMirror {
     const content = this.#content
     if (content === null) return this.#writeChain
     this.#content = null
-    this.#writeChain = this.#writeChain.then(async () => {
+    const attempt = this.#writeChain.then(async () => {
       await this.#writer.write(content)
       this.#onWritten?.(content)
     })
-    await this.#writeChain
+    // The chain itself never stays rejected: one failed write (a full disk,
+    // a permission change on the store) must not silence every later flush.
+    // The failed content is put back unless newer content has replaced it.
+    this.#writeChain = attempt.catch((error: unknown) => {
+      if (this.#content === null) this.#content = content
+      this.#onError?.(error, content)
+    })
+    await attempt
     if (this.#content !== null) await this.flush()
   }
 

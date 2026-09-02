@@ -75,6 +75,7 @@ function fakeApi(): StrataApi {
     setLead: vi.fn(async () => undefined),
     disconnectAgent: vi.fn(async () => undefined),
     addFolder: vi.fn(async () => undefined),
+    removeFolder: vi.fn(async () => undefined),
     scanFolder: vi.fn(async () => undefined),
     refreshExplorer: vi.fn(async () => undefined),
     forgetDocument: vi.fn(async () => undefined),

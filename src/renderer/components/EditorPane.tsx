@@ -3,9 +3,13 @@ import { createPortal } from 'react-dom'
 import type { AnnotationKind, AnnotationView, BufferOrigin, DocumentView, HunkView, PanelSize, RedoResult, SpellingContext, UndoResult } from '../../shared/contracts'
 import type { EditorSelection, RendererEditorFactory, RendererEditorHandle } from '../editorAdapter'
 import { bannerFor, currentAnnotation } from '../model'
+import { NO_MATCHES, type FindResult } from '../../editor/find'
+import { hasPrimaryModifier } from '../../shared/primary-modifier'
 import { AnnotationComposer } from './AnnotationComposer'
 import { AmbientDecor } from './AmbientDecor'
 import { EditorMount } from './EditorMount'
+import { FindBar } from './FindBar'
+import { ResolveSuggestionDialog } from './Overlays'
 import { Resizer } from './Resizer'
 import { ThreadPanel, type SpanAnchor } from './ThreadPanel'
 import { Toolbar, type EditorCommand } from './Toolbar'
@@ -57,6 +61,34 @@ export function EditorPane(props: EditorPaneProps) {
   const dismissedSelection = useRef<string | null>(null)
   const banner = bannerDismissed ? null : bannerFor(document)
   const selectedAnnotation = currentAnnotation(document, props.selectedAnnotation)
+  const [confirmResolve, setConfirmResolve] = useState(false)
+  // Find (PRD §6.1): the bar is pane state; the marks live in the editor.
+  const [find, setFind] = useState<{ open: boolean; query: string; focusToken: number }>({ open: false, query: '', focusToken: 0 })
+  const [findResult, setFindResult] = useState<FindResult>(NO_MATCHES)
+  const closeFind = () => {
+    setFind((state) => ({ ...state, open: false }))
+    editor.current?.closeFind?.()
+  }
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() === 'f' && hasPrimaryModifier(event) && !event.altKey && !event.shiftKey) {
+        if (globalThis.document.querySelector('[aria-modal="true"]')) return
+        event.preventDefault()
+        setFind((state) => ({ ...state, open: true, focusToken: state.focusToken + 1 }))
+      } else if (event.key === 'F3' && find.open) {
+        event.preventDefault()
+        setFindResult(editor.current?.findStep?.(event.shiftKey ? -1 : 1) ?? NO_MATCHES)
+      }
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [find.open])
+  // The query re-runs whenever the bar is open and the text, the view, or the query itself changes.
+  useEffect(() => {
+    if (!find.open) return
+    setFindResult(editor.current?.find?.(find.query) ?? NO_MATCHES)
+  }, [find.open, find.query, document.content, document.sourceMode])
+  useEffect(() => { setFind({ open: false, query: '', focusToken: 0 }); setFindResult(NO_MATCHES) }, [document.path])
   const command = (next: EditorCommand) => editor.current?.command?.(next)
   const dismissComposer = () => {
     dismissedSelection.current = selection ? `${selection.from}:${selection.to}` : null
@@ -122,6 +154,7 @@ export function EditorPane(props: EditorPaneProps) {
   // centered the span; a movable panel needs no live anchor tracking.
   const [thread, setThread] = useState<{ id: string; anchor: SpanAnchor | null; fallback: { x: number; y: number } } | null>(null)
   const selectedId = selectedAnnotation?.id ?? null
+  useEffect(() => { setConfirmResolve(false) }, [selectedId])
   useEffect(() => {
     if (selectedId === null) {
       setThread(null)
@@ -140,6 +173,16 @@ export function EditorPane(props: EditorPaneProps) {
     <main className="editor-island island" data-pane="editor" style={{ '--zoom': props.zoom } as CSSProperties}>
       <AmbientDecor variant="editor" />
       <Toolbar source={document.sourceMode} sourceOnly={document.sourceOnly} readOnly={document.readOnly} dirty={document.dirty} onCommand={command} onToggleSource={() => props.onToggleSource(!document.sourceMode)} onSave={props.onSave} />
+      {find.open && (
+        <FindBar
+          query={find.query}
+          result={findResult}
+          focusToken={find.focusToken}
+          onQuery={(query) => setFind((state) => ({ ...state, query }))}
+          onStep={(direction) => setFindResult(editor.current?.findStep?.(direction) ?? NO_MATCHES)}
+          onClose={closeFind}
+        />
+      )}
       {banner && (
         <div className={`banner banner-${banner.tone}`} role="status">
           <span>{banner.text}</span>
@@ -208,18 +251,30 @@ export function EditorPane(props: EditorPaneProps) {
         />
       </div>
       {selectedAnnotation && thread && thread.id === selectedAnnotation.id && createPortal(
-        <ThreadPanel
-          key={selectedAnnotation.id}
-          annotation={selectedAnnotation}
-          anchor={thread.anchor}
-          fallbackCenter={thread.fallback}
-          size={props.threadPanelSize}
-          zoom={props.zoom}
-          onSize={props.onThreadPanelSize}
-          onReply={(text) => props.onReply(selectedAnnotation.id, text)}
-          onResolve={() => props.onResolve(selectedAnnotation.id)}
-          onClose={() => props.onSelectAnnotation(null)}
-        />,
+        <>
+          <ThreadPanel
+            key={selectedAnnotation.id}
+            annotation={selectedAnnotation}
+            documentPath={document.path}
+            anchor={thread.anchor}
+            fallbackCenter={thread.fallback}
+            size={props.threadPanelSize}
+            zoom={props.zoom}
+            onSize={props.onThreadPanelSize}
+            onReply={(text) => props.onReply(selectedAnnotation.id, text)}
+            // Resolving an open suggestion is neither Accept nor Reject: confirm first (PRD §6.5).
+            onResolve={() => selectedAnnotation.kind === 'suggestion' && selectedAnnotation.status === 'open' ? setConfirmResolve(true) : props.onResolve(selectedAnnotation.id)}
+            onAccept={() => props.onAccept(selectedAnnotation.id)}
+            onReject={() => props.onReject(selectedAnnotation.id)}
+            onClose={() => props.onSelectAnnotation(null)}
+          />
+          {confirmResolve && (
+            <ResolveSuggestionDialog
+              onCancel={() => setConfirmResolve(false)}
+              onConfirm={() => { setConfirmResolve(false); props.onResolve(selectedAnnotation.id) }}
+            />
+          )}
+        </>,
         // The panel floats over every island; inside the editor island the
         // rail's own stacking context would paint on top of it.
         globalThis.document.querySelector('.app-shell') ?? globalThis.document.body,

@@ -13,6 +13,7 @@ References:
 - `AC` is the agent-collaboration suite in `test/e2e/agent-collaboration.spec.ts` (messages, the Lead, the review rail, the thread panel; cases specified in `docs/plans/completed/agent-collaboration-plan.md` §9).
 - `SH` is the seeding and save-history suite in `test/e2e/save-history.spec.ts` (cases specified in `docs/plans/completed/ghost-redesign-plan.md` §10).
 - `CC` is the crash-containment suite in `test/e2e/crash-containment.spec.ts` (cases specified in `docs/plans/completed/crash-hardening-plan.md` §9).
+- `FD` is the find suite in `test/e2e/find.spec.ts`; `SK` the shell-keyboard, notices, drafts, and explorer-folder suite in `test/e2e/shell-keyboard.spec.ts`; `RA` the review-actions suite in `test/e2e/review-actions.spec.ts`.
 - `U` means a focused Vitest test is required for pure state, parser, serializer, storage, or protocol behavior.
 - `E` means an additional Electron test is required beyond the 15 release scenarios.
 - `S` means a static source or build-policy check is required.
@@ -32,6 +33,8 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.1-06 | Save preserves untouched source bytes and rewrites the smallest grammar-safe region, including BOM, CRLF, whitespace, indentation, delimiter, wrap, and EOF conventions. | `A10`; `U` full construct/corpus round trip |
 | 6.1-07 | Save is same-directory atomic, preserves mode, hashes disk first, and resolves a race before writing. | `A05`; `U` atomic-save/mode faults |
 | 6.1-08 | Only Save writes the document; Save advances user ghost regions without accepting pending external regions. | `A04`, `A11`, `A15`; `U` save transition |
+| 6.1-09 | Ctrl/Cmd+F finds case-insensitively in both views with marked matches, a count, Enter/Shift+Enter and F3/Shift+F3 stepping, and Escape back to the editor. | `FD` both views; `U` find engine and plugin |
+| 6.1-10 | F7 / Shift+F7 step through pending hunks and open suggestions in document order with wrap-around. | `RA` stepping; `U` target order |
 | 6.2-01 | Shadow changes atomically and debounce-mirror to `buffer.md`; buffer writes merge into shadow without writing the document. | `A03`, `A04`, `A11`; `U` debounce/atomic mirror |
 | 6.2-02 | Every payload directs agents to the buffer; direct document writes become external review changes. | `E` payload guardrail and direct-write flow |
 | 6.2-03 | Own mirror and Save watcher events are ignored by content hash. | `A11`; `U` equal-hash suppression |
@@ -43,6 +46,7 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.2-09 | A stale whole-buffer write is a reversible external change, with no guessed three-way merge. | `E` stale-buffer flow |
 | 6.2-10 | A tag covers every external write until five idle minutes or a replacing tag, never retroactively, one segment per write; using it slides the window and an unused tag expires. | `U` fake-clock burst lifecycle |
 | 6.2-11 | Detection covers document and ghost directories, rename writes, all named reread triggers, and local filesystems only. | `A05`, `A08`; `U` watcher trigger matrix; `M` supported filesystems |
+| 6.2-12 | A failed buffer-mirror write is reported once, keeps its content queued for the next flush, and never leaves the write chain rejected for later flushes. | `U` DebouncedMirror recovery (`test/unit/session-watcher.test.ts`); integration mirror-failure banner clears on the next successful write (`test/integration/main-application.test.ts`) |
 | 6.3-01 | Every opened, scanned, or checkpointed document has a ghost; differences render inline or as review cards with author badges in both views. | `A03`, `A04`; `E` rendering matrix |
 | 6.3-02 | Open, Scan, and offline store creation seed from the document's current content; file checkpoint alone seeds from filtered Git HEAD, empty when absent from HEAD. | `U` ghost-seeding matrix (explorer, application) |
 | 6.3-02b | A pre-upgrade store with an empty ghost and non-empty document re-seeds from the document once at next open, keeping unsaved buffer work pending; a deliberate current-version empty ghost survives. | `U` marker lifecycle (storage, application) |
@@ -59,6 +63,7 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.4-02 | Scan seeds missing ghosts; Refresh discovers additions/removals. | `U` Scan/Refresh; `E` controls |
 | 6.4-03 | Directory checkpoint matches Scan and folders are not watched in the background. | `U` directory checkpoint/no-watch |
 | 6.4-04 | Roots start expanded and subfolders collapsed; root rows show `parent/name` with the name never elided and the full path as tooltip; right-click on any row offers Copy full path. | `RS` label/tooltip/context-menu clipboard |
+| 6.4-05 | Right-click on a root folder row offers Remove folder; the folder leaves the explorer and settings while its documents stay remembered. | `SK` remove folder |
 | 6.5-01 | Selection exposes C/Q/S, highlights quotes, and allows cross-block comment/question quotes. | `E` selection and keyboard flow |
 | 6.5-02 | CLI-created agent annotations have author badges and per-agent colors. | `E` agent annotation rendering |
 | 6.5-03 | Comments store free text. | `U` annotation kind cases |
@@ -73,6 +78,7 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.5-12 | Annotations live only in the ghost entry and never alter the document. | `A15`; `U` storage boundary |
 | 6.5-13 | Lead accept is external and Lead-tagged, leaves a pending hunk, moves no ghost, records the Lead as event actor, and never returns the event to the Lead; Revert of its hunk leaves the annotation resolved `accepted`. | `AC` Lead round; `U` actor-aware accept/reject/state transitions |
 | 6.5-14 | Any agent resolves only its own annotations; the Lead resolves anyone's; reply and resolve stay reachable for unresolved orphans. | `AC` orphan lifecycle; `U` resolve permission cases |
+| 6.5-15 | The thread panel offers Accept and Reject on an open suggestion, and Resolve on one confirms in plain words before hiding it unchanged. | `RA` thread panel suggestion |
 | 6.6-01 | Agents have independent baseline, queue, and cursor. | `A01`, `A14`, `A15`; `U` recipient isolation |
 | 6.6-02 | Attachments panel shows name, attach time, and waiting/working/pending state. | `E` panel state matrix |
 | 6.6-03 | Attachments persist, use configurable 24-hour default idle expiry, never expire with unacknowledged work, and receive closed after queued deliveries. | `A12`; `U` clock/closed ordering |
@@ -101,8 +107,9 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.7-12 | Oldest queued delivery wakes attach; baseline/cursor/queue move only after flushed output acknowledgment; unacknowledged id repeats. | `A02`, `A12`; `U` acknowledgment states |
 | 6.7-13 | Missing baseline snapshot returns full-buffer resync and sets current baseline. | `U` forced-GC resync |
 | 6.7-14 | Copy for agent has its own baseline, starts full, then incremental, moves only after clipboard success, and ignores Save. | `A13`; `U` clipboard failure |
-| 6.7-15 | A message queues, wakes a blocked attach, persists across restart, repeats until acknowledged, and its acknowledgment moves no baseline or cursor. | `AC` message round trip; `U` empty-range endpoints both queue orders |
-| 6.7-16 | One unacknowledged message per sender→recipient pair; multi-recipient send is all-or-nothing with nothing enqueued on failure. | `U` blocked-pair three-recipient case |
+| 6.7-19 | A message queues, wakes a blocked attach, persists across restart, repeats until acknowledged, and its acknowledgment moves no baseline or cursor. | `AC` message round trip; `U` empty-range endpoints both queue orders |
+| 6.7-20 | One unacknowledged message per sender→recipient pair; multi-recipient send is all-or-nothing with nothing enqueued on failure. | `U` blocked-pair three-recipient case |
+| 6.7-21 | A blocked attach registers its waker before it yields, so a delivery enqueued while the attach is persisting wakes it instead of waiting out the timeout. | `U` mid-persist message delivery (`test/integration/main-application.test.ts`) |
 | 6.8-01 | Executable/setup/remove/default behavior is repeatable per platform (Linux desktop entry, icon, and MIME; macOS link-only with the bundle association) and agent help is verbatim §7. | `S` verbatim help; `U` setup idempotence per platform; `M` desktop and Finder integration |
 | 6.8-02 | CLI runs as plain Node with `ELECTRON_RUN_AS_NODE=1`, not as a browser launch. | `S` bootstrap; `M` process check |
 | 6.8-03 | A generic harness needs only repeatable commands, stdout, and an id; timeout zero polls immediately. | `A01`, `A12` |
@@ -114,6 +121,13 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.8-09 | Stdout/stderr JSON, exit codes, UTF-8, and multiline stdin follow the protocol. | `U` CLI protocol matrix |
 | 6.8-10 | Sessions and ghost entries identify documents by realpath. | `A08`; `U` symlink identity |
 | 6.8-11 | Exit 3 covers every refused-by-state code with machine-readable detail; the six new verbs are online-only and never launch the app. | `U` exit-code and offline-refusal matrix |
+| 6.8-12 | Every command prints its result as one JSON object: `annotate` returns created ids, `reply` the reply id, `edit` the applied rows, the rest one-key objects, online and offline. | `U` `test/unit/cli.test.ts` "prints the result of every online command"; `test/integration/main-application.test.ts` "returns the created annotation ids and the reply id"; `test/integration/main-offline.test.ts` batch/reply results |
+| 6.8-13 | `docs` lists open documents with focus, dirty, and attachments; it is online-only and never launches the app. | `U` `test/integration/main-application.test.ts` "lists the open documents with focus, unsaved state, and attachments"; `test/unit/cli.test.ts` "never routes the online-only commands offline" |
+| 6.8-14 | `state` carries `open` and `theme` for open and closed documents; `--brief` drops document, text, annotations; `--text-only` drops document on `state` and `attach`. | `U` `test/integration/main-application.test.ts` "reports open, theme, and the brief and text-only views of state"; `test/unit/payload.test.ts` trim cases |
+| 6.8-15 | `edit` locates matches in the live shadow under annotate's rules, lands as a tagged pending hunk with the ghost unmoved after a mirror flush, fails atomically with excerpts and a hint, and rejects overlaps. | `U` `test/integration/main-application.test.ts` "applies an edit as the agent's pending hunk against the live buffer" and "refuses a stale or overlapping edit without changing anything" |
+| 6.8-16 | Identity: `--as`, else the harness id; only a first attach mints; other commands exit 1 with the pass-`--as` message. | `U` `test/unit/cli.test.ts` "requires a provable identity for every command except a first attach" |
+| 6.8-17 | Launch and offline fallback happen only on a failed connection; a timeout after the instance accepted the request exits 4 without a launch. | `U` `test/unit/cli.test.ts` "reports a stalled instance without launching a second one"; `test/integration/socket.test.ts` "distinguishes a stalled instance from an absent one" |
+| 6.8-18 | `MESSAGE_PENDING` names every blocked recipient and the unblocked ones; anchor failures on a Lead accept carry excerpts and a hint. | `U` `test/integration/main-application.test.ts` "allows one unacknowledged message per sender→recipient pair", "treats a multi-recipient send as all-or-nothing", "reports a moved suggestion on accept with excerpts and a hint" |
 | 6.9-01 | Handoff controls appearance and PRD controls behavior when they conflict. | `M` handoff screen/overlay comparison |
 | 6.9-02 | Renderer ports prototype markup, styling, and transitions into React/Tailwind with direct ProseMirror and main data. | `S` dependency/component boundaries; `M` prototype parity |
 | 6.9-03 | Native frame is on; drawn window controls are absent; toolbar remains in-window. | `S` BrowserWindow options; `E` shell |
@@ -128,6 +142,12 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.9-12 | Explorer, CLI, file manager, and drag/drop can open files. | `RS` explorer/drop; `A07` CLI; `M` file manager |
 | 6.9-13 | Both extensions are associated (Linux MIME database; macOS bundle declaration) and the default handler changes only by explicit owner action (`setup --default` on Linux; Finder steps it prints on macOS). | `U` generated entries and bundle configuration; `M` desktop database and Finder |
 | 6.9-14 | Keyboard reaches every review, annotation, composer, conflict, and banner control. | `SC` keyboard-only flows |
+| 6.9-15 | Ctrl/Cmd+W closes the active tab through the close confirmation; Ctrl+Tab / Ctrl+Shift+Tab and Ctrl/Cmd+PageDown / PageUp cycle tabs; middle click closes a tab. | `SK` tabs; `U` cycle order |
+| 6.9-16 | Error notices use the danger color and stay until dismissed or replaced by a newer error; a success never paints over one; successes clear themselves. | `SK` notices; `U` toast policy |
+| 6.9-17 | Composer note and item choices and thread reply drafts survive Escape, a stray click, and reopening; Escape closes only the topmost surface. | `SK` drafts; `U` draft store |
+| 6.9-18 | Non-inline suggestion rows carry Accept/Reject; a per-author Revert all confirms with count and author and reverts one hunk at a time; relative times refresh on a clock. | `RA` rail row and Revert all; `U` bulk groups |
+| 6.9-19 | Thread replies are multi-line (Enter sends, Shift+Enter breaks); entries show a relative time when the log records one. | `RA` reply box; `U` thread time |
+| 6.9-20 | Control names say action, author, and excerpt; conflict, explorer, and composer copy is plain; the empty agents panel copies a one-line attach prompt. | `RA` control names and composer heading; `SK` explorer note and prompt; `SC` conflict dialog |
 | 6.9-15 | XDG config/fallback persists every named setting. | `U` schema/path matrix; `SC` font/color/panel restart |
 | 6.9-16 | Explorer, editor, and right rail zoom text independently by hovered pane via Ctrl/Cmd+=/−/wheel within 0.5–2.0; window zoom is disabled; one `Reset zoom` text button restores 1.0 and appears only while zoomed. | `U` factor clamp/normalize; `SC` hover-targeted shortcuts, reset, restart |
 | 6.9-17 | Rail rows are compact maps: author/kind/two-line change rows, formatted snippets never raw syntax, plain-everyday copy per the v15 vocabulary with tooltips included and no file paths in rows, click centers the target with no new jump decoration. | `AC` review board; `E` copy strings |
@@ -144,6 +164,7 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.10-08 | Missing ghost-referenced file is struck through and retained until forgotten. | `U` scanner state; `EC` explorer/forget |
 | 6.10-09 | A pane failure shows the pane card with the rest of the window working; a root failure shows the window card; Reload restores from main with the newest keystrokes intact; each failure is recorded exactly once; uncatchable failures change no UI. | `CC` all three cases |
 | 6.10-10 | A renderer process death reloads the window once; a repeat within a minute closes it, and a window is recreated on the next launch or connection. | `S` gone-handler wiring; `RS` window recreation |
+| 6.10-11 | Mirror, watcher, and persist failures are logged and shown as a plain-language document banner that clears when the job next succeeds. | `U` banner copy per problem kind (`test/unit/renderer-model.test.ts`); integration `problems` view field |
 
 ## §6.11 state model
 
@@ -204,7 +225,7 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.13-03 | Every color in the app derives from theme tokens, attribution colors included. | `S` no color literal outside the token layer; `E` computed attribution colors |
 | 6.13-04 | Edits apply on the same frame and reach the file within a moment; the themes directory is watched; external writes apply live; a deleted active file keeps its values and is marked missing. | `E` fast path, own-write suppression, external reload, deletion |
 | 6.13-05 | The floating panel never dims the app, is movable and resizable with persisted geometry, edits only the active theme, and offers exactly Revert to when opened, New from this, Use default, Delete, rename. | `SC` panel geometry/restart, swatch to file, external highlight, revert |
-| 6.13-06 | `stratamd state` reports the active theme; `stratamd theme` prints set and default values with descriptions and problems, offline. | `A` CLI on a sparse file |
+| 6.13-06 | `stratamd state` reports the active theme; `stratamd theme` prints set and default values with descriptions and problems, offline. | `U` CLI on a sparse file |
 | 6.13-07 | Ambient background and window styles come from the animation handoff's eight options at two scales, colors mixed from accents, gated by the toggle and reduced motion. | `U` element counts per style/scale; `SC` style switch; `M` handoff parity |
 | 6.13-08 | Fonts list through the platform inventory (`fc-list` on Linux, the system font query on macOS) with the bundled fallback; no renderer permission is requested. | `U` parsing/fallback for both platforms' output; `E` permission denial unchanged |
 
@@ -228,6 +249,7 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 7-14 | Own edits return to their author only when external content is explicitly included. | `A14`; `U` author filter |
 | 7-15 | Explicit id wins; otherwise harness session id is stable or fresh; name precedence is explicit, `AI_AGENT`, then id. | `U` identity environment matrix |
 | 7-16 | Help documents send, lead, accept, reject, resolve, and save with the doorbell loop and Lead trigger wording; state lists attachments with states and the Lead. | `S` verbatim help; `AC` state discovery |
+| 7-17 | Help documents `superseded`, the exit-code table, repeated deliveries by `deliveryId`, `edit`, `docs`, `state --brief`, `--text-only`, and the identity rule. | `S` verbatim help (`test/unit/cli.test.ts` "prints section 7 verbatim") |
 
 ## §8 payload
 
@@ -243,8 +265,9 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 8-08 | Initial/resync/state/send/closed/changes render the specified body content. | `A01`, `A12`, `A14`; `U` render fixtures |
 | 8-09 | Annotation markers, suggestions, replies, resolutions, and literal-bracket escaping match the contract. | `U` payload rendering |
 | 8-10 | `edits` carries the recipient's verdicts with capped quotes; `partial` and its plain line appear exactly when content was left out; user segments never carry a tag. | `U` payload rendering, delivery filters |
-| 8-10 | Note/text limits are 64 KB; large document content is delivered without a size-triggered resync. | `U` boundary values; `E` large-document delivery |
+| 8-12 | Note/text limits are 64 KB; large document content is delivered without a size-triggered resync. | `U` boundary values; `E` large-document delivery |
 | 8-11 | Message payloads carry `from`, notes only, the documented `text` rendering, and the 4 KB note bound; `state` carries `attachments` for open documents only. | `U` message rendering and bounds; `AC` state field |
+| 8-13 | `open` on every `state`; `docs` event shape; `--text-only` and `--brief` omissions; the message guidance line points at `state --brief`. | `U` `test/unit/payload.test.ts` "trims a payload to the brief or text-only view" and message rendering; `test/integration/main-application.test.ts` state and docs cases |
 
 ## §9 files on disk
 

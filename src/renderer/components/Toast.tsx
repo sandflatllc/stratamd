@@ -1,13 +1,40 @@
 import { useEffect } from 'react'
+import { toastLifetime, type ToastState } from '../toasts'
+import { isEscapeClaimed } from '../escape'
 
-interface ToastProps { message: string; onDone(): void }
+interface ToastProps { toast: ToastState | null; onDone(): void }
 
-export function Toast({ message, onDone }: ToastProps) {
+/**
+ * One toast slot. A passing note clears itself; an error stays until the ×,
+ * Escape, or a newer error (PRD §6.9). Escape yields to any surface that
+ * already claimed the key, so it never closes two things at once.
+ */
+export function Toast({ toast, onDone }: ToastProps) {
   useEffect(() => {
-    if (!message) return
-    const timer = window.setTimeout(onDone, 2800)
+    if (!toast) return
+    const lifetime = toastLifetime(toast)
+    if (lifetime === null) return
+    const timer = window.setTimeout(onDone, lifetime)
     return () => window.clearTimeout(timer)
-  }, [message, onDone])
-  if (!message) return null
-  return <div className="toast" role="status"><i />{message}</div>
+  }, [toast, onDone])
+  useEffect(() => {
+    if (toast?.tone !== 'error') return
+    const key = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      // Surfaces above the toast claim Escape synchronously; check after they ran.
+      window.setTimeout(() => { if (!isEscapeClaimed(event)) onDone() }, 0)
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [toast, onDone])
+  if (!toast) return null
+  if (toast.tone === 'error') {
+    return (
+      <div className="toast toast-error" role="alert" key={toast.id}>
+        <i />{toast.message}
+        <button type="button" aria-label="Dismiss" onClick={onDone}>×</button>
+      </div>
+    )
+  }
+  return <div className="toast" role="status" key={toast.id}><i />{toast.message}</div>
 }

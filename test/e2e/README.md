@@ -12,7 +12,7 @@ The UI contract used by the suite is semantic:
 - visual contenteditable: `Document editor`
 - dialogs named by their visible headings
 - real buttons for Save, Send, Copy for agent, Keep, Revert, Accept, close-tab, recovery, and conflict actions
-- a labeled checkbox named `Include changes not made by me`
+- per-item checkboxes under the heading `Changes not made by you`
 
 These names follow the PRD and design handoff and make the same controls available to keyboard and assistive-technology users.
 

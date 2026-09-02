@@ -332,7 +332,7 @@ export async function save(page: Page): Promise<void> {
   await expect.poll(async () => {
     const saved = page.locator('.toast').filter({ hasText: /^Saved\./ })
     if (await saved.count()) return (await saved.first().textContent()) ?? ''
-    const conflict = page.getByRole('dialog', { name: /External write conflicts with your edits/i })
+    const conflict = page.getByRole('dialog', { name: /changed outside StrataMD while you were editing/i })
     return await conflict.count() ? 'conflict' : ''
   }).not.toBe('')
 }

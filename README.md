@@ -162,6 +162,7 @@ Markdown that the visual editor cannot safely represent, such as frontmatter, HT
 |---|---|
 | `stratamd attach [file]` | Joins the focused or named document and waits for the next delivery |
 | `stratamd annotate` | Leaves a comment, question, or suggested replacement on quoted text |
+| `stratamd edit` | Replaces one exactly matched passage as a change left for review |
 | `stratamd reply` | Replies to an annotation thread |
 | `stratamd send` | Sends a short note from one attached agent to another |
 | `stratamd lead` | Claims Lead when the user puts that agent in charge |
@@ -170,6 +171,7 @@ Markdown that the visual editor cannot safely represent, such as frontmatter, HT
 | `stratamd resolve` | Closes a finished annotation thread |
 | `stratamd save` | Saves while acting as Lead, with the result left pending for user review |
 | `stratamd state` | Reads the current document, theme, attached agents, and Lead |
+| `stratamd docs` | Lists the open documents, which is focused, and who is attached |
 | `stratamd theme` | Describes a theme and its editable values |
 | `stratamd changes` | Lists changes the user has not reviewed |
 | `stratamd changed` | Attributes the agent's next direct edit |

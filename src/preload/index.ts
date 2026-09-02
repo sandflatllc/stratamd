@@ -106,6 +106,7 @@ const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyn
   setLead: (path, agentId) => invoke<void>(IPC.setLead, path, agentId),
   disconnectAgent: (path, agentId) => invoke<void>(IPC.disconnectAgent, path, agentId),
   addFolder: () => invoke<void>(IPC.addFolder),
+  removeFolder: (path) => invoke<void>(IPC.removeFolder, path),
   scanFolder: (path) => invoke<void>(IPC.scanFolder, path),
   refreshExplorer: () => invoke<void>(IPC.refreshExplorer),
   forgetDocument: (path) => invoke<void>(IPC.forgetDocument, path),

@@ -4,9 +4,9 @@ import { join } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AGENT_HELP } from '../../src/cli/agent-help.js'
-import { deriveAgentId, runCli, type CliRuntime } from '../../src/cli/commands.js'
+import { deriveAgentId, runCli, sessionAgentId, type CliRuntime } from '../../src/cli/commands.js'
 import { PROTOCOL_VERSION, type CommandRequest, type CommandResponse } from '../../src/cli/protocol.js'
-import { SocketUnavailableError, socketPathForEnvironment } from '../../src/cli/socket-client.js'
+import { SocketTimeoutError, SocketUnavailableError, socketPathForEnvironment } from '../../src/cli/socket-client.js'
 import { setup, type SetupCommandRunner } from '../../src/cli/setup.js'
 
 const temporaryDirectories: string[] = []
@@ -64,6 +64,61 @@ describe('agent contract', () => {
     expect(first).toBe(deriveAgentId({ CLAUDE_CODE_SESSION_ID: 'session-secret' }))
     expect(first).toMatch(/^ag_[a-f0-9]{12}$/)
     expect(first).not.toContain('session-secret')
+    expect(sessionAgentId({ CLAUDE_CODE_SESSION_ID: 'session-secret' })).toBe(first)
+    expect(sessionAgentId({})).toBeUndefined()
+  })
+
+  it('requires a provable identity for every command except a first attach', async () => {
+    const file = await document()
+    const sent: CommandRequest[] = []
+    const runtime = (io: ReturnType<typeof captureIo>, environment: NodeJS.ProcessEnv = {}): CliRuntime => ({
+      ...io.runtime,
+      environment,
+      request: async (request): Promise<CommandResponse> => {
+        sent.push(request)
+        return { version: PROTOCOL_VERSION, id: request.id, ok: true, result: { done: true } }
+      }
+    })
+
+    for (const argv of [
+      ['annotate', file, '--kind', 'comment', '--quote', 'Test'],
+      ['edit', file, '--match', 'Test', '--replace', 'Tested'],
+      ['reply', file, '--to', 'a1', '--text', 'Done'],
+      ['send', file, '--text', 'ping'],
+      ['lead', file],
+      ['accept', file, '--annotation', 'a1'],
+      ['reject', file, '--annotation', 'a1'],
+      ['resolve', file, '--annotation', 'a1'],
+      ['save', file],
+      ['changed', file],
+      ['detach', file],
+    ]) {
+      const io = captureIo()
+      expect(await runCli(argv, runtime(io)), argv[0]).toBe(1)
+      expect(JSON.parse(io.stderr()), argv[0]).toMatchObject({
+        code: 'USAGE',
+        error: 'Pass --as <the agent id your first attach returned>'
+      })
+    }
+    expect(sent).toEqual([])
+
+    // A harness session supplies the id for every one of them.
+    const harness = { CLAUDE_CODE_SESSION_ID: 'session-secret' }
+    const derived = sessionAgentId(harness)!
+    const harnessed = captureIo()
+    expect(await runCli(['lead', file], runtime(harnessed, harness))).toBe(0)
+    expect(sent.at(-1)?.args).toMatchObject({ agent: derived })
+
+    // Only a first attach may mint a fresh id.
+    const minted = captureIo()
+    expect(await runCli(['attach', file, '--timeout', '0'], runtime(minted))).toBe(0)
+    expect((sent.at(-1)?.args as { agent: string }).agent).toMatch(/^ag_/)
+
+    // Read commands need no id at all.
+    for (const argv of [['state', file], ['changes', file], ['docs'], ['checkpoint', file]]) {
+      const io = captureIo()
+      expect(await runCli(argv, runtime(io)), argv[0]).toBe(0)
+    }
   })
 })
 
@@ -251,15 +306,30 @@ describe('command parsing and output', () => {
   it.each([
     {
       name: 'annotate',
-      argv: (file: string) => ['annotate', file, '--kind', 'comment', '--quote', 'Test'],
-      result: { created: 1 }
+      argv: (file: string) => ['annotate', file, '--as', 'ag_a', '--kind', 'comment', '--quote', 'Test'],
+      result: { created: [{ id: 'a_1', kind: 'comment', quote: 'Test' }] }
     },
     {
       name: 'reply',
-      argv: (file: string) => ['reply', file, '--to', 'a1', '--text', 'Done'],
-      result: { replied: true }
+      argv: (file: string) => ['reply', file, '--as', 'ag_a', '--to', 'a1', '--text', 'Done'],
+      result: { replied: 'r_1', annotation: 'a1' }
+    },
+    {
+      name: 'edit',
+      argv: (file: string) => ['edit', file, '--as', 'ag_a', '--match', 'Test', '--replace', 'Tested'],
+      result: { applied: [{ line: 1, match: 'Test', replace: 'Tested' }] }
+    },
+    {
+      name: 'changed',
+      argv: (file: string) => ['changed', file, '--as', 'ag_a'],
+      result: { tagged: true }
+    },
+    {
+      name: 'docs',
+      argv: () => ['docs'],
+      result: { event: 'docs', documents: [], text: 'No document is open.' }
     }
-  ])('keeps online $name success silent even when a legacy handler returns a result', async ({ argv, result }) => {
+  ])('prints the result of every online command ($name)', async ({ argv, result }) => {
     const file = await document()
     const io = captureIo()
     const code = await runCli(argv(file), {
@@ -267,11 +337,107 @@ describe('command parsing and output', () => {
       request: async (request) => ({ version: PROTOCOL_VERSION, id: request.id, ok: true, result })
     })
     expect(code).toBe(0)
-    expect(io.stdout()).toBe('')
+    expect(JSON.parse(io.stdout())).toEqual(result)
     expect(io.stderr()).toBe('')
   })
 
-  it('parses the six collaboration verbs and prints only send output', async () => {
+  it('parses edit, the state views, attach --text-only, and docs', async () => {
+    const file = await document()
+    const sent: CommandRequest[] = []
+    const runtime = (io: ReturnType<typeof captureIo>): CliRuntime => ({
+      ...io.runtime,
+      request: async (request): Promise<CommandResponse> => {
+        sent.push(request)
+        return { version: PROTOCOL_VERSION, id: request.id, ok: true, result: { done: true } }
+      }
+    })
+
+    const single = captureIo()
+    expect(await runCli([
+      'edit', file, '--as', 'ag_a', '--name', 'Editor', '--match', 'same', '--replace', '',
+      '--preceded-by', 'the ', '--followed-by', ' one',
+    ], runtime(single))).toBe(0)
+    expect(sent.at(-1)).toMatchObject({
+      command: 'edit',
+      args: {
+        file, agent: 'ag_a', name: 'Editor',
+        edits: [{ match: 'same', replace: '', precededBy: 'the ', followedBy: ' one' }]
+      }
+    })
+
+    const stdinReplace = captureIo('line one\nline two\n')
+    expect(await runCli(['edit', file, '--as', 'ag_a', '--match', 'Test', '--replace', '-'], runtime(stdinReplace))).toBe(0)
+    expect(sent.at(-1)?.args).toMatchObject({ edits: [{ match: 'Test', replace: 'line one\nline two\n' }] })
+
+    const batch = captureIo(JSON.stringify([
+      { match: 'a', replace: 'b' },
+      { match: 'c', replace: 'd', precededBy: 'x' },
+    ]))
+    expect(await runCli(['edit', file, '--as', 'ag_a', '--json', '-'], runtime(batch))).toBe(0)
+    expect(sent.at(-1)?.args).toMatchObject({
+      edits: [{ match: 'a', replace: 'b' }, { match: 'c', replace: 'd', precededBy: 'x' }]
+    })
+
+    for (const [argv, message] of [
+      [['edit', file, '--as', 'ag_a', '--match', 'a'], 'Missing --replace'],
+      [['edit', file, '--as', 'ag_a', '--replace', 'a'], 'Missing --match'],
+      [['edit', file, '--as', 'ag_a', '--json', '-', '--match', 'a'], '--json cannot be combined with individual edit options'],
+    ] as const) {
+      const io = captureIo('[]')
+      expect(await runCli([...argv], runtime(io))).toBe(1)
+      expect(JSON.parse(io.stderr())).toMatchObject({ code: 'USAGE', error: message })
+    }
+    const badBatch = captureIo(JSON.stringify([{ match: '', replace: 'x' }]))
+    expect(await runCli(['edit', file, '--as', 'ag_a', '--json', '-'], runtime(badBatch))).toBe(1)
+    expect(JSON.parse(badBatch.stderr())).toMatchObject({ code: 'USAGE', error: 'Edit 1 needs a non-empty match' })
+
+    const brief = captureIo()
+    expect(await runCli(['state', file, '--brief'], runtime(brief))).toBe(0)
+    expect(sent.at(-1)).toMatchObject({ command: 'state', args: { file, brief: true } })
+    expect((sent.at(-1)?.args as { textOnly?: boolean }).textOnly).toBeUndefined()
+
+    const textOnly = captureIo()
+    expect(await runCli(['state', '--text-only'], runtime(textOnly))).toBe(0)
+    expect(sent.at(-1)).toMatchObject({ command: 'state', args: { textOnly: true } })
+
+    const attachTextOnly = captureIo()
+    expect(await runCli(['attach', file, '--as', 'ag_a', '--timeout', '0', '--text-only'], runtime(attachTextOnly))).toBe(0)
+    expect(sent.at(-1)).toMatchObject({ command: 'attach', args: { file, agent: 'ag_a', timeout: 0, textOnly: true } })
+
+    const docs = captureIo()
+    expect(await runCli(['docs'], runtime(docs))).toBe(0)
+    expect(sent.at(-1)).toMatchObject({ command: 'docs', args: {} })
+    const docsWithFile = captureIo()
+    expect(await runCli(['docs', file], runtime(docsWithFile))).toBe(1)
+  })
+
+  it('reports a stalled instance without launching a second one or answering offline', async () => {
+    const file = await document()
+    for (const argv of [
+      ['attach', file, '--as', 'ag_a', '--timeout', '0'],
+      ['open', file],
+      ['annotate', file, '--as', 'ag_a', '--kind', 'comment', '--quote', 'Test'],
+      ['state', file],
+    ]) {
+      let launches = 0
+      let offlineCalls = 0
+      let requests = 0
+      const io = captureIo()
+      const code = await runCli(argv, {
+        ...io.runtime,
+        launchApp: async () => { launches += 1 },
+        request: async () => { requests += 1; throw new SocketTimeoutError() },
+        offlineHandler: async () => { offlineCalls += 1; return {} }
+      })
+      expect(code, argv[0]).toBe(4)
+      expect(requests, argv[0]).toBe(1)
+      expect(launches, argv[0]).toBe(0)
+      expect(offlineCalls, argv[0]).toBe(0)
+      expect(JSON.parse(io.stderr()), argv[0]).toMatchObject({ code: 'INSTANCE_TIMEOUT' })
+    }
+  })
+
+  it('parses the six collaboration verbs and prints every result', async () => {
     const file = await document()
     const sent: CommandRequest[] = []
     const runtime = (io: ReturnType<typeof captureIo>): CliRuntime => ({
@@ -313,7 +479,7 @@ describe('command parsing and output', () => {
       const io = captureIo()
       expect(await runCli([...argv], runtime(io))).toBe(0)
       expect(sent.at(-1)).toMatchObject(expected as object)
-      expect(io.stdout()).toBe('')
+      expect(JSON.parse(io.stdout())).toEqual({ done: true })
     }
   })
 
@@ -333,7 +499,7 @@ describe('command parsing and output', () => {
     expect(JSON.parse(io.stderr())).toMatchObject({ code: 'USAGE' })
   })
 
-  it('never routes the collaboration verbs offline or launches the app for them', async () => {
+  it('never routes the online-only commands offline or launches the app for them', async () => {
     const file = await document()
     for (const argv of [
       ['send', file, '--as', 'ag_a', '--text', 'ping'],
@@ -342,6 +508,8 @@ describe('command parsing and output', () => {
       ['reject', file, '--annotation', 'a1', '--as', 'ag_a'],
       ['resolve', file, '--annotation', 'a1', '--as', 'ag_a'],
       ['save', file, '--as', 'ag_a'],
+      ['docs'],
+      ['edit', file, '--as', 'ag_a', '--match', 'Test', '--replace', 'Tested'],
     ]) {
       let launches = 0
       let offlineCalls = 0

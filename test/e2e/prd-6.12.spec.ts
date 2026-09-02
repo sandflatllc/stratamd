@@ -178,7 +178,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     // keyboard so this holds whichever side wins the race.
     await value.page!.keyboard.press(primaryKey('s'))
 
-    const dialog = value.page!.getByRole('dialog', { name: /External write conflicts with your edits/i })
+    const dialog = value.page!.getByRole('dialog', { name: /changed outside StrataMD while you were editing/i })
     await expect(dialog).toBeVisible()
     await expect(dialog).toContainText(/changed (?:on disk )?while/i)
     expect(await readFile(value.file, 'utf8')).toBe(incoming)

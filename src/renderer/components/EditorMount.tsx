@@ -92,11 +92,15 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
     focus: () => editorRef.current?.focus(),
     toggleSource: (source) => editorRef.current?.toggleSource(source),
     command: (command) => editorRef.current?.command?.(command),
-    jumpToHunk: (id) => { editorRef.current?.jumpToHunk?.(id); flashTarget('reviewId', id) },
-    jumpToAnnotation: (id) => { editorRef.current?.jumpToAnnotation?.(id); flashTarget('annotationId', id) },
+    // The editor rings the target itself, as a decoration that survives its redraws.
+    jumpToHunk: (id) => editorRef.current?.jumpToHunk?.(id),
+    jumpToAnnotation: (id) => editorRef.current?.jumpToAnnotation?.(id),
     annotationCoordinates: (id) => editorRef.current?.annotationCoordinates?.(id) ?? null,
     setActiveAnnotation: (id) => editorRef.current?.setActiveAnnotation?.(id),
     replaceSelection: (text) => editorRef.current?.replaceSelection?.(text),
+    find: (query) => editorRef.current?.find?.(query) ?? { count: 0, current: 0 },
+    findStep: (direction) => editorRef.current?.findStep?.(direction) ?? { count: 0, current: 0 },
+    closeFind: () => editorRef.current?.closeFind?.(),
     destroy: () => editorRef.current?.destroy()
   }), [documentPath, options.content])
 

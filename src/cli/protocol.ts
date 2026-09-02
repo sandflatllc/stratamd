@@ -20,7 +20,9 @@ export const COMMAND_NAMES = [
   'accept',
   'reject',
   'resolve',
-  'save'
+  'save',
+  'docs',
+  'edit'
 ] as const
 
 export type CommandName = (typeof COMMAND_NAMES)[number]
@@ -39,6 +41,8 @@ export interface AttachArguments {
   agent: string
   name: string
   timeout: number
+  /** Omit `document` from the returned payload; `text` carries the buffer. */
+  textOnly?: boolean
 }
 
 export interface AnnotateArguments {
@@ -56,6 +60,24 @@ export interface ReplyArguments {
 
 export interface StateArguments {
   file?: string
+  /** Omit `document`, `text`, and `annotations`. */
+  brief?: boolean
+  /** Omit `document`; `text` carries the buffer. */
+  textOnly?: boolean
+}
+
+export interface EditInput {
+  match: string
+  replace: string
+  precededBy?: string
+  followedBy?: string
+}
+
+export interface EditArguments extends FileArguments {
+  agent: string
+  /** Display name for the tagged hunk; the attachment's name when absent. */
+  name?: string
+  edits: EditInput[]
 }
 
 export interface FileArguments {
@@ -110,6 +132,8 @@ export interface CommandArguments {
   reject: AnnotationActionArguments
   resolve: AnnotationActionArguments
   save: LeadArguments
+  docs: Record<string, never>
+  edit: EditArguments
 }
 
 export type CommandRequest<C extends CommandName = CommandName> = {
@@ -151,6 +175,7 @@ export interface AgentPayload {
     | 'superseded'
     | 'state'
     | 'changes'
+    | 'docs'
   deliveryId?: string
   /** With `event: 'message'`: the sending attachment (PRD §8). */
   from?: { agent: string; name: string }
@@ -165,6 +190,8 @@ export interface AgentPayload {
   text?: string
   /** With `event: 'state'`: the active theme (PRD §6.13). */
   theme?: { id: string; name: string; path: string | null }
+  /** With `event: 'state'`: whether the document is open in the app (PRD §8). */
+  open?: boolean
 }
 
 export interface CommandErrorBody {
@@ -233,7 +260,8 @@ export function isCommandRequest(value: unknown): value is CommandRequest {
         string('name') &&
         Number.isSafeInteger(args.timeout) &&
         (args.timeout as number) >= 0 &&
-        (args.timeout as number) <= 86_400
+        (args.timeout as number) <= 86_400 &&
+        optionalBoolean(args.textOnly)
       )
     case 'annotate':
       return (
@@ -246,7 +274,18 @@ export function isCommandRequest(value: unknown): value is CommandRequest {
     case 'reply':
       return file() && string('agent') && string('annotation') && stringWithinLimit(args.text)
     case 'state':
-      return file(true)
+      return file(true) && optionalBoolean(args.brief) && optionalBoolean(args.textOnly)
+    case 'docs':
+      return Object.keys(args).length === 0
+    case 'edit':
+      return (
+        file() &&
+        string('agent') &&
+        string('name', true) &&
+        Array.isArray(args.edits) &&
+        args.edits.length > 0 &&
+        args.edits.every(isEditInput)
+      )
     case 'changes':
     case 'open':
     case 'checkpoint':
@@ -276,6 +315,22 @@ export function isCommandRequest(value: unknown): value is CommandRequest {
     case 'resolve':
       return file() && string('agent') && string('annotation')
   }
+}
+
+function optionalBoolean(value: unknown): boolean {
+  return value === undefined || typeof value === 'boolean'
+}
+
+function isEditInput(value: unknown): value is EditInput {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const input = value as Record<string, unknown>
+  return (
+    typeof input.match === 'string' &&
+    input.match.length > 0 &&
+    stringWithinLimit(input.replace) &&
+    (input.precededBy === undefined || typeof input.precededBy === 'string') &&
+    (input.followedBy === undefined || typeof input.followedBy === 'string')
+  )
 }
 
 function stringWithinLimit(value: unknown): value is string {

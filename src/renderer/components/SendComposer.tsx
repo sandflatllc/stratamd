@@ -7,6 +7,8 @@ import { hasPrimaryModifier, primaryModifierLabel } from '../../shared/primary-m
 
 interface SendComposerProps {
   attachments: AttachmentView[]
+  /** Keys the draft: note and item choices survive closing the composer while the app runs. */
+  documentPath: string
   /** Persisted size; height -1 keeps the default content sizing. */
   size: PanelSize
   zoom: number
@@ -63,6 +65,44 @@ export function nextSendState(state: SendState, event: SendEvent): SendState {
   }
 }
 
+/** What the composer remembers per document between openings (PRD §6.9 drafts). */
+export interface ComposerDraft {
+  note: string
+  selected: readonly string[] | null
+  checkedExternal: readonly string[]
+  uncheckedUser: readonly string[]
+  uncheckedEvents: readonly number[]
+}
+
+export const EMPTY_DRAFT: ComposerDraft = { note: '', selected: null, checkedExternal: [], uncheckedUser: [], uncheckedEvents: [] }
+
+const composerDrafts = new Map<string, ComposerDraft>()
+
+export function readComposerDraft(documentPath: string): ComposerDraft {
+  return composerDrafts.get(documentPath) ?? EMPTY_DRAFT
+}
+
+export function isEmptyDraft(draft: ComposerDraft): boolean {
+  return draft.note === '' && draft.selected === null && draft.checkedExternal.length === 0 && draft.uncheckedUser.length === 0 && draft.uncheckedEvents.length === 0
+}
+
+/** Stores a draft; an empty one is forgotten rather than kept. */
+export function saveComposerDraft(documentPath: string, draft: ComposerDraft): void {
+  if (isEmptyDraft(draft)) composerDrafts.delete(documentPath)
+  else composerDrafts.set(documentPath, draft)
+}
+
+export function clearComposerDraft(documentPath: string): void {
+  composerDrafts.delete(documentPath)
+}
+
+/** The recipients a draft still applies to; everyone when it never chose. */
+export function draftRecipients(draft: ComposerDraft, attachments: readonly AttachmentView[]): string[] {
+  const ids = attachments.map((item) => item.agent.id)
+  if (draft.selected === null) return ids
+  return ids.filter((id) => draft.selected!.includes(id))
+}
+
 function sameToken(left: SendDocumentToken, right: SendDocumentToken): boolean {
   return left.snapshotId === right.snapshotId
     && left.segmentIndex === right.segmentIndex
@@ -103,14 +143,25 @@ function eventKindLabel(item: SendEventItem): string {
   return words[item.text] ?? item.text
 }
 
-export function SendComposer({ attachments, size, zoom, onSize, onCancel, onPreview, onSend }: SendComposerProps) {
+export function SendComposer({ attachments, documentPath, size, zoom, onSize, onCancel, onPreview, onSend }: SendComposerProps) {
   const dialogRef = useRef<HTMLElement>(null)
   const previewId = useId()
-  const [note, setNote] = useState('')
-  const [selected, setSelected] = useState(() => attachments.map((item) => item.agent.id))
-  const [checkedExternal, setCheckedExternal] = useState<ReadonlySet<string>>(() => new Set())
-  const [uncheckedUser, setUncheckedUser] = useState<ReadonlySet<string>>(() => new Set())
-  const [uncheckedEvents, setUncheckedEvents] = useState<ReadonlySet<number>>(() => new Set())
+  const draft = readComposerDraft(documentPath)
+  const [note, setNote] = useState(draft.note)
+  const [selected, setSelected] = useState(() => draftRecipients(draft, attachments))
+  const [selectionTouched, setSelectionTouched] = useState(draft.selected !== null)
+  const [checkedExternal, setCheckedExternal] = useState<ReadonlySet<string>>(() => new Set(draft.checkedExternal))
+  const [uncheckedUser, setUncheckedUser] = useState<ReadonlySet<string>>(() => new Set(draft.uncheckedUser))
+  const [uncheckedEvents, setUncheckedEvents] = useState<ReadonlySet<number>>(() => new Set(draft.uncheckedEvents))
+  useEffect(() => {
+    saveComposerDraft(documentPath, {
+      note,
+      selected: selectionTouched ? selected : null,
+      checkedExternal: [...checkedExternal],
+      uncheckedUser: [...uncheckedUser],
+      uncheckedEvents: [...uncheckedEvents],
+    })
+  }, [checkedExternal, documentPath, note, selected, selectionTouched, uncheckedEvents, uncheckedUser])
   const [externalKeys, setExternalKeys] = useState<readonly string[]>([])
   const [token, setToken] = useState<SendDocumentToken | null>(null)
   const [exact, setExact] = useState(false)
@@ -169,12 +220,14 @@ export function SendComposer({ attachments, size, zoom, onSize, onCancel, onPrev
   useEffect(() => {
     if (send.phase !== 'sending' || !send.request || dispatched.current === send) return
     dispatched.current = send
-    void onSend(send.request).catch((error: unknown) => {
-      setSend((state) => nextSendState(state, { type: 'send-failed', error }))
-      // A refused send — the document changed under the preview — re-previews at once.
-      setRefresh((count) => count + 1)
-    })
-  }, [onSend, send])
+    void onSend(send.request)
+      .then(() => clearComposerDraft(documentPath))
+      .catch((error: unknown) => {
+        setSend((state) => nextSendState(state, { type: 'send-failed', error }))
+        // A refused send — the document changed under the preview — re-previews at once.
+        setRefresh((count) => count + 1)
+      })
+  }, [documentPath, onSend, send])
 
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
@@ -264,7 +317,7 @@ export function SendComposer({ attachments, size, zoom, onSize, onCancel, onPrev
           {userChanges.map(changeRow)}
         </>}
         {externalChanges.length > 0 && <>
-          <h3 className="send-group-heading">Changes not made by me · {externalChanges.length}</h3>
+          <h3 className="send-group-heading">Changes not made by you · {externalChanges.length}</h3>
           {dependentCount > 0 && <p className="send-group-note">{dependentCount} of your changes {dependentCount === 1 ? 'builds' : 'build'} on changes not made by you.</p>}
           {externalChanges.map(changeRow)}
         </>}
@@ -295,7 +348,7 @@ export function SendComposer({ attachments, size, zoom, onSize, onCancel, onPrev
           <fieldset className="recipients"><legend>Recipients</legend>{attachments.map((attachment) => {
             const checked = selected.includes(attachment.agent.id)
             const color = AGENT_COLORS[attachment.agent.color]
-            return <label key={attachment.agent.id} data-selected={checked} style={{ borderColor: checked ? color : undefined, '--recipient-color': color } as CSSProperties}><input type="checkbox" checked={checked} onChange={() => setSelected((ids) => checked ? ids.filter((id) => id !== attachment.agent.id) : [...ids, attachment.agent.id])} /><i style={{ background: checked ? color : undefined }} />{attachment.agent.name}</label>
+            return <label key={attachment.agent.id} data-selected={checked} style={{ borderColor: checked ? color : undefined, '--recipient-color': color } as CSSProperties}><input type="checkbox" checked={checked} onChange={() => { setSelectionTouched(true); setSelected((ids) => checked ? ids.filter((id) => id !== attachment.agent.id) : [...ids, attachment.agent.id]) }} /><i style={{ background: checked ? color : undefined }} />{attachment.agent.name}</label>
           })}</fieldset>
         ) : attachments[0] ? <div className="single-recipient">To <strong>{attachments[0].agent.name}</strong></div> : null}
         {previews.filter((item) => item.queuedAfter).map((item) => <div className="queued-notice" key={item.recipient.id}>{item.recipient.name} still has an earlier update waiting. This one arrives after it.</div>)}

@@ -17,6 +17,8 @@ import {
   locateSourceReviewInsertion,
   parseMarkdownForEditor,
   reviewBadgeLabel,
+  reviewControlLabel,
+  reviewExcerpt,
   setAnnotationRanges,
   setReviewRanges,
   suggestionPresentation,
@@ -34,6 +36,10 @@ describe('editor review and annotation positions', () => {
     expect(newLine.slice(newLine.length - localized.suffixLength)).toBe(', keeping the CLI stable.')
     expect(reviewBadgeLabel({ author: 'Claude', kind: 'direct', status: 'pending' })).toBe('Claude')
     expect(reviewBadgeLabel({ author: 'Haru', kind: 'direct', status: 'mixed' })).toBe('Haru · mixed')
+    // Control names say who and what, never an internal id (PRD §6.9 plain copy).
+    expect(reviewExcerpt('  the   export\n path, keeping the CLI stable and more words after ')).toBe('the export path, keeping the CLI stable…')
+    expect(reviewControlLabel('Keep', 'change', 'Claude', newLine)).toBe('Keep change by Claude: We ship the importer first, then the…')
+    expect(reviewControlLabel('Reject', 'suggestion', '', '')).toBe('Reject suggestion by someone else')
 
     const parsed = parseMarkdownForEditor(`${newLine}\n`)
     const plugin = createReviewPlugin([{

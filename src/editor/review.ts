@@ -19,6 +19,8 @@ export interface ReviewRange {
 
 interface ReviewPluginState {
   ranges: readonly ReviewRange[]
+  /** The range briefly ringed after a jump (PRD §6.9); a decoration, because a class set from outside is redrawn away. */
+  flashing: string | null
   decorations: DecorationSet
 }
 
@@ -118,6 +120,7 @@ export function isReviewControlActivationKey(key: string): boolean {
 
 const reviewKey = new PluginKey<ReviewPluginState>('stratamd-review')
 const reviewMeta = 'stratamd-review-ranges'
+const reviewFlashMeta = 'stratamd-review-flash'
 
 /**
  * Reduce a line-oriented diff hunk to the characters that actually changed.
@@ -152,6 +155,24 @@ export function localizeReviewChange(deletedText: string, insertedText: string):
   }
 }
 
+/** A short run of the affected text for a control's accessible name: whitespace collapsed, cut at a word. */
+export function reviewExcerpt(text: string, limit = 40): string {
+  const collapsed = text.replace(/\s+/gu, ' ').trim()
+  if (collapsed.length <= limit) return collapsed
+  const cut = collapsed.slice(0, limit)
+  const atWord = cut.lastIndexOf(' ')
+  return `${(atWord > limit / 2 ? cut.slice(0, atWord) : cut).trimEnd()}…`
+}
+
+/**
+ * The accessible name of a Keep, Revert, Accept, or Reject control: the action,
+ * who made the change, and a glimpse of the text — never an internal id.
+ */
+export function reviewControlLabel(action: string, subject: 'change' | 'suggestion', author: string, text: string): string {
+  const excerpt = reviewExcerpt(text)
+  return `${action} ${subject} by ${author || 'someone else'}${excerpt ? `: ${excerpt}` : ''}`
+}
+
 export function reviewBadgeLabel(range: Pick<ReviewRange, 'author' | 'kind' | 'status'>): string {
   const author = range.author || 'external'
   if (range.kind === 'suggestion') return `${author} · suggestion`
@@ -177,7 +198,7 @@ function transactionTouchesRange(transaction: Transaction, range: ReviewRange): 
   })
 }
 
-function reviewDecorations(doc: ProseMirrorNode, ranges: readonly ReviewRange[], actions: ReviewActions): DecorationSet {
+function reviewDecorations(doc: ProseMirrorNode, ranges: readonly ReviewRange[], actions: ReviewActions, flashing: string | null = null): DecorationSet {
   const decorations: Decoration[] = []
   for (const range of ranges) {
     const from = Math.max(0, Math.min(range.from, doc.content.size))
@@ -198,7 +219,7 @@ function reviewDecorations(doc: ProseMirrorNode, ranges: readonly ReviewRange[],
     const external = !range.agent && (!range.author || range.author === 'external')
     if (visualTo > visualFrom) {
       decorations.push(Decoration.inline(visualFrom, visualTo, {
-        class: `${baseClass} strata-review-${range.status}${external ? ' strata-review-external' : ''}`,
+        class: `${baseClass} strata-review-${range.status}${external ? ' strata-review-external' : ''}${range.id === flashing ? ' is-flashing' : ''}`,
         'data-review-id': range.id,
         'data-review-author': range.author,
       }, { id: `review:${range.id}` }))
@@ -227,7 +248,7 @@ function reviewDecorations(doc: ProseMirrorNode, ranges: readonly ReviewRange[],
           const button = document.createElement('button')
           button.type = 'button'
           button.textContent = label
-          button.setAttribute('aria-label', `${label} change ${range.id}`)
+          button.setAttribute('aria-label', reviewControlLabel(label, 'change', range.author, range.replacementText || range.deletedText || ''))
           if (callback) button.addEventListener('click', () => callback(range.id))
           controls.append(button)
         }
@@ -242,16 +263,18 @@ export function createReviewPlugin(initialRanges: readonly ReviewRange[] = [], a
   return new Plugin<ReviewPluginState>({
     key: reviewKey,
     state: {
-      init: (_config, state) => ({ ranges: initialRanges, decorations: reviewDecorations(state.doc, initialRanges, actions) }),
+      init: (_config, state) => ({ ranges: initialRanges, flashing: null, decorations: reviewDecorations(state.doc, initialRanges, actions) }),
       apply(transaction, pluginState, _oldState, newState) {
         const replacement = transaction.getMeta(reviewMeta) as readonly ReviewRange[] | undefined
+        const flash = transaction.getMeta(reviewFlashMeta) as { id: string | null } | undefined
+        const flashing = flash ? flash.id : pluginState.flashing
         const ranges = replacement ?? pluginState.ranges.map((range) => ({
           ...range,
           from: transaction.mapping.map(range.from, -1),
           to: transaction.mapping.map(range.to, 1),
           status: transactionTouchesRange(transaction, range) ? 'mixed' as const : range.status,
         }))
-        return { ranges, decorations: reviewDecorations(newState.doc, ranges, actions) }
+        return { ranges, flashing, decorations: reviewDecorations(newState.doc, ranges, actions, flashing) }
       },
     },
     props: {
@@ -264,6 +287,11 @@ export function createReviewPlugin(initialRanges: readonly ReviewRange[] = [], a
 
 export function setReviewRanges(transaction: Transaction, ranges: readonly ReviewRange[]): Transaction {
   return transaction.setMeta(reviewMeta, ranges)
+}
+
+/** Rings one hunk (null clears); the class rides on the decoration so a redraw keeps it. */
+export function setReviewFlash(transaction: Transaction, id: string | null): Transaction {
+  return transaction.setMeta(reviewFlashMeta, { id }).setMeta('addToHistory', false)
 }
 
 export function getReviewRanges(state: EditorState): readonly ReviewRange[] {

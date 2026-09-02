@@ -20,8 +20,10 @@ import type {
   SendPreview,
   SendPreviewRequest,
   StrataApi,
-  BufferOrigin
+  BufferOrigin,
+  DocumentProblem,
 } from '../shared/contracts'
+import { logError } from './log'
 import {
   acceptAllSuggestions as acceptAllAnnotationSuggestions,
   acceptSuggestion as acceptAnnotationSuggestion,
@@ -35,6 +37,7 @@ import {
   closestAnnotationMatches,
   createAnnotation,
   createAnnotationLog,
+  locateQuote,
   mapAnnotationsThroughEdit,
   nearestQuoteStart,
   pruneResolvedAnnotations,
@@ -72,7 +75,7 @@ import {
   type DeliverySource,
   type IndexedSegment
 } from '../core/delivery'
-import { createPayload, type PayloadSegment } from '../core/payload'
+import { createPayload, PAYLOAD_VERSION, trimPayload, type PayloadAttachment, type PayloadSegment } from '../core/payload'
 import { computeHunks, contentHash, mapOldRangeToNew, rangesTouch, type TextRange } from '../core/diff'
 import {
   acceptAgentReplacement,
@@ -93,6 +96,8 @@ import {
   reviewFrame,
   setExternalTag,
   type ExternalAttribution,
+  type ExternalChangeResult,
+  type ExternalSource,
   type PendingHunkAnchor,
   type DocumentState,
   type ReviewFrame
@@ -114,8 +119,11 @@ import watcher, { type AsyncSubscription } from '@parcel/watcher'
 import { CURRENT_META_VERSION, GhostStore, type AttachmentMeta, type DocumentLock, type DocumentMeta, type SaveAuthorMeta, type SaveMeta, type SegmentMeta } from './storage'
 import { DebouncedMirror, HashReconciler, WatchCoordinator } from './watcher'
 import { AttachWaitRegistry } from './socket'
-import { CommandFailure, type CommandRequest, type SocketCommandHandler } from '../cli/protocol'
+import { CommandFailure, type CommandArguments, type CommandRequest, type SocketCommandHandler } from '../cli/protocol'
 import { toDeliveredAnnotation } from '../core/annotations'
+
+/** Every anchor failure outside annotate says what to do next (PRD §6.8). */
+const ANCHOR_HINT = 'The text moved; run state and quote the current text, or reject it.'
 
 interface PersistedApplicationState {
   state: DocumentState
@@ -144,6 +152,8 @@ interface OpenDocumentSession {
   readOnly: boolean
   invalidUtf8: boolean
   deleted: boolean
+  /** Background failures shown to the user until the job next succeeds (PRD §6.10). */
+  problems: Set<DocumentProblem>
   lastSavedAt: number | null
   lastSentSegmentIndex: number
   lastSentAnnotationSeq: number
@@ -505,6 +515,7 @@ export class StrataApplication implements StrataApi {
         readOnly: true,
         invalidUtf8: true,
         deleted: false,
+        problems: new Set<DocumentProblem>(),
         lastSavedAt: null,
         lastSentSegmentIndex: -1,
         lastSentAnnotationSeq: 0,
@@ -578,6 +589,7 @@ export class StrataApplication implements StrataApi {
       readOnly: false,
       invalidUtf8: false,
       deleted: false,
+      problems: new Set<DocumentProblem>(),
       lastSavedAt,
       lastSentSegmentIndex: persistedNumber(meta.lastSentSegmentIndex) ?? saved?.lastSentSegmentIndex ?? -1,
       lastSentAnnotationSeq: persistedNumber(meta.lastSentAnnotationSeq) ?? saved?.lastSentAnnotationSeq ?? 0,
@@ -811,6 +823,7 @@ export class StrataApplication implements StrataApi {
     const session = this.#writable(path)
     const start = this.#anchorQuote(session, annotation)
     session.annotations = createAnnotation(session.annotations, session.state.shadow, {
+      createdAt: this.#now(),
       id: `a_${randomUUID().slice(0, 12)}`,
       kind: annotation.kind,
       author: 'user',
@@ -853,6 +866,7 @@ export class StrataApplication implements StrataApi {
   async reply(path: string, annotationId: string, text: string): Promise<void> {
     const session = this.#writable(path)
     session.annotations = replyToAnnotation(session.annotations, annotationId, {
+      createdAt: this.#now(),
       id: `r_${randomUUID().slice(0, 12)}`,
       author: 'user',
       text
@@ -1082,6 +1096,14 @@ export class StrataApplication implements StrataApi {
     await this.scanFolder(folder)
   }
 
+  async removeFolder(path: string): Promise<void> {
+    const target = resolve(path)
+    const folders = this.#settings.explorerFolders.filter((folder) => folder !== target)
+    if (folders.length === this.#settings.explorerFolders.length) return
+    this.#settings = await this.#settingsStore.update({ explorerFolders: folders })
+    await this.refreshExplorer()
+  }
+
   async scanFolder(path: string): Promise<void> {
     const folders = [...new Set([...this.#settings.explorerFolders, resolve(path)])]
     if (folders.length !== this.#settings.explorerFolders.length) this.#settings = await this.#settingsStore.update({ explorerFolders: folders })
@@ -1140,7 +1162,7 @@ export class StrataApplication implements StrataApi {
       } catch (error) {
         if (error instanceof CommandFailure) throw error
         if (error instanceof AnnotationAnchorError) {
-          throw new CommandFailure(error.message, 3, error.code.toUpperCase(), { matches: error.matches })
+          throw new CommandFailure(error.message, 3, 'QUOTE_INVALID', { code: error.code, matches: [], hint: ANCHOR_HINT })
         }
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
           throw new CommandFailure('Document not found', 2, 'NOT_FOUND')
@@ -1151,6 +1173,7 @@ export class StrataApplication implements StrataApi {
   }
 
   async #handleCommand(request: CommandRequest, signal: AbortSignal): Promise<unknown> {
+    if (request.command === 'docs') return this.#docsPayload()
     const args = request.args as Record<string, unknown>
     const requestedFile = typeof args.file === 'string'
       ? (this.#sessions.has(args.file) ? args.file : await resolveDocumentPath(args.file))
@@ -1197,14 +1220,69 @@ export class StrataApplication implements StrataApi {
     }
     const file = requestedFile!
     if (request.command === 'state' && !this.#sessions.has(file)) {
-      return this.#closedStatePayload(file)
+      return trimPayload(await this.#closedStatePayload(file), request.args)
     }
     if (!this.#sessions.has(file)) await this.openDocument(file)
     const session = this.#require(file)
+    try {
+      return await this.#dispatch(request, session, file, signal)
+    } catch (error) {
+      if (error instanceof AnnotationAnchorError) throw this.#anchorFailure(session, error)
+      throw error
+    }
+  }
 
+  /** Anchor failures outside annotate carry the same excerpts annotate lists, plus what to do next. */
+  #anchorFailure(session: OpenDocumentSession, error: AnnotationAnchorError, quote?: string): CommandFailure {
+    return new CommandFailure(error.message, 3, 'QUOTE_INVALID', {
+      code: error.code,
+      ...(quote === undefined ? {} : { quote }),
+      matches: quote === undefined ? [] : closestAnnotationMatches(session.state.shadow, quote, error.matches),
+      hint: ANCHOR_HINT,
+    })
+  }
+
+  #attachmentRows(session: OpenDocumentSession): PayloadAttachment[] {
+    return Object.entries(session.attachments).map(([id, attachment]) => ({
+      agent: id,
+      name: attachment.name,
+      state: attachmentDisplayState(attachment),
+      lead: id === session.leadAgentId
+    }))
+  }
+
+  /** Every open document, from the tab registry (order and focus) and the sessions (dirty, attachments). */
+  #docsPayload(): unknown {
+    const focused = this.#tabs.focusedPath
+    const documents = this.#tabs.list().map((tab) => {
+      const session = this.#require(tab.path)
+      return {
+        file: tab.path,
+        focused: tab.path === focused,
+        dirty: session.state.shadow !== session.state.disk,
+        attachments: this.#attachmentRows(session)
+      }
+    })
+    const lines = documents.length === 0
+      ? ['No document is open.']
+      : documents.flatMap((document) => [
+          `${document.file}${document.focused ? ' (focused)' : ''}${document.dirty ? ' (unsaved changes)' : ''}`,
+          ...document.attachments.map((row) =>
+            `  ${row.name} (${row.agent}): ${row.state}${row.lead ? ', Lead' : ''}`),
+        ])
+    return { version: PAYLOAD_VERSION, event: 'docs', documents, text: lines.join('\n') }
+  }
+
+  async #dispatch(
+    request: CommandRequest,
+    session: OpenDocumentSession,
+    file: string,
+    signal: AbortSignal,
+  ): Promise<unknown> {
     switch (request.command) {
       case 'attach': {
         const attach = request.args
+        const trim = { textOnly: attach.textOnly === true }
         let attachment = session.attachments[attach.agent]
         if (!attachment) {
           const snapshot = deliverySnapshot(session)
@@ -1213,13 +1291,13 @@ export class StrataApplication implements StrataApi {
           await this.#persist(session)
           this.#scheduleIdleExpiry()
           this.#publish()
-          return createInitialPayload(
+          return trimPayload(createInitialPayload(
             attachment,
             file,
             this.#store.pathsForDocument(file).buffer,
             snapshot,
             Object.values(session.annotations.annotations).map(toDeliveredAnnotation)
-          )
+          ), trim)
         }
         attachment = noteAttachCall(attachment, this.#now())
         session.attachments[attach.agent] = attachment
@@ -1229,16 +1307,26 @@ export class StrataApplication implements StrataApi {
           await this.#persist(session)
           this.#scheduleIdleExpiry()
           this.#publish()
-          return queued.payload
+          return trimPayload(queued.payload, trim)
         }
         const waitVersion = (session.attachWaitVersions[attach.agent] ?? 0) + 1
         session.attachWaitVersions[attach.agent] = waitVersion
-        await this.#persist(session)
+        // The wait must be registered before this handler yields: a delivery
+        // enqueued during the persist below would call deliver() against an
+        // empty registry and the attach would sit blind until its timeout.
+        const waitPromise = this.#attachWaits.wait(attachKey(file, attach.agent), attach.timeout * 1_000, signal)
+        try {
+          await this.#persist(session)
+        } catch (error) {
+          this.#attachWaits.cancel(attachKey(file, attach.agent), error)
+          waitPromise.catch(() => {})
+          throw error
+        }
         this.#scheduleIdleExpiry()
         this.#publish()
         try {
-          const result = await this.#attachWaits.wait(attachKey(file, attach.agent), attach.timeout * 1_000, signal)
-          if (result.event === 'delivery') return result.value
+          const result = await waitPromise
+          if (result.event === 'delivery') return trimPayload(result.value, trim)
           return createPayload({
             file,
             buffer: this.#store.pathsForDocument(file).buffer,
@@ -1279,24 +1367,20 @@ export class StrataApplication implements StrataApi {
       }
       case 'state': {
         const snapshot = deliverySnapshot(session)
-        return {
+        return trimPayload({
           ...withoutAgent(createPayload({
             file,
             buffer: this.#store.pathsForDocument(file).buffer,
             agent: 'state',
             event: 'state',
+            open: true,
             cursor: snapshot.cursor,
             document: snapshot.document,
             annotations: Object.values(session.annotations.annotations).map(toDeliveredAnnotation),
-            attachments: Object.entries(session.attachments).map(([id, attachment]) => ({
-              agent: id,
-              name: attachment.name,
-              state: attachmentDisplayState(attachment),
-              lead: id === session.leadAgentId
-            }))
+            attachments: this.#attachmentRows(session)
           })),
-          theme: { id: this.#theme.id, name: this.#theme.name, path: this.#theme.path }
-        }
+          theme: this.#themeSummary()
+        }, request.args)
       }
       case 'changes':
         return withoutAgent(createPayload({
@@ -1312,11 +1396,14 @@ export class StrataApplication implements StrataApi {
         return { tagged: true }
       case 'annotate': {
         let next = session.annotations
+        const created: Array<{ id: string; kind: string; quote: string }> = []
         const failures: Array<{ index: number; quote: string; code: string; matches: readonly string[] }> = []
         for (const [index, annotation] of request.args.annotations.entries()) {
+          const id = `a_${randomUUID().slice(0, 12)}`
           try {
             next = createAnnotation(next, session.state.shadow, {
-              id: `a_${randomUUID().slice(0, 12)}`,
+              createdAt: this.#now(),
+              id,
               kind: annotation.kind,
               author: 'agent',
               agent: request.args.agent,
@@ -1326,6 +1413,7 @@ export class StrataApplication implements StrataApi {
               ...(annotation.precededBy ? { precededBy: annotation.precededBy } : {}),
               ...(annotation.followedBy ? { followedBy: annotation.followedBy } : {})
             }).log
+            created.push({ id, kind: annotation.kind, quote: annotation.quote })
           } catch (error) {
             if (!(error instanceof AnnotationAnchorError)) throw error
             failures.push({
@@ -1342,21 +1430,26 @@ export class StrataApplication implements StrataApi {
         session.annotations = next
         await this.#persist(session)
         this.#publish()
-        return { created: request.args.annotations.length }
+        return { created }
       }
-      case 'reply':
+      case 'edit':
+        return this.#editCommand(session, request.args)
+      case 'reply': {
         if (!session.annotations.annotations[request.args.annotation]) {
           throw new CommandFailure('Annotation not found', 2, 'ANNOTATION_NOT_FOUND')
         }
+        const id = `r_${randomUUID().slice(0, 12)}`
         session.annotations = replyToAnnotation(session.annotations, request.args.annotation, {
-          id: `r_${randomUUID().slice(0, 12)}`,
+          createdAt: this.#now(),
+          id,
           author: 'agent',
           agent: request.args.agent,
           text: request.args.text
         }).log
         await this.#persist(session)
         this.#publish()
-        return { replied: true }
+        return { replied: id, annotation: request.args.annotation }
+      }
       case 'send': {
         const message = request.args
         const sender = session.attachments[message.agent]
@@ -1375,15 +1468,15 @@ export class StrataApplication implements StrataApi {
         }
         // All-or-nothing: every sender→recipient slot is checked before anything
         // is enqueued, so a failed send never double-delivers on retry.
-        const blocked = recipients.find((id) => session.attachments[id]!.deliveries.some(
+        const blocked = recipients.filter((id) => session.attachments[id]!.deliveries.some(
           (delivery) => isMessageDelivery(delivery) && delivery.payload.from?.agent === message.agent,
         ))
-        if (blocked !== undefined) {
+        if (blocked.length > 0) {
           throw new CommandFailure(
-            'An earlier message to this recipient has not been collected yet',
+            `Your earlier message to ${blocked.join(', ')} has not been collected yet. Retry after they attach, or send only to the others with --to.`,
             3,
             'MESSAGE_PENDING',
-            { recipient: blocked },
+            { recipients: blocked, others: recipients.filter((id) => !blocked.includes(id)) },
           )
         }
         const senderTag = { agent: message.agent, name: sender.name }
@@ -1428,10 +1521,14 @@ export class StrataApplication implements StrataApi {
       case 'accept': {
         const action = request.args
         this.#requireLead(session, action.agent)
-        if (!session.annotations.annotations[action.annotation]) {
-          throw new CommandFailure('Annotation not found', 2, 'ANNOTATION_NOT_FOUND')
+        const suggestion = session.annotations.annotations[action.annotation]
+        if (!suggestion) throw new CommandFailure('Annotation not found', 2, 'ANNOTATION_NOT_FOUND')
+        try {
+          await this.#acceptSuggestionAsLead(session, action.annotation, action.agent)
+        } catch (error) {
+          if (error instanceof AnnotationAnchorError) throw this.#anchorFailure(session, error, suggestion.quote)
+          throw error
         }
-        await this.#acceptSuggestionAsLead(session, action.annotation, action.agent)
         return { accepted: action.annotation }
       }
       case 'reject': {
@@ -1525,6 +1622,109 @@ export class StrataApplication implements StrataApi {
   }
 
   /**
+   * A compare-and-swap edit: each match is located in the live shadow with
+   * annotate's rules, then the whole replacement lands through the same path
+   * as a tagged buffer write, so it is a pending hunk in the agent's name and
+   * the ghost never moves. The mirror is flushed first so the merge compares
+   * against exactly the text the matches were found in.
+   */
+  async #editCommand(session: OpenDocumentSession, edit: CommandArguments['edit']): Promise<unknown> {
+    if (session.readOnly) throw new CommandFailure('This document is read-only', 3, 'READ_ONLY')
+    if (session.recovery) {
+      throw new CommandFailure('The user must choose Recover or Discard before the buffer can change', 3, 'RECOVERY_PENDING')
+    }
+    await session.mirror?.flush()
+    const shadow = session.state.shadow
+    const located: Array<{ index: number; start: number; end: number; replace: string }> = []
+    const failures: Array<{ index: number; match: string; code: string; matches: readonly string[]; hint: string }> = []
+    for (const [index, input] of edit.edits.entries()) {
+      try {
+        const anchor = locateQuote(shadow, input.match, input.precededBy, input.followedBy)
+        located.push({ index, start: anchor.start, end: anchor.end, replace: input.replace })
+      } catch (error) {
+        if (!(error instanceof AnnotationAnchorError)) throw error
+        failures.push({
+          index,
+          match: input.match,
+          code: error.code,
+          matches: closestAnnotationMatches(shadow, input.match, error.matches),
+          hint: ANCHOR_HINT,
+        })
+      }
+    }
+    if (failures.length > 0) {
+      throw new CommandFailure('One or more edit matches are invalid', 3, 'QUOTE_INVALID', failures)
+    }
+    located.sort((left, right) => left.start - right.start)
+    for (let position = 1; position < located.length; position += 1) {
+      if (located[position]!.start < located[position - 1]!.end) {
+        throw new CommandFailure('Two edits overlap in the buffer', 1, 'EDITS_OVERLAP', {
+          edits: [located[position - 1]!.index, located[position]!.index],
+        })
+      }
+    }
+
+    let next = ''
+    let cursor = 0
+    const applied: Array<{ index: number; line: number; match: string; replace: string }> = []
+    for (const entry of located) {
+      next += shadow.slice(cursor, entry.start)
+      applied.push({
+        index: entry.index,
+        line: next.split('\n').length,
+        match: edit.edits[entry.index]!.match,
+        replace: entry.replace,
+      })
+      next += entry.replace
+      cursor = entry.end
+    }
+    next += shadow.slice(cursor)
+
+    const name = edit.name ?? session.attachments[edit.agent]?.name ?? edit.agent
+    session.state = setExternalTag(session.state, edit.agent, name, this.#now())
+    await this.#mergeExternalText(session, 'buffer', next)
+    await this.#changed(session)
+    await session.mirror?.flush()
+    return {
+      applied: applied
+        .sort((left, right) => left.index - right.index)
+        .map(({ line, match, replace }) => ({ line, match, replace })),
+    }
+  }
+
+  /** One external merge as an application step: the watcher's path, shared with `edit`. */
+  async #mergeExternalText(
+    session: OpenDocumentSession,
+    source: ExternalSource,
+    incoming: string,
+  ): Promise<ExternalChangeResult['status']> {
+    let status: ExternalChangeResult['status'] = 'ignored'
+    await this.#applyApplicationStep(session, () => {
+      const result = applyExternalChange(
+        session.state,
+        source,
+        incoming,
+        {
+          blockRanges: markdownBlockRanges(
+            source === 'disk' ? session.state.disk : session.state.mirror,
+          ),
+        },
+      )
+      if (result.status === 'applied') {
+        session.annotations = mapAndRelocateAnnotations(
+          session.annotations,
+          session.state.shadow,
+          result.state.shadow,
+        )
+      }
+      session.state = result.state
+      status = result.status
+      return result.status === 'applied'
+    })
+    return status
+  }
+
+  /**
    * The Lead's accept reuses the suggestion path with the Lead as actor: the
    * replacement lands as an external, Lead-tagged segment with a pending hunk,
    * the ghost stays put, and the whole step is undoable like an external merge.
@@ -1589,27 +1789,7 @@ export class StrataApplication implements StrataApi {
         }
         const incoming = new TextDecoder('utf-8', { fatal: true }).decode(change.current.bytes)
         if (change.source === 'buffer' && session.recovery) return
-        await this.#applyApplicationStep(session, () => {
-          const result = applyExternalChange(
-            session.state,
-            change.source === 'document' ? 'disk' : 'buffer',
-            incoming,
-            {
-              blockRanges: markdownBlockRanges(
-                change.source === 'document' ? session.state.disk : session.state.mirror,
-              ),
-            },
-          )
-          if (result.status === 'applied') {
-            session.annotations = mapAndRelocateAnnotations(
-              session.annotations,
-              session.state.shadow,
-              result.state.shadow,
-            )
-          }
-          session.state = result.state
-          return result.status === 'applied'
-        })
+        await this.#mergeExternalText(session, change.source === 'document' ? 'disk' : 'buffer', incoming)
         if (change.source === 'document') {
           session.diskHash = change.current.hash
           session.deleted = false
@@ -1630,18 +1810,50 @@ export class StrataApplication implements StrataApi {
           throw error
         })
       } },
-      onWritten: (content) => {
-        void this.#persist(session)
+      onWritten: () => {
+        if (session.problems.delete('mirror')) this.#publish()
+        this.#persistInBackground(session)
+      },
+      onError: (error) => {
+        this.#reportProblem(session, 'mirror', 'Buffer mirror write failed', error)
       }
     })
     if (this.#watch) {
       session.watcher = new WatchCoordinator({
         documentPath: session.path,
         ghostEntryPath: paths.directory,
-        reconcile: (reason) => reconciler.wake(reason)
+        reconcile: (reason) => reconciler.wake(reason),
+        onError: (error) => {
+          this.#reportProblem(session, 'watch', 'File watcher reported an error', error)
+        }
       })
-      void session.watcher.start()
+      session.watcher.start().then(
+        () => { if (session.problems.delete('watch')) this.#publish() },
+        (error: unknown) => {
+          this.#reportProblem(session, 'watch', 'File watcher could not start', error)
+        },
+      )
     }
+  }
+
+  /**
+   * Records a background failure on the session, logs it, and shows it in the
+   * window. Background jobs (mirror writes, watching, persisting) run outside
+   * any user action, so this banner is their only path to the user.
+   */
+  #reportProblem(session: OpenDocumentSession, kind: DocumentProblem, message: string, error: unknown): void {
+    logError(kind, `${message}: ${session.path}`, error)
+    if (!session.problems.has(kind)) {
+      session.problems.add(kind)
+      this.#publish()
+    }
+  }
+
+  /** A persist nobody awaits: its failure is reported instead of dropped. */
+  #persistInBackground(session: OpenDocumentSession): void {
+    this.#persist(session).catch((error: unknown) => {
+      this.#reportProblem(session, 'persist', 'Persisting document state failed', error)
+    })
   }
 
   async #findRename(session: OpenDocumentSession): Promise<string | null> {
@@ -1805,6 +2017,7 @@ export class StrataApplication implements StrataApi {
     session.persistedContentBlobs = new Map(
       [...session.persistedContentBlobs].filter(([, blob]) => referenced.has(blob)),
     )
+    if (session.problems.delete('persist')) this.#publish()
   }
 
   /** Content-addressed writes are idempotent, so a blob proven written this session is skipped. */
@@ -1952,7 +2165,7 @@ export class StrataApplication implements StrataApi {
     return session
   }
 
-  async #closedStatePayload(file: string): Promise<unknown> {
+  async #closedStatePayload(file: string) {
     const disk = await readDocument(file)
     if (!disk.validUtf8) throw new CommandFailure('Invalid UTF-8', 1, 'INVALID_UTF8')
     let document = disk.text
@@ -1969,15 +2182,23 @@ export class StrataApplication implements StrataApi {
         if (bufferInfo.mtimeMs > diskInfo.mtimeMs) document = buffer.toString('utf8')
       }
     }
-    return withoutAgent(createPayload({
-      file,
-      buffer: this.#store.pathsForDocument(file).buffer,
-      agent: 'state',
-      event: 'state',
-      cursor: annotations.nextSeq - 1,
-      document,
-      annotations: Object.values(annotations.annotations).map(toDeliveredAnnotation),
-    }))
+    return {
+      ...withoutAgent(createPayload({
+        file,
+        buffer: this.#store.pathsForDocument(file).buffer,
+        agent: 'state',
+        event: 'state',
+        open: false,
+        cursor: annotations.nextSeq - 1,
+        document,
+        annotations: Object.values(annotations.annotations).map(toDeliveredAnnotation),
+      })),
+      theme: this.#themeSummary(),
+    }
+  }
+
+  #themeSummary(): { id: string; name: string; path: string | null } {
+    return { id: this.#theme.id, name: this.#theme.name, path: this.#theme.path }
   }
 
   #writable(path: string): OpenDocumentSession {
@@ -2493,16 +2714,28 @@ function annotationView(log: AnnotationLog, attachments: Record<string, Attachme
     line: annotation.status === 'orphaned' ? null : annotation.line,
     from: annotation.status === 'orphaned' ? null : annotation.anchor.start,
     to: annotation.status === 'orphaned' ? null : annotation.anchor.end,
-    ...(annotation.kind === 'suggestion' ? { replacement: annotation.text } : {}),
+    ...(annotation.kind === 'suggestion' ? { replacement: annotation.text, inline: suggestionRendersInline(annotation.quote, annotation.text) } : {}),
+    ...optionalTime(annotation),
     replies: annotation.replies.map((reply) => ({
       id: reply.id,
       author: reply.author === 'user'
         ? 'user'
         : agentIdentity(reply.agent ?? 'agent', attachments[reply.agent ?? '']?.name ?? reply.agent ?? 'agent', Math.max(0, ids.indexOf(reply.agent ?? ''))),
       text: reply.text,
-      createdAt: 0
+      ...optionalTime(reply)
     }))
   }))
+}
+
+/** The same inline rule as hunks: a paragraph break in either side cannot render as track changes. */
+function suggestionRendersInline(quote: string, replacement: string): boolean {
+  return !quote.includes('\n\n') && !replacement.includes('\n\n')
+}
+
+/** The record's creation time when the annotation log carries one; nothing otherwise, so the view stays honest. */
+function optionalTime(record: object): { createdAt: number } | Record<string, never> {
+  const value = (record as { createdAt?: unknown }).createdAt
+  return typeof value === 'number' && value > 0 ? { createdAt: value } : {}
 }
 
 function hunkViews(state: DocumentState, attachments: Record<string, Attachment>): HunkView[] {
@@ -2558,6 +2791,7 @@ function documentView(session: OpenDocumentSession, store: GhostStore): Document
     dirty: session.state.shadow !== session.state.disk,
     deleted: session.deleted,
     invalidUtf8: session.invalidUtf8,
+    problems: [...session.problems],
     lastSavedAt: session.lastSavedAt,
     historyStep: session.historyStep,
     pendingHunks: hunkViews(session.state, session.attachments),

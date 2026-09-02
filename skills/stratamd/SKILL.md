@@ -27,7 +27,9 @@ While attached:
 
 - Re-read the buffer immediately before editing.
 - Write only to the returned buffer path, never the document path.
+- Use `stratamd edit` to change one passage: it matches the exact current text and cannot undo an edit the user made after you last read.
 - Use `stratamd annotate` for comments, questions, and suggestions.
+- Pass `--as <agent-id>` on every command after the first attach.
 - Do not ask the user to paste or use "Copy for agent" when attachment works.
 
 After every response or edit, listen again:
@@ -38,6 +40,8 @@ stratamd attach <document-path> --as <agent-id>
 
 Handle the returned user changes, then repeat. On timeout, attach again. Continue until Strata reports `closed` or the user tells you to stop.
 
-When several agents share the document: discuss in annotation threads, use `stratamd send` only as the doorbell, run `stratamd state` before acting on a received message, and claim the Lead with `stratamd lead` when the user puts you in charge in any wording — `stratamd --agent-help` is the authority.
+When several agents share the document: discuss in annotation threads, use `stratamd send` only as the doorbell, run `stratamd state --brief` to see who is attached and who leads and `stratamd state` before acting on a received message, and claim the Lead with `stratamd lead` when the user puts you in charge in any wording — `stratamd --agent-help` is the authority.
 
-Use `stratamd --agent-help` for annotation syntax, replies, change inspection, opening unopened files, checkpoints, and detaching.
+`stratamd docs` lists every document open in Strata when the user refers to one that is not focused.
+
+Use `stratamd --agent-help` for annotation and edit syntax, replies, change inspection, opening unopened files, checkpoints, and detaching.

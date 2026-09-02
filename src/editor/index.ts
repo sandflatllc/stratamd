@@ -20,9 +20,11 @@ import {
   setAnnotationRanges,
   getActiveAnnotation,
   setActiveAnnotation,
+  setAnnotationFlash,
   type AnnotationRange,
 } from './annotations.js'
 import { createEditorCommands, createEditorKeymap, handleTaskCheckboxClick } from './commands.js'
+import { createFindPlugin, FIND_CURRENT_CLASS, FIND_MATCH_CLASS, findInText, findResultOf, firstMatchFrom, getFindState, NO_MATCHES, setFind, stepMatch, type FindMatch, type FindResult } from './find.js'
 import { createLocalImageNodeViews, type LocalImageResolver } from './images.js'
 import {
   parseMarkdownForEditor,
@@ -36,6 +38,8 @@ import {
   locateSourceAnnotationQuote,
   locateSourceReviewInsertion,
   localizeReviewChange,
+  reviewControlLabel,
+  setReviewFlash,
   setReviewRanges,
   type ReviewRange,
 } from './review.js'
@@ -49,6 +53,7 @@ import { hasOnlyPrimaryModifier, hasPrimaryModifier } from '../shared/primary-mo
 
 export * from './annotations.js'
 export * from './commands.js'
+export * from './find.js'
 export * from './images.js'
 export * from './local-history.js'
 export * from './markdown.js'
@@ -304,7 +309,13 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
   const sourceMirror = document.createElement('pre')
   sourceMirror.className = 'strata-source-mirror'
   sourceMirror.setAttribute('aria-hidden', 'true')
-  sourceLayer.append(sourceMirror, source)
+  // Find matches in source view live on their own layer so they never displace
+  // a review highlight that shares the same bytes.
+  const sourceFind = document.createElement('pre')
+  sourceFind.className = 'strata-source-mirror strata-source-find'
+  sourceFind.setAttribute('aria-hidden', 'true')
+  sourceFind.hidden = true
+  sourceLayer.append(sourceMirror, sourceFind, source)
   const sourceActions = document.createElement('div')
   sourceActions.className = 'strata-source-review-actions'
   sourceActions.setAttribute('role', 'group')
@@ -440,6 +451,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
         ...(options.onRejectSuggestion ? { onReject: options.onRejectSuggestion } : {}),
         onAdjust: (id, from, to) => adjustAnnotation(id, from, to),
       }),
+      createFindPlugin(),
     ],
   })
 
@@ -742,7 +754,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
         const button = document.createElement('button')
         button.type = 'button'
         button.textContent = label
-        button.setAttribute('aria-label', `${label} change ${id}`)
+        button.setAttribute('aria-label', reviewControlLabel(label, 'change', author, fullAdded || fullRemoved))
         button.disabled = readOnly
         if (callback) button.addEventListener('click', () => callback(id))
         group.append(button)
@@ -760,9 +772,10 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       const insertion = document.createElement('ins')
       insertion.textContent = 'seq' in input ? input.replacement ?? input.text : input.text ?? ''
       group.append(insertion)
+      const suggestionAuthor = 'seq' in input ? input.author === 'user' ? 'you' : input.author.name : input.author || 'external'
       const badge = document.createElement('span')
       badge.className = 'strata-review-author'
-      badge.textContent = `${'seq' in input ? input.author === 'user' ? 'you' : input.author.name : input.author || 'external'} · suggestion`
+      badge.textContent = `${suggestionAuthor} · suggestion`
       group.append(badge)
       for (const [label, callback] of [
         ['Accept', options.onAcceptSuggestion],
@@ -771,7 +784,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
         const button = document.createElement('button')
         button.type = 'button'
         button.textContent = label
-        button.setAttribute('aria-label', `${label} suggestion ${input.id}`)
+        button.setAttribute('aria-label', reviewControlLabel(label, 'suggestion', suggestionAuthor, insertion.textContent || input.quote))
         button.disabled = readOnly
         if (callback) button.addEventListener('click', () => callback(input.id))
         group.append(button)
@@ -804,6 +817,11 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
   source.addEventListener('input', () => {
     currentMarkdown = source.value
     renderSourceMirror()
+    if (findQuery) {
+      const matches = findInText(currentMarkdown, findQuery)
+      findIndex = firstMatchFrom(matches, source.selectionStart)
+      renderSourceFind(matches)
+    }
     const nextParsed = updateParsedMarkdown(currentParse.parsed, currentMarkdown)
     const reviews = reviewInputs(getReviewRanges(view.state), nextParsed.doc).map((range) => {
       const exact = range.replacementText ? locateText(nextParsed.doc, range.replacementText) : null
@@ -860,6 +878,20 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     parent.scrollTop += coords.top - bounds.top - parent.clientHeight / 2
   }
 
+  // The flash after a jump is a decoration class (PRD §6.9): a class set on the
+  // DOM from outside would be redrawn away by the editor's mutation observer.
+  let flashTimer: number | null = null
+  const clearFlashes = (transaction: Transaction): Transaction => setAnnotationFlash(setReviewFlash(transaction, null), null)
+  const flash = (apply: (transaction: Transaction, id: string | null) => Transaction, id: string): void => {
+    if (flashTimer !== null) window.clearTimeout(flashTimer)
+    // One ring at a time: the previous target stops before the next starts.
+    view.dispatch(apply(clearFlashes(view.state.tr), id))
+    flashTimer = window.setTimeout(() => {
+      flashTimer = null
+      view.dispatch(clearFlashes(view.state.tr))
+    }, 900)
+  }
+
   const jump = (from: number, to = from): void => {
     const boundedFrom = Math.max(0, Math.min(from, view.state.doc.content.size))
     const boundedTo = Math.max(boundedFrom, Math.min(to, view.state.doc.content.size))
@@ -868,7 +900,88 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     view.focus()
   }
 
+  // ---- Find (PRD §6.1). One query and one current index serve both views;
+  // the visual plugin holds the visual matches, the source layer the raw ones.
+  let findQuery = ''
+  let findIndex = -1
+  const renderSourceFind = (matches: readonly FindMatch[]): void => {
+    if (!findQuery || mode !== 'source') {
+      sourceFind.hidden = true
+      sourceFind.replaceChildren()
+      return
+    }
+    const fragment = document.createDocumentFragment()
+    let cursor = 0
+    matches.forEach((match, index) => {
+      if (match.from > cursor) fragment.append(document.createTextNode(currentMarkdown.slice(cursor, match.from)))
+      const span = document.createElement('span')
+      span.className = index === findIndex ? `${FIND_MATCH_CLASS} ${FIND_CURRENT_CLASS}` : FIND_MATCH_CLASS
+      span.textContent = currentMarkdown.slice(match.from, match.to)
+      fragment.append(span)
+      cursor = match.to
+    })
+    if (cursor < currentMarkdown.length) fragment.append(document.createTextNode(currentMarkdown.slice(cursor)))
+    sourceFind.replaceChildren(fragment)
+    sourceFind.hidden = false
+  }
+  const revealCurrentMatch = (): void => {
+    const host = mode === 'source' ? sourceFind : visual
+    host.querySelector(`.${FIND_CURRENT_CLASS}`)?.scrollIntoView({ block: 'center' })
+  }
+  const applyFind = (): FindResult => {
+    if (mode === 'source') {
+      if (!findQuery) { renderSourceFind([]); return NO_MATCHES }
+      const matches = findInText(currentMarkdown, findQuery)
+      findIndex = matches.length === 0 ? -1 : Math.max(0, Math.min(matches.length - 1, findIndex))
+      renderSourceFind(matches)
+      revealCurrentMatch()
+      return findResultOf(matches, findIndex)
+    }
+    view.dispatch(setFind(view.state.tr, findQuery, findIndex))
+    const state = getFindState(view.state)
+    findIndex = state.current
+    revealCurrentMatch()
+    return findResultOf(state.matches, findIndex)
+  }
+  const currentFindMatches = (): readonly FindMatch[] =>
+    mode === 'source' ? findInText(currentMarkdown, findQuery) : getFindState(view.state).matches
+
   const handle: StrataEditorHandle = {
+    find(query) {
+      if (query !== findQuery) {
+        findQuery = query
+        // A new query starts at the first match at or after the caret.
+        const caret = mode === 'source' ? source.selectionStart : view.state.selection.from
+        const matches = mode === 'source'
+          ? findInText(currentMarkdown, query)
+          : getFindState(view.state.apply(setFind(view.state.tr, query, 0))).matches
+        findIndex = firstMatchFrom(matches, caret)
+      }
+      return applyFind()
+    },
+    findStep(direction) {
+      const matches = currentFindMatches()
+      findIndex = stepMatch(matches.length, findIndex, direction)
+      return applyFind()
+    },
+    closeFind() {
+      const matches = currentFindMatches()
+      const landing = findIndex >= 0 ? matches[findIndex] : undefined
+      findQuery = ''
+      findIndex = -1
+      // Both views clear, whichever is showing: a view toggle may still be in flight.
+      renderSourceFind([])
+      if (mode === 'source') {
+        if (landing) source.setSelectionRange(landing.from, landing.from)
+        source.focus()
+        return
+      }
+      let transaction = setFind(view.state.tr, '', -1)
+      // The caret lands on the match; a collapsed selection never opens the annotate menu.
+      if (landing) transaction = transaction.setSelection(TextSelection.create(view.state.doc, Math.min(landing.from, view.state.doc.content.size)))
+      view.dispatch(transaction)
+      view.focus()
+    },
     setHistoryStep(step) {
       if (undoCoordinator.syncApplicationStep(step)) view.dispatch(closeHistory(view.state.tr))
     },
@@ -986,11 +1099,15 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     },
     jumpToHunk(id) {
       const range = getReviewRanges(view.state).find((candidate) => candidate.id === id)
-      if (range) jump(range.from, range.to)
+      if (!range) return
+      jump(range.from, range.to)
+      flash(setReviewFlash, id)
     },
     jumpToAnnotation(id) {
       const range = getAnnotationRanges(view.state).find((candidate) => candidate.id === id)
-      if (range && range.status !== 'orphaned') jump(range.from, range.to)
+      if (!range || range.status === 'orphaned') return
+      jump(range.from, range.to)
+      flash(setAnnotationFlash, id)
     },
     annotationCoordinates(id) {
       const range = getAnnotationRanges(view.state).find((candidate) => candidate.id === id)
@@ -1020,12 +1137,19 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     },
     focus: () => mode === 'source' ? source.focus() : view.focus(),
     toggleSource(force) {
+      const previous = mode
       mode = force === undefined ? mode === 'source' ? 'visual' : 'source' : force ? 'source' : 'visual'
       if (mode === 'source' && sourceMirrorDirty) renderSourceMirror()
       showMode()
+      if (findQuery && previous !== mode) {
+        // The search carries across views; the visual plugin idles while source view owns it.
+        if (mode === 'source') view.dispatch(setFind(view.state.tr, '', -1))
+        applyFind()
+      }
       return mode
     },
     destroy() {
+      if (flashTimer !== null) window.clearTimeout(flashTimer)
       view.dom.ownerDocument.removeEventListener('selectionchange', handleDocumentSelection)
       view.dom.ownerDocument.removeEventListener('keydown', handleSelectedEditorShortcut, true)
       view.destroy()

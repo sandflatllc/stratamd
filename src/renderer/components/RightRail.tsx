@@ -1,4 +1,5 @@
 import { useState, type CSSProperties } from 'react'
+import { useClock } from '../useClock'
 import type { AgentIdentity, AnnotationView, AttachmentView, DocumentView, HunkView, RoundHunkView } from '../../shared/contracts'
 import {
   absoluteTime,
@@ -7,6 +8,7 @@ import {
   annotationCounts,
   attachedAgo,
   attachmentStateLabel,
+  bulkRevertGroups,
   changeGroups,
   EXTERNAL_COLOR,
   hasResolvedAnnotations,
@@ -35,6 +37,13 @@ interface RightRailProps {
   onRevertHunk(hunk: HunkView): void
   onAcceptAllSuggestions(agentId: string): void
   onRejectAllSuggestions(agentId: string): void
+  /** Accept or reject one suggestion from its row when the editor cannot show it inline. */
+  onAcceptSuggestion(id: string): void
+  onRejectSuggestion(id: string): void
+  /** Reverts every pending change by one author, after confirmation (PRD §6.9). */
+  onRevertAll(group: { name: string; hunks: HunkView[] }): void
+  /** Puts a one-line instruction for a new agent on the clipboard. */
+  onCopyAgentPrompt(): void
   onJumpAnnotation(annotation: AnnotationView): void
   onClearResolved(): void
   onNudge(agentId: string): void
@@ -98,20 +107,41 @@ function ChangeRow(props: Pick<RightRailProps, 'onJumpHunk' | 'onKeepHunk' | 'on
   )
 }
 
-function SuggestionRow(props: Pick<RightRailProps, 'onJumpAnnotation'> & { annotation: AnnotationView }) {
+function SuggestionRow(props: Pick<RightRailProps, 'onJumpAnnotation' | 'onAcceptSuggestion' | 'onRejectSuggestion'> & { annotation: AnnotationView }) {
   const { annotation } = props
+  const meta = (
+    <span className="change-meta">
+      <i style={{ background: colorOf(annotation.author) }} />
+      <strong style={{ color: colorOf(annotation.author) }}>{annotation.author === 'user' ? 'you' : annotation.author.name}</strong>
+      <small>suggests</small>
+    </span>
+  )
+  const snippet = (
+    <span className="change-snippet">
+      <span className="snippet-removed"><InlineMarkdown text={annotation.quote} /></span>
+      <span className="snippet-added"><InlineMarkdown text={annotation.replacement ?? annotation.text} /></span>
+    </span>
+  )
+  if (annotation.inline !== false) {
+    return (
+      <button type="button" className="change-row" onClick={() => props.onJumpAnnotation(annotation)}>
+        {meta}
+        {snippet}
+      </button>
+    )
+  }
+  // A suggestion the editor cannot show inline keeps Accept and Reject on its row, like a hunk.
   return (
-    <button type="button" className="change-row" onClick={() => props.onJumpAnnotation(annotation)}>
-      <span className="change-meta">
-        <i style={{ background: colorOf(annotation.author) }} />
-        <strong style={{ color: colorOf(annotation.author) }}>{annotation.author === 'user' ? 'you' : annotation.author.name}</strong>
-        <small>suggests</small>
-      </span>
-      <span className="change-snippet">
-        <span className="snippet-removed"><InlineMarkdown text={annotation.quote} /></span>
-        <span className="snippet-added"><InlineMarkdown text={annotation.replacement ?? annotation.text} /></span>
-      </span>
-    </button>
+    <div className="change-row change-row-actions">
+      <button type="button" className="change-row-jump" onClick={() => props.onJumpAnnotation(annotation)}>
+        {meta}
+        {snippet}
+      </button>
+      <div className="change-row-buttons">
+        <button type="button" className="keep-button" onClick={() => props.onAcceptSuggestion(annotation.id)}>Accept</button>
+        <button type="button" className="revert-button" onClick={() => props.onRejectSuggestion(annotation.id)}>Reject</button>
+      </div>
+    </div>
   )
 }
 
@@ -190,6 +220,7 @@ function ChangesPanel(props: RightRailProps) {
   )
   const bulkAgents = [...new Map(agentSuggestions.map((agent) => [agent.id, agent] as const)).values()]
     .filter((agent) => agentSuggestions.filter((author) => author.id === agent.id).length > 1)
+  const revertGroups = bulkRevertGroups(props.document)
   const empty = groups.proposed.length === 0 && groups.unsaved.length === 0 && groups.saved.length === 0
   return (
     <section className="island rail-panel changes-panel" style={{ height: props.changesHeight }} aria-labelledby="changes-heading">
@@ -208,8 +239,16 @@ function ChangesPanel(props: RightRailProps) {
             </div>
           )
         })}
+        {revertGroups.map((group) => (
+          <div className="suggestion-bulk-row" key={`revert:${group.key}`}>
+            <span style={{ color: colorOf(group.author) }}>{group.name} · {group.hunks.length} changes</span>
+            <span>
+              <button type="button" className="revert-button" onClick={() => props.onRevertAll({ name: group.name, hunks: group.hunks })}>Revert all</button>
+            </span>
+          </div>
+        ))}
         <ChangeGroup label="Proposed" count={groups.proposed.length}>
-          {groups.proposed.map((annotation) => <SuggestionRow key={annotation.id} annotation={annotation} onJumpAnnotation={props.onJumpAnnotation} />)}
+          {groups.proposed.map((annotation) => <SuggestionRow key={annotation.id} annotation={annotation} onJumpAnnotation={props.onJumpAnnotation} onAcceptSuggestion={props.onAcceptSuggestion} onRejectSuggestion={props.onRejectSuggestion} />)}
         </ChangeGroup>
         <ChangeGroup label="Unsaved" count={groups.unsaved.length}>
           {groups.unsaved.map((hunk) => <ChangeRow key={hunk.id} hunk={hunk} onJumpHunk={props.onJumpHunk} onKeepHunk={props.onKeepHunk} onRevertHunk={props.onRevertHunk} />)}
@@ -252,7 +291,7 @@ function AnnotationsPanel(props: RightRailProps) {
   )
 }
 
-function AttachmentsPanel({ document, onNudge, onSetLead, onDisconnect }: Pick<RightRailProps, 'document' | 'onNudge' | 'onSetLead' | 'onDisconnect'>) {
+function AttachmentsPanel({ document, now, onNudge, onSetLead, onDisconnect, onCopyAgentPrompt }: Pick<RightRailProps, 'document' | 'onNudge' | 'onSetLead' | 'onDisconnect' | 'onCopyAgentPrompt'> & { now: number }) {
   return (
     <section className="island rail-panel agents-panel" aria-labelledby="agents-heading">
       <AmbientDecor variant="agents" />
@@ -270,7 +309,7 @@ function AttachmentsPanel({ document, onNudge, onSetLead, onDisconnect }: Pick<R
           >
             <span className="agent-avatar" style={{ background: color, color: textColorFor(color) }}>{initials(attachment.agent.name)}</span>
             <span className="agent-detail">
-              <strong>{attachment.agent.name} <small title={absoluteTime(attachment.attachedAt)}>{attachedAgo(attachment.attachedAt)}</small></strong>
+              <strong>{attachment.agent.name} <small title={absoluteTime(attachment.attachedAt)}>{attachedAgo(attachment.attachedAt, now)}</small></strong>
               <span><i className={`state-dot state-${attachment.state}`} style={attachment.state === 'waiting' ? { background: color } : undefined} />{attachmentStateLabel(attachment.state)}</span>
             </span>
             <span className="agent-actions">
@@ -293,20 +332,27 @@ function AttachmentsPanel({ document, onNudge, onSetLead, onDisconnect }: Pick<R
           </div>
         )
       })}
-      {document.attachments.length === 0 && <div className="empty-subtle">No agents attached.<br />Send becomes Copy for agent.</div>}
+      {document.attachments.length === 0 && (
+        <div className="empty-subtle">
+          No agents attached.<br />Send becomes Copy for agent.
+          <button type="button" className="text-action positive agent-prompt" onClick={onCopyAgentPrompt}>Copy the prompt for your agent</button>
+        </div>
+      )}
     </section>
   )
 }
 
 export function RightRail(props: RightRailProps) {
+  // Relative copy ("saved just now", "attached a minute ago") moves on with the clock.
+  const now = useClock()
   return (
     <aside className="right-rail">
       <ChangesPanel {...props} />
       <Resizer axis="horizontal" label="Resize changes panel" value={props.changesHeight} min={120} max={520} onChange={(value) => props.onHeight('changesHeight', value, false)} onCommit={(value) => props.onHeight('changesHeight', value, true)} />
       <AnnotationsPanel {...props} />
       <Resizer axis="horizontal" label="Resize annotations panel" value={props.annotationsHeight} min={90} max={420} onChange={(value) => props.onHeight('annotationsHeight', value, false)} onCommit={(value) => props.onHeight('annotationsHeight', value, true)} />
-      <AttachmentsPanel document={props.document} onNudge={props.onNudge} onSetLead={props.onSetLead} onDisconnect={props.onDisconnect} />
-      <div className="save-state-footer">{saveStateSentence(props.document.dirty, props.document.lastSavedAt)}</div>
+      <AttachmentsPanel document={props.document} now={now} onNudge={props.onNudge} onSetLead={props.onSetLead} onDisconnect={props.onDisconnect} onCopyAgentPrompt={props.onCopyAgentPrompt} />
+      <div className="save-state-footer">{saveStateSentence(props.document.dirty, props.document.lastSavedAt, now)}</div>
     </aside>
   )
 }

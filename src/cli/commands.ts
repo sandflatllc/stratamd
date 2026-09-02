@@ -11,12 +11,14 @@ import {
   type AgentPayload,
   type AnnotationInput,
   type CommandArguments,
+  type EditInput,
   type CommandName,
   type CommandRequest,
   type SocketCommandHandler
 } from './protocol.js'
 import {
   requestOverSocket,
+  SocketTimeoutError,
   SocketUnavailableError,
   socketPathForEnvironment
 } from './socket-client.js'
@@ -35,10 +37,10 @@ const OFFLINE_COMMANDS = new Set<CommandName>([
   'checkpoint',
   'forget'
 ])
-const STDOUT_COMMANDS = new Set<CommandName>(['attach', 'state', 'changes', 'send'])
+const IDENTITY_USAGE = 'Pass --as <the agent id your first attach returned>'
 
 const GENERAL_USAGE =
-  'Usage: stratamd <attach|annotate|reply|send|lead|accept|reject|resolve|save|state|theme|changes|changed|open|checkpoint|detach|forget|setup> [options]'
+  'Usage: stratamd <attach|annotate|edit|reply|send|lead|accept|reject|resolve|save|state|docs|theme|changes|changed|open|checkpoint|detach|forget|setup> [options]'
 
 interface ParsedOptions {
   positionals: string[]
@@ -159,15 +161,27 @@ async function canonicalPath(path: string): Promise<string> {
   }
 }
 
-export function deriveAgentId(environment: NodeJS.ProcessEnv = process.env): string {
+/** The stable id a harness session implies, or undefined outside any known harness. */
+export function sessionAgentId(environment: NodeJS.ProcessEnv = process.env): string | undefined {
   const session =
     environment.CLAUDE_CODE_SESSION_ID ??
     environment.CODEX_THREAD_ID ??
     environment.CODEX_SESSION_ID ??
     environment.T3_CODE_SESSION_ID ??
     environment.CURSOR_AGENT_SESSION_ID
-  if (!session) return `ag_${randomBytes(9).toString('base64url')}`
+  if (!session) return undefined
   return `ag_${createHash('sha256').update(session).digest('hex').slice(0, 12)}`
+}
+
+/** A first attach may mint a fresh id; every other command needs one it can prove (PRD §7). */
+export function deriveAgentId(environment: NodeJS.ProcessEnv = process.env): string {
+  return sessionAgentId(environment) ?? `ag_${randomBytes(9).toString('base64url')}`
+}
+
+function requireAgent(parsed: ParsedOptions, environment: NodeJS.ProcessEnv): string {
+  const agent = option(parsed, 'as') || sessionAgentId(environment)
+  if (!agent) usage(IDENTITY_USAGE)
+  return agent
 }
 
 function agentName(agent: string, specified: string | undefined, environment: NodeJS.ProcessEnv): string {
@@ -220,23 +234,7 @@ async function readAnnotations(
     ) {
       usage('--json cannot be combined with individual annotation options')
     }
-    let json: string
-    try {
-      json = jsonSource === '-' ? await readStandardInput(stdin) : await readFile(jsonSource, 'utf8')
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        throw new CommandFailure(`Not found: ${jsonSource}`, 2, 'NOT_FOUND', { path: jsonSource })
-      }
-      throw error
-    }
-    let values: unknown
-    try {
-      values = JSON.parse(json)
-    } catch {
-      usage('Annotation JSON is not valid JSON')
-    }
-    if (!Array.isArray(values) || values.length === 0) usage('Annotation JSON must be a non-empty array')
-    return values.map((value, index) => annotationInput(value, index))
+    return (await readJsonSource(jsonSource, stdin, 'Annotation')).map((value, index) => annotationInput(value, index))
   }
 
   const kind = requireOption(parsed, 'kind')
@@ -255,6 +253,75 @@ async function readAnnotations(
       ...(option(parsed, 'followed-by') === undefined
         ? {}
         : { followedBy: option(parsed, 'followed-by') })
+    })
+  ]
+}
+
+function editInput(value: unknown, index?: number): EditInput {
+  const prefix = index === undefined ? 'Edit' : `Edit ${index + 1}`
+  if (!value || typeof value !== 'object' || Array.isArray(value)) usage(`${prefix} must be an object`)
+  const input = value as Record<string, unknown>
+  const allowed = new Set(['match', 'replace', 'precededBy', 'followedBy'])
+  const unknown = Object.keys(input).filter((key) => !allowed.has(key))
+  if (unknown.length) usage(`${prefix} has unknown fields`, unknown)
+  if (typeof input.match !== 'string' || input.match.length === 0) usage(`${prefix} needs a non-empty match`)
+  if (typeof input.replace !== 'string') usage(`${prefix} needs a replace string`)
+  for (const key of ['precededBy', 'followedBy'] as const) {
+    if (input[key] !== undefined && typeof input[key] !== 'string') usage(`${prefix}.${key} must be a string`)
+  }
+  byteLengthWithin(input.replace, `${prefix}.replace`)
+  return {
+    match: input.match,
+    replace: input.replace,
+    ...(typeof input.precededBy === 'string' ? { precededBy: input.precededBy } : {}),
+    ...(typeof input.followedBy === 'string' ? { followedBy: input.followedBy } : {})
+  }
+}
+
+async function readJsonSource(source: string, stdin: NodeJS.ReadableStream, label: string): Promise<unknown[]> {
+  let json: string
+  try {
+    json = source === '-' ? await readStandardInput(stdin) : await readFile(source, 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new CommandFailure(`Not found: ${source}`, 2, 'NOT_FOUND', { path: source })
+    }
+    throw error
+  }
+  let values: unknown
+  try {
+    values = JSON.parse(json)
+  } catch {
+    usage(`${label} JSON is not valid JSON`)
+  }
+  if (!Array.isArray(values) || values.length === 0) usage(`${label} JSON must be a non-empty array`)
+  return values
+}
+
+async function readEdits(parsed: ParsedOptions, stdin: NodeJS.ReadableStream): Promise<EditInput[]> {
+  const jsonSource = option(parsed, 'json')
+  if (jsonSource !== undefined) {
+    if (
+      parsed.options.has('match') ||
+      parsed.options.has('replace') ||
+      parsed.options.has('preceded-by') ||
+      parsed.options.has('followed-by')
+    ) {
+      usage('--json cannot be combined with individual edit options')
+    }
+    return (await readJsonSource(jsonSource, stdin, 'Edit')).map((value, index) => editInput(value, index))
+  }
+
+  const match = requireOption(parsed, 'match')
+  let replace = option(parsed, 'replace')
+  if (replace === undefined) usage('Missing --replace')
+  if (replace === '-') replace = await readStandardInput(stdin)
+  return [
+    editInput({
+      match,
+      replace,
+      ...(option(parsed, 'preceded-by') === undefined ? {} : { precededBy: option(parsed, 'preceded-by') }),
+      ...(option(parsed, 'followed-by') === undefined ? {} : { followedBy: option(parsed, 'followed-by') })
     })
   ]
 }
@@ -292,7 +359,8 @@ async function parseCommand(
     const parsed = parseOptions(rest, {
       as: { value: true },
       name: { value: true },
-      timeout: { value: true }
+      timeout: { value: true },
+      'text-only': { value: false }
     })
     atMostPositionals(parsed, 1, command)
     const agent = option(parsed, 'as') || deriveAgentId(environment)
@@ -307,7 +375,8 @@ async function parseCommand(
         ...(file === undefined ? {} : { file: await canonicalPath(file) }),
         agent,
         name: agentName(agent, option(parsed, 'name'), environment),
-        timeout
+        timeout,
+        ...(parsed.options.has('text-only') ? { textOnly: true } : {})
       }
     }
   }
@@ -324,13 +393,37 @@ async function parseCommand(
       json: { value: true }
     })
     exactPositionals(parsed, 1, command)
-    const agent = option(parsed, 'as') || deriveAgentId(environment)
+    const agent = requireAgent(parsed, environment)
     return {
       command,
       args: {
         file: await canonicalPath(parsed.positionals[0]!),
         agent,
         annotations: await readAnnotations(parsed, stdin)
+      }
+    }
+  }
+
+  if (command === 'edit') {
+    const parsed = parseOptions(rest, {
+      match: { value: true },
+      replace: { value: true },
+      'preceded-by': { value: true },
+      'followed-by': { value: true },
+      as: { value: true },
+      name: { value: true },
+      json: { value: true }
+    })
+    exactPositionals(parsed, 1, command)
+    const agent = requireAgent(parsed, environment)
+    const name = option(parsed, 'name') || environment.AI_AGENT
+    return {
+      command,
+      args: {
+        file: await canonicalPath(parsed.positionals[0]!),
+        agent,
+        ...(name ? { name } : {}),
+        edits: await readEdits(parsed, stdin)
       }
     }
   }
@@ -342,7 +435,7 @@ async function parseCommand(
       as: { value: true }
     })
     exactPositionals(parsed, 1, command)
-    const agent = option(parsed, 'as') || deriveAgentId(environment)
+    const agent = requireAgent(parsed, environment)
     let text = requireOption(parsed, 'text')
     if (text === '-') text = await readStandardInput(stdin)
     return {
@@ -357,16 +450,29 @@ async function parseCommand(
   }
 
   if (command === 'state') {
-    const parsed = parseOptions(rest, {})
+    const parsed = parseOptions(rest, { brief: { value: false }, 'text-only': { value: false } })
     atMostPositionals(parsed, 1, command)
     const file = parsed.positionals[0]
-    return { command, args: file === undefined ? {} : { file: await canonicalPath(file) } }
+    return {
+      command,
+      args: {
+        ...(file === undefined ? {} : { file: await canonicalPath(file) }),
+        ...(parsed.options.has('brief') ? { brief: true } : {}),
+        ...(parsed.options.has('text-only') ? { textOnly: true } : {})
+      }
+    }
+  }
+
+  if (command === 'docs') {
+    const parsed = parseOptions(rest, {})
+    exactPositionals(parsed, 0, command)
+    return { command, args: {} }
   }
 
   if (command === 'changed') {
     const parsed = parseOptions(rest, { as: { value: true }, name: { value: true } })
     exactPositionals(parsed, 1, command)
-    const agent = requireOption(parsed, 'as')
+    const agent = requireAgent(parsed, environment)
     return {
       command,
       args: {
@@ -384,7 +490,7 @@ async function parseCommand(
       command,
       args: {
         file: await canonicalPath(parsed.positionals[0]!),
-        agent: requireOption(parsed, 'as')
+        agent: requireAgent(parsed, environment)
       }
     }
   }
@@ -407,7 +513,7 @@ async function parseCommand(
       command,
       args: {
         file: await canonicalPath(parsed.positionals[0]!),
-        agent: requireOption(parsed, 'as'),
+        agent: requireAgent(parsed, environment),
         text,
         ...(to === undefined ? {} : { to })
       }
@@ -421,7 +527,7 @@ async function parseCommand(
       command,
       args: {
         file: await canonicalPath(parsed.positionals[0]!),
-        agent: requireOption(parsed, 'as')
+        agent: requireAgent(parsed, environment)
       }
     }
   }
@@ -433,7 +539,7 @@ async function parseCommand(
       command,
       args: {
         file: await canonicalPath(parsed.positionals[0]!),
-        agent: requireOption(parsed, 'as'),
+        agent: requireAgent(parsed, environment),
         annotation: requireOption(parsed, 'annotation')
       }
     }
@@ -501,18 +607,25 @@ async function defaultLaunchApp(): Promise<void> {
   child.unref()
 }
 
+/**
+ * Retries only while the socket refuses or is absent (the app is still
+ * starting). Once a connection is accepted the request runs with its full
+ * timeout; a stall there is reported, never retried, so the app never sees
+ * the same attach twice.
+ */
 async function waitForRequest(
   request: CommandRequest,
   requestFunction: typeof requestOverSocket,
   socketPath: string,
-  timeoutMs: number,
+  launchBudgetMs: number,
+  requestTimeoutMs: number,
   now: () => number
 ) {
-  const deadline = now() + timeoutMs
+  const deadline = now() + launchBudgetMs
   let lastError: unknown
   while (now() < deadline) {
     try {
-      return await requestFunction(request, { socketPath, timeoutMs: 1_000 })
+      return await requestFunction(request, { socketPath, timeoutMs: requestTimeoutMs })
     } catch (error) {
       lastError = error
       if (!(error instanceof SocketUnavailableError)) throw error
@@ -644,18 +757,21 @@ export async function runCli(argv: string[], runtime: CliRuntime = {}): Promise<
     const requestFunction = runtime.request ?? requestOverSocket
     const socketPath = runtime.socketPath ?? socketPathForEnvironment(environment, environment.HOME || homedir())
     let response
+    const requestTimeout =
+      parsed.command === 'attach'
+        ? ((parsed.args as CommandArguments['attach']).timeout + 15) * 1_000
+        : 15_000
     try {
-      const requestTimeout =
-        parsed.command === 'attach'
-          ? ((parsed.args as CommandArguments['attach']).timeout + 15) * 1_000
-          : 15_000
       response = await requestFunction(request, { socketPath, timeoutMs: requestTimeout })
     } catch (error) {
+      // Only a failed connection means no instance. A timeout after the
+      // connection was accepted is a stalled instance: launching another
+      // would double-attach, and answering offline would race it.
       if (!(error instanceof SocketUnavailableError)) throw error
 
       if (parsed.command === 'open' || parsed.command === 'attach') {
         await (runtime.launchApp ?? defaultLaunchApp)()
-        response = await waitForRequest(request, requestFunction, socketPath, 10_000, runtime.now ?? Date.now)
+        response = await waitForRequest(request, requestFunction, socketPath, 10_000, requestTimeout, runtime.now ?? Date.now)
       } else if (OFFLINE_COMMANDS.has(parsed.command)) {
         const offline = runtime.offlineHandler ?? (await loadOfflineHandler(environment))
         if (!offline) {
@@ -682,7 +798,7 @@ export async function runCli(argv: string[], runtime: CliRuntime = {}): Promise<
       return response.exitCode
     }
 
-    if (response.result !== undefined && STDOUT_COMMANDS.has(parsed.command)) {
+    if (response.result !== undefined) {
       await writeLine(io.stdout, response.result)
     }
 
@@ -708,7 +824,9 @@ export async function runCli(argv: string[], runtime: CliRuntime = {}): Promise<
         ? error
         : error instanceof SocketUnavailableError
           ? new CommandFailure(error.message, 4, 'INSTANCE_UNREACHABLE')
-          : new CommandFailure(error instanceof Error ? error.message : 'Command failed', 1, 'COMMAND_FAILED')
+          : error instanceof SocketTimeoutError
+            ? new CommandFailure(error.message, 4, 'INSTANCE_TIMEOUT')
+            : new CommandFailure(error instanceof Error ? error.message : 'Command failed', 1, 'COMMAND_FAILED')
     await writeLine(io.stderr, {
       error: failure.message,
       code: failure.code,

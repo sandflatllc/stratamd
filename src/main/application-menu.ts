@@ -27,7 +27,7 @@ export function buildApplicationMenu(darwin: boolean = isDarwin()): Menu | null 
       label: 'Window',
       submenu: [
         { role: 'minimize' },
-        { role: 'close' },
+        { role: 'close', accelerator: 'Shift+CmdOrCtrl+W' },
         { type: 'separator' },
         { role: 'front' },
       ],

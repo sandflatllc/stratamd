@@ -25,6 +25,8 @@ export interface AnnotationReply {
   author: AnnotationAuthor
   agent: string | null
   text: string
+  /** Wall-clock creation time; absent on records written before it was recorded. */
+  createdAt?: number
 }
 
 export interface Annotation {
@@ -41,6 +43,8 @@ export interface Annotation {
   anchor: AnnotationAnchor
   replies: readonly AnnotationReply[]
   resolution?: 'accepted' | 'rejected'
+  /** Wall-clock creation time; absent on records written before it was recorded. */
+  createdAt?: number
 }
 
 export interface AnnotationEvent {
@@ -90,6 +94,7 @@ export interface CreateAnnotationInput {
   precededBy?: string
   followedBy?: string
   start?: number
+  createdAt?: number
 }
 
 export interface AnnotationResult {
@@ -340,6 +345,7 @@ export function createAnnotation(
     line: lineAt(document, anchor.start),
     anchor,
     replies: [],
+    ...(input.createdAt === undefined ? {} : { createdAt: input.createdAt }),
   }
   return withEvent(log, annotation, 'created', input.author, annotation.agent)
 }
@@ -353,7 +359,7 @@ function requireAnnotation(log: AnnotationLog, id: string): Annotation {
 export function replyToAnnotation(
   log: AnnotationLog,
   annotationId: string,
-  input: { id: string; author: AnnotationAuthor; agent?: string | null; text: string },
+  input: { id: string; author: AnnotationAuthor; agent?: string | null; text: string; createdAt?: number },
 ): AnnotationResult {
   assertTextLimit(input.text, 'Reply text')
   const annotation = requireAnnotation(log, annotationId)
@@ -367,6 +373,7 @@ export function replyToAnnotation(
     author: input.author,
     agent,
     text: input.text,
+    ...(input.createdAt === undefined ? {} : { createdAt: input.createdAt }),
   }
   return withEvent(
     log,
@@ -438,7 +445,11 @@ export function acceptSuggestion(
 ): SuggestionDecisionResult {
   const annotation = requireAnnotation(log, annotationId)
   if (annotation.kind !== 'suggestion') throw new Error(`${annotationId} is not a suggestion`)
-  if (annotation.status === 'orphaned') throw new Error('An orphaned suggestion cannot be accepted')
+  // The text the suggestion replaces has moved or gone: an anchor failure, so
+  // the CLI can list where the text is now instead of a bare refusal.
+  if (annotation.status === 'orphaned') {
+    throw new AnnotationAnchorError('quote_missing', 'An orphaned suggestion cannot be accepted')
+  }
   if (annotation.status === 'resolved') throw new Error('A resolved suggestion cannot be accepted')
 
   const start = annotation.anchor.start

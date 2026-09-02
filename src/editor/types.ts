@@ -114,5 +114,11 @@ export interface StrataEditorHandle {
   replaceSelection(text: string): void
   focus(): void
   toggleSource(force?: boolean): EditorMode
+  /** Runs a case-insensitive search in the current view and marks every match (PRD §6.1). */
+  find(query: string): import('./find.js').FindResult
+  /** Moves to the next or previous match, wrapping around. */
+  findStep(direction: 1 | -1): import('./find.js').FindResult
+  /** Clears the marks, lands the caret on the current match, and focuses the editor. */
+  closeFind(): void
   destroy(): void
 }

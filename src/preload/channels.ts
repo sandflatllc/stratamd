@@ -33,6 +33,7 @@ export const IPC = {
   setLead: 'strata:set-lead',
   disconnectAgent: 'strata:disconnect-agent',
   addFolder: 'strata:add-folder',
+  removeFolder: 'strata:remove-folder',
   scanFolder: 'strata:scan-folder',
   refreshExplorer: 'strata:refresh-explorer',
   forgetDocument: 'strata:forget-document',

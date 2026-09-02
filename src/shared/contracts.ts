@@ -29,7 +29,8 @@ export interface ReplyView {
   id: string
   author: 'user' | AgentIdentity
   text: string
-  createdAt: number
+  /** When the reply was made, once the annotation log records it; absent until then. */
+  createdAt?: number
 }
 
 export interface AnnotationView {
@@ -45,6 +46,10 @@ export interface AnnotationView {
   from: number | null
   to: number | null
   replacement?: string
+  /** False when a suggestion's text cannot be shown inline (a multi-paragraph replacement); the rail row then carries Accept and Reject. */
+  inline?: boolean
+  /** When the annotation was made, once the annotation log records it; absent until then. */
+  createdAt?: number
   replies: ReplyView[]
 }
 
@@ -81,6 +86,13 @@ export interface DocumentTabView {
   dirty: boolean
 }
 
+/**
+ * A background job that failed for an open document: `watch` (outside edits
+ * are no longer detected), `mirror` (the copy agents read is stale), or
+ * `persist` (review state is not being saved). Cleared when the job next succeeds.
+ */
+export type DocumentProblem = 'watch' | 'mirror' | 'persist'
+
 export interface DocumentView {
   path: string
   bufferPath: string
@@ -93,6 +105,8 @@ export interface DocumentView {
   dirty: boolean
   deleted: boolean
   invalidUtf8: boolean
+  /** Background failures the user must know about (PRD §6.10); empty when everything works. */
+  problems: DocumentProblem[]
   lastSavedAt: number | null
   /** Increases once per application step (Keep, Revert, Accept, merge); never on undo or redo. */
   historyStep: number
@@ -349,6 +363,8 @@ export interface StrataApi {
   /** Ends an attachment from the panel, the same path as agent detach. */
   disconnectAgent(path: string, agentId: string): Promise<void>
   addFolder(): Promise<void>
+  /** Removes an explorer folder; ghost entries under it stay until forgotten (PRD §6.4). */
+  removeFolder(path: string): Promise<void>
   scanFolder(path: string): Promise<void>
   refreshExplorer(): Promise<void>
   forgetDocument(path: string): Promise<void>

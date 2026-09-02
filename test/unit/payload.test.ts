@@ -6,6 +6,7 @@ import {
   PAYLOAD_VERSION,
   writeOnlyLine,
   serializePayload,
+  trimPayload,
   type PayloadEvent,
 } from '../../src/core/payload'
 
@@ -54,6 +55,7 @@ describe('payload v10', () => {
       'Message from GPT (ag_2):\nReady for your pass.',
       MESSAGE_GUIDANCE_LINE,
     ].join('\n\n'))
+    expect(MESSAGE_GUIDANCE_LINE).toContain('stratamd state --brief')
     expect(MESSAGE_GUIDANCE_LINE).toContain('stratamd state')
     expect(MESSAGE_GUIDANCE_LINE).toContain('stratamd changes')
 
@@ -67,6 +69,30 @@ describe('payload v10', () => {
     })
     expect(json).not.toHaveProperty('document')
     expect(json).not.toHaveProperty('segments')
+  })
+
+  it('trims a payload to the brief or text-only view without touching the original', () => {
+    const payload = createPayload({
+      file, buffer, agent: 'ag_1', event: 'state', open: true, cursor: 3,
+      document: 'Body.\n', annotations: [],
+      attachments: [{ agent: 'ag_2', name: 'GPT', state: 'waiting', lead: true }],
+    })
+    expect(trimPayload(payload, {})).toBe(payload)
+
+    const textOnly = trimPayload(payload, { textOnly: true })
+    expect(textOnly).not.toHaveProperty('document')
+    expect(textOnly).toMatchObject({ text: payload.text, annotations: [], open: true, cursor: 3 })
+
+    const brief = trimPayload(payload, { brief: true })
+    expect(brief).not.toHaveProperty('document')
+    expect(brief).not.toHaveProperty('text')
+    expect(brief).not.toHaveProperty('annotations')
+    expect(brief).toMatchObject({
+      version: PAYLOAD_VERSION, event: 'state', file, buffer, open: true, cursor: 3,
+      attachments: [{ agent: 'ag_2', name: 'GPT', state: 'waiting', lead: true }],
+    })
+    expect(payload.document).toBe('Body.\n')
+    expect(JSON.parse(serializePayload(payload))).toMatchObject({ open: true })
   })
 
   it('renders the whole annotated document and open questions for initial payloads', () => {

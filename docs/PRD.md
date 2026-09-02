@@ -68,7 +68,9 @@ It runs as a local desktop app on the owner's Linux workstation or a Mac on macO
 
 - Visual (WYSIWYG) editing of CommonMark + GFM. Editable visually: headings (ATX and setext), paragraphs, emphasis, strong, strikethrough, code spans, links, autolinks, images, lists (ordered, bullet, loose, tight, nested), task lists with interactive checkboxes, tables, fenced and indented code blocks, blockquotes, horizontal rules, hard and soft line breaks, escapes, and entities.
 - Rendered as raw blocks, byte-preserved, editable in source view only: YAML frontmatter (collapsible), footnotes, wiki links `[[...]]`, HTML blocks (never rendered as HTML), math, and link reference definitions.
-- Formatting toolbar and keyboard shortcuts for all visually editable constructs, following common editor conventions with the platform's primary modifier — Ctrl on Linux, Cmd on macOS (Ctrl/Cmd+B bold, Ctrl/Cmd+I italic, Ctrl/Cmd+K link, Ctrl/Cmd+Shift+C code, Ctrl/Cmd+1..6 heading level, Ctrl/Cmd+Shift+7/8 ordered/bullet list, Ctrl/Cmd+S save, Ctrl/Cmd+Enter send, Ctrl/Cmd+/ source view).
+- Formatting toolbar and keyboard shortcuts for all visually editable constructs, following common editor conventions with the platform's primary modifier — Ctrl on Linux, Cmd on macOS (Ctrl/Cmd+B bold, Ctrl/Cmd+I italic, Ctrl/Cmd+K link, Ctrl/Cmd+Shift+C code, Ctrl/Cmd+1..6 heading level, Ctrl/Cmd+Shift+7/8 ordered/bullet list, Ctrl/Cmd+S save, Ctrl/Cmd+Enter send, Ctrl/Cmd+/ source view, Ctrl/Cmd+F find, F7 / Shift+F7 next / previous change).
+- **Find.** Ctrl/Cmd+F opens a find bar in the editor pane, in visual and source view alike. The search is a case-insensitive substring match; every match is marked, the current one distinctly and scrolled into view, with a "3 of 12" count. Enter and Shift+Enter (also F3 and Shift+F3) step forward and back with wrap-around; Escape closes the bar, lands the caret on the current match, and returns focus to the editor. The search follows a view toggle.
+- **Next / previous change.** F7 and Shift+F7 step through pending hunks and open suggestions in document order, wrapping around, centering each in the editor with the same flash a rail row click gives.
 - Spellcheck is the platform's. Code spans and code blocks are rendered with `spellcheck="false"` so paths and identifiers inside them are never flagged; prose is checked as the platform checks it.
 - Source view toggle (raw markdown, same buffer). Syntax typed in source view that the visual schema cannot represent becomes a raw block.
 - Local images resolve relative to the document and render from disk through a main-process handler that only serves paths under the document's directory or an explorer folder. Remote images and any other remote URL are never fetched; a placeholder is shown.
@@ -108,7 +110,7 @@ It runs as a local desktop app on the owner's Linux workstation or a Mac on macO
 
 ### 6.4 Explorer
 
-- A sidebar showing only `*.md` / `*.markdown` files under folders the user has added, honoring `.gitignore` inside git work trees and skipping `node_modules`. Symlink loops and overlapping folders are detected; each file appears once. Files are shown under the subfolders they sit in on disk, nested as on disk, never flattened; subfolders with no markdown files are not shown. Every folder row, root or nested, collapses and expands on click; added folders start expanded and subfolders start collapsed. A root folder row shows its folder name preceded by at most one parent segment (`parent/name`); the name is always fully visible and the parent segment is what gets elided when space runs out. Hovering a folder row for about a second shows the full path in a tooltip. Right-clicking any folder or file row opens a menu with one item, Copy full path, which copies the absolute path to the clipboard.
+- A sidebar showing only `*.md` / `*.markdown` files under folders the user has added, honoring `.gitignore` inside git work trees and skipping `node_modules`. Symlink loops and overlapping folders are detected; each file appears once. Files are shown under the subfolders they sit in on disk, nested as on disk, never flattened; subfolders with no markdown files are not shown. Every folder row, root or nested, collapses and expands on click; added folders start expanded and subfolders start collapsed. A root folder row shows its folder name preceded by at most one parent segment (`parent/name`); the name is always fully visible and the parent segment is what gets elided when space runs out. Hovering a folder row for about a second shows the full path in a tooltip. Right-clicking any folder or file row opens a menu with Copy full path, which copies the absolute path to the clipboard; on a root folder row the menu also offers Remove folder, which takes the folder out of the explorer while its documents stay remembered (§9).
 - **Scan** on a folder creates a ghost for every file that lacks one, by the ghost seeding rule. **Refresh** rescans for new and removed files.
 - `stratamd checkpoint <dir>` does the same from the shell. There is no background watching of folders.
 
@@ -125,7 +127,7 @@ It runs as a local desktop app on the owner's Linux workstation or a Mac on macO
 - **Lead accept** (§6.6) is never user-authored: it applies the replacement as an `external` segment tagged with the Lead, creates a pending hunk authored by the Lead, and does not move the ghost; the user reviews it with Keep or Revert like any agent edit. The `accepted` and `rejected` events record the Lead as their author (and are not delivered back to it); other agents receive the change as an external segment under the include-external rule. A user Revert of the Lead's hunk removes the text while the annotation stays resolved `accepted`: both records stand, as two facts about two actors, and the suggestion's author may receive `accepted` for text later reverted. There is no hunk-to-annotation linkage.
 - Anchoring: exact quote plus up to 32 characters of prefix/suffix context, mapped live through editor transactions while open. A suggestion's quote must lie within a single top-level block; comments and questions have no such limit. Annotations may overlap; nested highlights render as stacked. On load, re-locate by exact match, then by context, else mark **orphaned** and list in the sidebar; never guess onto other text. An orphaned suggestion cannot be accepted; there is no fuzzy apply. Orphaning emits one event; reattachment on a later load emits one event.
 - Replies: any annotation can have them, including orphaned ones. Every create, reply, resolve, accept, reject, orphan, and reattach is an annotation event with a monotonic `seq` per document.
-- Resolve/dismiss hides the annotation from the default view; it stays stored until the user clears resolved annotations. Any agent may resolve annotations it authored; only the Lead may resolve anyone's (§6.6). Reply and resolve stay reachable in the UI for any unresolved annotation, orphaned ones included (§6.9 thread panel).
+- Resolve/dismiss hides the annotation from the default view; it stays stored until the user clears resolved annotations. An open suggestion offers Accept and Reject in the thread panel too; choosing Resolve on it first asks for confirmation, in plain words, that resolving hides the suggestion without changing the text. Any agent may resolve annotations it authored; only the Lead may resolve anyone's (§6.6). Reply and resolve stay reachable in the UI for any unresolved annotation, orphaned ones included (§6.9 thread panel).
 - Storage: the document's ghost entry. The document itself is never modified by annotations.
 
 ### 6.6 Attachments
@@ -167,13 +169,16 @@ The commands and their semantics are in §7. Requirements:
 - `stratamd` is the app executable. `stratamd setup` links it onto PATH; on Linux it also installs the `.desktop` entry and icon and registers the MIME association, while on macOS the `.app` bundle itself declares the association. `stratamd setup --remove` undoes what setup did on that platform — on macOS that is only the link, and deleting the `.app` completes removal. Both are safe to repeat. `stratamd --agent-help` prints §7 verbatim.
 - The CLI runs as plain Node (`ELECTRON_RUN_AS_NODE=1`), so a command costs a process start, not a browser launch.
 - What a harness needs: the ability to run a command repeatedly, capture its stdout, and carry a short id between runs. Harnesses that cannot hold a command open use `--timeout 0`, which returns at once with a queued delivery or `{"event":"timeout"}`.
-- `attach` is the only command that blocks by design, for at most `--timeout` seconds (default 600). `open` and `attach` also block for app launch when no instance is running, returning as soon as the session exists, before the window paints.
+- `attach` is the only command that blocks by design, for at most `--timeout` seconds (default 600). `open` and `attach` also block for app launch when no instance is running, returning as soon as the session exists, before the window paints. "No instance" means the socket connection failed (absent or refused); a request the instance accepted but did not answer in time exits 4 (`INSTANCE_TIMEOUT`) and never launches a second instance or falls back to an offline handler.
 - When an instance is running, every command goes through it over the local socket (§10), so quotes are validated against the shadow and the instance owns the ghost store. When none is running, `annotate`, `reply`, `state`, `changes`, `changed`, and `checkpoint` operate on the file and ghost store directly, under a per-document lock file with temp-and-rename writes; the app takes the same lock on startup, so a command in flight cannot race it. Offline commands treat the document on disk as the current content unless a newer `buffer.md` exists, in which case they use the buffer.
 - `open` on a document whose shadow differs from its ghost opens it in review mode. This is how an agent shows the user what it changed.
-- `state` is read-only: no agent id required, no attachment created, no baseline or cursor moved. With no file given and no document open it exits 2.
+- `state` is read-only: no agent id required, no attachment created, no baseline or cursor moved. With no file given and no document open it exits 2. Every `state` payload carries `open` (whether the document is open in the instance) and `theme`; `attachments` only for an open document. `state --brief` omits `document`, `text`, and `annotations`. `--text-only` on `state` and `attach` omits `document`; `text` already renders the whole buffer with annotations inlined, so the payload halves for a large document and nothing is lost.
+- `docs` lists the documents open in the instance as `{file, focused, dirty, attachments}` rows from the tab registry and the sessions. It has no offline mode and never launches the app.
+- `edit` is a compare-and-swap change to one or more passages. Each match is located in the live shadow under annotate's quote rules (exact, unique, `precededBy`/`followedBy` to disambiguate; exit 3 `QUOTE_INVALID` with closest-match excerpts otherwise). The mirror is flushed first, then the replaced text is merged as an external buffer change tagged with the agent, exactly as a `changed` followed by a buffer write: a pending hunk in the agent's name, the ghost unmoved, and no conflict against the agent's own match. `--json` is all-or-nothing like `annotate --json`; edits that overlap exit 1. `edit` has no offline mode and never launches the app.
 - `annotate --json` is all-or-nothing: every quote is validated first, and one failure creates nothing (exit 3, detail lists each failing entry).
-- Output: payloads on stdout as one JSON object; errors on stderr as one JSON object `{error, code, detail}`; exit codes 0 success, 1 usage, 2 not found (file, annotation, attachment), 3 refused by document state (quote missing or ambiguous with closest matches listed; Lead held or required; message pending; save blocked), 4 instance unreachable. `detail` always carries a machine-readable `code` (`QUOTE_INVALID`, `LEAD_TAKEN`, `NOT_LEAD`, `MESSAGE_PENDING`, `SAVE_BLOCKED`) and the specifics. All I/O is UTF-8; multi-line `--text` is accepted via stdin with `--text -`.
-- `send`, `lead`, `accept`, `reject`, `resolve`, and `save` require the running instance: they have no offline mode and never launch the app.
+- Output: every command prints its result on stdout as one JSON object: the payload for `attach`, `state`, `changes`, and `docs`; `{created: [{id, kind, quote}]}` for `annotate`; `{replied, annotation}` for `reply`; `{applied: [{line, match, replace}]}` for `edit`; a one-key object (`sent`, `lead`, `accepted`, `rejected`, `resolved`, `saved`, `tagged`, `opened`, `checkpointed`, `detached`) for the rest. Errors on stderr as one JSON object `{error, code, detail}`; exit codes 0 success, 1 usage, 2 not found (file, annotation, attachment), 3 refused by document state (quote missing or ambiguous with closest matches listed; Lead held or required; message pending; save blocked), 4 instance unreachable or stalled. `code` is machine-readable (`QUOTE_INVALID`, `LEAD_TAKEN`, `NOT_LEAD`, `MESSAGE_PENDING`, `SAVE_BLOCKED`, `EDITS_OVERLAP`, `INSTANCE_TIMEOUT`) and `detail` carries the specifics. Every anchor failure, in `annotate`, `edit`, or a Lead `accept` of a suggestion whose text moved, lists closest-match text excerpts through one formatter and, outside `annotate`, a `hint` saying what to do next. `MESSAGE_PENDING` names every blocked recipient in `detail.recipients` and the unblocked ones in `detail.others`. All I/O is UTF-8; multi-line `--text` is accepted via stdin with `--text -`.
+- `send`, `lead`, `accept`, `reject`, `resolve`, `save`, `docs`, and `edit` require the running instance: they have no offline mode and never launch the app.
+- Identity: `--as` if given, else the harness-session id; without either, only a first `attach` mints a fresh id. `annotate`, `edit`, `reply`, `send`, `lead`, `accept`, `reject`, `resolve`, `save`, `changed`, and `detach` exit 1 instead, telling the agent to pass the id its first attach returned.
 - Documents are identified by realpath (symlinks resolved), for sessions and ghost entries alike.
 
 ### 6.9 App shell and design
@@ -188,13 +193,15 @@ The commands and their semantics are in §7. Requirements:
   - Ambient motion defaults on, honors `prefers-reduced-motion`, and pauses while keystrokes arrive. The owner explicitly confirmed the handoff's animated presentation is the intended default on 2026-08-28. The built-in theme's ambient styles are the animation handoff's defaults, `Rising motes` for the background and `Glow orbs` inside windows (§6.13).
   - Typography: Baloo 2 stays for all upright text. Because Baloo 2 has no italic face, Nunito Italic is registered under the same family name with `font-style: italic`, so emphasized text gets a real italic in a matching rounded design instead of a synthesized slant. Owner confirms by eye in the prototype before the typography pass is closed. A theme may name any installed family for text and for code; the Nunito italic mapping applies only when the text font is Baloo 2.
   - Agent colors are assigned in attach order from the handoff palette after pink (reserved for the user): grape, sky, mint, tangerine, then repeat. The colors themselves come from the active theme's `people` group (§6.13).
-  - **The right rail is a map, decided 2026-08-30.** Rows are compact click targets; clicking centers the target in the editor, where the span is already marked (annotations by the selected-annotation highlight, hunks by track-changes). A change row shows the author (you, the agent's name, or "external"), whether it adds or removes, and at most two lines of text; the full diff is read in the document, never in the rail. A hunk that cannot render inline keeps Keep and Revert on its row. Rail snippets render formatted (bold, italics, code face, link text), never raw markdown syntax. Panel copy is plain everyday language, tooltips included; internal vocabulary is kept to this PRD and the code: "waiting for changes" / "working" / "has an update waiting"; "All caught up. Everything reviewed."; "attached 12 minutes ago" with absolute time on hover; the mirror fine print is replaced by the save-state sentence below; the idle-expiry fine print becomes a plain tooltip (the user's sends are never dropped; an agent's notes do not keep it attached); the orphaned chip reads "text removed", the external author badge reads "someone else", and row copy never shows file paths.
-  - **The thread panel, decided 2026-08-30.** One thread surface: a floating, movable, user-resizable panel like the theme panel, opened by an annotation row click or an in-editor highlight click, positioned beside the annotated span at open and clamped to the viewport; an orphan opens it at its most recent position this session, else centered, and shows the original quote. Size persists; position never does. Default width about twice the old popover's 330px, minimum 330px; body text at the editor's main body size, tracking the editor pane's zoom. It shows the thread, replies, a reply box, and Resolve for any unresolved annotation; resolving from the panel closes it (decided 2026-08-30). The annotation composer is user-resizable with its size persisted; its default size and selection-anchored position are unchanged.
-  - **User-facing copy, decided 2026-08-30.** Every label, chip, counter, tooltip, and dialog uses plain everyday words; the audience works with agents, not necessarily with code. Internal vocabulary (buffer, ghost, shadow, orphaned, external, delivery, on disk) appears only in this PRD and the code.
+  - **The right rail is a map, decided 2026-08-30.** Rows are compact click targets; clicking centers the target in the editor, where the span is already marked (annotations by the selected-annotation highlight, hunks by track-changes). A change row shows the author (you, the agent's name, or "external"), whether it adds or removes, and at most two lines of text; the full diff is read in the document, never in the rail. A hunk that cannot render inline keeps Keep and Revert on its row, and a suggestion that cannot (a replacement spanning paragraphs) keeps Accept and Reject on its row the same way. Beside the per-agent Accept all / Reject all rows, an author with more than one pending change gets a Revert all row that confirms first, naming the count and the author; the reverts run one hunk at a time, each its own undo step. Rail snippets render formatted (bold, italics, code face, link text), never raw markdown syntax. Panel copy is plain everyday language, tooltips included; internal vocabulary is kept to this PRD and the code: "waiting for changes" / "working" / "has an update waiting"; "All caught up. Everything reviewed."; "attached 12 minutes ago" with absolute time on hover, and every relative time in the rail and the thread panel refreshes on its own about every 30 seconds; the mirror fine print is replaced by the save-state sentence below; the idle-expiry fine print becomes a plain tooltip (the user's sends are never dropped; an agent's notes do not keep it attached); the orphaned chip reads "text removed", the external author badge reads "someone else", and row copy never shows file paths. The accessible name of every Keep, Revert, Accept, and Reject control is the action, the author, and a short excerpt of the text, never an internal id. With no agent attached, the agents panel offers "Copy the prompt for your agent", which puts a one-line attach instruction on the clipboard.
+  - **The thread panel, decided 2026-08-30.** One thread surface: a floating, movable, user-resizable panel like the theme panel, opened by an annotation row click or an in-editor highlight click, positioned beside the annotated span at open and clamped to the viewport; an orphan opens it at its most recent position this session, else centered, and shows the original quote. Size persists; position never does. Default width about twice the old popover's 330px, minimum 330px; body text at the editor's main body size, tracking the editor pane's zoom. It shows the thread, replies, a reply box, and Resolve for any unresolved annotation; resolving from the panel closes it (decided 2026-08-30). The reply box is a multi-line field: Enter sends, Shift+Enter starts a new line. The root annotation and each reply carry a quiet relative time once the annotation log records one, with the absolute time on hover. The annotation composer is user-resizable with its size persisted; its default size and selection-anchored position are unchanged.
+  - **User-facing copy, decided 2026-08-30.** Every label, chip, counter, tooltip, and dialog uses plain everyday words; the audience works with agents, not necessarily with code. Internal vocabulary (buffer, ghost, shadow, orphaned, external, delivery, on disk) appears only in this PRD and the code. A file changed by something else while the user edits is "changed outside StrataMD"; the conflict dialog's columns read "Your version · unsaved" and "Changed outside".
+  - **Drafts and Escape.** The Send composer's note and per-item choices and the thread panel's unsent reply are kept per document while the app runs, so Escape, a stray click outside, or reopening never loses them; a successful send clears the composer's draft. Escape closes only the topmost surface (a dialog, the annotate menu, the find bar, the theme panel, a thread panel, an error notice), never several at once.
+  - **Notices.** A success notice clears itself after a moment. A failure shows as an error notice in the theme's danger color that stays until dismissed with its × or Escape, or until a newer error replaces it; a success never paints over an unexpired error.
   - **Save state and counts, decided 2026-08-30.** The editor always shows whether it matches the saved file: the Save button reads "Save" (accented) while unsaved changes exist and a quiet "Saved" otherwise; the tab carries an unsaved dot beside its name, distinct from its count badge; the rail footer reads "Unsaved changes · last saved 3 minutes ago" or "Everything saved · 3 minutes ago". The changes panel groups rows, each group with its own count: **Proposed** (suggestions, not in the text until accepted; Accept/Reject), **Unsaved** (applied in the editor, lands on the next Save; Keep/Revert), **Saved** (in the file, awaiting review; Keep/Revert). Below them, the save history (§6.7) under a "Saves" heading with rows labeled "Last save" or "Saved <time>", authors as "you and Claude" (anonymous reads "someone else"), an expanded row's count as "N changes", and "Nothing changed" for an empty round. A hunk is classified by comparing its shadow region against disk on each publish; if that cost proves too high under measurement, the fallback is a whole-panel unsaved marker driven by the document's dirty state. The annotations panel header counts open annotations and, when present, those on removed text. The top bar keeps the total pending count and tints it while anything counted is unsaved. Reverting a Saved hunk restores text the file does not have, so the document reads unsaved until the next Save.
   - Per-pane text zoom. The explorer, the editor, and the right rail each carry an independent text-size factor (default 1.0, steps of 0.1, range 0.5–2.0). Ctrl/Cmd+= and Ctrl/Cmd+- change the factor of the pane under the pointer, or the editor when the pointer is over no pane; Ctrl/Cmd+wheel changes the pane under the pointer by one step per wheel notch, accumulating trackpad deltas so a gesture does not skip steps. The window itself never zooms: the Electron default menu's zoom roles are removed and pinch zoom is locked. A single text button in the top bar, `Reset zoom`, returns all panes to 1.0; it is shown only while some pane is off 1.0, it is the only zoom control drawn, and no zoom icons are added. Only type scales; panel widths, spacing, and the editor toolbar row do not. Factors persist in `settings.json`.
 - Single instance: launching with a path while running opens a new tab in the existing instance.
-- Tabs for multiple open documents; each tab is one session. The **focused** document is what `attach` and `state` target when no file is given on an initial call. Each tab retains its scroll position across switches, in visual and source view.
+- Tabs for multiple open documents; each tab is one session. The **focused** document is what `attach` and `state` target when no file is given on an initial call. Each tab retains its scroll position across switches, in visual and source view. Ctrl/Cmd+W closes the active tab through the same close confirmation a click gets; Ctrl+Tab / Ctrl+Shift+Tab and Ctrl/Cmd+PageDown / PageUp cycle tabs; a middle click closes a tab.
 - Open from the explorer, CLI, file manager, or drag-drop.
 - On Linux the `.desktop` entry declares `MimeType=text/markdown;`; `.md` and `.markdown` map to that type through the shared MIME database. On macOS the `.app` bundle declares both extensions (role Editor, rank Alternate) and Launch Services learns the association from it. Making StrataMD the default handler is a separate step done only when the owner requests it: `stratamd setup --default` records it on Linux, and on macOS prints the Finder steps (Open With → Change All) for the user to complete by hand.
 - The keyboard reaches and operates every review action, annotation thread, composer tab, conflict, and banner.
@@ -204,13 +211,14 @@ The commands and their semantics are in §7. Requirements:
 
 - **File deleted while open:** the tab stays open with a banner; Save recreates the file. Attachments are unaffected.
 - **File renamed or moved while open:** §6.3.
-- **Permission failure on Save:** the shadow is kept, the error is shown, nothing else changes.
+- **Permission failure on Save:** the shadow is kept, the error is shown as a notice that stays until dismissed (§6.9), nothing else changes.
 - **Invalid UTF-8:** opens read-only in source view with a banner; no ghost is written.
 - **Large documents:** document size must not disable visual editing or any collaboration feature. Parsing, rendering, review, annotations, Save, and Send remain available; performance or memory failures on larger files are implementation defects to optimize, not a reason to impose a product ceiling. The owner explicitly rejected the former 2 MB source-only fallback on 2026-08-28.
 - **External write racing Save:** §6.1; the hash check before writing catches it.
 - **Crash with unsaved edits:** §6.3 recovery.
 - **Failure inside the window:** an error in one pane replaces just that pane with a card — "This part of the window hit a problem. Your document and its pending changes are safe." — and a Reload button; the other panes and the top bar keep working. An error outside every pane degrades to the whole-window card: "StrataMD hit a problem showing this window. Your documents and pending changes are safe." The card's promise is earned, not asserted: the crash and the Reload both flush the not-yet-mirrored edit to the main process (bounded, so a dead channel cannot wedge recovery), and reloading re-derives everything from main, so the newest keystrokes survive. Nothing reloads automatically — a bad state must not loop. Failures no boundary can catch (event handlers, the editor's own DOM dispatch) change no UI and are recorded like every other failure (§9).
 - **Renderer process dies:** the window reloads; a second death within a minute closes the window instead of looping, and a fresh one is created on the next launch or agent connection.
+- **A background job fails:** the buffer mirror, the file watcher, and the state persist run outside any user action, so their failures cannot surface as a command error. Each is logged (§9) and shown as a banner on the document in plain words — what stopped and what it means (agents may be reading an older copy; outside edits will not be noticed; review notes may not survive closing) — and the banner clears when that job next succeeds. A failed mirror write keeps its content queued and retries on the next edit; one failure never silences later writes.
 - **Document referenced by a ghost entry no longer exists:** the explorer shows it struck through; the entry is kept until forgotten.
 
 ### 6.11 State model
@@ -275,6 +283,7 @@ Each must hold before the product is done.
 21. A multi-write agent burst under one tag carries one name throughout; the tag expires after five idle minutes and a second agent's tag replaces it from its next write.
 22. A save's round is inspectable after the next save: its hunks come from its own snapshots, exclude unsaved work, and its author list names everyone active in the round, including a contributor whose edit was later overwritten. A save that changed nothing adds no round.
 23. A pre-upgrade store with an empty ghost and a non-empty document re-seeds from the document once at next open, keeping unsaved buffer work pending; a checkpoint-created empty ghost survives reopening.
+24. `edit` against a passage the user has since changed fails with the closest excerpts and applies nothing; `edit` against an intact passage lands as a pending hunk in the agent's name with the ghost unmoved, while the user's unsaved edits elsewhere in the buffer stay as they were.
 
 ### 6.13 Themes
 
@@ -303,6 +312,7 @@ for their next round. Keep that loop going until the payload says
 
   stratamd attach [file] [--as <agent id>] [--name "<who you are>"]
                          [--timeout <seconds>, default 600; 0 = poll]
+                         [--text-only]
       Attaches you to the document (the focused one if no file is given)
       and opens it if it is not open.
       The FIRST call returns immediately with the whole buffer, the
@@ -323,7 +333,15 @@ for their next round. Keep that loop going until the payload says
       when it returns. Re-run it after each response to keep listening.
       It returns {"event":"timeout"} after --timeout seconds if nothing
       happens; just run it again. It returns {"event":"closed"} when the
-      user has closed the document, after anything that was queued.
+      user has closed the document, after anything that was queued. It
+      returns {"event":"superseded"} when a newer attach call for your
+      id replaced this one: do nothing, the newer call is listening.
+      A delivery can arrive twice if a call was cut off; the same
+      deliveryId means you already handled it.
+      --text-only leaves out the "document" field; "text" already holds
+      the whole buffer with the comments inlined, so you miss nothing
+      and the payload is half the size on a large document. The same
+      flag works on state.
 
   stratamd annotate <file> --kind <comment|question|suggestion>
                            --quote "<exact text from the buffer>"
@@ -340,10 +358,31 @@ for their next round. Keep that loop going until the payload says
       or ambiguous the command fails (exit 3) and lists the closest
       matches; add --preceded-by or --followed-by and retry. Pass --json <file or -> with an array of
       {kind, quote, text, label, precededBy, followedBy} to create many.
-      Suggestions are not applied until the user accepts them.
+      Suggestions are not applied until the user accepts them. Prints
+      {"created":[{id, kind, quote}]}; use the ids in reply and resolve.
+
+  stratamd edit <file> --match "<exact text from the buffer>"
+                       --replace "<new text>" | --replace -
+                       [--preceded-by "<text right before the match>"]
+                       [--followed-by "<text right after the match>"]
+                       [--as <agent id>] [--name "<who you are>"]
+      Changes one passage. The match follows the quote rules of
+      annotate: copied exactly from the buffer and unique within it,
+      with the same closest-match failure (exit 3) and the same
+      --preceded-by / --followed-by fix. The replacement lands in the
+      live buffer as YOUR change, marked for the user's review like a
+      write to the buffer file. Use it instead of rewriting the buffer
+      file when you want to change a passage: the match is checked
+      against the buffer at the moment of the write, so it can never
+      undo an edit the user made after you last read. An empty
+      --replace deletes the passage. Pass --json <file or -> with an
+      array of {match, replace, precededBy, followedBy} to make many
+      changes at once; one bad match applies none of them. Prints
+      {"applied":[{line, match, replace}]}. Needs the running app.
 
   stratamd reply <file> --to <annotation id> --text "<reply>" [--as <id>]
       Answers a question or continues a thread. --text - reads stdin.
+      Prints {"replied": <reply id>, "annotation": <thread id>}.
 
   stratamd send <file> --as <your id> --text "<note>" [--text -]
                        [--to <id[,id,...]>]
@@ -352,8 +391,10 @@ for their next round. Keep that loop going until the payload says
       notes queue for absent agents and survive restarts. Keep the
       discussion in annotations and replies; send is the doorbell, and
       the recipient runs state or changes to catch up. One note may
-      wait per recipient: sending another before it is collected fails.
-      Success means queued, not read.
+      wait per recipient: sending another before it is collected fails
+      (exit 3, detail names every blocked recipient); retry after they
+      attach, or send only to the others with --to. Success means
+      queued, not read.
 
   stratamd lead <file> --as <your id>
       Claims the Lead for this document. Run it when the user puts you
@@ -377,11 +418,19 @@ for their next round. Keep that loop going until the payload says
       user's save: agent edits stay pending for the user's review.
       Fails when a conflict needs the user; report that and stop.
 
-  stratamd state [file]
+  stratamd state [file] [--brief] [--text-only]
       Read-only: the same content as a first attach, without attaching
-      or affecting any attachment. Also reports the active theme (id,
-      name, file path) and the attached agents: id, name, state
-      (waiting, working, or pending), and which one leads.
+      or affecting any attachment. Also reports whether the document is
+      open in the app ("open"), the active theme (id, name, file path)
+      and, for an open document, the attached agents: id, name, state
+      (waiting, working, or pending), and which one leads. --brief
+      leaves out the document, text, and annotations: run it to see who
+      is attached and who leads, for example after a message.
+
+  stratamd docs
+      Lists the documents open in the app: each file, whether it is
+      focused, whether it has unsaved changes, and its attached agents.
+      Needs the running app.
 
   stratamd theme [id] [--json]
       Prints a theme: its file path, the values its authors SET, and
@@ -419,22 +468,34 @@ for their next round. Keep that loop going until the payload says
   stratamd detach <file> --as <agent id>
       Ends your attachment. Optional; idle attachments expire on their own.
 
+Every command prints its result to stdout as one JSON object. Errors go
+to stderr as one JSON object {error, code, detail}. Exit codes:
+  0  done
+  1  usage: a bad option, or a command that needs --as without one
+  2  not found: the file, annotation, or attachment
+  3  refused by the document's state; detail says why and what to do
+  4  the app is not reachable (or did not answer in time)
+Your id: pass --as with the id your first attach returned. Without
+--as, the id comes from your harness session when there is one;
+otherwise every command except a first attach fails with exit 1.
+
 What you see is the user's editor buffer, which may be unsaved;
 "buffer" in the payload is its path. Edit by writing to that buffer
-file, or by suggestions for small inline proposals. The user sees your
-edits marked for review and decides when to save. Re-read the buffer
-right before you write to it; a write based on an old copy shows up to
-the user as undoing their newer edits. The buffer is the only file you
+file, with stratamd edit for one passage, or by suggestions for small
+inline proposals. The user sees your edits marked for review and
+decides when to save. Re-read the buffer right before you write to it;
+a write based on an old copy shows up to the user as undoing their
+newer edits. The buffer is the only file you
 write while attached. Writing the document itself bypasses the user's
 unsaved edits, so every payload names the buffer path. Your own edits
 come back to you only if the user includes changes not made by them.
 ```
 
-Agent identity: `--as` if given; otherwise a stable id derived from `$CLAUDE_CODE_SESSION_ID` or an equivalent harness session variable if present; otherwise a fresh id. The initial payload always returns it. `--name` sets the display name (default `$AI_AGENT`, else the id).
+Agent identity: `--as` if given; otherwise a stable id derived from `$CLAUDE_CODE_SESSION_ID` or an equivalent harness session variable if present. Only a first `attach` may go without both, minting a fresh id; every other command that needs an identity (`annotate`, `edit`, `reply`, `send`, `lead`, `accept`, `reject`, `resolve`, `save`, `changed`, `detach`) exits 1 with `Pass --as <the agent id your first attach returned>` rather than minting one, since a fresh id would create a second attachment. The initial payload always returns the id. `--name` sets the display name (default `$AI_AGENT`, else the id).
 
 ## 8. Payload (StrataMD → agent)
 
-Printed to stdout as one JSON object when `attach`, `state`, or `changes` returns. `text` is a complete human-readable rendering; an agent that reads only `text` misses nothing. Fields absent for an event are omitted.
+Printed to stdout as one JSON object when `attach`, `state`, `changes`, or `docs` returns. `text` is a complete human-readable rendering; an agent that reads only `text` misses nothing. Fields absent for an event are omitted. `--text-only` (on `attach` and `state`) omits `document`; `state --brief` omits `document`, `text`, and `annotations`.
 
 ```json
 {
@@ -442,8 +503,9 @@ Printed to stdout as one JSON object when `attach`, `state`, or `changes` return
   "file": "/abs/path/doc.md",
   "buffer": "/home/u/.local/share/stratamd/docs/<12-hex key>/buffer.md",
   "agent": "ag_7f3k",
-  "event": "initial" | "send" | "message" | "resync" | "closed" | "timeout" | "superseded" | "state" | "changes",
+  "event": "initial" | "send" | "message" | "resync" | "closed" | "timeout" | "superseded" | "state" | "changes" | "docs",
   "deliveryId": "d_0192",
+  "open": true,
   "from": { "agent": "ag_2b", "name": "GPT" },
   "notes": ["the user's note for this Send, or the sender's message note"],
   "attachments": [ { "agent": "ag_2b", "name": "GPT", "state": "waiting", "lead": false } ],
@@ -467,13 +529,16 @@ Printed to stdout as one JSON object when `attach`, `state`, or `changes` return
   "resolved": [ { "id": "a3", "seq": 117, "kind": "suggestion", "resolution": "accepted" } ],
   "edits": [ { "seq": 118, "verdict": "kept" | "reverted", "quote": "first line of the edit" } ],
   "partial": true,
-  "text": "..."
+  "text": "...",
+  "documents": [ { "file": "/abs/path/doc.md", "focused": true, "dirty": false,
+                   "attachments": [ { "agent": "ag_2b", "name": "GPT", "state": "waiting", "lead": false } ] } ]
 }
 ```
 
-- Events: `initial` (first attach), `send` (one delivery), `message` (another agent's note; `from` names the sender; carries `notes` only and acknowledging it advances nothing), `resync` (baseline lost; full buffer), `closed` (document closed; sent after queued deliveries), `timeout`, `superseded` (a newer call for the same id took over), `state`, `changes`.
+- Events: `initial` (first attach), `send` (one delivery), `message` (another agent's note; `from` names the sender; carries `notes` only and acknowledging it advances nothing), `resync` (baseline lost; full buffer), `closed` (document closed; sent after queued deliveries), `timeout`, `superseded` (a newer call for the same id took over), `state`, `changes`, `docs` (the open documents; carries `documents` and `text` only, no `file` or `buffer`).
+- `open` is present on `state`: true when the document is open in the instance, false for a closed one and for offline `state`. `theme` is present on every `state`.
 - `deliveryId` is present on `send`, `message`, `resync`, and `closed`. The same id is returned again if the previous return was not acknowledged.
-- `attachments` is present on `state` for an open document: every attachment as `{agent, name, state, lead}`, states per §6.6. Omitted for a closed document.
+- `attachments` is present on `state` for an open document: every attachment as `{agent, name, state, lead}`, states per §6.6. Omitted for a closed document. `docs` carries the same rows inside each `documents` entry, with `focused` and `dirty` (unsaved changes).
 - `segments` are in order; each segment's `hunks` are against the state just before that segment, the first against the recipient's baseline. `author` is `user` or `external`; `tag` is present when the external segment was tagged; user segments never carry one, so an accepted suggestion reads as a plain user change. A segment the recipient authored is never present (§6.7). External segments appear only when the user included them, or as the whole content of a `changes` payload. Line numbers are 1-based; `oldStart`/`newStart` refer to the segment's before and after states.
 - `edits` holds, on `send` and `closed`, the verdicts on the recipient's own kept and reverted buffer edits (§6.3): `verdict` is `kept` or `reverted`, `quote` the first non-blank line of the edit, capped. `partial` is present and true when the user left changes or events out of this delivery; the buffer holds the full current text.
 - `annotations` holds, on `initial`, `resync`, and `state`, every annotation with its full thread; on `send` and `closed`, only annotations created past the cursor, each with its full thread. `replies` holds, on `send` and `closed`, replies past the cursor to annotations created at or before it; `annotation` names the thread. Neither includes events the recipient authored. `agent` identifies the authoring attachment for agent-authored ones; `status` is `open`, `resolved`, or `orphaned`; `line` refers to the current buffer. `cursor` is the latest `seq` included.

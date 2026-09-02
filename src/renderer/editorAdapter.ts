@@ -1,5 +1,6 @@
 import type { LocalImageRequest, ResolvedLocalImage } from '../editor/images'
 import type { ColdEditorState, EditorRestoreState } from '../editor/types'
+import type { FindResult } from '../editor/find'
 import type { AnnotationView, BufferOrigin, HunkView, RedoResult, UndoResult } from '../shared/contracts'
 import type { EditorCommand } from './components/Toolbar'
 
@@ -54,6 +55,9 @@ export interface RendererEditorHandle {
   setActiveAnnotation?(annotationId: string | null): void
   /** Replaces the current visual selection through the normal edit path (the annotate menu's spelling column). */
   replaceSelection?(text: string): void
+  find?(query: string): FindResult
+  findStep?(direction: 1 | -1): FindResult
+  closeFind?(): void
   destroy(): void
 }
 

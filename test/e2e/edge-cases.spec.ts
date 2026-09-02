@@ -18,7 +18,8 @@ test('Save permission failure keeps disk and shadow unchanged and shows the erro
 
     await chmod(dirname(value.file), 0o500)
     await page.keyboard.press(primaryKey('s'))
-    await expect(page.getByRole('status')).toContainText(/EACCES|permission denied/i)
+    // A failed save is an error toast: it stays until dismissed (PRD §6.9).
+    await expect(page.getByRole('alert')).toContainText(/EACCES|permission denied/i)
 
     expect(await readFile(value.file, 'utf8')).toBe(original)
     const after = await page.evaluate(async () => (await window.strata.getState()).activeDocument)

@@ -114,6 +114,57 @@ describe('HashReconciler', () => {
 })
 
 describe('DebouncedMirror', () => {
+  it('survives a failed write, reports it once, and retries the content on the next flush', async () => {
+    const written: string[] = []
+    const failures: unknown[] = []
+    let failNext = true
+    const write = async (content: string) => {
+      if (failNext) {
+        failNext = false
+        throw new Error('ENOSPC')
+      }
+      written.push(content)
+    }
+    const mirror = new DebouncedMirror({
+      writer: { write },
+      onError: (error) => { failures.push(error) },
+      debounceMs: 10_000,
+    })
+
+    mirror.schedule('first')
+    await expect(mirror.flush()).rejects.toThrow('ENOSPC')
+    expect(failures).toHaveLength(1)
+    expect(written).toEqual([])
+
+    // Nothing newer was scheduled, so the failed content is still queued and
+    // the chain is not poisoned: the next flush writes it.
+    await mirror.flush()
+    expect(written).toEqual(['first'])
+
+    mirror.schedule('second')
+    await mirror.flush()
+    expect(written).toEqual(['first', 'second'])
+  })
+
+  it('drops failed content when newer content has already replaced it', async () => {
+    const written: string[] = []
+    let failNext = true
+    const write = async (content: string) => {
+      if (failNext) {
+        failNext = false
+        throw new Error('EACCES')
+      }
+      written.push(content)
+    }
+    const mirror = new DebouncedMirror({ writer: { write }, onError: () => {}, debounceMs: 10_000 })
+    mirror.schedule('stale')
+    const first = mirror.flush()
+    mirror.schedule('fresh')
+    await expect(first).rejects.toThrow('EACCES')
+    await mirror.flush()
+    expect(written).toEqual(['fresh'])
+  })
+
   it('atomically hands only the latest pending content to its writer', async () => {
     const write = vi.fn(async () => undefined)
     const written = vi.fn()

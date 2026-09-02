@@ -1,11 +1,11 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, stat, writeFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
-import { connect } from 'node:net'
+import { connect, createServer, type Server, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { requestOverSocket } from '../../src/cli/socket-client.js'
+import { requestOverSocket, SocketTimeoutError, SocketUnavailableError } from '../../src/cli/socket-client.js'
 import { PROTOCOL_VERSION, type CommandRequest } from '../../src/cli/protocol.js'
 import {
   AttachWaitRegistry,
@@ -14,11 +14,16 @@ import {
 } from '../../src/main/socket.js'
 
 const servers: CommandSocketServer[] = []
+const rawServers: Array<{ server: Server; sockets: Socket[] }> = []
 const directories: string[] = []
 const executeFile = promisify(execFile)
 
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()))
+  await Promise.all(rawServers.splice(0).map(({ server, sockets }) => {
+    for (const socket of sockets) socket.destroy()
+    return new Promise<void>((done) => server.close(() => done()))
+  }))
   const { rm } = await import('node:fs/promises')
   await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })))
   vi.unstubAllEnvs()
@@ -152,6 +157,25 @@ describe('newline JSON socket', () => {
     const response = await requestOverSocket(stateRequest(), { socketPath: path, timeoutMs: 1_000 })
     expect(response).toMatchObject({ ok: false, exitCode: 4, error: { code: 'PEER_REJECTED' } })
     expect(dispatched).toBe(false)
+  })
+})
+
+describe('client timeout classification', () => {
+  it('distinguishes a stalled instance from an absent one', async () => {
+    const absent = await socketPath()
+    await expect(requestOverSocket(stateRequest(), { socketPath: absent, timeoutMs: 500 }))
+      .rejects.toBeInstanceOf(SocketUnavailableError)
+
+    const stalled = await socketPath()
+    await mkdir(dirname(stalled), { recursive: true })
+    const sockets: Socket[] = []
+    // Accepts the connection and never answers: a running but stalled instance.
+    const server = createServer((socket) => { sockets.push(socket) })
+    rawServers.push({ server, sockets })
+    await new Promise<void>((listening) => server.listen(stalled, listening))
+    const failure = await requestOverSocket(stateRequest(), { socketPath: stalled, timeoutMs: 100 }).catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(SocketTimeoutError)
+    expect(failure).not.toBeInstanceOf(SocketUnavailableError)
   })
 })
 

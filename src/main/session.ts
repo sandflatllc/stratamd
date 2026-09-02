@@ -166,59 +166,10 @@ export function documentPathsFromArgv(argv: readonly string[], cwd = process.cwd
   return [...new Set(paths)]
 }
 
-export type AttachmentCallResult = 'active' | 'superseded'
-
-interface ActiveAttachmentCall {
-  generation: number
-  supersede: () => void
-}
-
-/** Enforces the PRD rule that the later concurrent attach call wins. */
-export class AttachmentCallRegistry {
-  readonly #calls = new Map<string, ActiveAttachmentCall>()
-  #generation = 0
-
-  begin(agentId: string, onSuperseded: () => void): AttachmentCallLease {
-    this.#calls.get(agentId)?.supersede()
-    const generation = ++this.#generation
-    this.#calls.set(agentId, { generation, supersede: onSuperseded })
-    return {
-      generation,
-      isCurrent: () => this.#calls.get(agentId)?.generation === generation,
-      finish: () => {
-        if (this.#calls.get(agentId)?.generation === generation) this.#calls.delete(agentId)
-      }
-    }
-  }
-
-  cancel(agentId: string): boolean {
-    const active = this.#calls.get(agentId)
-    if (!active) return false
-    this.#calls.delete(agentId)
-    active.supersede()
-    return true
-  }
-}
-
-export interface AttachmentCallLease {
-  generation: number
-  isCurrent(): boolean
-  finish(): void
-}
-
 export interface ExpirableAttachment {
   lastCallAt: number
   queuedDeliveries: readonly unknown[]
   waiting: boolean
-}
-
-export function attachmentShouldExpire(
-  attachment: ExpirableAttachment,
-  now: number,
-  idleTimeoutMs = 24 * 60 * 60 * 1_000
-): boolean {
-  if (attachment.waiting || attachment.queuedDeliveries.length > 0) return false
-  return now - attachment.lastCallAt >= idleTimeoutMs
 }
 
 export function attachmentState(attachment: Pick<ExpirableAttachment, 'waiting' | 'queuedDeliveries'>): 'waiting' | 'working' | 'pending' {

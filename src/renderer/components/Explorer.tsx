@@ -14,6 +14,7 @@ interface ExplorerProps {
   onAddFolder(): void
   onForget(path: string): void
   onCopyPath(path: string): void
+  onRemoveFolder(path: string): void
 }
 
 /** Root folder label: the folder name, preceded by its parent when there is one. The name is never elided. */
@@ -96,13 +97,18 @@ function Subtree({ node, depth, activePath, toggled, onToggle, onOpen, onForget,
   )
 }
 
-export function Explorer({ folders, activePath, scanning, onOpen, onScan, onRefresh, onAddFolder, onForget, onCopyPath }: ExplorerProps) {
+export function Explorer({ folders, activePath, scanning, onOpen, onScan, onRefresh, onAddFolder, onForget, onCopyPath, onRemoveFolder }: ExplorerProps) {
   const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set())
   const [menu, setMenu] = useState<PathContextMenuState | null>(null)
   const openMenu = (event: ReactMouseEvent, path: string) => {
     event.preventDefault()
     event.stopPropagation()
     setMenu({ x: event.clientX, y: event.clientY, path })
+  }
+  const openRootMenu = (event: ReactMouseEvent, path: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setMenu({ x: event.clientX, y: event.clientY, path, root: true })
   }
   const closeMenu = () => setMenu(null)
   const toggle = (path: string) => setToggled((previous) => {
@@ -126,7 +132,7 @@ export function Explorer({ folders, activePath, scanning, onOpen, onScan, onRefr
       <div className={`tree ${scanning ? 'scanning' : ''}`}>
         {folders.map((folder) => (
           <section key={folder.path}>
-            <FolderRow label={folder.name} path={folder.path} depth={0} collapsed={toggled.has(folder.path)} onToggle={toggle} onContextMenu={openMenu} />
+            <FolderRow label={folder.name} path={folder.path} depth={0} collapsed={toggled.has(folder.path)} onToggle={toggle} onContextMenu={openRootMenu} />
             {!toggled.has(folder.path) && (
               <Subtree node={explorerTree(folder)} depth={0} activePath={activePath} toggled={toggled} onToggle={toggle} onOpen={onOpen} onForget={onForget} onContextMenu={openMenu} />
             )}
@@ -136,8 +142,8 @@ export function Explorer({ folders, activePath, scanning, onOpen, onScan, onRefr
         <button type="button" className="add-folder" onClick={onAddFolder}>+ Add folder</button>
       </div>
       <div className="explorer-spacer" />
-      {menu && <PathContextMenu menu={menu} onCopyPath={onCopyPath} onClose={closeMenu} />}
-      <div className="explorer-note">{scanning ? 'Scanning markdown files…' : files.length > 0 ? `Ghosts up to date · ${files.length} file${files.length === 1 ? '' : 's'}${missing ? ` · ${missing} missing` : ''}` : '0 markdown files'}</div>
+      {menu && <PathContextMenu menu={menu} onCopyPath={onCopyPath} onRemoveFolder={onRemoveFolder} onClose={closeMenu} />}
+      <div className="explorer-note">{scanning ? 'Scanning markdown files…' : files.length > 0 ? `Up to date · ${files.length} file${files.length === 1 ? '' : 's'}${missing ? ` · ${missing} missing` : ''}` : '0 markdown files'}</div>
     </aside>
   )
 }

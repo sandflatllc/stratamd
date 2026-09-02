@@ -23,6 +23,18 @@ export class SocketUnavailableError extends Error {
   }
 }
 
+/**
+ * The connection succeeded and the app took the request but did not answer
+ * within the deadline. Distinct from SocketUnavailableError on purpose: a
+ * stalled instance is running, so callers must never launch a second one.
+ */
+export class SocketTimeoutError extends Error {
+  constructor(message = 'StrataMD did not answer in time') {
+    super(message)
+    this.name = 'SocketTimeoutError'
+  }
+}
+
 export interface SocketRequestOptions {
   socketPath?: string
   signal?: AbortSignal
@@ -53,10 +65,13 @@ export function requestOverSocket(
       finish(() => reject(options.signal?.reason ?? new Error('Command aborted')))
     }
 
+    let connected = false
     const timer = options.timeoutMs
       ? setTimeout(() => {
           socket.destroy()
-          finish(() => reject(new SocketUnavailableError('StrataMD did not answer in time', 'ETIMEDOUT')))
+          finish(() => reject(connected
+            ? new SocketTimeoutError()
+            : new SocketUnavailableError('StrataMD did not accept the connection in time', 'ETIMEDOUT')))
         }, options.timeoutMs)
       : undefined
     timer?.unref()
@@ -69,6 +84,7 @@ export function requestOverSocket(
 
     socket.setEncoding('utf8')
     socket.once('connect', () => {
+      connected = true
       socket.write(`${JSON.stringify(request)}\n`)
     })
     socket.on('data', (chunk: string) => {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { claimEscape } from '../escape'
 import type { ThemePanelGeometry, ThemeView } from '../../shared/contracts'
 import { AMBIENT_STYLES, BUNDLED_FONTS, DEFAULT_THEME_VALUES, readSparseValue, THEME_GROUPS, THEME_KEYS, type ThemeGroup, type ThemeKeyEntry } from '../../shared/theme-keys'
 import { clampThemePanel } from '../model'
@@ -138,7 +139,11 @@ export function ThemePanel({ theme, geometry, onGeometry, onClose, onHighlight, 
   }
 
   useEffect(() => {
-    const key = (event: KeyboardEvent) => { if (event.key === 'Escape' && root.current?.contains(document.activeElement)) onClose() }
+    const key = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !root.current?.contains(document.activeElement)) return
+      claimEscape(event)
+      onClose()
+    }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
   }, [onClose])

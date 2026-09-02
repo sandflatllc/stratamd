@@ -1,5 +1,6 @@
 import { useRef } from 'react'
 import type { AttachmentView, ConflictDecision, ConflictView, DocumentTabView, HunkView } from '../../shared/contracts'
+import { reviewExcerpt } from '../../editor/review'
 import { useDialogFocus } from '../useDialogFocus'
 
 function Backdrop({ children, onCancel }: { children: React.ReactNode; onCancel?(): void }) {
@@ -62,13 +63,42 @@ export function ConflictDialog({ conflict, fileName, onChoose }: { conflict: Con
   useDialogFocus(dialogRef, undefined)
   return (
     <Backdrop><section ref={dialogRef} tabIndex={-1} className="modal conflict-modal" role="dialog" aria-modal="true" aria-labelledby="conflict-title">
-      <h2 id="conflict-title">External write conflicts with your edits</h2>
+      <h2 id="conflict-title">This file was changed outside StrataMD while you were editing</h2>
       <p className="modal-subtitle">{fileName} changed while you had unsaved edits in {conflict.label}. Pick a side for this block.</p>
       <div className="conflict-choices">
-        <button type="button" onClick={() => onChoose('mine')}><small className="danger-text">YOURS · unsaved</small><span>{conflict.mine}</span><strong className="danger-text">Keep mine →</strong></button>
-        <button type="button" onClick={() => onChoose('incoming')}><small>INCOMING</small><span>{conflict.incoming}</span><strong>Take incoming →</strong></button>
+        <button type="button" onClick={() => onChoose('mine')}><small className="danger-text">Your version · unsaved</small><span>{conflict.mine}</span><strong className="danger-text">Keep mine →</strong></button>
+        <button type="button" onClick={() => onChoose('incoming')}><small>Changed outside</small><span>{conflict.incoming}</span><strong>Take theirs →</strong></button>
       </div>
       <p className="modal-fineprint">Blocks with no conflict were already applied and are waiting for your review.</p>
+    </section></Backdrop>
+  )
+}
+
+/** Resolving an open suggestion is neither Accept nor Reject; say so before hiding it (PRD §6.5). */
+export function ResolveSuggestionDialog({ onCancel, onConfirm }: { onCancel(): void; onConfirm(): void }) {
+  const dialogRef = useRef<HTMLElement>(null)
+  useDialogFocus(dialogRef, onCancel)
+  return (
+    <Backdrop onCancel={onCancel}><section ref={dialogRef} tabIndex={-1} className="modal decision-modal resolve-suggestion-modal" role="dialog" aria-modal="true" aria-labelledby="resolve-suggestion-title">
+      <h2 id="resolve-suggestion-title">Resolve this suggestion?</h2>
+      <p>This suggestion hasn't been accepted or rejected. Resolving hides it without changing the text.</p>
+      <div className="modal-actions"><button type="button" className="quiet-button" onClick={onCancel}>Cancel</button><button type="button" className="keep-button large" onClick={onConfirm}>Resolve anyway</button></div>
+    </section></Backdrop>
+  )
+}
+
+/** Reverting every pending change by one author at once (PRD §6.9 rail). */
+export function RevertAllDialog({ name, hunks, onCancel, onConfirm }: { name: string; hunks: HunkView[]; onCancel(): void; onConfirm(): void }) {
+  const dialogRef = useRef<HTMLElement>(null)
+  useDialogFocus(dialogRef, onCancel)
+  const mixed = hunks.filter((hunk) => hunk.status === 'mixed').length
+  const first = hunks[0]
+  const glimpse = first ? reviewExcerpt((first.added.length > 0 ? first.added : first.removed).join(' ')) : ''
+  return (
+    <Backdrop onCancel={onCancel}><section ref={dialogRef} tabIndex={-1} className="modal decision-modal revert-all-modal" role="dialog" aria-modal="true" aria-labelledby="revert-all-title">
+      <h2 id="revert-all-title">Revert {hunks.length} changes by {name}?</h2>
+      <p>Every change by {name} that is still waiting for your review goes back to the earlier text{glimpse ? <>, starting with “{glimpse}”</> : null}.{mixed > 0 ? <> You've edited inside {mixed === 1 ? 'one of them' : `${mixed} of them`}; <strong className="danger-text">those edits are discarded too</strong>.</> : null} Agents see the reverts as your changes. Each one can be undone separately.</p>
+      <div className="modal-actions"><button type="button" className="quiet-button" onClick={onCancel}>Cancel</button><button type="button" className="danger-button" onClick={onConfirm}>Revert all</button></div>
     </section></Backdrop>
   )
 }

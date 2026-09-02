@@ -456,10 +456,10 @@ for (const decision of ['mine', 'incoming'] as const) {
       await value.atomicWrite(value.file, incoming)
       await page.keyboard.press(primaryKey('s'))
 
-      const dialog = page.getByRole('dialog', { name: /External write conflicts with your edits/i })
+      const dialog = page.getByRole('dialog', { name: /changed outside StrataMD while you were editing/i })
       await expect(dialog).toBeVisible()
       const keepMine = dialog.getByRole('button', { name: /Keep mine/i })
-      const takeIncoming = dialog.getByRole('button', { name: /Take incoming/i })
+      const takeIncoming = dialog.getByRole('button', { name: /Take theirs/i })
       await expect(keepMine).toBeFocused()
       if (decision === 'incoming') {
         await page.keyboard.press('Tab')

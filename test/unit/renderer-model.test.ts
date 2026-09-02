@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { DocumentView, HunkView } from '../../src/shared/contracts'
-import { activeAnnotations, annotationCounts, bannerFor, changeGroups, clampPanelSize, clampThemePanel, currentAnnotation, EMPTY_VIEW, explorerTree, hasResolvedAnnotations, hasUnsavedCounted, hunkAction, hunkAuthor, hunkSnippet, pendingCount, previewTabIndex, rendererThemeStyle, saveStateSentence, spellingForSelection } from '../../src/renderer/model'
+import { activeAnnotations, AGENT_PROMPT, annotationCounts, bannerFor, bulkRevertGroups, changeGroups, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, explorerTree, hasResolvedAnnotations, hasUnsavedCounted, hunkAction, hunkAuthor, hunkSnippet, nextReviewTarget, pendingCount, previewTabIndex, rendererThemeStyle, reviewTargets, saveStateSentence, spellingForSelection, threadTime } from '../../src/renderer/model'
+import { nextToast, toastLifetime } from '../../src/renderer/toasts'
 import { THEME_KEYS } from '../../src/shared/theme-keys'
 import { renderAmbient } from '../../src/renderer/components/AmbientDecor'
 
@@ -15,7 +16,7 @@ function document(overrides: Partial<DocumentView> = {}): DocumentView {
     path: '/tmp/plan.md', bufferPath: '/tmp/buffer.md', leadAgentId: null, content: '# Plan', sourceMode: false,
     sourceOnly: false, readOnly: false, dirty: false, deleted: false, invalidUtf8: false,
     lastSavedAt: null, historyStep: 0, pendingHunks: [], saves: [], annotations: [], attachments: [],
-    canSend: false, conflicts: [], ...overrides
+    canSend: false, conflicts: [], problems: [], ...overrides
   }
 }
 
@@ -117,6 +118,10 @@ describe('renderer model', () => {
   it('prioritizes invalid UTF-8 banners over deleted-file warnings', () => {
     expect(bannerFor(document({ invalidUtf8: true, deleted: true }))?.tone).toBe('danger')
     expect(bannerFor(document({ deleted: true }))?.text).toContain('was deleted')
+    expect(bannerFor(document({ problems: ['mirror'] }))?.text).toContain('copy agents read')
+    expect(bannerFor(document({ problems: ['watch'] }))?.text).toContain('changes made outside')
+    expect(bannerFor(document({ problems: ['persist'] }))?.text).toContain('review notes')
+    expect(bannerFor(document({ deleted: true, problems: ['mirror'] }))?.text).toContain('was deleted')
   })
 
   it('states the save state in one plain sentence without negative ages', () => {
@@ -178,5 +183,94 @@ describe('spellingForSelection', () => {
   it('shows nothing without a payload or without a selection', () => {
     expect(spellingForSelection(null, { quote: 'occured' })).toBeNull()
     expect(spellingForSelection(spelling, null)).toBeNull()
+  })
+})
+
+describe('shell keyboard helpers (PRD §6.1, §6.9)', () => {
+  const tabs = [
+    { path: '/a.md', name: 'a.md', pendingCount: 0, active: false, dirty: false },
+    { path: '/b.md', name: 'b.md', pendingCount: 0, active: true, dirty: false },
+    { path: '/c.md', name: 'c.md', pendingCount: 0, active: false, dirty: false },
+  ]
+
+  it('cycles tabs in both directions with wrap-around and nothing to cycle alone', () => {
+    expect(cycleTab(tabs, 1)?.path).toBe('/c.md')
+    expect(cycleTab(tabs, -1)?.path).toBe('/a.md')
+    expect(cycleTab([tabs[2]!, tabs[0]!, { ...tabs[1]!, active: false }], 1)?.path).toBe('/a.md')
+    expect(cycleTab([tabs[1]!], 1)).toBeNull()
+    expect(cycleTab([], -1)).toBeNull()
+  })
+
+  it('orders pending hunks and open suggestions by line and steps through them with wrap-around', () => {
+    const view = document({
+      pendingHunks: [{ ...hunk, id: 'h9', newStart: 9 }, { ...hunk, id: 'h3', newStart: 3 }],
+      annotations: [
+        { id: 's5', seq: 1, kind: 'suggestion', status: 'open', author: 'user', quote: 'q', text: 'r', line: 5, from: 0, to: 1, replies: [] },
+        { id: 's3', seq: 2, kind: 'suggestion', status: 'open', author: 'user', quote: 'q', text: 'r', line: 3, from: 0, to: 1, replies: [] },
+        { id: 'resolved', seq: 3, kind: 'suggestion', status: 'resolved', author: 'user', quote: 'q', text: 'r', line: 1, from: 0, to: 1, replies: [] },
+        { id: 'comment', seq: 4, kind: 'comment', status: 'open', author: 'user', quote: 'q', text: 'r', line: 1, from: 0, to: 1, replies: [] },
+        { id: 'orphan', seq: 5, kind: 'suggestion', status: 'orphaned', author: 'user', quote: 'q', text: 'r', line: null, from: null, to: null, replies: [] },
+      ],
+    })
+    const targets = reviewTargets(view)
+    expect(targets.map((target) => target.id)).toEqual(['h3', 's3', 's5', 'h9'])
+    expect(nextReviewTarget(targets, null, 1)?.id).toBe('h3')
+    expect(nextReviewTarget(targets, null, -1)?.id).toBe('h9')
+    expect(nextReviewTarget(targets, 's5', 1)?.id).toBe('h9')
+    expect(nextReviewTarget(targets, 'h9', 1)?.id).toBe('h3')
+    expect(nextReviewTarget(targets, 'h3', -1)?.id).toBe('h9')
+    expect(nextReviewTarget(targets, 'gone', 1)?.id).toBe('h3')
+    expect(nextReviewTarget([], null, 1)).toBeNull()
+  })
+
+  it('offers a bulk revert only to authors with more than one pending change', () => {
+    const agent = { id: 'agent-a', name: 'Agent A', color: 'grape' as const }
+    const view = document({ pendingHunks: [
+      { ...hunk, id: 'e1' },
+      { ...hunk, id: 'a1', author: agent },
+      { ...hunk, id: 'a2', author: agent, status: 'mixed' },
+    ] })
+    const groups = bulkRevertGroups(view)
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toMatchObject({ key: 'agent-a', name: 'Agent A' })
+    expect(groups[0]!.hunks.map((item) => item.id)).toEqual(['a1', 'a2'])
+    expect(bulkRevertGroups(document({ pendingHunks: [{ ...hunk, id: 'e1' }, { ...hunk, id: 'e2' }] }))[0]).toMatchObject({ name: 'someone else' })
+  })
+
+  it('shows a thread time only when the record carries one', () => {
+    const now = 1_000_000
+    expect(threadTime(undefined, now)).toBe('')
+    expect(threadTime(0, now)).toBe('')
+    expect(threadTime(now - 5 * 60_000, now)).toBe('5 minutes ago')
+  })
+
+  it('tells a new user how to attach an agent in one plain line', () => {
+    expect(AGENT_PROMPT).toContain('stratamd --agent-help')
+    expect(AGENT_PROMPT).toContain('stratamd attach --name')
+    expect(AGENT_PROMPT).not.toMatch(/ghost|buffer|shadow|mirror/i)
+  })
+})
+
+describe('toast policy (PRD §6.9)', () => {
+  it('lets an error outlive its timer and stops a success from painting over it', () => {
+    const error = nextToast(null, { message: 'Save failed', tone: 'error' })!
+    expect(error.tone).toBe('error')
+    expect(toastLifetime(error)).toBeNull()
+
+    expect(nextToast(error, { message: 'Saved.', tone: 'info' })).toBe(error)
+
+    const newer = nextToast(error, { message: 'Send failed', tone: 'error' })!
+    expect(newer.message).toBe('Send failed')
+    expect(newer.id).not.toBe(error.id)
+  })
+
+  it('keeps successes short-lived and replaces one success with the next', () => {
+    const first = nextToast(null, { message: 'Saved.', tone: 'info' })!
+    expect(toastLifetime(first)).toBe(2800)
+    const second = nextToast(first, { message: 'Kept.', tone: 'info' })!
+    expect(second.message).toBe('Kept.')
+    expect(second.id).not.toBe(first.id)
+    expect(nextToast(second, { message: '', tone: 'error' })).toBe(second)
+    expect(nextToast(first, { message: 'Oops', tone: 'error' })?.tone).toBe('error')
   })
 })

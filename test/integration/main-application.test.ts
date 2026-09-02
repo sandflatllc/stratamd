@@ -96,6 +96,39 @@ describe('StrataApplication', () => {
     expect((await app.getState()).activeDocument?.dirty).toBe(false)
   })
 
+  it('shows a mirror failure to the user and clears it once the buffer writes again', async () => {
+    const { app, path, store } = await fixture()
+    await app.openDocument(path)
+    const original = store.writeBuffer.bind(store)
+    let failing = true
+    store.writeBuffer = async (file: string, content: string) => {
+      if (failing) throw new Error('ENOSPC: no space left on device')
+      return original(file, content)
+    }
+
+    await app.updateBuffer(path, '# Plan\n\nFirst edit.\n')
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    expect((await app.getState()).activeDocument?.problems).toEqual(['mirror'])
+
+    failing = false
+    await app.updateBuffer(path, '# Plan\n\nSecond edit.\n')
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    expect((await app.getState()).activeDocument?.problems).toEqual([])
+    expect((await store.readBuffer(path))?.toString('utf8')).toContain('Second edit')
+  })
+
+  it('stamps annotations and replies with a creation time the thread panel can show', async () => {
+    const { app, path } = await fixture()
+    await app.openDocument(path)
+    const before = Date.now()
+    await app.addAnnotation(path, { kind: 'comment', quote: 'Original.', text: 'Why?', from: 8, to: 17 })
+    const [annotation] = (await app.getState()).activeDocument!.annotations
+    expect(annotation!.createdAt).toBeGreaterThanOrEqual(before)
+    await app.reply(path, annotation!.id, 'Because.')
+    const [replied] = (await app.getState()).activeDocument!.annotations
+    expect(replied!.replies[0]!.createdAt).toBeGreaterThanOrEqual(before)
+  })
+
   it('treats an agent buffer write as pending and keeps it pending after Save', async () => {
     const { app, path, store } = await fixture()
     await app.openDocument(path)
@@ -789,6 +822,42 @@ describe('agent-to-agent messages', () => {
     expect(payload.text).toContain('Message from Agent A (ag_a):')
   })
 
+  it('delivers a message that lands while the blocked attach is still persisting', async () => {
+    const { app, path, store } = await attachedPair()
+
+    // Park the blocked attach inside its #persist by gating the store's
+    // loadMeta once: the wait must already be registered at that point, or a
+    // delivery arriving in the gap is dropped and the attach sits out its
+    // full timeout (the pre-fix bug).
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    let parked!: () => void
+    const parkedAt = new Promise<void>((resolve) => { parked = resolve })
+    const original = store.loadMeta.bind(store)
+    let armed = true
+    store.loadMeta = async (file: string) => {
+      if (armed) {
+        armed = false
+        parked()
+        await gate
+      }
+      return original(file)
+    }
+
+    const blocked = command(app, 'attach', { file: path, agent: 'ag_b', name: 'Agent B', timeout: 3 })
+    await parkedAt
+    const sent = await command(app, 'send', { file: path, agent: 'ag_a', text: 'Mid-persist ping.' }) as { sent: unknown[] }
+    expect(sent.sent).toEqual([{ agent: 'ag_b', name: 'Agent B' }])
+    release()
+
+    const payload = await blocked as MessagePayload
+    expect(payload).toMatchObject({
+      event: 'message',
+      from: { agent: 'ag_a', name: 'Agent A' },
+      notes: ['Mid-persist ping.'],
+    })
+  })
+
   it('queues for a working recipient, shows pending in the panel, and arrives on the next attach', async () => {
     const { app, path } = await attachedPair()
     await command(app, 'send', { file: path, agent: 'ag_a', text: 'Knock knock.' })
@@ -820,7 +889,7 @@ describe('agent-to-agent messages', () => {
     await expect(command(app, 'send', { file: path, agent: 'ag_a', text: 'Second.' })).rejects.toMatchObject({
       exitCode: 3,
       code: 'MESSAGE_PENDING',
-      detail: { recipient: 'ag_b' },
+      detail: { recipients: ['ag_b'], others: [] },
     })
     // A different sender to the same recipient is not blocked; only the pair is.
     await command(app, 'attach', { file: path, agent: 'ag_c', name: 'Agent C', timeout: 0 })
@@ -841,7 +910,12 @@ describe('agent-to-agent messages', () => {
 
     await expect(command(app, 'send', {
       file: path, agent: 'ag_a', text: 'Broadcast.', to: ['ag_b', 'ag_c', 'ag_d'],
-    })).rejects.toMatchObject({ exitCode: 3, code: 'MESSAGE_PENDING', detail: { recipient: 'ag_d' } })
+    })).rejects.toMatchObject({
+      exitCode: 3,
+      code: 'MESSAGE_PENDING',
+      message: expect.stringContaining('--to'),
+      detail: { recipients: ['ag_d'], others: ['ag_b', 'ag_c'] },
+    })
 
     const after = await storedApplication(store, path)
     for (const agent of ['ag_b', 'ag_c', 'ag_d']) {
@@ -1100,6 +1174,237 @@ describe('the Lead agent', () => {
     await expect(app.closeDocument(path)).resolves.toBe('closed')
     const closed = await command(app, 'state', { file: path }) as { attachments?: unknown[] }
     expect(closed.attachments).toBeUndefined()
+  })
+
+  it('reports a moved suggestion on accept with excerpts and a hint instead of a bare refusal', async () => {
+    const { app, path } = await leadFixture('# Lead\n\nOld wording stays here.\n\nOther text.\n')
+    await command(app, 'lead', { file: path, agent: 'ag_lead' })
+    const { created } = await command(app, 'annotate', {
+      file: path,
+      agent: 'ag_peer',
+      annotations: [{ kind: 'suggestion', quote: 'Old wording', text: 'New wording' }],
+    }) as { created: Array<{ id: string }> }
+    await app.updateBuffer(path, '# Lead\n\nRewritten by the user.\n\nOther text.\n')
+
+    await expect(command(app, 'accept', { file: path, agent: 'ag_lead', annotation: created[0]!.id }))
+      .rejects.toMatchObject({
+        exitCode: 3,
+        code: 'QUOTE_INVALID',
+        detail: {
+          code: 'quote_missing',
+          quote: 'Old wording',
+          matches: expect.arrayContaining([expect.stringContaining('Rewritten by the user.')]),
+          hint: expect.stringContaining('run state'),
+        },
+      })
+  })
+})
+
+describe('agent command results and views', () => {
+  it('returns the created annotation ids and the reply id', async () => {
+    const { app, path } = await fixture('First line.\n\nSecond line.\n')
+    await app.openDocument(path)
+    const result = await command(app, 'annotate', {
+      file: path,
+      agent: 'ag_1',
+      annotations: [
+        { kind: 'comment', quote: 'First', text: 'One.' },
+        { kind: 'question', quote: 'Second', text: 'Two?' },
+      ],
+    }) as { created: Array<{ id: string; kind: string; quote: string }> }
+    expect(result.created).toEqual([
+      { id: expect.stringMatching(/^a_/), kind: 'comment', quote: 'First' },
+      { id: expect.stringMatching(/^a_/), kind: 'question', quote: 'Second' },
+    ])
+    const state = await command(app, 'state', { file: path }) as { annotations: Array<{ id: string }> }
+    expect(state.annotations.map((annotation) => annotation.id)).toEqual(result.created.map((row) => row.id))
+
+    const reply = await command(app, 'reply', {
+      file: path, agent: 'ag_1', annotation: result.created[1]!.id, text: 'Because.',
+    }) as { replied: string; annotation: string }
+    expect(reply).toEqual({ replied: expect.stringMatching(/^r_/), annotation: result.created[1]!.id })
+    const replied = await command(app, 'state', { file: path }) as { annotations: Array<{ replies: Array<{ id: string }> }> }
+    expect(replied.annotations[1]?.replies.map((entry) => entry.id)).toEqual([reply.replied])
+  })
+
+  it('reports open, theme, and the brief and text-only views of state', async () => {
+    const { app, path } = await fixture('# Views\n\nBody text.\n')
+    const closed = await command(app, 'state', { file: path }) as Record<string, unknown>
+    expect(closed).toMatchObject({ event: 'state', open: false, theme: { id: expect.any(String) } })
+    expect(closed.attachments).toBeUndefined()
+
+    await app.openDocument(path)
+    await command(app, 'attach', { file: path, agent: 'ag_1', name: 'Agent', timeout: 0 })
+    const full = await command(app, 'state', { file: path }) as Record<string, unknown>
+    expect(full).toMatchObject({
+      open: true,
+      document: '# Views\n\nBody text.\n',
+      attachments: [{ agent: 'ag_1', name: 'Agent', state: 'working', lead: false }],
+      theme: { id: expect.any(String) },
+    })
+
+    const brief = await command(app, 'state', { file: path, brief: true }) as Record<string, unknown>
+    expect(brief).toMatchObject({
+      event: 'state', open: true, file: path, buffer: full.buffer, cursor: full.cursor,
+      attachments: full.attachments, theme: full.theme,
+    })
+    expect(brief).not.toHaveProperty('document')
+    expect(brief).not.toHaveProperty('text')
+    expect(brief).not.toHaveProperty('annotations')
+
+    const textOnly = await command(app, 'state', { file: path, textOnly: true }) as Record<string, unknown>
+    expect(textOnly).not.toHaveProperty('document')
+    expect(textOnly).toMatchObject({ text: full.text, annotations: full.annotations, open: true })
+
+    await expect(app.closeDocument(path)).resolves.toBe('closed')
+    const closedBrief = await command(app, 'state', { file: path, brief: true }) as Record<string, unknown>
+    expect(closedBrief).toMatchObject({ open: false, theme: full.theme })
+    expect(closedBrief).not.toHaveProperty('document')
+    expect(closedBrief).not.toHaveProperty('text')
+  })
+
+  it('omits the document from a text-only attach while text still carries the buffer', async () => {
+    const { app, path } = await fixture('# Attach\n\nBody text.\n')
+    await app.openDocument(path)
+    const initial = await command(app, 'attach', {
+      file: path, agent: 'ag_1', name: 'Agent', timeout: 0, textOnly: true,
+    }) as Record<string, unknown>
+    expect(initial).toMatchObject({ event: 'initial', agent: 'ag_1' })
+    expect(initial).not.toHaveProperty('document')
+    expect(initial.text).toContain('# Attach\n\nBody text.')
+
+    const again = await command(app, 'attach', {
+      file: path, agent: 'ag_2', name: 'Other', timeout: 0,
+    }) as Record<string, unknown>
+    expect(again.document).toBe('# Attach\n\nBody text.\n')
+  })
+
+  it('lists the open documents with focus, unsaved state, and attachments', async () => {
+    const { app, path, root } = await fixture('# One\n')
+    const empty = await command(app, 'docs', {}) as { event: string; documents: unknown[]; text: string }
+    expect(empty).toEqual({ version: expect.any(Number), event: 'docs', documents: [], text: 'No document is open.' })
+
+    const second = join(root, 'two.md')
+    await writeFile(second, '# Two\n')
+    await app.openDocument(path)
+    await app.openDocument(second)
+    await command(app, 'attach', { file: path, agent: 'ag_1', name: 'Agent', timeout: 0 })
+    await app.updateBuffer(path, '# One edited\n')
+
+    const docs = await command(app, 'docs', {}) as {
+      event: string
+      documents: Array<{ file: string; focused: boolean; dirty: boolean; attachments: unknown[] }>
+      text: string
+    }
+    expect(docs.event).toBe('docs')
+    expect(docs.documents).toEqual([
+      { file: path, focused: false, dirty: true, attachments: [{ agent: 'ag_1', name: 'Agent', state: 'working', lead: false }] },
+      { file: second, focused: true, dirty: false, attachments: [] },
+    ])
+    expect(docs.text).toContain(`${path} (unsaved changes)`)
+    expect(docs.text).toContain(`${second} (focused)`)
+    expect(docs.text).toContain('Agent (ag_1): working')
+  })
+
+  it('applies an edit as the agent\'s pending hunk against the live buffer', async () => {
+    const original = '# Plan\n\nOriginal passage.\n\nKeep me.\n'
+    const { app, path, store } = await fixture(original)
+    await app.openDocument(path)
+    await command(app, 'attach', { file: path, agent: 'ag_1', name: 'Editor', timeout: 0 })
+    // The user's own unsaved edit sits elsewhere in the buffer and must survive.
+    await app.updateBuffer(path, '# Plan\n\nOriginal passage.\n\nKeep me, says the user.\n')
+
+    const result = await command(app, 'edit', {
+      file: path,
+      agent: 'ag_1',
+      edits: [{ match: 'Original passage.', replace: 'Rewritten passage.' }],
+    })
+    expect(result).toEqual({ applied: [{ line: 3, match: 'Original passage.', replace: 'Rewritten passage.' }] })
+
+    const expected = '# Plan\n\nRewritten passage.\n\nKeep me, says the user.\n'
+    const document = (await app.getState()).activeDocument!
+    expect(document.content).toBe(expected)
+    expect(document.pendingHunks).toHaveLength(1)
+    expect(document.pendingHunks[0]).toMatchObject({
+      removed: ['Original passage.'],
+      added: ['Rewritten passage.'],
+      author: expect.objectContaining({ id: 'ag_1', name: 'Editor' }),
+    })
+    expect((await store.readBuffer(path))?.toString('utf8')).toBe(expected)
+    expect((await storedApplication(store, path)).state.ghost).toBe(original)
+    expect(await readFile(path, 'utf8')).toBe(original)
+
+    const changes = await command(app, 'changes', { file: path }) as { segments: Array<{ tag?: { agent: string } }> }
+    expect(changes.segments.map((segment) => segment.tag?.agent)).toEqual(['ag_1'])
+
+    // A batch lands in one step, with lines reported against the new buffer.
+    const batch = await command(app, 'edit', {
+      file: path,
+      agent: 'ag_1',
+      edits: [
+        { match: 'Keep me, says the user.', replace: 'Kept.' },
+        { match: '# Plan', replace: '# Plan\n\nIntro.' },
+      ],
+    })
+    expect(batch).toEqual({ applied: [
+      { line: 7, match: 'Keep me, says the user.', replace: 'Kept.' },
+      { line: 1, match: '# Plan', replace: '# Plan\n\nIntro.' },
+    ] })
+    expect((await app.getState()).activeDocument!.content).toBe('# Plan\n\nIntro.\n\nRewritten passage.\n\nKept.\n')
+  })
+
+  it('refuses a stale or overlapping edit without changing anything', async () => {
+    const { app, path, store } = await fixture('First same phrase.\n\nSecond same phrase.\n')
+    await app.openDocument(path)
+    const before = (await app.getState()).activeDocument!.content
+
+    await expect(command(app, 'edit', {
+      file: path,
+      agent: 'ag_1',
+      edits: [
+        { match: 'First', replace: 'Valid' },
+        { match: 'gone phrase', replace: 'x' },
+        { match: 'same phrase', replace: 'y' },
+      ],
+    })).rejects.toMatchObject({
+      exitCode: 3,
+      code: 'QUOTE_INVALID',
+      detail: [
+        expect.objectContaining({
+          index: 1, code: 'quote_missing',
+          matches: expect.arrayContaining([expect.stringContaining('same phrase')]),
+          hint: expect.stringContaining('run state'),
+        }),
+        expect.objectContaining({ index: 2, code: 'quote_ambiguous' }),
+      ],
+    })
+
+    await expect(command(app, 'edit', {
+      file: path,
+      agent: 'ag_1',
+      edits: [
+        { match: 'First same', replace: 'a' },
+        { match: 'same phrase', replace: 'b', precededBy: 'First ' },
+      ],
+    })).rejects.toMatchObject({ exitCode: 1, code: 'EDITS_OVERLAP', detail: { edits: [0, 1] } })
+
+    const document = (await app.getState()).activeDocument!
+    expect(document.content).toBe(before)
+    expect(document.pendingHunks).toEqual([])
+    expect((await storedApplication(store, path)).state.pendingHunks).toEqual([])
+
+    // Context resolves the ambiguity; an empty replacement deletes the passage.
+    await command(app, 'edit', {
+      file: path,
+      agent: 'ag_1',
+      edits: [{ match: 'same phrase', replace: 'phrase', followedBy: '.\n\nSecond' }],
+    })
+    await command(app, 'edit', {
+      file: path,
+      agent: 'ag_1',
+      edits: [{ match: ' same', replace: '', precededBy: 'Second' }],
+    })
+    expect((await app.getState()).activeDocument!.content).toBe('First phrase.\n\nSecond phrase.\n')
   })
 })
 

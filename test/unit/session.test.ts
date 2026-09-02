@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
-  AttachmentCallRegistry,
   SessionRegistry,
-  attachmentShouldExpire,
   attachmentState,
   documentPathsFromArgv
 } from '../../src/main/session'
@@ -58,27 +56,7 @@ describe('launch path parsing', () => {
 })
 
 describe('attachment orchestration', () => {
-  it('supersedes the earlier concurrent call for the same agent', () => {
-    const registry = new AttachmentCallRegistry()
-    const firstSuperseded = vi.fn()
-    const secondSuperseded = vi.fn()
-    const first = registry.begin('agent-1', firstSuperseded)
-    const second = registry.begin('agent-1', secondSuperseded)
-
-    expect(firstSuperseded).toHaveBeenCalledOnce()
-    expect(first.isCurrent()).toBe(false)
-    expect(second.isCurrent()).toBe(true)
-    first.finish()
-    expect(second.isCurrent()).toBe(true)
-    second.finish()
-    expect(second.isCurrent()).toBe(false)
-  })
-
-  it('never expires a waiting attachment or one with an unacknowledged delivery', () => {
-    const day = 24 * 60 * 60 * 1_000
-    expect(attachmentShouldExpire({ lastCallAt: 0, queuedDeliveries: [], waiting: false }, day)).toBe(true)
-    expect(attachmentShouldExpire({ lastCallAt: 0, queuedDeliveries: ['d1'], waiting: false }, day * 2)).toBe(false)
-    expect(attachmentShouldExpire({ lastCallAt: 0, queuedDeliveries: [], waiting: true }, day * 2)).toBe(false)
+  it('labels an attachment waiting, pending, or working from its call and queue state', () => {
     expect(attachmentState({ waiting: true, queuedDeliveries: ['d1'] })).toBe('waiting')
     expect(attachmentState({ waiting: false, queuedDeliveries: ['d1'] })).toBe('pending')
     expect(attachmentState({ waiting: false, queuedDeliveries: [] })).toBe('working')

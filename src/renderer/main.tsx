@@ -55,6 +55,9 @@ const createRendererEditor: RendererEditorFactory = (element, options) => {
     jumpToAnnotation: (id) => handle.jumpToAnnotation(id),
     annotationCoordinates: (id) => handle.annotationCoordinates(id),
     replaceSelection: (text) => handle.replaceSelection(text),
+    find: (query) => handle.find(query),
+    findStep: (direction) => handle.findStep(direction),
+    closeFind: () => handle.closeFind(),
     destroy: () => handle.destroy()
   }
 }

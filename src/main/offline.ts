@@ -13,7 +13,7 @@ import {
   type AnnotationLog,
 } from '../core/annotations.js'
 import { computeHunks } from '../core/diff.js'
-import { createPayload, type PayloadInput, type StrataPayload } from '../core/payload.js'
+import { createPayload, trimPayload, type PayloadInput, type StrataPayload } from '../core/payload.js'
 import { EXTERNAL_TAG_TTL_MS } from '../core/state.js'
 import {
   CommandFailure,
@@ -247,14 +247,17 @@ async function annotate(
   current: CurrentDocument,
   args: CommandArguments['annotate'],
   makeId: (prefix: 'a' | 'r') => string,
-): Promise<void> {
+): Promise<{ created: Array<{ id: string; kind: string; quote: string }> }> {
   let log = annotationLog(current.meta)
+  const created: Array<{ id: string; kind: string; quote: string }> = []
   const failures: QuoteFailureDetail[] = []
 
   for (const [index, input] of args.annotations.entries()) {
+    const id = makeId('a')
     try {
       const result = createAnnotation(log, current.text, {
-        id: makeId('a'),
+        createdAt: Date.now(),
+        id,
         kind: input.kind,
         author: 'agent',
         agent: args.agent,
@@ -265,6 +268,7 @@ async function annotate(
         ...(input.followedBy === undefined ? {} : { followedBy: input.followedBy }),
       })
       log = result.log
+      created.push({ id, kind: input.kind, quote: input.quote })
     } catch (error) {
       if (!(error instanceof AnnotationAnchorError)) throw error
       failures.push(quoteFailure(current.text, input.quote, index, error))
@@ -280,6 +284,7 @@ async function annotate(
     )
   }
   await store.saveMeta(withAnnotationLog(current.meta, log))
+  return { created }
 }
 
 async function reply(
@@ -287,7 +292,7 @@ async function reply(
   current: CurrentDocument,
   args: CommandArguments['reply'],
   makeId: (prefix: 'a' | 'r') => string,
-): Promise<void> {
+): Promise<{ replied: string; annotation: string }> {
   const log = annotationLog(current.meta)
   if (log.annotations[args.annotation] === undefined) {
     throw new CommandFailure(
@@ -297,13 +302,16 @@ async function reply(
       { annotation: args.annotation },
     )
   }
+  const id = makeId('r')
   const result = replyToAnnotation(log, args.annotation, {
-    id: makeId('r'),
+    createdAt: Date.now(),
+    id,
     author: 'agent',
     agent: args.agent,
     text: args.text,
   })
   await store.saveMeta(withAnnotationLog(current.meta, result.log))
+  return { replied: id, annotation: args.annotation }
 }
 
 /** The active theme without the app: settings.json names it, themes/<id>.json holds it. */
@@ -340,6 +348,7 @@ async function statePayload(current: ReadOnlyStateDocument): Promise<Omit<Strata
     file: current.path,
     buffer: current.bufferPath,
     event: 'state',
+    open: false,
     cursor: log.nextSeq - 1,
     document: current.text,
     annotations,
@@ -381,7 +390,7 @@ async function checkpoint(
   store: GhostStore,
   requestedPath: string,
   lockTimeoutMs: number,
-): Promise<void> {
+): Promise<{ checkpointed: string | number }> {
   const path = await resolveDocumentPath(requestedPath)
   const entry = await stat(path).catch((error) => documentError(error, requestedPath))
   if (entry.isFile()) {
@@ -392,21 +401,24 @@ async function checkpoint(
       const ghostBlob = await store.putObject(seed.content)
       await store.saveMeta({ ...current.meta, ghostBlob, pendingHunks: [] })
     }, lockTimeoutMs)
-    return
+    return { checkpointed: path }
   }
   if (!entry.isDirectory()) {
     throw new CommandFailure(`Not a file or directory: ${path}`, 2, 'NOT_FOUND', { path })
   }
 
   const scan = await scanExplorer([path], { includeMissing: false })
+  let seeded = 0
   for (const file of scan.files) {
     await store.withLock(file.path, async () => {
       // Directory checkpoint matches Scan (PRD §6.4): a new store seeds from the
       // document's own content. readCurrentDocument creates it via ensureMeta.
       if (await store.hasDocument(file.path)) return
       await readCurrentDocument(store, file.path)
+      seeded += 1
     }, lockTimeoutMs)
   }
+  return { checkpointed: seeded }
 }
 
 export function createOfflineCommandHandler(
@@ -423,15 +435,17 @@ export function createOfflineCommandHandler(
     if (request.command === 'state') {
       try {
         const theme = await loadActiveThemeOffline(configDirectory)
-        return { ...(await statePayload(await readStateDocument(store, requestedPath))), theme: { id: theme.id, name: theme.name, path: theme.path } }
+        return trimPayload({
+          ...(await statePayload(await readStateDocument(store, requestedPath))),
+          theme: { id: theme.id, name: theme.name, path: theme.path },
+        }, request.args)
       } catch (error) {
         return documentError(error, requestedPath)
       }
     }
     if (request.command === 'checkpoint') {
       try {
-        await checkpoint(store, requestedPath, lockTimeoutMs)
-        return undefined
+        return await checkpoint(store, requestedPath, lockTimeoutMs)
       } catch (error) {
         return documentError(error, requestedPath)
       }
@@ -447,17 +461,15 @@ export function createOfflineCommandHandler(
             throw new CommandFailure(`Not found: ${path}`, 2, 'NOT_FOUND', { path })
           }
           await store.forgetDocument(path)
-          return undefined
+          return { forgotten: true }
         }
 
         const current = await readCurrentDocument(store, path)
         switch (request.command) {
           case 'annotate':
-            await annotate(store, current, request.args, makeId)
-            return undefined
+            return annotate(store, current, request.args, makeId)
           case 'reply':
-            await reply(store, current, request.args, makeId)
-            return undefined
+            return reply(store, current, request.args, makeId)
           case 'changes':
             return changesPayload(store, current, now())
           case 'changed': {
@@ -468,7 +480,7 @@ export function createOfflineCommandHandler(
               expiresAt: now() + EXTERNAL_TAG_TTL_MS,
             }
             await store.saveMeta({ ...current.meta, pendingTag: pendingTagValue })
-            return undefined
+            return { tagged: true }
           }
           default:
             throw new CommandFailure(

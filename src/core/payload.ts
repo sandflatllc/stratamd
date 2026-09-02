@@ -10,6 +10,7 @@ export type PayloadEvent =
   | 'superseded'
   | 'state'
   | 'changes'
+  | 'docs'
 
 export interface PayloadHunk {
   oldStart: number
@@ -91,6 +92,8 @@ export interface StrataPayload {
   notes?: readonly string[]
   /** Every attachment, present only on `state` for an open document. */
   attachments?: readonly PayloadAttachment[]
+  /** Present on `state`: whether the document is open in the app. */
+  open?: boolean
   cursor?: number
   document?: string
   segments?: readonly PayloadSegment[]
@@ -317,7 +320,26 @@ function renderResolution(resolution: PayloadResolution): string {
  * agent may run unprompted (PRD §6.7), so the line adds a prompt, not authority.
  */
 export const MESSAGE_GUIDANCE_LINE =
-  'To catch up before acting, run stratamd state (the buffer and annotations) or stratamd changes (unreviewed edits).'
+  'To catch up before acting, run stratamd state --brief (who is attached and who leads), stratamd state (the buffer and annotations), or stratamd changes (unreviewed edits).'
+
+export interface PayloadTrimOptions {
+  /** Drop `document`, `text`, and `annotations`: the attachment and Lead view of `state`. */
+  brief?: boolean
+  /** Drop `document`; `text` already carries the whole buffer with annotations inlined. */
+  textOnly?: boolean
+}
+
+/** The same payload with the fields the caller asked to leave out removed, never mutating the input. */
+export function trimPayload<T extends { document?: unknown; text?: unknown; annotations?: unknown }>(
+  payload: T,
+  options: PayloadTrimOptions,
+): T {
+  if (!options.brief && !options.textOnly) return payload
+  const { document: _document, ...withoutDocument } = payload
+  if (!options.brief) return withoutDocument as T
+  const { text: _text, annotations: _annotations, ...brief } = withoutDocument
+  return brief as T
+}
 
 export function renderPayloadText(input: PayloadInput, context: RenderContext = {}): string {
   const sections: string[] = [openingLine(input)]

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { AnnotationKind, PanelSize, SpellingContext } from '../../shared/contracts'
 import type { EditorSelection } from '../editorAdapter'
 import { COMPOSER_LIMITS, spellingForSelection } from '../model'
+import { claimEscape } from '../escape'
 
 interface AnnotationComposerProps {
   selection: EditorSelection | null
@@ -48,7 +49,7 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
     if (!selection) return
     const key = (event: KeyboardEvent) => {
       if (isAnnotationDismissKey(event.key)) {
-        event.preventDefault()
+        claimEscape(event)
         onDismiss()
         return
       }
@@ -64,8 +65,10 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
         setKind(next === 'c' ? 'comment' : next === 'q' ? 'question' : 'suggestion')
       }
     }
-    window.addEventListener('keydown', key)
-    return () => window.removeEventListener('keydown', key)
+    // Capture phase: the pill sits above the thread panel and the toast, which
+    // both yield when Escape is already claimed.
+    window.addEventListener('keydown', key, true)
+    return () => window.removeEventListener('keydown', key, true)
   }, [kind, onDismiss, selection])
 
   const startResize = (event: React.PointerEvent<HTMLButtonElement>) => {

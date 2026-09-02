@@ -176,7 +176,7 @@ describe('offline main-process commands', () => {
     expect(afterFailure.annotations).toBeUndefined()
     expect(afterFailure.annotationEvents).toEqual([])
 
-    await handler(request('annotate', {
+    const created = await handler(request('annotate', {
       file,
       agent: 'ag_test',
       annotations: [{
@@ -186,21 +186,31 @@ describe('offline main-process commands', () => {
         precededBy: 'First ',
       }],
     }), context)
+    expect(created).toEqual({ created: [{ id: 'a4', kind: 'question', quote: 'same phrase' }] })
     const annotated = await handler(request('state', { file }), context) as {
       annotations: Array<{ id: string; seq: number; replies: unknown[] }>
       cursor: number
+      open: boolean
     }
     expect(annotated.annotations).toEqual([
       expect.objectContaining({ id: 'a4', seq: 1, replies: [] }),
     ])
     expect(annotated.cursor).toBe(1)
+    expect(annotated.open).toBe(false)
 
-    await handler(request('reply', {
+    const brief = await handler(request('state', { file, brief: true }), context) as Record<string, unknown>
+    expect(brief).toMatchObject({ event: 'state', open: false, cursor: 1, theme: expect.any(Object) })
+    expect(brief).not.toHaveProperty('document')
+    expect(brief).not.toHaveProperty('text')
+    expect(brief).not.toHaveProperty('annotations')
+
+    const reply = await handler(request('reply', {
       file,
       agent: 'ag_reply',
       annotation: 'a4',
       text: 'It can.',
     }), context)
+    expect(reply).toEqual({ replied: 'r5', annotation: 'a4' })
     const replied = await handler(request('state', { file }), context) as {
       annotations: Array<{ replies: Array<Record<string, unknown>> }>
       cursor: number
@@ -290,6 +300,10 @@ describe('offline main-process commands', () => {
     )
     await expect(stat(dataDirectory)).rejects.toMatchObject({ code: 'ENOENT' })
     await expect(handler(request('open', { file }), context)).rejects.toMatchObject({
+      exitCode: 4,
+      code: 'INSTANCE_UNREACHABLE',
+    })
+    await expect(handler(request('edit', { file, agent: 'ag_a', edits: [{ match: 'text', replace: 'x' }] }), context)).rejects.toMatchObject({
       exitCode: 4,
       code: 'INSTANCE_UNREACHABLE',
     })

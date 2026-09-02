@@ -6,6 +6,7 @@ for their next round. Keep that loop going until the payload says
 
   stratamd attach [file] [--as <agent id>] [--name "<who you are>"]
                          [--timeout <seconds>, default 600; 0 = poll]
+                         [--text-only]
       Attaches you to the document (the focused one if no file is given)
       and opens it if it is not open.
       The FIRST call returns immediately with the whole buffer, the
@@ -26,7 +27,15 @@ for their next round. Keep that loop going until the payload says
       when it returns. Re-run it after each response to keep listening.
       It returns {"event":"timeout"} after --timeout seconds if nothing
       happens; just run it again. It returns {"event":"closed"} when the
-      user has closed the document, after anything that was queued.
+      user has closed the document, after anything that was queued. It
+      returns {"event":"superseded"} when a newer attach call for your
+      id replaced this one: do nothing, the newer call is listening.
+      A delivery can arrive twice if a call was cut off; the same
+      deliveryId means you already handled it.
+      --text-only leaves out the "document" field; "text" already holds
+      the whole buffer with the comments inlined, so you miss nothing
+      and the payload is half the size on a large document. The same
+      flag works on state.
 
   stratamd annotate <file> --kind <comment|question|suggestion>
                            --quote "<exact text from the buffer>"
@@ -43,10 +52,31 @@ for their next round. Keep that loop going until the payload says
       or ambiguous the command fails (exit 3) and lists the closest
       matches; add --preceded-by or --followed-by and retry. Pass --json <file or -> with an array of
       {kind, quote, text, label, precededBy, followedBy} to create many.
-      Suggestions are not applied until the user accepts them.
+      Suggestions are not applied until the user accepts them. Prints
+      {"created":[{id, kind, quote}]}; use the ids in reply and resolve.
+
+  stratamd edit <file> --match "<exact text from the buffer>"
+                       --replace "<new text>" | --replace -
+                       [--preceded-by "<text right before the match>"]
+                       [--followed-by "<text right after the match>"]
+                       [--as <agent id>] [--name "<who you are>"]
+      Changes one passage. The match follows the quote rules of
+      annotate: copied exactly from the buffer and unique within it,
+      with the same closest-match failure (exit 3) and the same
+      --preceded-by / --followed-by fix. The replacement lands in the
+      live buffer as YOUR change, marked for the user's review like a
+      write to the buffer file. Use it instead of rewriting the buffer
+      file when you want to change a passage: the match is checked
+      against the buffer at the moment of the write, so it can never
+      undo an edit the user made after you last read. An empty
+      --replace deletes the passage. Pass --json <file or -> with an
+      array of {match, replace, precededBy, followedBy} to make many
+      changes at once; one bad match applies none of them. Prints
+      {"applied":[{line, match, replace}]}. Needs the running app.
 
   stratamd reply <file> --to <annotation id> --text "<reply>" [--as <id>]
       Answers a question or continues a thread. --text - reads stdin.
+      Prints {"replied": <reply id>, "annotation": <thread id>}.
 
   stratamd send <file> --as <your id> --text "<note>" [--text -]
                        [--to <id[,id,...]>]
@@ -55,8 +85,10 @@ for their next round. Keep that loop going until the payload says
       notes queue for absent agents and survive restarts. Keep the
       discussion in annotations and replies; send is the doorbell, and
       the recipient runs state or changes to catch up. One note may
-      wait per recipient: sending another before it is collected fails.
-      Success means queued, not read.
+      wait per recipient: sending another before it is collected fails
+      (exit 3, detail names every blocked recipient); retry after they
+      attach, or send only to the others with --to. Success means
+      queued, not read.
 
   stratamd lead <file> --as <your id>
       Claims the Lead for this document. Run it when the user puts you
@@ -80,11 +112,19 @@ for their next round. Keep that loop going until the payload says
       user's save: agent edits stay pending for the user's review.
       Fails when a conflict needs the user; report that and stop.
 
-  stratamd state [file]
+  stratamd state [file] [--brief] [--text-only]
       Read-only: the same content as a first attach, without attaching
-      or affecting any attachment. Also reports the active theme (id,
-      name, file path) and the attached agents: id, name, state
-      (waiting, working, or pending), and which one leads.
+      or affecting any attachment. Also reports whether the document is
+      open in the app ("open"), the active theme (id, name, file path)
+      and, for an open document, the attached agents: id, name, state
+      (waiting, working, or pending), and which one leads. --brief
+      leaves out the document, text, and annotations: run it to see who
+      is attached and who leads, for example after a message.
+
+  stratamd docs
+      Lists the documents open in the app: each file, whether it is
+      focused, whether it has unsaved changes, and its attached agents.
+      Needs the running app.
 
   stratamd theme [id] [--json]
       Prints a theme: its file path, the values its authors SET, and
@@ -122,12 +162,24 @@ for their next round. Keep that loop going until the payload says
   stratamd detach <file> --as <agent id>
       Ends your attachment. Optional; idle attachments expire on their own.
 
+Every command prints its result to stdout as one JSON object. Errors go
+to stderr as one JSON object {error, code, detail}. Exit codes:
+  0  done
+  1  usage: a bad option, or a command that needs --as without one
+  2  not found: the file, annotation, or attachment
+  3  refused by the document's state; detail says why and what to do
+  4  the app is not reachable (or did not answer in time)
+Your id: pass --as with the id your first attach returned. Without
+--as, the id comes from your harness session when there is one;
+otherwise every command except a first attach fails with exit 1.
+
 What you see is the user's editor buffer, which may be unsaved;
 "buffer" in the payload is its path. Edit by writing to that buffer
-file, or by suggestions for small inline proposals. The user sees your
-edits marked for review and decides when to save. Re-read the buffer
-right before you write to it; a write based on an old copy shows up to
-the user as undoing their newer edits. The buffer is the only file you
+file, with stratamd edit for one passage, or by suggestions for small
+inline proposals. The user sees your edits marked for review and
+decides when to save. Re-read the buffer right before you write to it;
+a write based on an old copy shows up to the user as undoing their
+newer edits. The buffer is the only file you
 write while attached. Writing the document itself bypasses the user's
 unsaved edits, so every payload names the buffer path. Your own edits
 come back to you only if the user includes changes not made by them.`

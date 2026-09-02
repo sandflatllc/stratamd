@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SendPreviewRequest } from '../../src/shared/contracts'
-import { IDLE_SEND, nextSendState } from '../../src/renderer/components/SendComposer'
+import { clearComposerDraft, draftRecipients, EMPTY_DRAFT, IDLE_SEND, isEmptyDraft, nextSendState, readComposerDraft, saveComposerDraft } from '../../src/renderer/components/SendComposer'
 
 const request: SendPreviewRequest = { recipients: ['agent-a'], note: 'Ready for review', includeExternal: true }
 
@@ -49,5 +49,35 @@ describe('send composer commitment', () => {
     // recipient toggle whose preview rejects mid-send must not mint a new sending state.
     const sending = nextSendState(nextSendState(IDLE_SEND, { type: 'submit', request }), { type: 'preview-settled' })
     expect(nextSendState(sending, { type: 'preview-failed', error: new Error('Preview unavailable.') })).toBe(sending)
+  })
+})
+
+describe('send composer drafts (PRD §6.9)', () => {
+  const attachments = [
+    { agent: { id: 'agent-a', name: 'Agent A', color: 'grape' as const }, attachedAt: 0, state: 'waiting' as const, queuedDeliveries: [], queuedSendCount: 0 },
+    { agent: { id: 'agent-b', name: 'Agent B', color: 'sky' as const }, attachedAt: 0, state: 'waiting' as const, queuedDeliveries: [], queuedSendCount: 0 },
+  ]
+
+  it('keeps the note and item choices per document until the send goes through', () => {
+    const draft = { note: 'Please review', selected: ['agent-b'], checkedExternal: ['s1:0'], uncheckedUser: ['s2:1'], uncheckedEvents: [4] }
+    saveComposerDraft('/one.md', draft)
+    expect(readComposerDraft('/one.md')).toEqual(draft)
+    expect(readComposerDraft('/two.md')).toBe(EMPTY_DRAFT)
+    clearComposerDraft('/one.md')
+    expect(readComposerDraft('/one.md')).toBe(EMPTY_DRAFT)
+  })
+
+  it('forgets a draft the user emptied out instead of keeping a blank one', () => {
+    saveComposerDraft('/blank.md', { ...EMPTY_DRAFT, note: 'x' })
+    saveComposerDraft('/blank.md', { ...EMPTY_DRAFT })
+    expect(readComposerDraft('/blank.md')).toBe(EMPTY_DRAFT)
+    expect(isEmptyDraft(EMPTY_DRAFT)).toBe(true)
+    expect(isEmptyDraft({ ...EMPTY_DRAFT, uncheckedEvents: [1] })).toBe(false)
+  })
+
+  it('applies a remembered recipient choice only to agents still attached, and defaults to everyone', () => {
+    expect(draftRecipients(EMPTY_DRAFT, attachments)).toEqual(['agent-a', 'agent-b'])
+    expect(draftRecipients({ ...EMPTY_DRAFT, selected: ['agent-b', 'agent-gone'] }, attachments)).toEqual(['agent-b'])
+    expect(draftRecipients({ ...EMPTY_DRAFT, selected: [] }, attachments)).toEqual([])
   })
 })

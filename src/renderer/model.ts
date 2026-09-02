@@ -3,6 +3,7 @@ import type {
   AnnotationView,
   AppView,
   AttachmentState,
+  DocumentTabView,
   DocumentView,
   ExplorerFileView,
   HunkView,
@@ -12,7 +13,8 @@ import type {
   SaveRoundAuthorView,
   SpellingContext,
   ThemePanelGeometry,
-  ThemeView
+  ThemeView,
+  DocumentProblem,
 } from '../shared/contracts'
 import type { CSSProperties } from 'react'
 import { AMBIENT_STYLES, BUILT_IN_THEME_ID, BUILT_IN_THEME_NAME, contrastingText, DEFAULT_THEME_VALUES, mixHex, THEME_KEYS, type AmbientStyle } from '../shared/theme-keys'
@@ -308,6 +310,56 @@ export function hasResolvedAnnotations(document: DocumentView): boolean {
   return document.annotations.some((annotation) => annotation.status === 'resolved')
 }
 
+/** The tab to show after cycling from the active one; null when there is nothing to cycle to. */
+export function cycleTab(tabs: readonly DocumentTabView[], direction: 1 | -1): DocumentTabView | null {
+  if (tabs.length < 2) return null
+  const active = Math.max(0, tabs.findIndex((tab) => tab.active))
+  return tabs[(active + direction + tabs.length) % tabs.length] ?? null
+}
+
+export interface ReviewTarget {
+  kind: 'hunk' | 'suggestion'
+  id: string
+  line: number
+}
+
+/** Pending hunks and open suggestions in document order (PRD §6.1 next/previous change). */
+export function reviewTargets(document: DocumentView): ReviewTarget[] {
+  const hunks = document.pendingHunks.map((hunk): ReviewTarget => ({ kind: 'hunk', id: hunk.id, line: hunk.newStart }))
+  const suggestions = document.annotations
+    .filter((annotation) => annotation.kind === 'suggestion' && annotation.status === 'open' && annotation.line !== null)
+    .map((annotation): ReviewTarget => ({ kind: 'suggestion', id: annotation.id, line: annotation.line! }))
+  return [...hunks, ...suggestions].sort((left, right) => left.line - right.line || (left.kind === right.kind ? 0 : left.kind === 'hunk' ? -1 : 1))
+}
+
+/** The target after (or before) `currentId`, wrapping; the first (or last) when the current one is gone. */
+export function nextReviewTarget(targets: readonly ReviewTarget[], currentId: string | null, direction: 1 | -1): ReviewTarget | null {
+  if (targets.length === 0) return null
+  const index = currentId === null ? -1 : targets.findIndex((target) => target.id === currentId)
+  if (index < 0) return (direction === 1 ? targets[0] : targets.at(-1)) ?? null
+  return targets[(index + direction + targets.length) % targets.length] ?? null
+}
+
+/** Pending hunks grouped by author, for the per-author bulk revert row; only authors with more than one. */
+export function bulkRevertGroups(document: DocumentView): Array<{ key: string; name: string; author: AgentIdentity | null; hunks: HunkView[] }> {
+  const groups = new Map<string, { key: string; name: string; author: AgentIdentity | null; hunks: HunkView[] }>()
+  for (const hunk of document.pendingHunks) {
+    const key = hunk.author?.id ?? 'external'
+    const group = groups.get(key) ?? { key, name: hunkAuthor(hunk), author: hunk.author, hunks: [] }
+    group.hunks.push(hunk)
+    groups.set(key, group)
+  }
+  return [...groups.values()].filter((group) => group.hunks.length > 1)
+}
+
+/** What a new user pastes to an agent so it attaches to the open document. */
+export const AGENT_PROMPT = 'Attach to the document I have open in StrataMD: run `stratamd --agent-help` to learn how it works, then `stratamd attach --name "<your name>"` and follow what it returns.'
+
+/** A quiet relative time for a thread entry; empty when the record carries no time. */
+export function threadTime(time: number | undefined, now = Date.now()): string {
+  return time === undefined || time <= 0 ? '' : timeAgo(now - time)
+}
+
 export function pendingCount(document: DocumentView | null): number {
   if (!document) return 0
   return document.pendingHunks.length + document.annotations.filter((annotation) => annotation.kind === 'suggestion' && annotation.status === 'open').length
@@ -316,7 +368,16 @@ export function pendingCount(document: DocumentView | null): number {
 export function bannerFor(document: DocumentView): { tone: 'warning' | 'danger'; text: string } | null {
   if (document.invalidUtf8) return { tone: 'danger', text: 'Invalid UTF-8. Opened read-only in source view.' }
   if (document.deleted) return { tone: 'warning', text: `${document.path.split('/').pop() ?? 'This file'} was deleted. The tab stays open; Save will recreate it.` }
+  const problem = document.problems[0]
+  if (problem) return { tone: 'warning', text: PROBLEM_COPY[problem] }
   return null
+}
+
+/** Plain-language copy for background failures (PRD §6.10); one sentence on what stopped and what it means. */
+const PROBLEM_COPY: Record<DocumentProblem, string> = {
+  mirror: "StrataMD can't update the copy agents read. Agents may be seeing an older version of this document.",
+  watch: "StrataMD can't watch this file for changes made outside it. Edits made elsewhere won't show until you reopen it.",
+  persist: "StrataMD can't save its review notes for this document. Pending changes and annotations may not survive closing it.",
 }
 
 export interface ExplorerTreeNode {
