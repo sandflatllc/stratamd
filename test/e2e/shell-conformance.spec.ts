@@ -150,8 +150,8 @@ test('a theme file sets fonts and attribution colors, applies live when rewritte
     const chip = page.locator('.annotation-row').filter({ hasText: 'Typography' }).locator('.annotation-chip')
     await expect(shell).toHaveCSS('font-family', /Nunito/)
     // Surfaces follow the theme too, not only fonts and attribution: a light theme lightens the panels.
-    await expect(page.locator('.explorer')).toHaveCSS('background-color', 'rgb(255, 251, 253)')
-    await expect(page.locator('.explorer')).toHaveCSS('border-color', 'rgb(224, 200, 216)')
+    await expect(page.locator('.navigation-rail')).toHaveCSS('background-color', 'rgb(255, 251, 253)')
+    await expect(page.locator('.navigation-rail')).toHaveCSS('border-color', 'rgb(224, 200, 216)')
     await expect(page.locator('.editor-island .ProseMirror p').first()).toHaveCSS('color', 'rgb(34, 17, 34)')
     await expect(avatar).toHaveCSS('background-color', 'rgb(64, 80, 96)')
     await expect(badge).toHaveCSS('background-color', 'rgb(64, 80, 96)')
@@ -195,7 +195,7 @@ test('the theme panel floats over a live app, writes only chosen keys, follows a
     await page.getByRole('button', { name: 'Theme', exact: true }).click()
     const panel = page.getByRole('dialog', { name: 'Theme' })
     await expect(panel).toBeVisible()
-    await expect(panel).toContainText('Built-in theme')
+    await expect(panel).toContainText('Bundled theme')
     await expect(page.locator('.modal-backdrop')).toHaveCount(0)
     // The sample document opens as a real tab and explains each construct in its own words.
     await expect(page.getByRole('tab', { name: /Theme sample\.md/ })).toHaveAttribute('aria-selected', 'true')
@@ -215,7 +215,7 @@ test('the theme panel floats over a live app, writes only chosen keys, follows a
     // A copy of a stock theme starts with all 40 swatches and six other values chosen.
     const parsedTheme = async () => { try { return JSON.parse(await readFile(themePath, 'utf8')) } catch { return {} } }
     await expect.poll(async () => (await parsedTheme()).document?.bold).toBe('#dbdade')
-    await expect.poll(async () => (await parsedTheme())['schema-version']).toBe(2)
+    await expect.poll(async () => (await parsedTheme())['schema-version']).toBe(3)
     expect(await parsedTheme()).toMatchObject({ name: 'Copy of Strata', controls: { positive: '#3dc97c' }, effects: { intensity: 1 } })
 
     const bold = panel.locator('.theme-row[data-key="document.bold"]')
@@ -234,8 +234,8 @@ test('the theme panel floats over a live app, writes only chosen keys, follows a
     await expect(panel.locator('.theme-row[data-key="document.italic"]')).toHaveClass(/is-set/)
 
     await bold.getByRole('button', { name: 'Use default' }).click()
-    await expect(strong).toHaveCSS('color', 'rgb(219, 218, 222)')
-    await expect.poll(async () => JSON.parse(await readFile(themePath, 'utf8'))).toEqual({ 'schema-version': 2, name: 'Copy of Strata', document: { italic: '#123456' } })
+    await expect(strong).toHaveCSS('color', 'rgb(255, 190, 92)')
+    await expect.poll(async () => JSON.parse(await readFile(themePath, 'utf8'))).toEqual({ 'schema-version': 3, name: 'Copy of Strata', document: { italic: '#123456' } })
 
     // Revert restores the snapshot from when the panel opened: the complete copy.
     await panel.getByRole('button', { name: 'Revert to when opened' }).click()
@@ -269,7 +269,7 @@ test('the theme panel floats over a live app, writes only chosen keys, follows a
     // Persisted, not the bottom-right default (about 200px away); the clamp may shift it a little with window size.
     expect(Math.abs((await reopened.boundingBox())!.x - moved.x)).toBeLessThan(60)
     await expect(reopened.getByRole('combobox', { name: 'Theme' })).toHaveValue('copy-of-strata')
-    await reopened.getByRole('combobox', { name: 'Theme' }).selectOption('strata')
+    await reopened.getByRole('combobox', { name: 'Theme' }).selectOption('strata-vivid')
     await expect(restarted.locator('.app-shell')).toHaveAttribute('data-ambient-windows', 'glow-orbs')
     await expect(reopened).toContainText('Built-in theme')
   } finally {
@@ -284,7 +284,7 @@ test('two tabs route pathless state and initial attach to the focused document',
   try {
     const page = await value.launch()
     await page.evaluate(async (path) => window.strata.openDocument(path), second)
-    await expect(page.getByRole('tab')).toHaveCount(2)
+    await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(2)
     await expect(page.getByRole('tab', { name: /second\.md/i })).toHaveAttribute('aria-selected', 'true')
 
     const secondState = expectPayload(await value.cli(['state']))
@@ -414,6 +414,7 @@ test('keyboard operates composer recipient previews and an annotation thread', a
       '--as', 'agent-a',
     ])
     expect(annotation.code, annotation.stderr).toBe(0)
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
     const row = page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'Reply to this sentence.' })
     await expect(row).toBeVisible()
     await tabTo(page, row)

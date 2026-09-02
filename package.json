@@ -60,14 +60,19 @@
     ],
     "fileAssociations": [
       {
-        "ext": ["md", "markdown"],
+        "ext": [
+          "md",
+          "markdown"
+        ],
         "name": "Markdown document",
         "role": "Editor",
         "rank": "Alternate"
       }
     ],
     "linux": {
-      "target": ["dir"],
+      "target": [
+        "dir"
+      ],
       "category": "Utility",
       "icon": "resources/stratamd-icon.svg",
       "executableName": "stratamd-app",
@@ -79,7 +84,9 @@
       ]
     },
     "mac": {
-      "target": ["dir"],
+      "target": [
+        "dir"
+      ],
       "category": "public.app-category.productivity",
       "icon": "resources/stratamd.icns",
       "minimumSystemVersion": "13.0",
@@ -98,6 +105,7 @@
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@fontsource/nunito": "^5.3.0",
     "@parcel/watcher": "^2.6.0",
+    "chart.js": "4.5.1",
     "diff": "^9.0.0",
     "fast-glob": "^3.3.3",
     "ignore": "^7.0.6",
@@ -105,6 +113,7 @@
     "mdast-util-frontmatter": "^2.0.1",
     "mdast-util-gfm": "^3.1.0",
     "mdast-util-to-markdown": "^2.1.2",
+    "mermaid": "^11.17.2",
     "micromark-extension-frontmatter": "^2.0.0",
     "micromark-extension-gfm": "^3.0.0",
     "prosemirror-commands": "^1.7.2",

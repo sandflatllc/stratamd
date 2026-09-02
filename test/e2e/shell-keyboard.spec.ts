@@ -31,7 +31,7 @@ test('tabs cycle from the keyboard, close with the primary modifier and W, and c
 
     // Middle click closes a clean tab outright.
     await otherTab.click({ button: 'middle' })
-    await expect(page.getByRole('tab')).toHaveCount(1)
+    await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(1)
     await expect(keysTab).toHaveAttribute('aria-selected', 'true')
 
     // A dirty tab asks first; Escape keeps it open.
@@ -44,13 +44,13 @@ test('tabs cycle from the keyboard, close with the primary modifier and W, and c
     await expect(dialog).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(dialog).toBeHidden()
-    await expect(page.getByRole('tab')).toHaveCount(2)
+    await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(2)
 
     // A clean tab closes at once.
     await page.keyboard.press('Control+Tab')
     await expect(keysTab).toHaveAttribute('aria-selected', 'true')
     await page.keyboard.press(primaryKey('w'))
-    await expect(page.getByRole('tab')).toHaveCount(1)
+    await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(1)
     await expect(otherTab).toHaveAttribute('aria-selected', 'true')
   } finally {
     await value.dispose()
@@ -143,6 +143,7 @@ test('composer and reply drafts survive Escape, and Escape closes one surface at
       '--as', 'agent-a',
     ])
     expect(annotation.code, annotation.stderr).toBe(0)
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
     const row = page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'Reply to this sentence.' })
     await row.click()
     const thread = page.getByRole('dialog', { name: /comment thread/i })

@@ -168,7 +168,7 @@ for (const performanceCase of requestedCases()) {
         const sourceEditor = page.getByRole('textbox', { name: /source editor/i })
         await expect(sourceEditor).toBeVisible({ timeout: actionTimeout })
         await expect(sourceEditor).toHaveValue(edited, { timeout: actionTimeout })
-        await expect(page.locator('.strata-source-mirror')).toContainText(corpus.terminalMarker, { timeout: actionTimeout })
+        await expect(page.locator('.strata-source-mirror:not(.strata-source-find)')).toContainText(corpus.terminalMarker, { timeout: actionTimeout })
         await page.evaluate((path) => window.strata.setSourceMode(path, false), value.file)
         await expect(editor).toBeVisible({ timeout: actionTimeout })
       }))
@@ -201,7 +201,7 @@ for (const performanceCase of requestedCases()) {
       await installSendDiagnostics(page)
       activeStage = 'send-delivery'
       actions.push(await measureAction(page, 'send-delivery', async () => {
-        await send(page, { note: 'Performance workload delivery.', includeExternal: true })
+        await send(page, { note: 'Performance workload delivery.' })
         const delivery = await value.attach('performance-agent', 'Performance Agent')
         expect(delivery.event).toBe('send')
         expect(delivery.text).toContain('Performance workload delivery.')

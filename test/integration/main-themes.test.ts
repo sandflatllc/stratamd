@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createStrataApplication, type StrataApplication } from '../../src/main/application'
 import { DEFAULT_THEME_VALUES } from '../../src/shared/theme-keys'
-import { nestThemeValues } from '../../src/shared/bundled-themes'
+import { nestThemeValues, STOCK_THEMES } from '../../src/shared/bundled-themes'
 import { SettingsStore } from '../../src/main/settings'
 import { GhostStore } from '../../src/main/storage'
 import { ThemeStore } from '../../src/main/themes'
@@ -47,30 +47,31 @@ describe('themes in the application', () => {
     const { theme } = (await app.getState()).settings
     expect(theme.active).toMatchObject({ id: 'strata-vivid', builtIn: true, missing: false, path: null })
     expect(theme.active.values['document.bold']).toBe('#ffbe5c')
-    expect(theme.available.map((summary) => summary.id)).toEqual(['strata', 'strata-vivid', 'ember', 'candyfloss', 'isotope', 'nebula', 'paper'])
+    expect(theme.available.map((summary) => summary.id)).toEqual(['strata-vivid', 'strata', 'ember', 'candyfloss', 'isotope', 'nebula', 'paper'])
     expect(await app.listFonts()).toEqual(['Baloo 2', 'JetBrains Mono', 'Abel'])
   })
 
   it('copies a stock theme with every value chosen, applies edits on the same call, and writes shortly after', async () => {
     const { app, themeStore, settingsStore, states } = await fixture()
     const id = await app.createTheme('Copy of Strata', 'strata')
+    const strataValues = STOCK_THEMES.get('strata')!.values
     expect(id).toBe('copy-of-strata')
     expect((await settingsStore.load()).theme).toBe(id)
 
-    const complete = (values: Record<string, string | number>, name: string) => ({ 'schema-version': 2, ...nestThemeValues(name, values) })
+    const complete = (values: Record<string, string | number>, name: string) => ({ 'schema-version': 3, ...nestThemeValues(name, values) })
     await app.setThemeValue('document.bold', '#ff8800')
     const latest = states.at(-1)!.settings.theme
     expect(latest.active.values['document.bold']).toBe('#ff8800')
-    expect(latest.active.sparse).toEqual(complete({ ...DEFAULT_THEME_VALUES, 'document.bold': '#ff8800' }, 'Copy of Strata'))
+    expect(latest.active.sparse).toEqual(complete({ ...strataValues, 'document.bold': '#ff8800' }, 'Copy of Strata'))
 
     await app.flushThemeWrites()
-    expect(JSON.parse(await readFile(themeStore.pathFor(id), 'utf8'))).toEqual(complete({ ...DEFAULT_THEME_VALUES, 'document.bold': '#ff8800' }, 'Copy of Strata'))
+    expect(JSON.parse(await readFile(themeStore.pathFor(id), 'utf8'))).toEqual(complete({ ...strataValues, 'document.bold': '#ff8800' }, 'Copy of Strata'))
 
     // Use default removes the one value; the rest of the copy stays chosen.
     await app.setThemeValue('document.bold', null)
     await app.renameTheme('Warm')
     await app.flushThemeWrites()
-    const withoutBold = Object.fromEntries(Object.entries(DEFAULT_THEME_VALUES).filter(([key]) => key !== 'document.bold'))
+    const withoutBold = Object.fromEntries(Object.entries(strataValues).filter(([key]) => key !== 'document.bold'))
     expect(JSON.parse(await readFile(themeStore.pathFor(id), 'utf8'))).toEqual(complete(withoutBold, 'Warm'))
     expect(Object.keys(JSON.parse(await readFile(themeStore.pathFor(id), 'utf8')).document)).toHaveLength(8)
     expect(states.at(-1)!.settings.theme.available.find((summary) => summary.id === id)?.name).toBe('Warm')
@@ -80,10 +81,10 @@ describe('themes in the application', () => {
     await expect(app.deleteTheme('strata')).rejects.toThrow(/ship with StrataMD/)
     // Deleting the active theme falls back to the built-in first.
     await app.deleteTheme(id)
-    expect((await app.getState()).settings.theme.active.id).toBe('strata')
-    expect((await settingsStore.load()).theme).toBe('strata')
+    expect((await app.getState()).settings.theme.active.id).toBe('strata-vivid')
+    expect((await settingsStore.load()).theme).toBe('strata-vivid')
     await expect(app.setThemeValue('document.bold', '#000000')).rejects.toThrow(/ship with StrataMD/)
-    expect(states.at(-1)!.settings.theme.available.map((summary) => summary.id)).toEqual(['strata', 'strata-vivid', 'ember', 'candyfloss', 'isotope', 'nebula', 'paper'])
+    expect(states.at(-1)!.settings.theme.available.map((summary) => summary.id)).toEqual(['strata-vivid', 'strata', 'ember', 'candyfloss', 'isotope', 'nebula', 'paper'])
   })
 
   it('reverts to a snapshot and lists broken files without applying them', async () => {
@@ -130,7 +131,7 @@ describe('themes in the application', () => {
     await until(() => app.getState(), (state) => state.settings.theme.active.problems.some((problem) => problem.key === 'file'))
     await app.setThemeValue('document.italic', '#000001')
     await app.flushThemeWrites()
-    expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({ 'schema-version': 2, name: 'Dusk', document: { bold: '#abcdef', italic: '#000001' } })
+    expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({ 'schema-version': 3, name: 'Dusk', document: { bold: '#abcdef', italic: '#000001' } })
     expect(states.at(-1)!.settings.theme.active.problems).toEqual([])
   })
 

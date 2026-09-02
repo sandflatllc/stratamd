@@ -175,6 +175,8 @@ const nodes = {
       ...sourceAttrs,
       kind: { default: 'unsupported', validate: 'string' },
       raw: { default: '', validate: 'string' },
+      component: { default: null, validate: 'string|null' },
+      problem: { default: null, validate: 'string|null' },
     },
     group: 'block',
     atom: true,
@@ -196,6 +198,25 @@ const nodes = {
       }),
     }],
     toDOM: (node): DOMOutputSpec => {
+      if (node.attrs.kind === 'component-error') {
+        const component = String(node.attrs.component ?? 'Component')
+        const problem = String(node.attrs.problem ?? 'The component syntax is invalid.')
+        return [
+          'section',
+          {
+            ...sourceDomAttrs(node.attrs),
+            'data-strata-raw': 'component-error',
+            'data-strata-component-error': component,
+            class: 'strata-component-error',
+            contenteditable: 'false',
+            role: 'note',
+            'aria-label': `${component} component needs attention`,
+          },
+          ['strong', { class: 'strata-component-error__title' }, 'Component needs attention'],
+          ['span', { class: 'strata-component-error__problem' }, `${component}: ${problem}`],
+          ['pre', ['code', String(node.attrs.raw)]],
+        ]
+      }
       if (node.attrs.kind === 'yaml') {
         const raw = String(node.attrs.raw)
         const keyCount = frontmatterKeyCount(raw)
@@ -229,6 +250,56 @@ const nodes = {
           },
           ['code', String(node.attrs.raw)],
         ]
+    },
+  },
+
+  component_block: {
+    attrs: {
+      ...sourceAttrs,
+      name: { validate: 'string' },
+      properties: { default: {} },
+    },
+    content: 'block+',
+    group: 'block',
+    defining: true,
+    isolating: true,
+    parseDOM: [{
+      tag: 'section[data-strata-component]',
+      getAttrs: (dom: HTMLElement) => ({
+        ...textBlockAttrs(dom),
+        name: dom.dataset.strataComponent ?? 'Callout',
+        properties: (() => {
+          try {
+            const value = JSON.parse(dom.dataset.strataComponentProperties ?? '{}')
+            return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+          } catch { return {} }
+        })(),
+      }),
+    }],
+    toDOM: (node): DOMOutputSpec => {
+      const name = String(node.attrs.name)
+      const properties = node.attrs.properties && typeof node.attrs.properties === 'object'
+        ? node.attrs.properties as Record<string, string>
+        : {}
+      const semantic = name === 'Callout'
+        ? properties.kind ?? 'context'
+        : name === 'Verdict'
+          ? properties.outcome ?? 'neutral'
+          : name
+      return [
+        'section',
+        {
+          ...sourceDomAttrs(node.attrs),
+          'data-strata-component': name,
+          'data-strata-component-properties': JSON.stringify(properties),
+          'data-strata-component-state': semantic,
+          class: `strata-component strata-component--${name.toLowerCase()}`,
+          role: 'region',
+          'aria-label': `${name}: ${semantic}`,
+        },
+        ['div', { class: 'strata-component__eyebrow', contenteditable: 'false' }, `${name} · ${semantic}`],
+        ['div', { class: 'strata-component__body' }, 0],
+      ]
     },
   },
 
@@ -375,14 +446,16 @@ const nodes = {
   },
 
   table_row: {
+    attrs: sourceAttrs,
     content: '(table_cell | table_header)+',
     tableRole: 'row',
-    parseDOM: [{ tag: 'tr' }],
-    toDOM: (): DOMOutputSpec => ['tr', 0],
+    parseDOM: [{ tag: 'tr', getAttrs: textBlockAttrs }],
+    toDOM: (node): DOMOutputSpec => ['tr', sourceDomAttrs(node.attrs), 0],
   },
 
   table_cell: {
     attrs: {
+      ...sourceAttrs,
       colspan: { default: 1 },
       rowspan: { default: 1 },
       colwidth: { default: null },
@@ -394,13 +467,14 @@ const nodes = {
     parseDOM: [{ tag: 'td', getAttrs: tableCellAttrs }],
     toDOM: (node): DOMOutputSpec => [
       'td',
-      tableCellDomAttrs(node.attrs),
+      { ...sourceDomAttrs(node.attrs), ...tableCellDomAttrs(node.attrs) },
       0,
     ],
   },
 
   table_header: {
     attrs: {
+      ...sourceAttrs,
       colspan: { default: 1 },
       rowspan: { default: 1 },
       colwidth: { default: null },
@@ -412,7 +486,7 @@ const nodes = {
     parseDOM: [{ tag: 'th', getAttrs: tableCellAttrs }],
     toDOM: (node): DOMOutputSpec => [
       'th',
-      tableCellDomAttrs(node.attrs),
+      { ...sourceDomAttrs(node.attrs), ...tableCellDomAttrs(node.attrs) },
       0,
     ],
   },
@@ -569,6 +643,7 @@ const marks = {
           ...(href === undefined ? {} : { href }),
           ...(typeof mark.attrs.title === 'string' ? { title: mark.attrs.title } : {}),
           rel: 'noreferrer noopener',
+          tabindex: '0',
         },
         0,
       ]

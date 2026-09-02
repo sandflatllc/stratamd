@@ -1,9 +1,9 @@
 import type { SparseTheme, ThemeValues } from './theme-keys'
 
 // The seven stock themes (PRD §6.13, docs/plans/completed/theme-restructure-plan.md §7). Each
-// definition chooses every one of the 40 color swatches and all six non-color
-// values explicitly — a stock theme never inherits a value from Strata, so a
-// Strata change can never silently restyle another stock theme. Equal hex
+// definition chooses every one of the 46 color swatches and all six non-color
+// values explicitly — a stock theme never inherits a value from Strata Vivid,
+// so changing the default can never silently restyle another stock theme. Equal hex
 // values within a definition are deliberate. `New from this` copies a stock
 // theme with every value, while user files stay sparse.
 
@@ -53,6 +53,12 @@ const STRATA: StockTheme = {
     'people.agent-3': '#68dca0',
     'people.agent-4': '#ffc56b',
     'people.external': '#b8afc7',
+    'visuals.category-1': '#c4a7ff',
+    'visuals.category-2': '#45d4e6',
+    'visuals.category-3': '#ffb03a',
+    'visuals.category-4': '#3dc97c',
+    'visuals.category-5': '#ff8a5c',
+    'visuals.category-6': '#82b5ff',
     'effects.primary': '#9b5cff',
     'effects.secondary': '#4f8dff',
     'effects.tertiary': '#ff5c8a',
@@ -107,6 +113,12 @@ const STRATA_VIVID: StockTheme = {
     'people.agent-3': '#3dc97c',
     'people.agent-4': '#ffb03a',
     'people.external': '#7a7292',
+    'visuals.category-1': '#9b5cff',
+    'visuals.category-2': '#4f8dff',
+    'visuals.category-3': '#ff5c8a',
+    'visuals.category-4': '#ffb03a',
+    'visuals.category-5': '#3dc97c',
+    'visuals.category-6': '#8fe3ff',
     'effects.primary': '#9b5cff',
     'effects.secondary': '#4f8dff',
     'effects.tertiary': '#ff5c8a',
@@ -160,6 +172,12 @@ const EMBER: StockTheme = {
     'people.agent-3': '#a0dc7c',
     'people.agent-4': '#8dbbff',
     'people.external': '#c2aaa0',
+    'visuals.category-1': '#c47cff',
+    'visuals.category-2': '#7fb0ff',
+    'visuals.category-3': '#ff6b7a',
+    'visuals.category-4': '#ffb03a',
+    'visuals.category-5': '#8fd66b',
+    'visuals.category-6': '#73d7c3',
     'effects.primary': '#c47cff',
     'effects.secondary': '#7fb0ff',
     'effects.tertiary': '#ff6b7a',
@@ -213,6 +231,12 @@ const CANDYFLOSS: StockTheme = {
     'people.agent-3': '#167459',
     'people.agent-4': '#915b0d',
     'people.external': '#6f626a',
+    'visuals.category-1': '#7040b8',
+    'visuals.category-2': '#2565a8',
+    'visuals.category-3': '#ad2e61',
+    'visuals.category-4': '#9b5e00',
+    'visuals.category-5': '#177a58',
+    'visuals.category-6': '#8b3f8f',
     'effects.primary': '#a06ef5',
     'effects.secondary': '#5b9df0',
     'effects.tertiary': '#f06292',
@@ -266,6 +290,12 @@ const ISOTOPE: StockTheme = {
     'people.agent-3': '#0d7a52',
     'people.agent-4': '#935100',
     'people.external': '#586777',
+    'visuals.category-1': '#6540ad',
+    'visuals.category-2': '#145fb3',
+    'visuals.category-3': '#a92f62',
+    'visuals.category-4': '#935100',
+    'visuals.category-5': '#0d7a52',
+    'visuals.category-6': '#3d6f8f',
     'effects.primary': '#7a4fd8',
     'effects.secondary': '#1f6fe0',
     'effects.tertiary': '#e0447c',
@@ -320,6 +350,12 @@ const NEBULA: StockTheme = {
     'people.agent-3': '#68e8bd',
     'people.agent-4': '#ffc175',
     'people.external': '#aeb6d3',
+    'visuals.category-1': '#a883ff',
+    'visuals.category-2': '#5ea0ff',
+    'visuals.category-3': '#ff6bb3',
+    'visuals.category-4': '#ffb054',
+    'visuals.category-5': '#4fe0b0',
+    'visuals.category-6': '#7ad7ff',
     'effects.primary': '#a883ff',
     'effects.secondary': '#5ea0ff',
     'effects.tertiary': '#ff6bb3',
@@ -373,6 +409,12 @@ const PAPER: StockTheme = {
     'people.agent-3': '#177249',
     'people.agent-4': '#8a5500',
     'people.external': '#6b6072',
+    'visuals.category-1': '#6540ad',
+    'visuals.category-2': '#1c5fb2',
+    'visuals.category-3': '#a62f5c',
+    'visuals.category-4': '#8a5500',
+    'visuals.category-5': '#177249',
+    'visuals.category-6': '#6f3f91',
     'effects.primary': '#7a4fd1',
     'effects.secondary': '#2f6fdd',
     'effects.tertiary': '#d9456f',
@@ -385,10 +427,10 @@ const PAPER: StockTheme = {
   })
 }
 
-/** All seven stock themes, Strata first. */
+/** All seven stock themes, with the default Strata Vivid first. */
 export const STOCK_THEMES: ReadonlyMap<string, StockTheme> = new Map([
-  ['strata', STRATA],
   ['strata-vivid', STRATA_VIVID],
+  ['strata', STRATA],
   ['ember', EMBER],
   ['candyfloss', CANDYFLOSS],
   ['isotope', ISOTOPE],
@@ -396,8 +438,10 @@ export const STOCK_THEMES: ReadonlyMap<string, StockTheme> = new Map([
   ['paper', PAPER]
 ])
 
-/** The complete Strata definition is the runtime default for every value. */
-export const DEFAULT_THEME_VALUES: ThemeValues = STRATA.values
+/** Strata Vivid owns fresh-install selection and every missing-value fallback. */
+export const DEFAULT_THEME_ID = 'strata-vivid'
+export const DEFAULT_THEME_NAME = STRATA_VIVID.name
+export const DEFAULT_THEME_VALUES: ThemeValues = STRATA_VIVID.values
 
 /** Nests flat dotted keys into the on-disk file shape `{ group: { name } }`. */
 export function nestThemeValues(name: string, values: ThemeValues): SparseTheme {
@@ -409,9 +453,9 @@ export function nestThemeValues(name: string, values: ThemeValues): SparseTheme 
   return Object.freeze({ name, ...nested })
 }
 
-/** The stock themes beyond Strata, in their file shape. */
+/** The alternate stock themes beyond the built-in Strata Vivid, in their file shape. */
 export const BUNDLED_THEMES: ReadonlyMap<string, SparseTheme> = new Map(
-  [...STOCK_THEMES].filter(([id]) => id !== 'strata').map(([id, theme]) => [id, nestThemeValues(theme.name, theme.values)])
+  [...STOCK_THEMES].filter(([id]) => id !== DEFAULT_THEME_ID).map(([id, theme]) => [id, nestThemeValues(theme.name, theme.values)])
 )
 
 export const BUNDLED_THEME_IDS: readonly string[] = [...BUNDLED_THEMES.keys()]

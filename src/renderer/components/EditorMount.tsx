@@ -1,6 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import type { AnnotationView, HunkView } from '../../shared/contracts'
 import type { ColdEditorState, EditorRestoreState } from '../../editor/types'
+import type { ImageInspectionState } from '../../editor/images'
+import type { VisualCodeBlockSessions } from '../../editor/code-blocks'
 import { toColdEditorState } from '../../editor/index'
 import type { RendererEditorFactory, RendererEditorHandle, RendererEditorOptions } from '../editorAdapter'
 import { AGENT_COLORS, EXTERNAL_COLOR, textColorFor, USER_ANNOTATION_COLOR } from '../model'
@@ -21,6 +23,9 @@ type SavedEditor =
  * (docs/plans/completed/cold-tab-plan.md §5). History survives a tab switch either way.
  */
 const savedEditors = new Map<string, SavedEditor>()
+const focusedTables = new Map<string, string | null>()
+const visualCodeBlocks = new Map<string, VisualCodeBlockSessions>()
+const inspectedImages = new Map<string, ImageInspectionState>()
 
 /** Warm editors kept beyond the mounted tab; STRATAMD_EDITOR_CACHE overrides for tests and A/B runs. */
 const CACHE_LIMIT = (() => {
@@ -41,6 +46,9 @@ function evictBeyondLimit(): void {
 /** Drop saved editor state for documents that are no longer open. */
 export function forgetClosedEditors(openPaths: ReadonlySet<string>): void {
   for (const path of savedEditors.keys()) if (!openPaths.has(path)) savedEditors.delete(path)
+  for (const path of focusedTables.keys()) if (!openPaths.has(path)) focusedTables.delete(path)
+  for (const path of visualCodeBlocks.keys()) if (!openPaths.has(path)) visualCodeBlocks.delete(path)
+  for (const path of inspectedImages.keys()) if (!openPaths.has(path)) inspectedImages.delete(path)
   forgetFlushed(openPaths)
 }
 
@@ -90,6 +98,8 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
     exportState: () => editorRef.current!.exportState(),
     setReviewState: (hunks) => editorRef.current?.setReviewState(hunks),
     setAnnotations: (annotations) => editorRef.current?.setAnnotations(annotations),
+    setTableViews: (states) => editorRef.current?.setTableViews(states),
+    setFoldedHeadings: (headings) => editorRef.current?.setFoldedHeadings(headings),
     getMarkdown: () => editorRef.current?.getMarkdown() ?? options.content,
     focus: () => editorRef.current?.focus(),
     toggleSource: (source) => editorRef.current?.toggleSource(source),
@@ -97,6 +107,8 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
     // The editor rings the target itself, as a decoration that survives its redraws.
     jumpToHunk: (id) => editorRef.current?.jumpToHunk?.(id),
     jumpToAnnotation: (id) => editorRef.current?.jumpToAnnotation?.(id),
+    jumpToHeading: (id) => editorRef.current?.jumpToHeading?.(id),
+    headingSource: (id) => editorRef.current?.headingSource?.(id) ?? null,
     annotationCoordinates: (id) => editorRef.current?.annotationCoordinates?.(id) ?? null,
     setActiveAnnotation: (id) => editorRef.current?.setActiveAnnotation?.(id),
     replaceSelection: (text) => editorRef.current?.replaceSelection?.(text),
@@ -133,7 +145,21 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
       onRejectSuggestion: (id) => flashAndRun('annotationId', id, () => handlersRef.current.onRejectSuggestion(id)),
       onUndo: () => handlersRef.current.onUndo(),
       onRedo: () => handlersRef.current.onRedo(),
-      onToggleSource: (source) => handlersRef.current.onToggleSource(source)
+      onToggleSource: (source) => handlersRef.current.onToggleSource(source),
+      onHeadings: (headings, activeId, durationMs) => handlersRef.current.onHeadings(headings, activeId, durationMs),
+      onTableView: (state) => handlersRef.current.onTableView(state),
+      focusedTable: focusedTables.get(documentPath) ?? null,
+      onTableFocus: (tableKey) => focusedTables.set(documentPath, tableKey),
+      visualCodeSessions: visualCodeBlocks.get(documentPath) ?? (() => {
+        const sessions: VisualCodeBlockSessions = new Map()
+        visualCodeBlocks.set(documentPath, sessions)
+        return sessions
+      })(),
+      imageInspectionState: inspectedImages.get(documentPath) ?? (() => {
+        const state: ImageInspectionState = { activeKey: null, zoom: 1, panX: 0, panY: 0 }
+        inspectedImages.set(documentPath, state)
+        return state
+      })(),
     })
     editorRef.current = handle
     paintDecorations(options.pendingHunks, options.annotations)
@@ -160,6 +186,8 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
   useEffect(() => { editorRef.current?.setHistoryStep(options.historyStep) }, [options.historyStep])
   useEffect(() => { editorRef.current?.setReviewState(options.pendingHunks); paintDecorations(options.pendingHunks, options.annotations) }, [options.pendingHunks])
   useEffect(() => { editorRef.current?.setAnnotations(options.annotations); paintDecorations(options.pendingHunks, options.annotations) }, [options.annotations])
+  useEffect(() => { editorRef.current?.setTableViews(options.tableViews) }, [options.tableViews])
+  useEffect(() => { editorRef.current?.setFoldedHeadings(options.foldedHeadings) }, [options.foldedHeadings])
   useEffect(() => { editorRef.current?.toggleSource(options.sourceMode) }, [options.sourceMode])
   useEffect(() => { editorRef.current?.setReadOnly?.(options.readOnly) }, [options.readOnly])
 

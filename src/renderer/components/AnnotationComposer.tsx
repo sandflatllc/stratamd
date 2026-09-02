@@ -15,7 +15,7 @@ interface AnnotationComposerProps {
   zoom: number
   onSize(size: PanelSize, commit: boolean): void
   onDismiss(): void
-  onSubmit(kind: AnnotationKind, text: string): void
+  onSubmit(kind: AnnotationKind, text: string, options?: string[]): void
   onReplaceWord(suggestion: string): void
   onAddToDictionary(word: string): void
   /** Edit actions on a right-click selection (§5.15). */
@@ -26,7 +26,7 @@ interface AnnotationComposerProps {
 }
 
 /**
- * Whether the pill's bare C, Q, and S keys apply (§5.1): the selection came
+ * Whether the pill's bare C, Q, S, and D keys apply (§5.1): the selection came
  * from the pointer, or the pill itself has focus. A keyboard selection keeps
  * typing-to-replace, so an S over Shift+Arrow text replaces the text.
  */
@@ -56,11 +56,12 @@ function claimedByTextField(target: EventTarget | null): boolean {
 export function AnnotationComposer({ selection, spelling, size, zoom, onSize, onDismiss, onSubmit, onReplaceWord, onAddToDictionary, onCut, onCopy, onPaste, onSelectAll }: AnnotationComposerProps) {
   const [kind, setKind] = useState<AnnotationKind | null>(null)
   const [text, setText] = useState('')
+  const [options, setOptions] = useState(['', ''])
   const textarea = useRef<HTMLTextAreaElement>(null)
   const form = useRef<HTMLFormElement>(null)
   const pill = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { setKind(null); setText('') }, [selection])
+  useEffect(() => { setKind(selection?.annotationKind ?? null); setText(''); setOptions(['', '']) }, [selection])
   useEffect(() => { if (kind) textarea.current?.focus() }, [kind])
   useEffect(() => {
     if (!selection) return
@@ -80,10 +81,10 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
       if (claimedByTextField(event.target)) return
       if (!bareHotkeysApply(selection, pill.current?.contains(document.activeElement) ?? false)) return
       const next = event.key.toLowerCase()
-      if (next === 'c' || next === 'q' || next === 's') {
+      if (next === 'c' || next === 'q' || next === 's' || next === 'd') {
         if (next === 's' && !selection.singleBlock) return
         event.preventDefault()
-        setKind(next === 'c' ? 'comment' : next === 'q' ? 'question' : 'suggestion')
+        setKind(next === 'c' ? 'comment' : next === 'q' ? 'question' : next === 's' ? 'suggestion' : 'decision')
       }
     }
     // Capture phase: the pill sits above the thread panel and the toast, which
@@ -119,7 +120,7 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
     const spellingColumn = spellingForSelection(spelling, selection)
     return (
       <div ref={pill} className={spellingColumn || selection.explicit ? 'selection-menu has-spelling' : 'selection-menu'} style={style} role="menu" aria-label="Annotate selection">
-        {([['comment', 'Comment', 'C'], ['question', 'Question', 'Q'], ['suggestion', 'Suggest', 'S']] as const).map(([value, label, key]) => (
+        {([['comment', 'Comment', 'C'], ['question', 'Question', 'Q'], ['suggestion', 'Suggest', 'S'], ['decision', 'Decision', 'D']] as const).map(([value, label, key]) => (
           <button
             type="button"
             role="menuitem"
@@ -162,9 +163,24 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
     '--zoom': zoom,
   } as CSSProperties
   return (
-    <form ref={form} className="annotation-composer" style={formStyle} onSubmit={(event) => { event.preventDefault(); onSubmit(kind, text) }}>
+    <form ref={form} className="annotation-composer" style={formStyle} onSubmit={(event) => {
+      event.preventDefault()
+      const choices = options.map((option) => option.trim()).filter(Boolean)
+      if (kind === 'decision' && (text.trim().length === 0 || choices.length < 2 || new Set(choices).size !== choices.length)) return
+      onSubmit(kind, text, kind === 'decision' ? choices : undefined)
+    }}>
       <div className="annotation-kind">{kind}</div>
       <blockquote>{selection.quote}</blockquote>
+      {selection.annotationContext && (
+        <div className="annotation-context">
+          {selection.annotationContext.kind === 'screenshot-pin'
+            ? `AnnotatedScreenshot line ${selection.annotationContext.componentLine} · Pin ${selection.annotationContext.pin} · ${selection.annotationContext.image}`
+            : <>
+                {selection.annotationContext.heading ? `${selection.annotationContext.heading} · ` : ''}
+                {selection.annotationContext.column ? `Column ${selection.annotationContext.column.index + 1}: ${selection.annotationContext.column.label}` : 'Complete table row'}
+              </>}
+        </div>
+      )}
       <textarea
         ref={textarea}
         value={text}
@@ -174,11 +190,22 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
           if (event.key !== 'Enter' || !hasPrimaryModifier(event)) return
           event.preventDefault()
           event.stopPropagation()
-          onSubmit(kind, text)
+          const choices = options.map((option) => option.trim()).filter(Boolean)
+          if (kind === 'decision' && (text.trim().length === 0 || choices.length < 2 || new Set(choices).size !== choices.length)) return
+          onSubmit(kind, text, kind === 'decision' ? choices : undefined)
         }}
-        placeholder={kind === 'suggestion' ? 'Replacement markdown…' : 'Your note…'}
-        aria-label={kind === 'suggestion' ? 'Replacement markdown' : 'Annotation text'}
+        placeholder={kind === 'suggestion' ? 'Replacement markdown…' : kind === 'decision' ? 'What needs to be decided?' : 'Your note…'}
+        aria-label={kind === 'suggestion' ? 'Replacement markdown' : kind === 'decision' ? 'Decision prompt' : 'Annotation text'}
       />
+      {kind === 'decision' && (
+        <div className="decision-options" role="group" aria-label="Decision choices">
+          {options.map((option, index) => (
+            <label key={index}><span>Choice {index + 1}</span><input aria-label={`Choice ${index + 1}`} value={option} onChange={(event) => setOptions((current) => current.map((value, choice) => choice === index ? event.target.value : value))} /></label>
+          ))}
+          <div className="decision-other-note">Other is always available.</div>
+          <button type="button" className="text-action" onClick={() => setOptions((current) => [...current, ''])}>Add choice</button>
+        </div>
+      )}
       <div className="composer-actions"><button type="button" className="quiet-button" onClick={onDismiss}>Cancel</button><button type="submit" className="primary-button">Add</button></div>
       <button type="button" className="thread-panel-resize" aria-label="Resize annotation composer" onPointerDown={startResize} />
     </form>

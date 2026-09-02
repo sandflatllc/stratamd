@@ -1,9 +1,9 @@
-import { useState, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { useClock } from '../useClock'
-import type { AgentIdentity, AnnotationView, AttachmentView, DocumentView, HunkView, RoundHunkView } from '../../shared/contracts'
+import type { AgentIdentity, AnnotationView, AttachmentView, DocumentView, HunkView, ReviewTab, RoundHunkView } from '../../shared/contracts'
 import {
   absoluteTime,
-  activeAnnotations,
+  filteredAnnotations,
   AGENT_COLORS,
   annotationCounts,
   attachedAgo,
@@ -20,18 +20,23 @@ import {
   saveRoundAuthors,
   saveRoundLabel,
   saveStateSentence,
+  pendingCount,
   textColorFor,
-  USER_ANNOTATION_COLOR
+  USER_ANNOTATION_COLOR,
+  type AnnotationFilter,
 } from '../model'
 import { InlineMarkdown } from '../inlineMarkdown'
 import { AmbientDecor } from './AmbientDecor'
 import { Resizer } from './Resizer'
+import { RailTabs } from './RailTabs'
+import type { EditorHeading } from '../../editor/headings'
 
 interface RightRailProps {
   document: DocumentView
-  changesHeight: number
-  annotationsHeight: number
-  onHeight(panel: 'changesHeight' | 'annotationsHeight', value: number, commit: boolean): void
+  selectedTab: ReviewTab
+  upperReviewHeight: number
+  onSelectTab(tab: ReviewTab): void
+  onHeight(value: number, commit: boolean): void
   onMarkReviewed(): void
   onJumpHunk(hunk: HunkView): void
   onKeepHunk(id: string): void
@@ -49,6 +54,8 @@ interface RightRailProps {
   onCopyAgentPrompt(): void
   onJumpAnnotation(annotation: AnnotationView): void
   onClearResolved(): void
+  headings: readonly EditorHeading[]
+  onAddDecision(prompt: string, options: string[], anchor: 'document' | EditorHeading): void
   onNudge(agentId: string): void
   onSetLead(agentId: string | null): void
   onDisconnect(attachment: AttachmentView): void
@@ -66,7 +73,7 @@ function initials(name: string): string {
 
 function annotationChipColor(annotation: AnnotationView): string {
   if (annotation.status === 'orphaned') return EXTERNAL_COLOR
-  if (annotation.kind === 'question') return 'var(--controls-warning)'
+  if (annotation.kind === 'question' || annotation.kind === 'decision') return 'var(--controls-warning)'
   if (annotation.author === 'user') return USER_ANNOTATION_COLOR
   return AGENT_COLORS[annotation.author.color]
 }
@@ -233,8 +240,7 @@ function ChangesPanel(props: RightRailProps & { now: number }) {
   const revertGroups = bulkRevertGroups(props.document)
   const empty = groups.proposed.length === 0 && groups.unsaved.length === 0 && groups.saved.length === 0
   return (
-    <section className="island rail-panel changes-panel" style={{ height: props.changesHeight }} aria-labelledby="changes-heading">
-      <AmbientDecor variant="changes" />
+    <section className="rail-panel changes-panel" aria-labelledby="changes-heading">
       <div className="panel-heading"><h2 id="changes-heading">Changes</h2>{props.document.pendingHunks.length > 0 && <button type="button" className="text-action positive" onClick={props.onMarkReviewed}>Mark reviewed</button>}</div>
       <div className="panel-scroll">
         {bulkAgents.map((agent) => {
@@ -275,16 +281,53 @@ function ChangesPanel(props: RightRailProps & { now: number }) {
 }
 
 function AnnotationsPanel(props: RightRailProps) {
-  const annotations = activeAnnotations(props.document)
+  const [filter, setFilter] = useState<AnnotationFilter>('all')
+  const [creating, setCreating] = useState(false)
+  const [prompt, setPrompt] = useState('')
+  const [choices, setChoices] = useState(['', ''])
+  const [anchor, setAnchor] = useState('document')
+  useEffect(() => { setFilter('all'); setCreating(false) }, [props.document.path])
+  const annotations = filteredAnnotations(props.document, filter)
   const counts = annotationCounts(props.document)
+  const filters: Array<[AnnotationFilter, string]> = [
+    ['all', 'All'], ['decisions', 'Decisions'], ['questions', 'Questions'],
+    ['comments', 'Comments'], ['suggestions', 'Suggestions'], ['resolved', 'Resolved'],
+  ]
+  const addDecision = () => {
+    const clean = choices.map((choice) => choice.trim()).filter(Boolean)
+    if (!prompt.trim() || clean.length < 2 || new Set(clean).size !== clean.length) return
+    const heading = props.headings.find((candidate) => candidate.id === anchor)
+    props.onAddDecision(prompt.trim(), clean, heading ?? 'document')
+    setPrompt('')
+    setChoices(['', ''])
+    setAnchor('document')
+    setCreating(false)
+    setFilter('decisions')
+  }
   return (
-    <section className="island rail-panel annotations-panel" style={{ height: props.annotationsHeight }} aria-labelledby="annotations-heading">
-      <AmbientDecor variant="annotations" />
+    <section className="rail-panel annotations-panel" aria-labelledby="annotations-heading">
       <div className="panel-heading">
         <h2 id="annotations-heading">Annotations</h2>
         <span className="panel-counts">{counts.open} open{counts.removedText > 0 ? ` · ${counts.removedText} on removed text` : ''}</span>
       </div>
       <div className="panel-scroll">
+        <div className="annotation-filter" role="toolbar" aria-label="Filter annotations">
+          {filters.map(([value, label]) => <button type="button" aria-pressed={filter === value} className={filter === value ? 'active' : ''} key={value} onClick={() => setFilter(value)}>{label}</button>)}
+        </div>
+        <button type="button" className="text-action new-decision" aria-expanded={creating} onClick={() => setCreating((value) => !value)}>New decision</button>
+        {creating && (
+          <form className="rail-decision-form" onSubmit={(event) => { event.preventDefault(); addDecision() }}>
+            <label><span>Anchor</span><select aria-label="Decision anchor" value={anchor} onChange={(event) => setAnchor(event.target.value)}>
+              <option value="document">Whole document</option>
+              {props.headings.filter((heading) => heading.atx).map((heading) => <option value={heading.id} key={heading.id}>{'#'.repeat(heading.level)} {heading.text}</option>)}
+            </select></label>
+            {props.headings.some((heading) => !heading.atx) && <small>Only # headings can carry a decision.</small>}
+            <label><span>Decision</span><textarea aria-label="Decision prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} /></label>
+            {choices.map((choice, index) => <label key={index}><span>Choice {index + 1}</span><input aria-label={`Decision choice ${index + 1}`} value={choice} onChange={(event) => setChoices((current) => current.map((value, item) => item === index ? event.target.value : value))} /></label>)}
+            <small>Other is always available.</small>
+            <div><button type="button" className="text-action" onClick={() => setChoices((current) => [...current, ''])}>Add choice</button><button type="submit" className="keep-button">Add decision</button></div>
+          </form>
+        )}
         {annotations.map((annotation) => (
           <button type="button" className="annotation-row" key={annotation.id} onClick={() => props.onJumpAnnotation(annotation)}>
             <span
@@ -292,10 +335,10 @@ function AnnotationsPanel(props: RightRailProps) {
               style={{ '--chip-color': annotationChipColor(annotation) } as CSSProperties}
               title={annotation.status === 'orphaned' ? 'The text this was attached to was removed' : undefined}
             >{annotation.status === 'orphaned' ? 'text removed' : annotation.kind}</span>
-            <span><InlineMarkdown text={annotation.quote} /></span>
+            <span><InlineMarkdown text={annotation.kind === 'decision' ? annotation.text : annotation.quote} />{annotation.kind === 'decision' && <small>{annotation.anchor === 'document' ? 'Whole document' : annotation.anchor === 'heading' ? 'Heading' : 'Selected passage'}</small>}</span>
           </button>
         ))}
-        {annotations.length === 0 && <div className="empty-subtle">Select text to comment</div>}
+        {annotations.length === 0 && <div className="empty-subtle">{filter === 'all' ? 'Select text to comment' : 'Nothing in this filter.'}</div>}
         {hasResolvedAnnotations(props.document) && <button type="button" className="clear-resolved" onClick={props.onClearResolved}>Clear resolved</button>}
       </div>
     </section>
@@ -307,7 +350,8 @@ function AttachmentsPanel({ document, now, onNudge, onSetLead, onDisconnect, onC
     <section className="island rail-panel agents-panel" aria-labelledby="agents-heading">
       <AmbientDecor variant="agents" />
       <div className="panel-heading">
-        <h2 id="agents-heading" title="What you send is never dropped. An agent's notes to other agents don't keep it attached.">Attached agents</h2>
+        <h2 id="agents-heading" title="What you send is never dropped. An agent's notes to other agents don't keep it attached.">Agents</h2>
+        <span className="panel-counts">{document.attachments.length === 0 ? 'None attached' : `${document.attachments.length} attached`}</span>
       </div>
       {document.attachments.map((attachment) => {
         const leads = attachment.agent.id === document.leadAgentId
@@ -356,12 +400,38 @@ function AttachmentsPanel({ document, now, onNudge, onSetLead, onDisconnect, onC
 export function RightRail(props: RightRailProps) {
   // Relative copy ("saved just now", "attached a minute ago") moves on with the clock.
   const now = useClock()
+  const [pinChanges, setPinChanges] = useState(false)
+  useEffect(() => setPinChanges(false), [props.document.path])
+  const groups = changeGroups(props.document)
+  const pinned = [
+    ...groups.proposed.map((annotation) => ({ id: annotation.id, text: annotation.replacement ?? annotation.text, label: annotation.author === 'user' ? 'you suggest' : `${annotation.author.name} suggests` })),
+    ...[...groups.unsaved, ...groups.saved].map((hunk) => ({ id: hunk.id, text: hunkSnippet(hunk)[0]?.text ?? 'Change', label: `${hunkAuthor(hunk)} ${hunkAction(hunk)}` })),
+  ]
   return (
     <aside className="right-rail">
-      <ChangesPanel {...props} now={now} />
-      <Resizer axis="horizontal" label="Resize changes panel" value={props.changesHeight} min={120} max={520} onChange={(value) => props.onHeight('changesHeight', value, false)} onCommit={(value) => props.onHeight('changesHeight', value, true)} />
-      <AnnotationsPanel {...props} />
-      <Resizer axis="horizontal" label="Resize annotations panel" value={props.annotationsHeight} min={90} max={420} onChange={(value) => props.onHeight('annotationsHeight', value, false)} onCommit={(value) => props.onHeight('annotationsHeight', value, true)} />
+      <section className="island review-host" style={{ height: props.upperReviewHeight }} aria-label="Document review">
+        <AmbientDecor variant={props.selectedTab === 'changes' ? 'changes' : 'annotations'} />
+        <RailTabs label="Document review" idPrefix="review" selected={props.selectedTab} onSelect={props.onSelectTab} tabs={[
+          { id: 'changes', label: 'Changes', count: pendingCount(props.document) },
+          { id: 'annotations', label: 'Annotations', count: annotationCounts(props.document).open + annotationCounts(props.document).removedText },
+        ]} />
+        <section role="tabpanel" id="review-panel-changes" aria-labelledby="review-tab-changes" hidden={props.selectedTab !== 'changes'}>
+          <ChangesPanel {...props} now={now} />
+        </section>
+        <section role="tabpanel" id="review-panel-annotations" aria-labelledby="review-tab-annotations" hidden={props.selectedTab !== 'annotations'}>
+          <div className="annotation-host-actions">
+            <button type="button" className={`text-action ${pinChanges ? 'positive' : ''}`} aria-pressed={pinChanges} onClick={() => setPinChanges((value) => !value)}>Pin changes</button>
+          </div>
+          {pinChanges && (
+            <div className="pinned-changes" aria-label="Pinned changes">
+              {pinned.map((item) => <button type="button" key={item.id} onClick={() => props.onSelectTab('changes')}><strong>{item.label}</strong><span>{item.text}</span></button>)}
+              {pinned.length === 0 && <span>Nothing waiting for review.</span>}
+            </div>
+          )}
+          <AnnotationsPanel {...props} />
+        </section>
+      </section>
+      <Resizer axis="horizontal" label="Resize review window" value={props.upperReviewHeight} min={180} max={954} onChange={(value) => props.onHeight(value, false)} onCommit={(value) => props.onHeight(value, true)} />
       <AttachmentsPanel document={props.document} now={now} onNudge={props.onNudge} onSetLead={props.onSetLead} onDisconnect={props.onDisconnect} onCopyAgentPrompt={props.onCopyAgentPrompt} />
       <div className="save-state-footer">{saveStateSentence(props.document.dirty, props.document.lastSavedAt, now)}</div>
     </aside>

@@ -36,8 +36,7 @@ test('populated renderer preserves the handoff tokens, controls, and motion poli
     panels: {
       explorerWidth: 212,
       rightRailWidth: 300,
-      changesHeight: 260,
-      annotationsHeight: 180,
+      upperReviewHeight: 454,
       documentMeasure: 860
     }
   })
@@ -199,7 +198,7 @@ test('populated renderer preserves the handoff tokens, controls, and motion poli
     await expect(page.locator('.strata-suggestion-deletion')).toContainText('every construct')
     await expect(page.locator('.strata-suggestion-replacement')).toHaveText('each construct')
     await expect(page.locator('.strata-suggestion-author')).toHaveText('Claude · suggestion')
-    await expect(page.getByRole('tab')).toHaveCount(2)
+    await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(2)
     await expect(page.locator('.file-row:not(.recent-row)')).toHaveCount(4)
     await expect(page.locator('.agent-row')).toHaveCount(2)
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())

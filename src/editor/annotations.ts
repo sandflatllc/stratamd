@@ -3,7 +3,7 @@ import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } 
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view'
 import { reviewControlLabel } from './review.js'
 
-export type AnnotationKind = 'comment' | 'question' | 'suggestion'
+export type AnnotationKind = 'comment' | 'question' | 'suggestion' | 'decision'
 export type AnnotationStatus = 'open' | 'resolved' | 'orphaned'
 
 export interface AnnotationQuoteAnchor {
@@ -50,7 +50,7 @@ export interface AnnotationActions {
 }
 
 const annotationKey = new PluginKey<AnnotationPluginState>('stratamd-annotations')
-const annotationMeta = 'stratamd-annotation-ranges'
+export const ANNOTATION_RANGES_META = 'stratamd-annotation-ranges'
 const activeMeta = 'stratamd-annotation-active'
 const adjustMeta = 'stratamd-annotation-adjust'
 const flashMeta = 'stratamd-annotation-flash'
@@ -187,12 +187,12 @@ export function createAnnotationPlugin(initialRanges: readonly AnnotationRange[]
         decorations: annotationDecorations(state.doc, initialRanges, actions),
       }),
       apply(transaction, value, _oldState, newState) {
-        const replacement = transaction.getMeta(annotationMeta) as readonly AnnotationRange[] | undefined
-        const ranges = replacement ?? value.ranges.map((range) => ({
+        const replacement = transaction.getMeta(ANNOTATION_RANGES_META) as readonly AnnotationRange[] | undefined
+        const ranges = replacement ?? (!transaction.docChanged ? value.ranges : value.ranges.map((range) => ({
           ...range,
           from: transaction.mapping.map(range.from, -1),
           to: transaction.mapping.map(range.to, 1),
-        }))
+        })))
         const activeChange = transaction.getMeta(activeMeta) as { id: string | null } | undefined
         const active = activeChange ? activeChange.id : value.active
         const adjustChange = transaction.getMeta(adjustMeta) as { adjusting: AnnotationAdjustment | null } | undefined
@@ -244,7 +244,7 @@ export function createAnnotationPlugin(initialRanges: readonly AnnotationRange[]
 }
 
 export function setAnnotationRanges(transaction: Transaction, ranges: readonly AnnotationRange[]): Transaction {
-  return transaction.setMeta(annotationMeta, ranges)
+  return transaction.setMeta(ANNOTATION_RANGES_META, ranges)
 }
 
 export function getAnnotationRanges(state: EditorState): readonly AnnotationRange[] {

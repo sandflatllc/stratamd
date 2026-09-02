@@ -93,7 +93,7 @@ describe('immutable delivery queue', () => {
     expect(collectOldest(queued)).toBe(delivery)
     expect(JSON.parse(JSON.stringify(queued))).toMatchObject({
       id: 'ag_1',
-      deliveries: [{ id: 'd_1', payload: { version: 11, event: 'send' } }],
+      deliveries: [{ id: 'd_1', payload: { version: 13, event: 'send' } }],
     })
   })
 
@@ -205,7 +205,7 @@ describe('immutable delivery queue', () => {
     const initial = createInitialPayload(
       attachment(), '/docs/a.md', '/data/buffer.md', firstSnapshot,
     )
-    expect(initial).toMatchObject({ version: 11, event: 'initial', document: 'before\n' })
+    expect(initial).toMatchObject({ version: 13, event: 'initial', document: 'before\n' })
     expect(() => freezeDelivery(attachment(), source({ note: 'x'.repeat(65_537) }))).toThrow('64 KB')
   })
 

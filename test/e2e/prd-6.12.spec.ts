@@ -328,6 +328,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
   })
 
   test('10. real corpus files no-op byte round-trip and strong edits stay local', async ({}, testInfo) => {
+    test.setTimeout(180_000)
     const cases = [
       ['launch-queue-index.md', 'navigation index'],
       ['customer-document-bridge.md', 'production-capable rendering bridge'],

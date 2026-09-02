@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DocumentView, HunkView } from '../../src/shared/contracts'
-import { activeAnnotations, activitySnapshot, agentActivity, agentActivityMessage, AGENT_PROMPT, annotationCounts, attachmentStatusLine, bannerFor, bulkRevertGroups, changeGroups, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, explorerTree, hasResolvedAnnotations, hasUnsavedCounted, hunkAction, hunkAuthor, hunkSnippet, nextReviewTarget, NOT_LISTENING_AFTER_MS, pendingCount, previewTabIndex, pushRecent, rendererThemeStyle, reviewTargets, saveStateSentence, shouldAdoptPushed, spellingForSelection, tabsToClose, threadTargets, threadTime, timeAgoShort } from '../../src/renderer/model'
+import { activeAnnotations, activitySnapshot, agentActivity, agentActivityMessage, AGENT_PROMPT, annotationCounts, attachmentStatusLine, bannerFor, bulkRevertGroups, changeGroups, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, explorerTree, filteredAnnotations, hasResolvedAnnotations, hasUnsavedCounted, hunkAction, hunkAuthor, hunkSnippet, nextReviewTarget, NOT_LISTENING_AFTER_MS, pendingCount, previewTabIndex, pushRecent, rendererThemeStyle, reviewTargets, saveStateSentence, shouldAdoptPushed, spellingForSelection, tabsToClose, threadTargets, threadTime, timeAgoShort } from '../../src/renderer/model'
 import { INFO_TOAST_MS, nextToast, toastLifetime } from '../../src/renderer/toasts'
 import { formatKeys, shortcutGroups } from '../../src/renderer/shortcuts'
 import { ancestorFolders } from '../../src/renderer/components/Explorer'
@@ -17,6 +17,7 @@ const hunk: HunkView = {
 function document(overrides: Partial<DocumentView> = {}): DocumentView {
   return {
     path: '/tmp/plan.md', bufferPath: '/tmp/buffer.md', leadAgentId: null, content: '# Plan', sourceMode: false,
+    reading: { formatVersion: 4, navigationTab: 'files', reviewTab: 'changes', walkthrough: { active: false, level: 'h2', current: null, excluded: [], markers: [] }, tables: [], foldedHeadings: [] },
     sourceOnly: false, readOnly: false, dirty: false, deleted: false, invalidUtf8: false,
     lastSavedAt: null, historyStep: 0, pendingHunks: [], saves: [], annotations: [], attachments: [],
     canSend: false, conflicts: [], problems: [], ...overrides
@@ -28,6 +29,7 @@ describe('renderer model', () => {
     expect(clampPanelSize('explorerWidth', 50)).toBe(160)
     expect(clampPanelSize('explorerWidth', 900)).toBe(340)
     expect(clampPanelSize('rightRailWidth', 390.6)).toBe(391)
+    expect(clampPanelSize('upperReviewHeight', 9_000)).toBe(954)
     expect(clampPanelSize('documentMeasure', 2000)).toBe(1600)
   })
 
@@ -70,6 +72,19 @@ describe('renderer model', () => {
     const view = document({ annotations: [resolved] })
     expect(activeAnnotations(view)).toEqual([])
     expect(hasResolvedAnnotations(view)).toBe(true)
+  })
+
+  it('filters unresolved annotation kinds and keeps every resolved kind together', () => {
+    const base = { seq: 1, status: 'open' as const, author: 'user' as const, quote: 'x', text: 'note', line: 1, from: 0, to: 1, replies: [] }
+    const decision = { ...base, id: 'd', kind: 'decision' as const, anchor: 'document' as const, quote: '', from: null, to: null, decision: { options: ['A', 'B'], answers: [] } }
+    const question = { ...base, id: 'q', kind: 'question' as const }
+    const resolved = { ...base, id: 'r', kind: 'comment' as const, status: 'resolved' as const }
+    const view = document({ annotations: [decision, question, resolved] })
+    expect(filteredAnnotations(view, 'all').map((item) => item.id)).toEqual(['d', 'q'])
+    expect(filteredAnnotations(view, 'decisions')).toEqual([decision])
+    expect(filteredAnnotations(view, 'questions')).toEqual([question])
+    expect(filteredAnnotations(view, 'comments')).toEqual([])
+    expect(filteredAnnotations(view, 'resolved')).toEqual([resolved])
   })
 
   it('reads an open thread from the latest document view', () => {

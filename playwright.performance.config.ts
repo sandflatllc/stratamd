@@ -13,6 +13,14 @@ const SPEC_BY_PROFILE: Record<string, string> = {
   'ambient-sweep': 'ambient-sweep.spec.ts',
   'ambient-shots': 'ambient-shots.spec.ts',
   'theme-shots': 'theme-shots.spec.ts',
+  'structured-reading': 'structured-reading.spec.ts',
+  walkthrough: 'walkthrough.spec.ts',
+  'table-views': 'table-views.spec.ts',
+  decisions: 'decisions.spec.ts',
+  'document-intelligence-proof': 'document-intelligence-proof.spec.ts',
+  'document-intelligence': 'document-intelligence.spec.ts',
+  components: 'components.spec.ts',
+  'visual-components': 'visual-components.spec.ts',
 }
 
 export default defineConfig({

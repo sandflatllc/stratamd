@@ -5,6 +5,13 @@ import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { PAYLOAD_VERSION } from '../core/payload.js'
+import {
+  COMPONENT_NAMES,
+  COMPONENT_REGISTRY,
+  validateComponentMarkdown,
+  type ComponentSchema,
+  type ComponentValidationReport,
+} from '../core/markdown/components.js'
 import { getConfigDirectory, getDataDirectory } from '../platform/paths.js'
 import { AGENT_HELP } from './agent-help.js'
 import {
@@ -30,11 +37,13 @@ import { setup } from './setup.js'
 
 const MAX_TEXT_BYTES = 64 * 1024
 const MAX_MESSAGE_TEXT_BYTES = 4 * 1024
-// The six collaboration verbs (send, lead, accept, reject, resolve, save) are
-// online-only: no offline handler and no app auto-launch (PRD §6.8).
+// Most collaboration authority verbs are online-only. Answer and resolve may
+// inspect a closed decision only to return the owner-required refusal.
 const OFFLINE_COMMANDS = new Set<CommandName>([
   'annotate',
   'reply',
+  'answer',
+  'resolve',
   'state',
   'changes',
   'changed',
@@ -49,16 +58,18 @@ const IDENTITY_USAGE = 'Pass --as <the agent id your first attach returned>'
 const DEFAULT_ATTACH_TIMEOUT_SECONDS = 90
 
 const GENERAL_USAGE =
-  'Usage: stratamd <attach|annotate|edit|reply|send|lead|accept|reject|resolve|save|state|docs|theme|changes|changed|open|checkpoint|detach|forget|setup|doctor> [options], stratamd --help, stratamd --agent-help, stratamd --version'
+  'Usage: stratamd <attach|annotate|edit|pin|reply|answer|send|lead|accept|reject|resolve|save|state|docs|theme|components|validate|changes|changed|open|checkpoint|detach|forget|setup|doctor> [options], stratamd --help, stratamd --agent-help, stratamd --version'
 
 const HELP_TEXT = `${GENERAL_USAGE}
 
   attach [file] [--as <id>] [--name <who>] [--timeout <seconds>] [--text-only]
-  annotate <file> --kind <comment|question|suggestion> --quote <text>
-           [--text <text> | --text -] [--label <text>] [--as <id>]
+  annotate <file> --kind <comment|question|suggestion|decision> --quote <text>
+           [--text <text> | --text -] [--option <choice> ...] [--label <text>] [--as <id>]
   edit <file> --match <text> --replace <text> [--preceded-by <text>]
        [--followed-by <text>] [--append] [--dry-run] [--as <id>]
+  pin <file> --component <line> --x <0..100> --y <0..100> --note <text> [--as <id>]
   reply <file> --to <annotation id> --text <text> [--as <id>]
+  answer <file> --decision <id> (--choice <choice> | --other <text>) [--as <id>]
   send <file> --as <id> --text <note> [--to <id,id>]
   lead | accept | reject | resolve | save <file> --as <id> [--annotation <id>]
   state [file] [--brief | --text-only | --annotations | --raw]
@@ -66,6 +77,7 @@ const HELP_TEXT = `${GENERAL_USAGE}
   changes <file> | changed <file> --as <id> | open <file> | forget <file>
   checkpoint <file or directory> | detach <file> --as <id>
   theme [id] [--json]
+  components [name] [--json] | validate <file> [--json]
   setup [--skill <claude|codex|agents|dir>] [--default] [--remove]
   doctor              checks the socket, directories, log, and lock files
   --version           app, protocol, and payload versions; CLI and app paths
@@ -78,11 +90,12 @@ by the document's state, 4 the app is not reachable or its build differs.
 
 interface ParsedOptions {
   positionals: string[]
-  options: Map<string, string | true>
+  options: Map<string, string | string[] | true>
 }
 
 interface OptionDefinition {
   value: boolean
+  repeat?: boolean
 }
 
 type OptionDefinitions = Record<string, OptionDefinition>
@@ -109,7 +122,7 @@ function usage(message: string, detail?: unknown): never {
 
 function parseOptions(tokens: string[], definitions: OptionDefinitions): ParsedOptions {
   const positionals: string[] = []
-  const options = new Map<string, string | true>()
+  const options = new Map<string, string | string[] | true>()
   let positionalOnly = false
 
   for (let index = 0; index < tokens.length; index += 1) {
@@ -130,7 +143,7 @@ function parseOptions(tokens: string[], definitions: OptionDefinitions): ParsedO
     if (!definition) {
       usage(`Unknown option --${name}`, { valid: Object.keys(definitions).map((known) => `--${known}`) })
     }
-    if (options.has(name)) usage(`Option --${name} may only be given once`)
+    if (options.has(name) && definition.repeat !== true) usage(`Option --${name} may only be given once`)
 
     if (!definition.value) {
       if (equals !== -1) usage(`Option --${name} does not take a value`)
@@ -140,7 +153,12 @@ function parseOptions(tokens: string[], definitions: OptionDefinitions): ParsedO
 
     const value = equals === -1 ? tokens[++index] : token.slice(equals + 1)
     if (value === undefined) usage(`Option --${name} needs a value`)
-    options.set(name, value)
+    if (definition.repeat === true) {
+      const previous = options.get(name)
+      options.set(name, [...(Array.isArray(previous) ? previous : []), value])
+    } else {
+      options.set(name, value)
+    }
   }
 
   return { positionals, options }
@@ -149,6 +167,11 @@ function parseOptions(tokens: string[], definitions: OptionDefinitions): ParsedO
 function option(parsed: ParsedOptions, name: string): string | undefined {
   const value = parsed.options.get(name)
   return typeof value === 'string' ? value : undefined
+}
+
+function repeatedOption(parsed: ParsedOptions, name: string): string[] {
+  const value = parsed.options.get(name)
+  return Array.isArray(value) ? value : []
 }
 
 function requireOption(parsed: ParsedOptions, name: string): string {
@@ -242,14 +265,45 @@ function annotationInput(value: unknown, index?: number): AnnotationInput {
   const prefix = index === undefined ? 'Annotation' : `Annotation ${index + 1}`
   if (!value || typeof value !== 'object' || Array.isArray(value)) usage(`${prefix} must be an object`)
   const input = value as Record<string, unknown>
-  const allowed = new Set(['kind', 'quote', 'text', 'label', 'precededBy', 'followedBy'])
+  const allowed = new Set(['kind', 'quote', 'heading', 'document', 'text', 'options', 'label', 'precededBy', 'followedBy'])
   const unknown = Object.keys(input).filter((key) => !allowed.has(key))
   if (unknown.length) usage(`${prefix} has unknown fields`, unknown)
-  if (!['comment', 'question', 'suggestion'].includes(String(input.kind))) {
+  if (!['comment', 'question', 'suggestion', 'decision'].includes(String(input.kind))) {
     usage(`${prefix} has an invalid kind`)
+  }
+  if (input.kind === 'decision') {
+    if (typeof input.text !== 'string' || input.text.trim().length === 0) usage(`${prefix} needs a non-empty prompt in text`)
+    byteLengthWithin(input.text, `${prefix}.text`)
+    if (!Array.isArray(input.options) || input.options.length < 2) usage(`${prefix} needs at least two options`)
+    const options = input.options.map((choice) => {
+      if (typeof choice !== 'string' || choice.trim().length === 0) usage(`${prefix} options must be non-empty strings`)
+      return byteLengthWithin(choice.trim(), `${prefix}.options`)
+    })
+    if (new Set(options).size !== options.length) usage(`${prefix} options must be distinct`)
+    const anchors = [input.quote !== undefined, input.heading !== undefined, input.document === true].filter(Boolean).length
+    if (anchors !== 1) usage(`${prefix} needs exactly one of quote, heading, or document:true`)
+    if (input.document !== undefined && input.document !== true) usage(`${prefix}.document must be true when present`)
+    for (const key of ['quote', 'heading', 'precededBy', 'followedBy'] as const) {
+      if (input[key] !== undefined && typeof input[key] !== 'string') usage(`${prefix}.${key} must be a string`)
+    }
+    if (typeof input.quote === 'string' && input.quote.length === 0) usage(`${prefix}.quote must not be empty`)
+    if (typeof input.heading === 'string' && input.heading.length === 0) usage(`${prefix}.heading must not be empty`)
+    return {
+      kind: 'decision',
+      text: input.text,
+      options,
+      ...(typeof input.quote === 'string' ? { quote: input.quote } : {}),
+      ...(typeof input.heading === 'string' ? { heading: input.heading } : {}),
+      ...(input.document === true ? { document: true } : {}),
+      ...(typeof input.precededBy === 'string' ? { precededBy: input.precededBy } : {}),
+      ...(typeof input.followedBy === 'string' ? { followedBy: input.followedBy } : {}),
+    }
   }
   if (typeof input.quote !== 'string' || input.quote.length === 0) {
     usage(`${prefix} needs a non-empty quote`)
+  }
+  if (input.heading !== undefined || input.document !== undefined || input.options !== undefined) {
+    usage(`${prefix} choices and heading/document anchors require kind decision`)
   }
   for (const key of ['text', 'label', 'precededBy', 'followedBy'] as const) {
     if (input[key] !== undefined && typeof input[key] !== 'string') {
@@ -259,7 +313,7 @@ function annotationInput(value: unknown, index?: number): AnnotationInput {
   if (typeof input.text === 'string') byteLengthWithin(input.text, `${prefix}.text`)
 
   return {
-    kind: input.kind as AnnotationInput['kind'],
+    kind: input.kind as 'comment' | 'question' | 'suggestion',
     quote: input.quote,
     ...(typeof input.text === 'string' ? { text: input.text } : {}),
     ...(typeof input.label === 'string' ? { label: input.label } : {}),
@@ -277,6 +331,9 @@ async function readAnnotations(
     if (
       parsed.options.has('kind') ||
       parsed.options.has('quote') ||
+      parsed.options.has('heading') ||
+      parsed.options.has('document') ||
+      parsed.options.has('option') ||
       parsed.options.has('text') ||
       parsed.options.has('label') ||
       parsed.options.has('preceded-by') ||
@@ -288,13 +345,22 @@ async function readAnnotations(
   }
 
   const kind = requireOption(parsed, 'kind')
-  const quote = requireOption(parsed, 'quote')
+  const decision = kind === 'decision'
+  const quote = option(parsed, 'quote')
+  const heading = option(parsed, 'heading')
+  const document = parsed.options.has('document')
+  const options = repeatedOption(parsed, 'option')
+  if (!decision && quote === undefined) usage('Missing --quote')
   let text = option(parsed, 'text')
   if (text === '-') text = byteLengthWithin(await readStandardInput(stdin), '--text')
+  if (decision && (text === undefined || text.trim().length === 0)) usage('A decision needs --text with its prompt')
   return [
     annotationInput({
       kind,
-      quote,
+      ...(quote === undefined ? {} : { quote }),
+      ...(heading === undefined ? {} : { heading }),
+      ...(document ? { document: true } : {}),
+      ...(decision ? { options } : {}),
       ...(text === undefined ? {} : { text }),
       ...(option(parsed, 'label') === undefined ? {} : { label: option(parsed, 'label') }),
       ...(option(parsed, 'preceded-by') === undefined
@@ -397,6 +463,8 @@ async function parseCommand(
   | { command: CommandName; args: CommandArguments[CommandName]; raw?: boolean }
   | { setup: true; remove: boolean; makeDefault: boolean; skill?: string }
   | { theme: true; id?: string; json: boolean }
+  | { components: true; name?: string; json: boolean }
+  | { validate: true; file: string; json: boolean }
   | { launch: true }
   | { doctor: true }
 > {
@@ -415,6 +483,19 @@ async function parseCommand(
     const id = parsed.positionals[0]
     if (id !== undefined && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) usage(`Theme ids are lowercase words joined by dashes, not ${id}`)
     return { theme: true, ...(id === undefined ? {} : { id }), json: parsed.options.has('json') }
+  }
+
+  if (command === 'components') {
+    const parsed = parseOptions(rest, { json: { value: false } })
+    atMostPositionals(parsed, 1, 'components')
+    const name = parsed.positionals[0]
+    return { components: true, ...(name === undefined ? {} : { name }), json: parsed.options.has('json') }
+  }
+
+  if (command === 'validate') {
+    const parsed = parseOptions(rest, { json: { value: false } })
+    exactPositionals(parsed, 1, 'validate')
+    return { validate: true, file: parsed.positionals[0]!, json: parsed.options.has('json') }
   }
 
   if (command === 'setup') {
@@ -466,6 +547,9 @@ async function parseCommand(
     const parsed = parseOptions(rest, {
       kind: { value: true },
       quote: { value: true },
+      heading: { value: true },
+      document: { value: false },
+      option: { value: true, repeat: true },
       text: { value: true },
       label: { value: true },
       'preceded-by': { value: true },
@@ -514,6 +598,40 @@ async function parseCommand(
     }
   }
 
+  if (command === 'pin') {
+    const parsed = parseOptions(rest, {
+      component: { value: true },
+      x: { value: true },
+      y: { value: true },
+      note: { value: true },
+      as: { value: true },
+      name: { value: true },
+    })
+    exactPositionals(parsed, 1, command)
+    const componentLine = Number(requireOption(parsed, 'component'))
+    const x = Number(requireOption(parsed, 'x'))
+    const y = Number(requireOption(parsed, 'y'))
+    const note = requireOption(parsed, 'note')
+    if (!Number.isSafeInteger(componentLine) || componentLine < 1) usage('--component must be a positive line number')
+    if (!Number.isFinite(x) || x < 0 || x > 100) usage('--x must be a number from 0 through 100')
+    if (!Number.isFinite(y) || y < 0 || y > 100) usage('--y must be a number from 0 through 100')
+    if (note.trim().length === 0) usage('--note must contain visible text')
+    const agent = requireAgent(parsed, environment)
+    const name = option(parsed, 'name') || environment.AI_AGENT
+    return {
+      command,
+      args: {
+        file: await canonicalPath(parsed.positionals[0]!),
+        agent,
+        ...(name ? { name } : {}),
+        componentLine,
+        x,
+        y,
+        note: byteLengthWithin(note, '--note'),
+      },
+    }
+  }
+
   if (command === 'reply') {
     const parsed = parseOptions(rest, {
       to: { value: true },
@@ -533,6 +651,29 @@ async function parseCommand(
         ...(name ? { name } : {}),
         annotation: requireOption(parsed, 'to'),
         text: byteLengthWithin(text, '--text')
+      }
+    }
+  }
+
+  if (command === 'answer') {
+    const parsed = parseOptions(rest, {
+      decision: { value: true },
+      choice: { value: true },
+      other: { value: true },
+      as: { value: true }
+    })
+    exactPositionals(parsed, 1, command)
+    const choice = option(parsed, 'choice')
+    const other = option(parsed, 'other')
+    if ((choice === undefined) === (other === undefined)) usage('answer needs exactly one of --choice or --other')
+    return {
+      command,
+      args: {
+        file: await canonicalPath(parsed.positionals[0]!),
+        agent: requireAgent(parsed, environment),
+        decision: requireOption(parsed, 'decision'),
+        ...(choice === undefined ? {} : { choice }),
+        ...(other === undefined ? {} : { other })
       }
     }
   }
@@ -977,6 +1118,45 @@ export function formatThemeDescription(described: ThemeDescription): string {
   return lines.join('\n')
 }
 
+function componentSchemas(name?: string): ComponentSchema[] {
+  if (name === undefined) return COMPONENT_NAMES.map((componentName) => COMPONENT_REGISTRY[componentName])
+  if (!(COMPONENT_NAMES as readonly string[]).includes(name)) {
+    throw new CommandFailure(
+      `Component ${name} is not registered`,
+      2,
+      'COMPONENT_NOT_FOUND',
+      { name, registered: COMPONENT_NAMES },
+    )
+  }
+  return [COMPONENT_REGISTRY[name as keyof typeof COMPONENT_REGISTRY]]
+}
+
+export function formatComponentSchemas(schemas: readonly ComponentSchema[]): string {
+  const lines: string[] = []
+  for (const schema of schemas) {
+    lines.push(`${schema.name} — ${schema.purpose}`, `Body: ${schema.body}`)
+    const properties = Object.entries(schema.properties)
+    if (properties.length === 0) lines.push('Properties: none')
+    else {
+      lines.push('Properties:')
+      for (const [name, property] of properties) {
+        lines.push(`  ${name}: ${property.values.join(' | ')} (default ${property.default}) — ${property.description}`)
+      }
+    }
+    lines.push('Example:', schema.example, '')
+  }
+  return lines.join('\n')
+}
+
+export function formatComponentValidation(file: string, report: ComponentValidationReport): string {
+  const lines = [`${report.valid ? 'Valid' : 'Needs attention'}: ${file}`]
+  if (report.components.length === 0) lines.push('Components: none')
+  else lines.push('Components:', ...report.components.map((component) => `  line ${component.line}: ${component.name}`))
+  if (report.problems.length === 0) lines.push('Problems: none')
+  else lines.push('Problems:', ...report.problems.map((item) => `  ${item.code} at ${item.line}:${item.column}: ${item.message} ${item.fix}`))
+  return `${lines.join('\n')}\n`
+}
+
 function requestFor<C extends CommandName>(command: C, args: CommandArguments[C]): CommandRequest<C> {
   return { version: PROTOCOL_VERSION, id: randomUUID(), command, args } as CommandRequest<C>
 }
@@ -1044,6 +1224,27 @@ export async function runCli(argv: string[], runtime: CliRuntime = {}): Promise<
       const described = await offline.describeThemeOffline(environment.STRATAMD_CONFIG_DIRECTORY, parsed.id)
       if (parsed.json) await writeLine(io.stdout, described)
       else await writeText(io.stdout, formatThemeDescription(described))
+      return 0
+    }
+    if ('components' in parsed) {
+      const schemas = componentSchemas(parsed.name)
+      if (parsed.json) await writeLine(io.stdout, { components: schemas })
+      else await writeText(io.stdout, formatComponentSchemas(schemas))
+      return 0
+    }
+    if ('validate' in parsed) {
+      let file: string
+      let source: string
+      try {
+        file = await realpath(resolve(parsed.file))
+        source = await readFile(file, 'utf8')
+      } catch {
+        throw new CommandFailure(`Markdown file not found: ${parsed.file}`, 2, 'NOT_FOUND', { file: parsed.file })
+      }
+      const report = validateComponentMarkdown(source)
+      const result = { file, ...report }
+      if (parsed.json) await writeLine(io.stdout, result)
+      else await writeText(io.stdout, formatComponentValidation(file, report))
       return 0
     }
     if ('setup' in parsed) {

@@ -75,7 +75,7 @@ describe('offline main-process commands', () => {
     const first = await handler(request('state', { file }), context) as Record<string, unknown>
     const buffer = first.buffer as string
     expect(first).toMatchObject({
-      version: 11,
+      version: 13,
       event: 'state',
       file,
       document: '# Disk\n\nDisk wording.\n',
@@ -230,6 +230,22 @@ describe('offline main-process commands', () => {
       annotation: 'absent',
       text: 'No thread.',
     }), context)).rejects.toMatchObject({ exitCode: 2, code: 'ANNOTATION_NOT_FOUND' })
+  })
+
+  it('creates decisions offline and refuses agent answers with the owner-required code', async () => {
+    const { file, store } = await fixture('# Plan\n\nBody.\n')
+    const handler = createOfflineCommandHandler({ store, createId: ids() })
+    const created = await handler(request('annotate', {
+      file, agent: 'ag_test', annotations: [{ kind: 'decision', text: 'Which?', options: ['A', 'B'], document: true }],
+    }), context) as { created: Array<{ id: string }> }
+    expect(created.created).toEqual([{ id: 'a1', kind: 'decision', quote: '' }])
+    const state = await handler(request('state', { file }), context) as { annotations: Array<Record<string, unknown>>; text: string }
+    expect(state.annotations[0]).toMatchObject({ id: 'a1', kind: 'decision', anchor: 'document', decision: { options: ['A', 'B'], answers: [] } })
+    expect(state.text).toContain('Open decisions:')
+    await expect(handler(request('answer', { file, agent: 'ag_test', decision: 'a1', choice: 'A' }), context))
+      .rejects.toMatchObject({ exitCode: 3, code: 'DECISION_OWNER_REQUIRED' })
+    await expect(handler(request('resolve', { file, agent: 'ag_test', annotation: 'a1' }), context))
+      .rejects.toMatchObject({ exitCode: 3, code: 'DECISION_OWNER_REQUIRED' })
   })
 
   it('renders ghost-relative external changes with an unexpired pending tag', async () => {

@@ -8,13 +8,14 @@ import {
 } from 'prosemirror-inputrules'
 import { keymap } from 'prosemirror-keymap'
 import { Fragment, type Mark, type Node as ProseMirrorNode } from 'prosemirror-model'
-import { EditorState, NodeSelection, TextSelection, type Command, type Selection, type Transaction } from 'prosemirror-state'
+import { EditorState, NodeSelection, Selection, TextSelection, type Command, type Transaction } from 'prosemirror-state'
 import { tableEditing } from 'prosemirror-tables'
 import { EditorView } from 'prosemirror-view'
-import type { AnnotationView, BufferOrigin, HunkView, RedoResult, UndoResult } from '../shared/contracts.js'
+import type { AnnotationView, BufferOrigin, HeadingReference, HunkView, RedoResult, TableViewState, UndoResult } from '../shared/contracts.js'
 import type { EditorCommand } from '../renderer/components/Toolbar.js'
 import {
   createAnnotationPlugin,
+  ANNOTATION_RANGES_META,
   getAnnotationRanges,
   locateAnnotationAnchor,
   setAnnotationRanges,
@@ -25,7 +26,7 @@ import {
 } from './annotations.js'
 import { createEditorCommands, createEditorKeymap, handleTaskCheckboxClick } from './commands.js'
 import { createFindPlugin, FIND_CURRENT_CLASS, FIND_MATCH_CLASS, findInText, findResultOf, firstMatchFrom, getFindState, NO_MATCHES, setFind, stepMatch, type FindMatch, type FindResult } from './find.js'
-import { createLocalImageNodeViews, type LocalImageResolver } from './images.js'
+import { createLocalImageNodeViews, ImageInspectionManager, resolveImageThroughMainProtocol, type ImageInspectionState, type LocalImageResolver } from './images.js'
 import {
   parseMarkdownForEditor,
   serializeEditorDocument,
@@ -35,12 +36,14 @@ import { markdownClipboardTextParser } from './paste.js'
 import { openEditorPopover, type PopoverHandle } from './popover.js'
 import {
   createReviewPlugin,
+  REVIEW_RANGES_META,
   getReviewRanges,
   isReviewControlActivationKey,
   locateSourceAnnotationQuote,
   locateSourceReviewInsertion,
   localizeReviewChange,
   reviewControlLabel,
+  sourceOffsetForLine,
   setReviewFlash,
   setReviewRanges,
   type ReviewRange,
@@ -51,12 +54,22 @@ import { createSourceSpanPlugin } from './source-spans.js'
 import type { ColdEditorState, EditorMode, EditorRestoreState, EditorSelection, ParsedEditorMarkdown, StrataEditorHandle } from './types.js'
 import { CHAIN_HISTORY_META, LocalHistoryChain } from './local-history.js'
 import { EditorUndoCoordinator, replaceDocumentProgrammatically } from './undo.js'
-import { hasOnlyPrimaryModifier, hasPrimaryModifier } from '../shared/primary-modifier.js'
+import { hasOnlyPrimaryModifier, hasPrimaryModifier, isMacLike } from '../shared/primary-modifier.js'
+import { createHeadingPlugin, headingsForState, headingUpdateDurationForState, type EditorHeading } from './headings.js'
+import { TableNodeViewManager, tableReferencesForDocument, type TableDiscussionRequest } from './tables.js'
+import { createCodeBlockNodeView, type VisualCodeBlockSessions } from './code-blocks.js'
+import { FoldingManager } from './folding.js'
+import { createReferencePreviewPlugin, ReferencePreviewController, type LocalMarkdownResolver } from './references.js'
+import { createComponentNodeView, type ScreenshotPinDiscussionRequest } from './components.js'
 
 export * from './annotations.js'
 export * from './commands.js'
 export * from './find.js'
+export * from './headings.js'
 export * from './images.js'
+export * from './code-blocks.js'
+export * from './folding.js'
+export * from './references.js'
 export * from './local-history.js'
 export * from './markdown.js'
 export * from './paste.js'
@@ -65,8 +78,10 @@ export * from './review.js'
 export * from './schema.js'
 export * from './selection.js'
 export * from './source-spans.js'
+export * from './tables.js'
 export * from './types.js'
 export * from './undo.js'
+export * from './components.js'
 
 export interface StrataEditorOptions {
   content: string
@@ -94,8 +109,20 @@ export interface StrataEditorOptions {
   /** Cold record for a document whose editor was evicted; ignored when `restore` is present. */
   restoreCold?: ColdEditorState
   onToggleSource?(source: boolean): void
+  /** Coalesced projection from the live ProseMirror tree plus the heading at the reading line. */
+  onHeadings?(headings: readonly EditorHeading[], activeId: string | null, durationMs: number): void
+  tableViews?: readonly TableViewState[]
+  focusedTable?: string | null
+  onTableView?(state: TableViewState): void
+  onTableFocus?(tableKey: string | null): void
   documentPath?: string
   resolveLocalImage?: LocalImageResolver
+  visualCodeSessions?: VisualCodeBlockSessions
+  imageInspectionState?: ImageInspectionState
+  foldedHeadings?: readonly HeadingReference[]
+  onFold?(heading: HeadingReference, folded: boolean): void
+  resolveLocalMarkdown?: LocalMarkdownResolver
+  onOpenLocalMarkdown?(path: string): void
 }
 
 function editorInputRules() {
@@ -174,7 +201,7 @@ function positionForLine(doc: ProseMirrorNode, line: number): number {
   return Math.max(0, Math.min(result, doc.content.size))
 }
 
-function reviewInputs(inputs: readonly (ReviewRange | HunkView)[], doc: ProseMirrorNode): ReviewRange[] {
+function reviewInputs(inputs: readonly (ReviewRange | HunkView)[], doc: ProseMirrorNode, parsedMarkdown?: ParsedEditorMarkdown): ReviewRange[] {
   return inputs.map((input) => {
     if ('kind' in input) {
       const range = input as ReviewRange
@@ -183,8 +210,16 @@ function reviewInputs(inputs: readonly (ReviewRange | HunkView)[], doc: ProseMir
     }
     const added = input.added.join('\n')
     const location = locateText(doc, added)
-    const from = location?.from ?? positionForLine(doc, input.newStart)
-    const to = location?.to ?? from
+    const sourceMapped = parsedMarkdown
+      ? editorRangeForSource(
+          parsedMarkdown,
+          doc,
+          sourceOffsetForLine(parsedMarkdown.source, input.newStart),
+          sourceOffsetForLine(parsedMarkdown.source, input.newStart + Math.max(1, input.newLines)),
+        )
+      : null
+    const from = location?.from ?? sourceMapped?.from ?? positionForLine(doc, input.newStart)
+    const to = location?.to ?? sourceMapped?.to ?? from
     return {
       id: input.id,
       from,
@@ -204,15 +239,16 @@ function annotationInputs(
   doc: ProseMirrorNode,
   parsedMarkdown?: ParsedEditorMarkdown,
 ): AnnotationRange[] {
-  return inputs.map((input) => {
+  return inputs.flatMap((input) => {
     if (!('seq' in input)) {
       const range = input as AnnotationRange
       const relocated = locateAnnotationAnchor(doc, range, range.kind)
-      return relocated
+      return [relocated
         ? { ...range, ...relocated }
-        : { ...range, status: 'orphaned' }
+        : { ...range, status: 'orphaned' }]
     }
     const view = input as AnnotationView
+    if (view.anchor === 'document') return []
     const sourceMapped = parsedMarkdown && typeof view.from === 'number' && typeof view.to === 'number'
       ? editorRangeForSource(parsedMarkdown, doc, view.from, view.to)
       : null
@@ -222,7 +258,7 @@ function annotationInputs(
     const located = validSourceMapping ?? locateAnnotationAnchor(doc, { quote: view.quote }, view.kind)
     const from = located?.from ?? 0
     const to = located?.to ?? from
-    return {
+    return [{
       id: view.id,
       kind: view.kind,
       status: located ? view.status : 'orphaned',
@@ -233,7 +269,7 @@ function annotationInputs(
       agent: view.author === 'user' ? null : view.author.id,
       color: view.author === 'user' ? null : view.author.color,
       text: view.replacement ?? view.text,
-    }
+    }]
   })
 }
 
@@ -316,6 +352,13 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     ?? (cold ? LocalHistoryChain.restore(cold.chain, currentMarkdown) : new LocalHistoryChain(currentMarkdown))
   let sourceReviewInputs = [...(options.pendingHunks ?? [])]
   let sourceAnnotationInputs = [...(options.annotations ?? [])]
+  const phase6Enabled = (globalThis as { strataPhase6Disabled?: unknown }).strataPhase6Disabled !== '1'
+  const referencePreviewsEnabled = phase6Enabled && Boolean(options.resolveLocalMarkdown && options.onOpenLocalMarkdown)
+  const documentPath = options.documentPath ?? element.dataset.documentPath ?? ''
+  const foldingManager = new FoldingManager({
+    ...(options.foldedHeadings ? { folded: options.foldedHeadings } : {}),
+    ...(options.onFold ? { onFold: options.onFold } : {}),
+  })
 
   const visual = document.createElement('div')
   visual.className = 'strata-visual-editor'
@@ -558,7 +601,10 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       keymap(baseKeymap),
       tableEditing(),
       createSourceSpanPlugin(),
-      createReviewPlugin(reviewInputs(reviews, doc), {
+      createHeadingPlugin(),
+      ...(phase6Enabled ? [foldingManager.plugin()] : []),
+      ...(referencePreviewsEnabled ? [createReferencePreviewPlugin()] : []),
+      createReviewPlugin(reviewInputs(reviews, doc, parsed), {
         ...(options.onKeepHunk ? { onKeep: options.onKeepHunk } : {}),
         ...(options.onRevertHunk ? { onRevert: options.onRevertHunk } : {}),
       }),
@@ -653,11 +699,108 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     options.onAdjustAnnotation(id, { ...selection, left: (start.left + end.right) / 2, top: Math.min(start.top, end.top) })
   }
 
-  const documentPath = options.documentPath ?? element.dataset.documentPath ?? ''
-  const nodeViews = options.resolveLocalImage
-    ? createLocalImageNodeViews(documentPath, options.resolveLocalImage)
-    : createLocalImageNodeViews(documentPath)
+  const imageInspection = new ImageInspectionManager(element, options.imageInspectionState ?? { activeKey: null, zoom: 1, panX: 0, panY: 0 })
+  const imageNodeViews = options.resolveLocalImage
+    ? createLocalImageNodeViews(documentPath, options.resolveLocalImage, phase6Enabled ? imageInspection : null)
+    : createLocalImageNodeViews(documentPath, undefined, phase6Enabled ? imageInspection : null)
+  const referencePreview = referencePreviewsEnabled && options.resolveLocalMarkdown && options.onOpenLocalMarkdown
+    ? new ReferencePreviewController(element, options.resolveLocalMarkdown, options.onOpenLocalMarkdown)
+    : null
+  const tableDiscussion = (request: TableDiscussionRequest): void => {
+    const parsedNow = parseCurrentMarkdown()
+    let seenTables = -1
+    let tableIndex = -1
+    view.state.doc.forEach((node, position) => {
+      if (node.type.name !== 'table') return
+      seenTables += 1
+      if (position === request.tablePosition) tableIndex = seenTables
+    })
+    const parsedTables: ProseMirrorNode[] = []
+    parsedNow.doc.forEach((node) => {
+      if (node.type.name === 'table') parsedTables.push(node)
+    })
+    const parsedTable = parsedTables[tableIndex]
+    if (!parsedTable || request.row + 1 >= parsedTable.childCount) return
+    const row = parsedTable?.child(request.row + 1)
+    const from = row?.attrs.sourceFrom
+    const to = row?.attrs.sourceTo
+    const reference = tableReferencesForDocument(view.state.doc).find((table) => table.position === request.tablePosition)?.reference
+    if (typeof from !== 'number' || typeof to !== 'number' || !reference || from < 0 || to <= from || to > currentMarkdown.length) return
+    const column = request.kind === 'table-cell'
+      ? { index: request.column, label: reference.headers[request.column] ?? `Column ${request.column + 1}` }
+      : null
+    options.onSelection?.({
+      quote: currentMarkdown.slice(from, to),
+      from,
+      to,
+      singleBlock: false,
+      left: request.left,
+      top: request.top,
+      pointer: true,
+      explicit: true,
+      annotationKind: 'question',
+      annotationContext: {
+        kind: request.kind,
+        heading: reference.headingText,
+        columns: reference.headers,
+        column,
+      },
+    })
+  }
+  const screenshotPinDiscussion = (request: ScreenshotPinDiscussionRequest): void => {
+    if (!options.onSelection) return
+    const parsedNow = parseCurrentMarkdown()
+    const component = parsedNow.blocks.filter((block) => block.node.type === strataSchema.nodes.component_block)[request.componentOrdinal]
+    if (!component) return
+    let row: { text: string; offset: number } | null = null
+    let offset = 0
+    for (const line of component.raw.split(/\r\n|\r|\n/u)) {
+      const pin = line.match(/^\|\s*(\d+)\s*\|/u)
+      if (pin && Number(pin[1]) === request.pin) { row = { text: line, offset }; break }
+      offset += line.length + (component.raw.slice(offset + line.length).startsWith('\r\n') ? 2 : 1)
+    }
+    if (!row) return
+    const from = component.span.from + row.offset
+    const to = from + row.text.length
+    const quote = currentMarkdown.slice(from, to)
+    if (!quote) return
+    options.onSelection({
+      quote,
+      from,
+      to,
+      singleBlock: true,
+      left: request.left,
+      top: request.top,
+      pointer: true,
+      explicit: true,
+      annotationKind: 'question',
+      annotationContext: {
+        kind: 'screenshot-pin',
+        component: 'AnnotatedScreenshot',
+        componentLine: currentMarkdown.slice(0, component.span.from).split('\n').length,
+        image: request.image,
+        pin: request.pin,
+      },
+    })
+  }
+  const tableManager = new TableNodeViewManager({
+    ...(options.tableViews ? { states: options.tableViews } : {}),
+    ...(options.focusedTable !== undefined ? { focusedTable: options.focusedTable } : {}),
+    ...(options.onTableView ? { onState: options.onTableView } : {}),
+    ...(options.onTableFocus ? { onFocus: options.onTableFocus } : {}),
+    onDiscuss: tableDiscussion,
+  })
+  const nodeViews = {
+    ...imageNodeViews,
+    component_block: createComponentNodeView(documentPath, options.resolveLocalImage ?? resolveImageThroughMainProtocol, screenshotPinDiscussion),
+    ...(phase6Enabled ? {
+      code_block: createCodeBlockNodeView({ sessions: options.visualCodeSessions ?? new Map() }),
+      heading: (node: ProseMirrorNode, editorView: EditorView, getPos: () => number | undefined) => foldingManager.createHeading(node, editorView, getPos),
+    } : {}),
+    table: (node: ProseMirrorNode, editorView: EditorView, getPos: () => number | undefined) => tableManager.create(node, editorView, getPos),
+  }
   const freshState = makeState(parsed.doc, options.pendingHunks ?? [], options.annotations ?? [])
+  let scheduleHeadings = (): void => undefined
   view = new EditorView(visual, {
     // A restored state keeps its history and plugin fields; the plugins themselves are
     // recreated so their callbacks point at this editor.
@@ -677,9 +820,26 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       return false
     },
     dispatchTransaction(transaction: Transaction) {
+      const transactionStarted = performance.now()
       const depthBefore = undoDepth(view.state) as number
       const next = view.state.apply(transaction)
+      if (phase6Enabled && transaction.docChanged && transaction.getMeta('addToHistory') !== false && foldingManager.hasFolds()) {
+        foldingManager.revealPosition(next.selection.head)
+      }
       view.updateState(next)
+      if (transaction.selectionSet) {
+        tableManager.restoreWhenSelectionLeaves(next.selection.from)
+        if (phase6Enabled && foldingManager.hasFolds()) foldingManager.restoreWhenSelectionLeaves(next.selection.from)
+      }
+      const rangesChanged = transaction.docChanged
+        || transaction.getMeta(REVIEW_RANGES_META) !== undefined
+        || transaction.getMeta(ANNOTATION_RANGES_META) !== undefined
+      if (rangesChanged) {
+        tableManager.setReviewRanges(getReviewRanges(next), getAnnotationRanges(next))
+        if (phase6Enabled && foldingManager.hasFolds()) foldingManager.setReviewRanges(getReviewRanges(next), getAnnotationRanges(next))
+      }
+      if (transaction.docChanged) scheduleHeadings()
+      if (phase6Enabled && transaction.docChanged && foldingManager.hasFolds()) foldingManager.documentChanged(next.selection.head)
       const fromHistory = isHistoryTransaction(transaction)
       const depthAfter = undoDepth(next) as number
       if (!fromHistory && depthAfter > depthBefore) undoCoordinator.record('local')
@@ -705,6 +865,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       source.value = currentMarkdown
       renderSourceMirror()
       options.onChange?.(currentMarkdown, fromHistory ? 'history' : 'edit')
+      document.documentElement.dataset.editorTransactionMs = (performance.now() - transactionStarted).toFixed(3)
     },
     handleDOMEvents: {
       mousedown: () => { keyboardSelection = false; return false },
@@ -714,7 +875,46 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       // process emit its context-menu event, whose params carry the spelling
       // suggestions (docs/plans/completed/spellcheck-plan.md). Electron shows no menu of its own.
       contextmenu: (editorView, event) => selectWordForContextMenu(editorView, event),
-      keydown: (_editorView, event) => {
+      keydown: (editorView, event) => {
+        synchronizeDomSelection(editorView)
+        if (referencePreview?.activate(event)) return true
+        const mac = isMacLike()
+        const documentStart = hasOnlyPrimaryModifier(event)
+          && (mac ? event.key === 'ArrowUp' : event.key === 'Home')
+        const documentEnd = hasOnlyPrimaryModifier(event)
+          && (mac ? event.key === 'ArrowDown' : event.key === 'End')
+        if (documentStart || documentEnd) {
+          event.preventDefault()
+          if (documentEnd && phase6Enabled && foldingManager.hasFolds()) {
+            foldingManager.revealPosition(editorView.state.doc.content.size - 1)
+          }
+          editorView.dispatch(editorView.state.tr.setSelection(
+            documentStart ? Selection.atStart(editorView.state.doc) : Selection.atEnd(editorView.state.doc),
+          ).scrollIntoView())
+          return true
+        }
+        const headingLineStart = editorView.state.selection.empty
+          && !event.shiftKey
+          && !event.altKey
+          && (mac
+            ? hasOnlyPrimaryModifier(event) && event.key === 'ArrowLeft'
+            : !event.ctrlKey && !event.metaKey && event.key === 'Home')
+        const headingLineEnd = editorView.state.selection.empty
+          && !event.shiftKey
+          && !event.altKey
+          && (mac
+            ? hasOnlyPrimaryModifier(event) && event.key === 'ArrowRight'
+            : !event.ctrlKey && !event.metaKey && event.key === 'End')
+        if ((headingLineStart || headingLineEnd) && editorView.state.selection.$head.parent.type.name === 'heading') {
+          event.preventDefault()
+          const position = headingLineStart
+            ? editorView.state.selection.$head.start()
+            : editorView.state.selection.$head.end()
+          editorView.dispatch(editorView.state.tr.setSelection(
+            TextSelection.create(editorView.state.doc, position),
+          ).scrollIntoView())
+          return true
+        }
         if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End' || event.key === 'PageUp' || event.key === 'PageDown' || (event.key.toLowerCase() === 'a' && hasPrimaryModifier(event))) {
           keyboardSelection = true
         }
@@ -730,9 +930,82 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
         button.click()
         return true
       },
-      click: (editorView, event) => handleTaskCheckboxClick(strataSchema, editorView, event),
+      click: (editorView, event) => referencePreview?.activate(event) || handleTaskCheckboxClick(strataSchema, editorView, event),
     },
   })
+  if (phase6Enabled) foldingManager.attach(view)
+  tableManager.setReviewRanges(getReviewRanges(view.state), getAnnotationRanges(view.state))
+  if (phase6Enabled) foldingManager.setReviewRanges(getReviewRanges(view.state), getAnnotationRanges(view.state))
+  let headingFrame: number | null = null
+  let lastHeadingSignature = ''
+  let lastActiveHeading: string | null = null
+  const editorScroll = element.closest<HTMLElement>('.editor-scroll')
+  const sourceOffsetRect = (offset: number): DOMRect | null => {
+    if (sourceMirrorDirty) renderSourceMirror()
+    const walker = document.createTreeWalker(sourceMirror, NodeFilter.SHOW_TEXT)
+    let remaining = Math.max(0, Math.min(offset, currentMarkdown.length))
+    let last: Text | null = null
+    while (walker.nextNode()) {
+      const node = walker.currentNode as Text
+      last = node
+      const length = node.data.length
+      if (remaining <= length) {
+        const range = document.createRange()
+        range.setStart(node, remaining)
+        range.collapse(true)
+        return range.getBoundingClientRect()
+      }
+      remaining -= length
+    }
+    if (!last) return sourceMirror.getBoundingClientRect()
+    const range = document.createRange()
+    range.setStart(last, last.data.length)
+    range.collapse(true)
+    return range.getBoundingClientRect()
+  }
+  const reportHeadings = (): void => {
+    headingFrame = null
+    if (!options.onHeadings) return
+    const started = performance.now()
+    const headings = headingsForState(view.state)
+    const scrollBounds = editorScroll?.getBoundingClientRect()
+    const readingLine = scrollBounds ? scrollBounds.top + scrollBounds.height / 2 : Number.NEGATIVE_INFINITY
+    let activeId = headings[0]?.id ?? null
+    if (mode === 'visual') {
+      const editorBounds = view.dom.getBoundingClientRect()
+      const position = view.posAtCoords({ left: editorBounds.left + 8, top: readingLine })?.pos
+      if (position !== undefined) {
+        for (const heading of headings) {
+          if (heading.position <= position) activeId = heading.id
+          else break
+        }
+      }
+    } else {
+      let low = 0
+      let high = headings.length - 1
+      while (low <= high) {
+        const middle = Math.floor((low + high) / 2)
+        const heading = headings[middle]!
+        const bounds = heading.sourceFrom === null ? null : sourceOffsetRect(heading.sourceFrom)
+        if (bounds && bounds.top <= readingLine) {
+          activeId = heading.id
+          low = middle + 1
+        } else high = middle - 1
+      }
+    }
+    const signature = JSON.stringify(headings.map(({ id, level, text }) => ({ id, level, text })))
+    if (signature === lastHeadingSignature && activeId === lastActiveHeading) return
+    lastHeadingSignature = signature
+    lastActiveHeading = activeId
+    options.onHeadings(headings, activeId, headingUpdateDurationForState(view.state) + performance.now() - started)
+  }
+  scheduleHeadings = (): void => {
+    if (headingFrame !== null) return
+    headingFrame = window.requestAnimationFrame(reportHeadings)
+  }
+  const headingScroll = (): void => scheduleHeadings()
+  editorScroll?.addEventListener('scroll', headingScroll, { passive: true })
+  scheduleHeadings()
 
   const handleDocumentSelection = (): void => {
     const domSelection = view.dom.ownerDocument.getSelection()
@@ -968,6 +1241,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     // A text-only change (trailing newline, swallowed whitespace) produces no
     // document transaction, so the chain hears about it here.
     chain.syncSourceText(currentMarkdown)
+    scheduleHeadings()
   }
   const flushSourceReparse = (): void => {
     if (sourceReparseTimer === null) return
@@ -1045,6 +1319,8 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
   }
 
   const jump = (from: number, to = from): void => {
+    tableManager.revealPosition(from)
+    foldingManager.revealPosition(from)
     // A clamp to the document size can land on the doc node itself; `between`
     // nudges each end to the nearest inline position.
     const selection = textSelectionBetween(view.state.doc, from, Math.max(from, to))
@@ -1078,6 +1354,13 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     sourceFind.hidden = false
   }
   const revealCurrentMatch = (): void => {
+    if (mode === 'visual') {
+      const match = currentFindMatches()[findIndex]
+      if (match) {
+        tableManager.revealPosition(match.from)
+        foldingManager.revealPosition(match.from)
+      }
+    }
     const host = mode === 'source' ? sourceFind : visual
     host.querySelector(`.${FIND_CURRENT_CLASS}`)?.scrollIntoView({ block: 'center' })
   }
@@ -1187,11 +1470,12 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       chain.observeProgrammatic(markdown)
       source.value = markdown
       renderSourceMirror()
+      scheduleHeadings()
     },
     setReviewState(ranges) {
       flushSourceReparse()
       sourceReviewInputs = [...ranges]
-      view.dispatch(setReviewRanges(view.state.tr, reviewInputs(ranges, view.state.doc)))
+      view.dispatch(setReviewRanges(view.state.tr, reviewInputs(ranges, view.state.doc, parseCurrentMarkdown())))
       renderSourceMirror()
       renderSourceActions()
     },
@@ -1201,6 +1485,12 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       view.dispatch(setAnnotationRanges(view.state.tr, annotationInputs(ranges, view.state.doc, parseCurrentMarkdown())))
       renderSourceMirror()
       renderSourceActions()
+    },
+    setTableViews(states) {
+      tableManager.setStates(states)
+    },
+    setFoldedHeadings(headings) {
+      foldingManager.setFolded(headings)
     },
     setReadOnly(value) {
       readOnly = value
@@ -1272,6 +1562,36 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       if (!range || range.status === 'orphaned') return
       jump(range.from, range.to)
       flash(setAnnotationFlash, id)
+    },
+    jumpToHeading(id) {
+      const heading = headingsForState(view.state).find((candidate) => candidate.id === id)
+      if (!heading) return
+      if (mode === 'source' && heading.sourceFrom !== null) {
+        source.setSelectionRange(heading.sourceFrom, heading.sourceFrom)
+        source.focus({ preventScroll: true })
+        const target = sourceOffsetRect(heading.sourceFrom)
+        const bounds = editorScroll?.getBoundingClientRect()
+        if (target && bounds && editorScroll) editorScroll.scrollTop += target.top - bounds.top - bounds.height / 2
+      } else {
+        jump(heading.position + 1)
+      }
+      scheduleHeadings()
+    },
+    headingSource(id) {
+      const ordinal = headingsForState(view.state).findIndex((candidate) => candidate.id === id)
+      if (ordinal < 0) return null
+      const parsedNow = parseCurrentMarkdown()
+      let heading: ProseMirrorNode | undefined
+      let headingOrdinal = 0
+      parsedNow.doc.descendants((node) => {
+        if (node.type !== strataSchema.nodes.heading) return
+        if (headingOrdinal === ordinal) heading = node
+        headingOrdinal += 1
+      })
+      const from = heading?.attrs.sourceFrom
+      const to = heading?.attrs.sourceTo
+      if (typeof from !== 'number' || typeof to !== 'number' || from < 0 || to <= from || to > currentMarkdown.length) return null
+      return { quote: currentMarkdown.slice(from, to), from, to, atx: heading?.attrs.style === 'atx' }
     },
     annotationCoordinates(id) {
       const range = getAnnotationRanges(view.state).find((candidate) => candidate.id === id)
@@ -1360,12 +1680,18 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
         if (mode === 'source') view.dispatch(setFind(view.state.tr, '', -1))
         applyFind()
       }
+      scheduleHeadings()
       return mode
     },
     destroy() {
       closePopover()
+      referencePreview?.destroy()
+      imageInspection.destroy()
+      foldingManager.destroy()
       flushSourceReparse()
       if (flashTimer !== null) window.clearTimeout(flashTimer)
+      if (headingFrame !== null) window.cancelAnimationFrame(headingFrame)
+      editorScroll?.removeEventListener('scroll', headingScroll)
       view.dom.ownerDocument.removeEventListener('selectionchange', handleDocumentSelection)
       view.dom.ownerDocument.removeEventListener('keydown', handleSelectedEditorShortcut, true)
       view.destroy()

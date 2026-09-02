@@ -77,8 +77,7 @@ await writeFile(join(config, 'stratamd/settings.json'), JSON.stringify({
   panels: {
     explorerWidth: 340,
     rightRailWidth: 470,
-    changesHeight: 500,
-    annotationsHeight: 390,
+    upperReviewHeight: 904,
     documentMeasure: 1180,
     themePanel: { x: 1880, y: 160, width: 620, height: 1180 },
     sendComposer: { width: 1160, height: 760 }

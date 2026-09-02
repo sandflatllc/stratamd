@@ -119,7 +119,7 @@ export function isReviewControlActivationKey(key: string): boolean {
 }
 
 const reviewKey = new PluginKey<ReviewPluginState>('stratamd-review')
-const reviewMeta = 'stratamd-review-ranges'
+export const REVIEW_RANGES_META = 'stratamd-review-ranges'
 const reviewFlashMeta = 'stratamd-review-flash'
 
 /**
@@ -265,15 +265,15 @@ export function createReviewPlugin(initialRanges: readonly ReviewRange[] = [], a
     state: {
       init: (_config, state) => ({ ranges: initialRanges, flashing: null, decorations: reviewDecorations(state.doc, initialRanges, actions) }),
       apply(transaction, pluginState, _oldState, newState) {
-        const replacement = transaction.getMeta(reviewMeta) as readonly ReviewRange[] | undefined
+        const replacement = transaction.getMeta(REVIEW_RANGES_META) as readonly ReviewRange[] | undefined
         const flash = transaction.getMeta(reviewFlashMeta) as { id: string | null } | undefined
         const flashing = flash ? flash.id : pluginState.flashing
-        const ranges = replacement ?? pluginState.ranges.map((range) => ({
+        const ranges = replacement ?? (!transaction.docChanged ? pluginState.ranges : pluginState.ranges.map((range) => ({
           ...range,
           from: transaction.mapping.map(range.from, -1),
           to: transaction.mapping.map(range.to, 1),
           status: transactionTouchesRange(transaction, range) ? 'mixed' as const : range.status,
-        }))
+        })))
         return { ranges, flashing, decorations: reviewDecorations(newState.doc, ranges, actions, flashing) }
       },
     },
@@ -286,7 +286,7 @@ export function createReviewPlugin(initialRanges: readonly ReviewRange[] = [], a
 }
 
 export function setReviewRanges(transaction: Transaction, ranges: readonly ReviewRange[]): Transaction {
-  return transaction.setMeta(reviewMeta, ranges)
+  return transaction.setMeta(REVIEW_RANGES_META, ranges)
 }
 
 /** Rings one hunk (null clears); the class rides on the decoration so a redraw keeps it. */

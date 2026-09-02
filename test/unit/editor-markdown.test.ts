@@ -31,6 +31,17 @@ describe('StrataMD editor markdown bridge', () => {
     return serializeEditorDocument(parsed, changed)
   }
 
+  it('keeps exact table row and cell source spans without changing a byte', () => {
+    const source = '## Islands\r\n\r\n| Name | Verdict |\r\n| :--- | ---: |\r\n| Alpha | Unprotected |\r\n| Beta | Ready |\r\n'
+    const parsed = parseMarkdownForEditor(source)
+    const table = parsed.doc.content.content.find((node) => node.type === strataSchema.nodes.table)!
+    const row = table.child(1)
+    const cell = row.child(1)
+    expect(source.slice(row.attrs.sourceFrom, row.attrs.sourceTo)).toBe('| Alpha | Unprotected |')
+    expect(source.slice(cell.attrs.sourceFrom, cell.attrs.sourceTo)).toBe('| Unprotected |')
+    expect(Buffer.from(serializeEditorDocument(parsed, parsed.doc))).toEqual(Buffer.from(source))
+  })
+
   it('renders code spans and code blocks with spellcheck disabled', () => {
     const parsed = parseMarkdownForEditor('See `core/README.md`.\n\n```\nrecords-v1-single-file.md\n```\n')
     let block: ProseMirrorNode | undefined
@@ -140,6 +151,7 @@ describe('StrataMD editor markdown bridge', () => {
   it.each([
     'constructs/visual.md',
     'constructs/raw.md',
+    'constructs/components.md',
     'real/launch-queue-index.md',
     'real/customer-document-bridge.md',
     'real/security-stability-plan.md',

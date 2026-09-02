@@ -24,7 +24,9 @@ async function run(testInfo: import('@playwright/test').TestInfo, typeFirst: str
 
     const caretAt = async (selector: (blocks: Element[]) => Element, offset = 0) => page.evaluate(([selectorSource, offset]) => {
       const pick = new Function('blocks', `return (${selectorSource})(blocks)`) as (blocks: Element[]) => Element
-      const blocks = [...document.querySelectorAll('.strata-prosemirror > *')]
+      const blocks = [...document.querySelectorAll('.strata-prosemirror > *')].map((block) =>
+        block.matches('.strata-fold-heading') ? block.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6')! : block,
+      )
       const block = pick(blocks)
       block.scrollIntoView({ block: 'center' })
       const text = document.createTreeWalker(block, NodeFilter.SHOW_TEXT).nextNode() as Text
@@ -45,7 +47,9 @@ async function run(testInfo: import('@playwright/test').TestInfo, typeFirst: str
 
     // Drag from the start of "StrataMD itself makes no network calls..." to the start of the "Project status" heading.
     const { from, to } = await page.evaluate(() => {
-      const blocks = [...document.querySelectorAll('.strata-prosemirror > *')]
+      const blocks = [...document.querySelectorAll('.strata-prosemirror > *')].map((block) =>
+        block.matches('.strata-fold-heading') ? block.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6')! : block,
+      )
       const start = blocks.find((el) => el.textContent?.startsWith('StrataMD itself makes no network calls'))!
       const heading = blocks.find((el) => el.tagName === 'H2' && el.textContent === 'Project status')!
       start.scrollIntoView({ block: 'center' })

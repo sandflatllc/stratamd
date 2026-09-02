@@ -5,6 +5,7 @@ import { AmbientDecor } from './AmbientDecor'
 import { PathContextMenu, type PathContextMenuState, type PathMenuActions } from './PathContextMenu'
 
 interface ExplorerProps {
+  embedded?: boolean
   folders: ExplorerFolderView[]
   activePath?: string
   /** Recently opened documents, newest first (§5.10). */
@@ -135,7 +136,7 @@ function Subtree({ node, depth, activePath, toggled, onToggle, onOpen, onForget,
   )
 }
 
-export function Explorer({ folders, activePath, recents = [], scanning, onOpen, onScan, onRefresh, onAddFolder, onOpenFile, onForget, onCopyPath, onRemoveFolder, onNewFile, onRename, onTrash, onReveal }: ExplorerProps) {
+export function Explorer({ embedded = false, folders, activePath, recents = [], scanning, onOpen, onScan, onRefresh, onAddFolder, onOpenFile, onForget, onCopyPath, onRemoveFolder, onNewFile, onRename, onTrash, onReveal }: ExplorerProps) {
   const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set())
   const [menu, setMenu] = useState<PathContextMenuState | null>(null)
   const tree = useRef<HTMLDivElement>(null)
@@ -225,8 +226,8 @@ export function Explorer({ folders, activePath, recents = [], scanning, onOpen, 
     ...(onReveal ? { onReveal } : {}),
   }
   return (
-    <aside className="island explorer" aria-label="File explorer">
-      <AmbientDecor variant="explorer" />
+    <aside className={`explorer ${embedded ? 'explorer-embedded' : 'island'}`} aria-label="File explorer">
+      {!embedded && <AmbientDecor variant="explorer" />}
       <div className="panel-heading">
         <h2>Files</h2>
         <div>

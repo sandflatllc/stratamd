@@ -22,6 +22,10 @@ const createRendererEditor: RendererEditorFactory = (element, options) => {
     readOnly: options.readOnly,
     pendingHunks: options.pendingHunks as never,
     annotations: options.annotations as never,
+    tableViews: options.tableViews,
+    foldedHeadings: options.foldedHeadings,
+    ...(options.visualCodeSessions ? { visualCodeSessions: options.visualCodeSessions } : {}),
+    ...(options.imageInspectionState ? { imageInspectionState: options.imageInspectionState } : {}),
     onChange: options.onChange,
     onSelection: options.onSelection,
     onOpenAnnotation: options.onOpenAnnotation,
@@ -33,11 +37,18 @@ const createRendererEditor: RendererEditorFactory = (element, options) => {
     onUndo: options.onUndo,
     onRedo: options.onRedo,
     onToggleSource: options.onToggleSource,
+    onHeadings: options.onHeadings,
+    onTableView: options.onTableView,
+    ...(options.focusedTable !== undefined ? { focusedTable: options.focusedTable } : {}),
+    ...(options.onTableFocus ? { onTableFocus: options.onTableFocus } : {}),
+    onFold: options.onFold,
     historyStep: options.historyStep,
     ...(options.restore ? { restore: options.restore } : {}),
     ...(options.restoreCold ? { restoreCold: options.restoreCold } : {}),
     documentPath: element.dataset.documentPath ?? '',
-    resolveLocalImage: options.resolveLocalImage
+    resolveLocalImage: options.resolveLocalImage,
+    resolveLocalMarkdown: options.resolveLocalMarkdown,
+    onOpenLocalMarkdown: options.onOpenLocalMarkdown,
   })
   return {
     setContent: (content) => handle.setContent(content),
@@ -45,6 +56,8 @@ const createRendererEditor: RendererEditorFactory = (element, options) => {
     exportState: () => handle.exportState(),
     setReviewState: (hunks) => handle.setReviewState(hunks as never),
     setAnnotations: (annotations) => handle.setAnnotations(annotations as never),
+    setTableViews: (states) => handle.setTableViews(states),
+    setFoldedHeadings: (headings) => handle.setFoldedHeadings(headings),
     getMarkdown: () => handle.getMarkdown(),
     getState: () => handle.getState(),
     focus: () => handle.focus(),
@@ -54,6 +67,8 @@ const createRendererEditor: RendererEditorFactory = (element, options) => {
     command: (command) => handle.command(command),
     jumpToHunk: (id) => handle.jumpToHunk(id),
     jumpToAnnotation: (id) => handle.jumpToAnnotation(id),
+    jumpToHeading: (id) => handle.jumpToHeading(id),
+    headingSource: (id) => handle.headingSource(id),
     annotationCoordinates: (id) => handle.annotationCoordinates(id),
     replaceSelection: (text) => handle.replaceSelection(text),
     pasteText: (text) => handle.pasteText(text),
@@ -68,6 +83,30 @@ const createRendererEditor: RendererEditorFactory = (element, options) => {
 const root = document.getElementById('root')
 if (!root) throw new Error('Renderer root is missing')
 registerItalicFaces()
+
+if (window.strataMermaidProofEnabled === '1') {
+  const proofHost = document.createElement('div')
+  proofHost.hidden = true
+  proofHost.dataset.mermaidProof = 'true'
+  document.body.append(proofHost)
+  let proofId = 0
+  window.strataMermaidProof = {
+    async render(source, normalizeBreaks = false) {
+      const { parseMermaidSvg, renderMermaid } = await import('../editor/mermaid-renderer')
+      const result = await renderMermaid(`strata-mermaid-proof-${proofId += 1}`, source, { normalizeBreaks })
+      const svg = parseMermaidSvg(result.svg)
+      proofHost.append(svg)
+      return {
+        durationMs: result.durationMs,
+        normalizedBreaks: result.normalizedBreaks,
+        text: svg.textContent ?? '',
+      }
+    },
+    clear() {
+      proofHost.replaceChildren()
+    },
+  }
+}
 
 // Nets for what boundaries cannot catch — event handlers and ProseMirror's
 // own DOM dispatch (docs/plans/completed/crash-hardening-plan.md §3). Report only; no UI change.

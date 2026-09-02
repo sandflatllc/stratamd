@@ -41,6 +41,7 @@ test('letters typed into a thread reply stay there while a selection pill is up'
       '--as', 'agent-a',
     ])
     expect(annotation.code, annotation.stderr).toBe(0)
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
     const row = page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'Reply to this thread sentence.' })
     await row.click()
     const thread = page.getByRole('dialog', { name: /comment thread/i })
@@ -84,6 +85,7 @@ test('a bare C on a pointer selection with focus in the editor opens the comment
     await page.keyboard.press(primaryKey('Enter'))
     await expect(composer).toHaveCount(0)
     await expect(page.getByRole('dialog', { name: /Send changes/i })).toHaveCount(0)
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
     await expect(page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'Select this other sentence.' })).toBeVisible()
   } finally {
     await scenario.dispose()

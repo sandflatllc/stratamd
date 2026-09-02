@@ -1,8 +1,11 @@
-import type { LocalImageRequest, ResolvedLocalImage } from '../editor/images'
+import type { ImageInspectionState, LocalImageRequest, ResolvedLocalImage } from '../editor/images'
+import type { VisualCodeBlockSessions } from '../editor/code-blocks'
+import type { LocalMarkdownResolver } from '../editor/references'
 import type { ColdEditorState, EditorRestoreState } from '../editor/types'
 import type { FindResult } from '../editor/find'
-import type { AnnotationView, BufferOrigin, HunkView, RedoResult, UndoResult } from '../shared/contracts'
+import type { AnnotationContext, AnnotationKind, AnnotationView, BufferOrigin, HeadingReference, HunkView, RedoResult, TableViewState, UndoResult } from '../shared/contracts'
 import type { EditorCommand } from './components/Toolbar'
+import type { EditorHeading } from '../editor/headings'
 
 export interface EditorSelection {
   quote: string
@@ -15,6 +18,8 @@ export interface EditorSelection {
   explicit?: boolean
   /** True when the selection came from the pointer (or a right-click); false for Shift+Arrow and other keyboard selections. */
   pointer?: boolean
+  annotationKind?: AnnotationKind
+  annotationContext?: AnnotationContext
 }
 
 export interface RendererEditorOptions {
@@ -23,6 +28,11 @@ export interface RendererEditorOptions {
   readOnly: boolean
   pendingHunks: HunkView[]
   annotations: AnnotationView[]
+  tableViews: TableViewState[]
+  focusedTable?: string | null
+  visualCodeSessions?: VisualCodeBlockSessions
+  imageInspectionState?: ImageInspectionState
+  foldedHeadings: readonly HeadingReference[]
   historyStep: number
   restore?: EditorRestoreState
   restoreCold?: ColdEditorState
@@ -38,7 +48,13 @@ export interface RendererEditorOptions {
   onRedo(): Promise<RedoResult>
   /** The editor switched views from its own shortcut; `source` is the view it now shows. */
   onToggleSource(source: boolean): void
+  onHeadings(headings: readonly EditorHeading[], activeId: string | null, durationMs: number): void
+  onTableView(state: TableViewState): void
+  onTableFocus?(tableKey: string | null): void
+  onFold(heading: HeadingReference, folded: boolean): void
   resolveLocalImage(request: LocalImageRequest): Promise<ResolvedLocalImage | null>
+  resolveLocalMarkdown: LocalMarkdownResolver
+  onOpenLocalMarkdown(path: string): void
 }
 
 export interface RendererEditorHandle {
@@ -47,6 +63,8 @@ export interface RendererEditorHandle {
   exportState(): EditorRestoreState
   setReviewState(hunks: HunkView[]): void
   setAnnotations(annotations: AnnotationView[]): void
+  setTableViews(states: TableViewState[]): void
+  setFoldedHeadings(headings: readonly HeadingReference[]): void
   setReadOnly?(readOnly: boolean): void
   getMarkdown(): string
   focus(): void
@@ -54,6 +72,8 @@ export interface RendererEditorHandle {
   command?(command: EditorCommand): void
   jumpToHunk?(hunkId: string): void
   jumpToAnnotation?(annotationId: string): void
+  jumpToHeading?(headingId: string): void
+  headingSource?(headingId: string): { quote: string; from: number; to: number; atx: boolean } | null
   /** One-shot client coordinates of an annotation's span for the thread panel. */
   annotationCoordinates?(annotationId: string): { left: number; top: number; right: number; bottom: number } | null
   setActiveAnnotation?(annotationId: string | null): void

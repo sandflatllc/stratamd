@@ -117,7 +117,7 @@ describePackaged('packaged CLI', () => {
     await writeFile(document, '# Packaged CLI\n\nOffline state.\n')
     const state = await executeFile(installed, ['state', document], { env: environment })
     expect(JSON.parse(state.stdout)).toMatchObject({
-      version: 11,
+      version: 13,
       event: 'state',
       file: document,
       document: '# Packaged CLI\n\nOffline state.\n'

@@ -12,7 +12,8 @@ import {
   unlink,
 } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
-import { createHash, randomBytes } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
+import { contentHash } from '../core/diff.js'
 import {
   getDataDirectory as getPlatformDataDirectory,
   getSocketLocation,
@@ -122,6 +123,7 @@ export interface DocumentPaths {
   readonly directory: string
   readonly meta: string
   readonly buffer: string
+  readonly reading: string
   readonly lock: string
 }
 
@@ -166,7 +168,7 @@ export interface DocumentLock {
 const DOCUMENT_KEY_LENGTH = 12
 
 export function sha256(content: string | Uint8Array): string {
-  return createHash('sha256').update(content).digest('hex')
+  return contentHash(content)
 }
 
 export function getDataDirectory(
@@ -508,6 +510,7 @@ export class GhostStore {
       directory,
       meta: join(directory, 'meta.json'),
       buffer: join(directory, 'buffer.md'),
+      reading: join(directory, 'reading.json'),
       lock: join(directory, 'lock'),
     }
   }

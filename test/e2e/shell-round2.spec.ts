@@ -21,6 +21,7 @@ test('the thread panel focuses its reply and hands focus back on close; F8 steps
       expect(result.code, result.stderr).toBe(0)
     }
 
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
     const row = page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'First point to discuss.' })
     await row.click()
     const thread = page.getByRole('dialog', { name: /comment thread/i })
@@ -98,11 +99,11 @@ test('the tab menu closes other, saved, or all tabs and keeps the ones with unsa
     const explorer = page.getByRole('complementary', { name: /File explorer/i })
     await explorer.getByRole('button', { name: /^two\.md$/i }).click()
     await explorer.getByRole('button', { name: /^three\.md$/i }).click()
-    await expect(page.getByRole('tab')).toHaveCount(3)
+    await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(3)
 
     await page.getByRole('tab', { name: /one\.md/i }).click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Close other tabs' }).click()
-    await expect(page.getByRole('tab')).toHaveCount(1)
+    await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(1)
     await expect(page.getByRole('tab', { name: /one\.md/i })).toBeVisible()
 
     // A dirty tab survives Close all, and the note says so.
@@ -112,7 +113,7 @@ test('the tab menu closes other, saved, or all tabs and keeps the ones with unsa
     await expect(page.getByRole('tab', { name: /two\.md/i }).locator('.tab-dirty-dot')).toBeVisible()
     await page.getByRole('tab', { name: /two\.md/i }).click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Close all tabs' }).click()
-    await expect(page.getByRole('tab')).toHaveCount(1)
+    await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(1)
     await expect(page.getByRole('tab', { name: /two\.md/i })).toBeVisible()
     await expect(page.getByRole('status')).toContainText(/1 tab closed\. 1 with unsaved edits stayed open\./)
   } finally {

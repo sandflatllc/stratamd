@@ -136,6 +136,7 @@ function eventAuthor(item: SendEventItem): string {
 function eventKindLabel(item: SendEventItem): string {
   if (item.kind === 'annotation') return item.annotationKind ?? 'comment'
   if (item.kind === 'reply') return 'reply'
+  if (item.kind === 'answer') return 'answered decision'
   if (item.kind === 'verdict') return item.text === 'kept' ? 'kept their change' : 'removed their change'
   const words: Record<string, string> = {
     resolved: 'closed the thread',
@@ -297,7 +298,7 @@ export function SendComposer({ attachments, documentPath, size, zoom, onSize, on
   )
 
   const eventRow = (item: SendEventItem) => (
-    <label className="send-item send-item-event" key={item.seq} data-checked={!uncheckedEvents.has(item.seq)}>
+    <label className="send-item send-item-event" key={`${item.kind}:${item.seq}`} data-checked={!uncheckedEvents.has(item.seq)}>
       <input type="checkbox" checked={!uncheckedEvents.has(item.seq)} onChange={() => setUncheckedEvents((previous) => toggled(previous, item.seq))} />
       <span className="send-item-body">
         <span className="send-item-meta"><strong>{eventAuthor(item)}</strong><small>{eventKindLabel(item)}</small></span>
@@ -327,7 +328,7 @@ export function SendComposer({ attachments, documentPath, size, zoom, onSize, on
           {externalChanges.map(changeRow)}
         </>}
         {preview.items.events.length > 0 && <>
-          <h3 className="send-group-heading">Comments · {preview.items.events.length}</h3>
+          <h3 className="send-group-heading">Annotations · {preview.items.events.length}</h3>
           {preview.items.events.map(eventRow)}
         </>}
       </div>

@@ -26,8 +26,7 @@ export type NumericPanelKey = Exclude<keyof PanelSizes, 'themePanel' | 'threadPa
 export const PANEL_LIMITS = {
   explorerWidth: [160, 340],
   rightRailWidth: [240, 440],
-  changesHeight: [120, 520],
-  annotationsHeight: [90, 420],
+  upperReviewHeight: [180, 954],
   documentMeasure: [620, 1600]
 } as const satisfies Record<NumericPanelKey, readonly [number, number]>
 
@@ -47,8 +46,7 @@ export const EMPTY_VIEW: AppView = {
     panelSizes: {
       explorerWidth: 212,
       rightRailWidth: 300,
-      changesHeight: 250,
-      annotationsHeight: 180,
+      upperReviewHeight: 444,
       documentMeasure: 860,
       themePanel: { x: -1, y: -1, width: 360, height: 560 },
       threadPanel: { width: 660, height: -1 },
@@ -310,6 +308,21 @@ export function annotationCounts(document: DocumentView): { open: number; remove
 
 export function activeAnnotations(document: DocumentView): AnnotationView[] {
   return document.annotations.filter((annotation) => annotation.status !== 'resolved')
+}
+
+export type AnnotationFilter = 'all' | 'decisions' | 'questions' | 'comments' | 'suggestions' | 'resolved'
+
+export function filteredAnnotations(document: DocumentView, filter: AnnotationFilter): AnnotationView[] {
+  if (filter === 'resolved') return document.annotations.filter((annotation) => annotation.status === 'resolved')
+  const open = document.annotations.filter((annotation) => annotation.status !== 'resolved')
+  if (filter === 'all') return open
+  const kinds: Record<Exclude<AnnotationFilter, 'all' | 'resolved'>, AnnotationView['kind']> = {
+    decisions: 'decision',
+    questions: 'question',
+    comments: 'comment',
+    suggestions: 'suggestion',
+  }
+  return open.filter((annotation) => annotation.kind === kinds[filter])
 }
 
 export function currentAnnotation(document: DocumentView, selected: AnnotationView | null): AnnotationView | null {

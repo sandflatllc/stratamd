@@ -320,7 +320,7 @@ describe('plain Node executable', () => {
 
     expect(stderr).toBe('')
     expect(JSON.parse(stdout)).toMatchObject({
-      version: 11,
+      version: 13,
       event: 'state',
       file: document,
       document: '# Offline\n\nUnsaved work is visible here.\n'

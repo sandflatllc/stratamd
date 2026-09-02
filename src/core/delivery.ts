@@ -2,6 +2,7 @@ import {
   createPayload,
   type PayloadAgentTag,
   type PayloadAnnotation,
+  type PayloadDecisionAnswer,
   type PayloadEditVerdict,
   type PayloadEvent,
   type PayloadResolution,
@@ -67,6 +68,7 @@ export interface DeliverySource {
   segments: readonly IndexedSegment[]
   annotations?: readonly PayloadAnnotation[]
   replies?: readonly PayloadThreadReply[]
+  answers?: readonly PayloadDecisionAnswer[]
   resolved?: readonly PayloadResolution[]
   edits?: readonly PayloadEditVerdict[]
   note?: string
@@ -267,6 +269,7 @@ export function freezeDelivery(attachment: Attachment, source: DeliverySource): 
           segments: selected.segments,
           annotations: eventsInRange(source.annotations, from.cursor, source.snapshot.cursor),
           replies: eventsInRange(source.replies, from.cursor, source.snapshot.cursor),
+          answers: eventsInRange(source.answers, from.cursor, source.snapshot.cursor),
           resolved: eventsInRange(source.resolved, from.cursor, source.snapshot.cursor),
           edits: eventsInRange(source.edits, from.cursor, source.snapshot.cursor),
           ...(partial ? { partial: true } : {}),

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { Scenario } from './harness'
+import { primaryKey, Scenario } from './harness'
 
 // The right-click menu (usability round 2 §5.15) carries Cut, Copy, Paste,
 // and Select all beside the annotate buttons.
@@ -43,11 +43,17 @@ test('right-click offers Copy, Cut, Paste, and Select all on the word under the 
     // Select all takes the whole document.
     await rightClickWord()
     await menu.getByRole('menuitem', { name: 'Select all' }).click()
-    await expect.poll(() => page.evaluate(() => window.getSelection()?.toString() ?? '')).toContain('Alpha beta gamma.')
-    await expect.poll(() => page.evaluate(() => window.getSelection()?.toString() ?? '')).toContain('Menu')
+    await scenario.app!.evaluate(({ clipboard }) => clipboard.writeText('sentinel'))
+    await page.keyboard.press(primaryKey('c'))
+    await expect.poll(() => scenario.app!.evaluate(({ clipboard }) => clipboard.readText())).toContain('Alpha beta gamma.')
+    await expect.poll(() => scenario.app!.evaluate(({ clipboard }) => clipboard.readText())).toContain('Menu')
+
+    // Close the selection menu before starting the next context-menu action.
+    await page.keyboard.press('Escape')
+    await expect(menu).toBeHidden()
+    await paragraph.click({ position: { x: 2, y: 8 } })
 
     // Paste replaces the word under the pointer with the clipboard text.
-    await page.keyboard.press('ArrowRight')
     await scenario.app!.evaluate(({ clipboard }) => clipboard.writeText('delta'))
     await rightClickWord()
     await menu.getByRole('menuitem', { name: 'Paste' }).click()

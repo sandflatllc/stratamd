@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
-import type { AnnotationKind, AnnotationView, AppView, AttachmentView, BufferOrigin, DocumentTabView, HunkView, PaneId, PanelSize, PaneZoom, PanelSizes, RedoResult, SendPreviewRequest, ThemePanelGeometry, UndoResult } from '../shared/contracts'
-import type { RendererEditorFactory } from './editorAdapter'
+import type { AnnotationContext, AnnotationKind, AnnotationView, AppView, AttachmentView, BufferOrigin, DocumentTabView, HunkView, NavigationTab, PaneId, PanelSize, PaneZoom, PanelSizes, RedoResult, ReviewTab, SendPreviewRequest, TableViewState, ThemePanelGeometry, UndoResult, WalkthroughAction } from '../shared/contracts'
+import type { EditorHeading } from '../editor/headings'
+import type { RendererEditorFactory, RendererEditorHandle } from './editorAdapter'
 import { Explorer } from './components/Explorer'
 import { AmbientBackground, AmbientContext } from './components/AmbientDecor'
 import { Boundary } from './components/Boundary'
@@ -17,6 +18,7 @@ import { ShortcutSheet } from './components/ShortcutSheet'
 import { forgetReplyDrafts } from './components/ThreadPanel'
 import { Toast } from './components/Toast'
 import { TopBar } from './components/TopBar'
+import { NavigationRail } from './components/NavigationRail'
 import { activitySnapshot, agentActivity, agentActivityMessage, AGENT_PROMPT, ambientStyles, clampPanelSize, clampThemePanel, cycleTab, EMPTY_VIEW, hasUnsavedCounted, isZoomed, nextReviewTarget, pendingCount, pushRecent, rendererThemeStyle, reviewTargets, shouldAdoptPushed, stepZoom, tabsToClose, threadTargets, type ActivitySnapshot, type NumericPanelKey, type ReviewTarget } from './model'
 import { flushPendingBuffer, peekPendingBuffer, setPendingBuffer } from './pendingBuffer'
 import { nextToast, type ToastAction, type ToastState } from './toasts'
@@ -66,6 +68,9 @@ export function App({ createEditor }: AppProps) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [fileDialog, setFileDialog] = useState<FileDialogState | null>(null)
   const [recents, setRecents] = useState<string[]>(readRecents)
+  const [headingState, setHeadingState] = useState<{ path: string; headings: readonly EditorHeading[]; activeId: string | null }>({ path: '', headings: [], activeId: null })
+  const [jumpHeading, setJumpHeading] = useState<{ id: string; token: number } | null>(null)
+  const editorHandle = useRef<RendererEditorHandle | null>(null)
   const zoomRef = useRef<PaneZoom>(EMPTY_VIEW.settings.zoom)
   /** What this window last committed, so a push that merely echoes it never overrides a drag in progress (§5.14). */
   const committedPanels = useRef<PanelSizes | null>(null)
@@ -85,6 +90,8 @@ export function App({ createEditor }: AppProps) {
   /** The last change stepped to with F7 / Shift+F7, so the next press continues from it. */
   const reviewCursor = useRef<string | null>(null)
   const document = view.activeDocument
+  const headings = document && headingState.path === document.path ? headingState.headings : []
+  const activeHeadingId = document && headingState.path === document.path ? headingState.activeId : null
 
   const report = useCallback((message: string, action?: ToastAction) => setToast((current) => nextToast(current, { message, tone: 'info', ...(action ? { action } : {}) })), [])
   const reportError = useCallback((message: string) => setToast((current) => nextToast(current, { message, tone: 'error' })), [])
@@ -93,6 +100,18 @@ export function App({ createEditor }: AppProps) {
     try { await job(); if (message) report(message) }
     catch (error) { reportError(error instanceof Error ? error.message : 'The action failed') }
   }, [report, reportError])
+  const selectNavigationTab = useCallback((tab: NavigationTab) => {
+    if (!document) return
+    void perform(() => window.strata.updateReadingState(document.path, { navigationTab: tab }))
+  }, [document, perform])
+  const selectReviewTab = useCallback((tab: ReviewTab) => {
+    if (!document) return
+    void perform(() => window.strata.updateReadingState(document.path, { reviewTab: tab }))
+  }, [document, perform])
+  const updateWalkthrough = useCallback((action: WalkthroughAction) => {
+    if (!document) return
+    void perform(() => window.strata.updateWalkthrough(document.path, action))
+  }, [document, perform])
   const openTheme = useCallback(() => { setThemeOpen(true); void perform(() => window.strata.openThemeSample()) }, [perform])
 
   useEffect(() => {
@@ -302,6 +321,48 @@ export function App({ createEditor }: AppProps) {
     else report('Nothing to send. Make an edit or add an annotation first.')
   }, [document, flushBuffer, report])
 
+  const addAnnotation = useCallback((kind: Exclude<AnnotationKind, 'decision'>, quote: string, text: string, from: number, to: number, context?: AnnotationContext) => {
+    if (!document) return
+    void perform(async () => {
+      const id = await window.strata.addAnnotation(document.path, { kind, quote, text, from, to, ...(context ? { context } : {}) })
+      if (context) {
+        const next = await window.strata.getState()
+        const created = next.activeDocument?.path === document.path
+          ? next.activeDocument.annotations.find((annotation) => annotation.id === id)
+          : null
+        if (created) setSelectedAnnotation(created)
+      }
+    }, kind === 'suggestion' ? 'Suggestion added for the next Send.' : 'Annotation added on the exact quote.')
+  }, [document, perform])
+
+  const addPassageDecision = useCallback((quote: string, prompt: string, options: string[], from: number, to: number) => {
+    if (!document) return
+    void perform(() => window.strata.addAnnotation(document.path, {
+      kind: 'decision', anchor: 'quote', quote, text: prompt, options, from, to,
+    }), 'Decision added on the selected passage.')
+  }, [document, perform])
+
+  const addRailDecision = useCallback((prompt: string, options: string[], anchor: 'document' | EditorHeading) => {
+    if (!document) return
+    void perform(async () => {
+      await flushBuffer()
+      if (anchor === 'document') {
+        await window.strata.addAnnotation(document.path, {
+          kind: 'decision', anchor: 'document', quote: '', text: prompt, options, from: 0, to: 0,
+        })
+        report('Document decision added.')
+        return
+      }
+      const source = editorHandle.current?.headingSource?.(anchor.id)
+      if (!source) throw new Error('That heading no longer exists. Choose it again.')
+      if (!source.atx) throw new Error('Only # headings can carry a decision.')
+      await window.strata.addAnnotation(document.path, {
+        kind: 'decision', anchor: 'heading', quote: source.quote, text: prompt, options, from: source.from, to: source.to,
+      })
+      report('Decision added to the heading.')
+    })
+  }, [document, flushBuffer, perform, report])
+
   const dropFiles = useCallback((event: React.DragEvent) => {
     event.preventDefault()
     setDragging(false)
@@ -370,9 +431,11 @@ export function App({ createEditor }: AppProps) {
   }, [bridgeMissing, fileDialog, perform, report])
 
   const jumpTo = useCallback((target: ReviewTarget) => {
+    if (target.kind === 'hunk' || target.kind === 'suggestion') selectReviewTab('changes')
+    else selectReviewTab('annotations')
     if (target.kind === 'hunk') { setJumpHunkId(null); window.requestAnimationFrame(() => setJumpHunkId(target.id)) }
     else { setJumpAnnotationId(null); window.requestAnimationFrame(() => setJumpAnnotationId(target.id)) }
-  }, [])
+  }, [selectReviewTab])
   showTarget.current = (target) => { reviewCursor.current = target.id; jumpTo(target) }
 
   /** F7 / Shift+F7: the next pending change or open suggestion in document order (PRD §6.1). */
@@ -392,9 +455,10 @@ export function App({ createEditor }: AppProps) {
     threadCursor.current = target.id
     const annotation = document.annotations.find((item) => item.id === target.id) ?? null
     rememberThreadOpener()
+    selectReviewTab('annotations')
     setJumpAnnotationId(null)
     window.requestAnimationFrame(() => { setJumpAnnotationId(target.id); setSelectedAnnotation(annotation) })
-  }, [document, report])
+  }, [document, report, selectReviewTab])
 
   useEffect(() => {
     const modalOpen = () => globalThis.document.querySelector('[aria-modal="true"]') !== null
@@ -478,13 +542,14 @@ export function App({ createEditor }: AppProps) {
     onTrash: (path: string) => setFileDialog({ kind: 'trash', path }),
     onReveal: revealFile,
   }
+  const explorer = (activePath?: string) => <Explorer embedded folders={view.explorer} {...(activePath === undefined ? {} : { activePath })} scanning={scanning} {...explorerFileActions} onOpen={(path) => void perform(() => window.strata.openDocument(path))} onScan={(path) => { setScanning(true); void perform(() => window.strata.scanFolder(path), 'Folder prepared. Every markdown file in it is remembered.').finally(() => setScanning(false)) }} onRefresh={() => void perform(() => window.strata.refreshExplorer(), 'Explorer refreshed')} onAddFolder={() => void perform(() => window.strata.addFolder())} onForget={(path) => void perform(() => window.strata.forgetDocument(path), 'Document forgotten')} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onRemoveFolder={(path) => void perform(() => window.strata.removeFolder(path), 'Folder removed from the list. Its documents stay remembered.')} />
 
   if (!ready) return <div className="boot-screen"><StrataIcon /><span>Opening StrataMD…</span></div>
   if (!document) return (
     <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell empty-shell" style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={(event) => { event.preventDefault(); setDragging(true) }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (event.currentTarget === event.target) setDragging(false) }} onDrop={dropFiles}>
       <AmbientBackground /><TopBar tabs={view.tabs} canSend={false} hasAgents={false} pending={0} pendingUnsaved={false} onOpenTab={(path) => void perform(() => window.strata.openDocument(path))} onCloseTab={setClosingTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onSend={() => undefined} onCopy={() => undefined} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} />
       <div className="workspace">
-        <div data-pane="explorer" style={{ width: panelSizes.explorerWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><Explorer folders={view.explorer} scanning={scanning} {...explorerFileActions} onOpen={(path) => void perform(() => window.strata.openDocument(path))} onScan={(path) => { setScanning(true); void perform(() => window.strata.scanFolder(path), 'Folder prepared. Every markdown file in it is remembered.').finally(() => setScanning(false)) }} onRefresh={() => void perform(() => window.strata.refreshExplorer(), 'Explorer refreshed')} onAddFolder={() => void perform(() => window.strata.addFolder())} onForget={(path) => void perform(() => window.strata.forgetDocument(path), 'Document forgotten')} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onRemoveFolder={(path) => void perform(() => window.strata.removeFolder(path), 'Folder removed from the list. Its documents stay remembered.')} /></Boundary></div>
+        <div data-pane="explorer" style={{ width: panelSizes.explorerWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected="files" files={explorer()} headings={[]} activeHeadingId={null} walkthrough={{ active: false, level: 'h2', current: null, excluded: [], markers: [] }} onSelect={() => undefined} onJumpHeading={() => undefined} onWalkthrough={() => undefined} /></Boundary></div>
         <Resizer axis="vertical" label="Resize file explorer" value={panelSizes.explorerWidth} min={160} max={340} onChange={(value) => updatePanel('explorerWidth', value, false)} onCommit={(value) => updatePanel('explorerWidth', value, true)} />
         <main className="island editor-island empty-editor-island" data-pane="editor" style={{ '--zoom': zoom.editor } as CSSProperties}>
           <Boundary region="editor"><div className="empty-welcome"><StrataIcon /><h1>Open a markdown file</h1><p>Choose a folder, then open a document from the explorer.</p><button type="button" className="keep-button large" onClick={() => void perform(() => window.strata.addFolder())}>Add folder</button></div></Boundary>
@@ -510,11 +575,11 @@ export function App({ createEditor }: AppProps) {
       <AmbientBackground />
       <TopBar tabs={view.tabs} canSend={document.canSend} hasAgents={document.attachments.length > 0} pending={pendingCount(document)} pendingUnsaved={hasUnsavedCounted(document)} onOpenTab={(path) => void perform(() => window.strata.openDocument(path))} onCloseTab={closeTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onSend={() => void perform(openComposer)} onCopy={() => void perform(openComposer)} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} />
       <div className="workspace">
-        <div data-pane="explorer" style={{ width: panelSizes.explorerWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><Explorer folders={view.explorer} activePath={document.path} scanning={scanning} {...explorerFileActions} onOpen={(path) => void perform(() => window.strata.openDocument(path))} onScan={(path) => { setScanning(true); void perform(() => window.strata.scanFolder(path), 'Folder prepared. Every markdown file in it is remembered.').finally(() => setScanning(false)) }} onRefresh={() => void perform(() => window.strata.refreshExplorer(), 'Explorer refreshed')} onAddFolder={() => void perform(() => window.strata.addFolder())} onForget={(path) => void perform(() => window.strata.forgetDocument(path), 'Document forgotten')} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onRemoveFolder={(path) => void perform(() => window.strata.removeFolder(path), 'Folder removed from the list. Its documents stay remembered.')} /></Boundary></div>
+        <div data-pane="explorer" style={{ width: panelSizes.explorerWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected={document.reading.navigationTab} files={explorer(document.path)} headings={headings} activeHeadingId={activeHeadingId} walkthrough={document.reading.walkthrough} onSelect={selectNavigationTab} onJumpHeading={(id) => setJumpHeading({ id, token: Date.now() })} onWalkthrough={updateWalkthrough} /></Boundary></div>
         <Resizer axis="vertical" label="Resize file explorer" value={panelSizes.explorerWidth} min={160} max={340} onChange={(value) => updatePanel('explorerWidth', value, false)} onCommit={(value) => updatePanel('explorerWidth', value, true)} />
-        <Boundary region="editor"><EditorPane document={document} documentMeasure={panelSizes.documentMeasure} zoom={zoom.editor} threadPanelSize={panelSizes.threadPanel} composerSize={panelSizes.annotationComposer} createEditor={createEditor} onDocumentMeasure={(value, commit) => updatePanel('documentMeasure', value, commit)} onThreadPanelSize={(size, commit) => updatePanelSize('threadPanel', size, commit)} onComposerSize={(size, commit) => updatePanelSize('annotationComposer', size, commit)} onBufferChange={bufferChanged} onToggleSource={(source) => void perform(() => window.strata.setSourceMode(document.path, source))} onSave={save} onUndo={undoApplication} onRedo={redoApplication} onKeepHunk={(id) => void perform(() => window.strata.keepHunk(document.path, id), 'Kept.')} onRevertHunk={revert} onAddAnnotation={(kind: AnnotationKind, quote, text, from, to) => void perform(() => window.strata.addAnnotation(document.path, { kind, quote, text, from, to }), kind === 'suggestion' ? 'Suggestion added for the next Send.' : 'Annotation added on the exact quote.')} onAdjustAnnotation={(id, quote, from, to) => void perform(() => window.strata.requoteAnnotation(document.path, id, { quote, from, to }), 'Annotation moved to the new quote. Agents receive it on the next Send.')} onReply={(id, text) => void perform(() => window.strata.reply(document.path, id, text))} onResolve={(id) => void perform(async () => { await window.strata.resolveAnnotation(document.path, id); setSelectedAnnotation(null) }, 'Thread resolved. It stays until cleared.')} onAccept={(id) => void perform(() => window.strata.acceptSuggestion(document.path, id), 'Suggestion accepted as your change.')} onReject={(id) => void perform(() => window.strata.rejectSuggestion(document.path, id), 'Suggestion rejected.')} selectedAnnotation={selectedAnnotation} onSelectAnnotation={(annotation) => { threadOpener.current = null; setSelectedAnnotation(annotation) }} jumpHunkId={jumpHunkId} jumpAnnotationId={jumpAnnotationId} threadOpener={threadOpener} /></Boundary>
+        <Boundary region="editor"><EditorPane editorRef={editorHandle} document={document} documentMeasure={panelSizes.documentMeasure} zoom={zoom.editor} threadPanelSize={panelSizes.threadPanel} composerSize={panelSizes.annotationComposer} createEditor={createEditor} onDocumentMeasure={(value, commit) => updatePanel('documentMeasure', value, commit)} onThreadPanelSize={(size, commit) => updatePanelSize('threadPanel', size, commit)} onComposerSize={(size, commit) => updatePanelSize('annotationComposer', size, commit)} onBufferChange={bufferChanged} onToggleSource={(source) => void perform(() => window.strata.setSourceMode(document.path, source))} onSave={save} onUndo={undoApplication} onRedo={redoApplication} onKeepHunk={(id) => void perform(() => window.strata.keepHunk(document.path, id), 'Kept.')} onRevertHunk={revert} onTableView={(state: TableViewState) => void perform(() => window.strata.updateTableView(document.path, state))} onAddAnnotation={addAnnotation} onAddDecision={addPassageDecision} onAdjustAnnotation={(id, quote, from, to) => void perform(() => window.strata.requoteAnnotation(document.path, id, { quote, from, to }), 'Annotation moved to the new quote. Agents receive it on the next Send.')} onReply={(id, text) => void perform(() => window.strata.reply(document.path, id, text))} onResolve={(id) => void perform(async () => { await window.strata.resolveAnnotation(document.path, id); setSelectedAnnotation(null) }, 'Thread resolved. It stays until cleared.')} onAnswerDecision={(id, answer) => void perform(() => window.strata.answerDecision(document.path, id, answer), 'Decision answered. It is selected in the next Send.')} onReopenDecision={(id) => void perform(() => window.strata.reopenDecision(document.path, id), 'Decision reopened.')} onAccept={(id) => void perform(() => window.strata.acceptSuggestion(document.path, id), 'Suggestion accepted as your change.')} onReject={(id) => void perform(() => window.strata.rejectSuggestion(document.path, id), 'Suggestion rejected.')} selectedAnnotation={selectedAnnotation} onSelectAnnotation={(annotation) => { threadOpener.current = null; setSelectedAnnotation(annotation) }} jumpHunkId={jumpHunkId} jumpAnnotationId={jumpAnnotationId} jumpHeading={jumpHeading} onHeadings={(next, activeId, durationMs) => { setHeadingState({ path: document.path, headings: next, activeId }); globalThis.document.documentElement.dataset.headingIndexMs = durationMs.toFixed(3) }} threadOpener={threadOpener} /></Boundary>
         <Resizer axis="vertical" label="Resize right rail" value={panelSizes.rightRailWidth} min={240} max={440} invert onChange={(value) => updatePanel('rightRailWidth', value, false)} onCommit={(value) => updatePanel('rightRailWidth', value, true)} />
-        <div data-pane="rightRail" style={{ width: panelSizes.rightRailWidth, flex: 'none', minWidth: 0, '--zoom': zoom.rightRail } as CSSProperties}><Boundary region="rightRail"><RightRail document={document} changesHeight={panelSizes.changesHeight} annotationsHeight={panelSizes.annotationsHeight} onHeight={updatePanel} onMarkReviewed={() => void perform(() => window.strata.markReviewed(document.path), 'All changes marked reviewed. Suggestions still need Accept or Reject.')} onJumpHunk={(hunk) => { setJumpHunkId(null); window.requestAnimationFrame(() => setJumpHunkId(hunk.id)) }} onKeepHunk={(id) => void perform(() => window.strata.keepHunk(document.path, id), 'Kept.')} onRevertHunk={revert} onAcceptAllSuggestions={(agentId) => void perform(async () => { const result = await window.strata.acceptAllSuggestions(document.path, agentId); report(`${result.accepted.length} suggestion${result.accepted.length === 1 ? '' : 's'} accepted${result.skipped.length > 0 ? `; ${result.skipped.length} overlapping skipped` : ''}.`) })} onRejectAllSuggestions={(agentId) => void perform(async () => { const rejected = await window.strata.rejectAllSuggestions(document.path, agentId); report(`${rejected.length} suggestion${rejected.length === 1 ? '' : 's'} rejected.`) })} onAcceptSuggestion={(id) => void perform(() => window.strata.acceptSuggestion(document.path, id), 'Suggestion accepted as your change.')} onRejectSuggestion={(id) => void perform(() => window.strata.rejectSuggestion(document.path, id), 'Suggestion rejected.')} onRevertAll={setRevertAll} onKeepAll={(group) => void perform(async () => { for (const hunk of group.hunks) await window.strata.keepHunk(document.path, hunk.id) }, `${group.hunks.length} changes by ${group.name} kept.`)} onCopyAgentPrompt={() => void perform(() => window.strata.copyText(AGENT_PROMPT), 'Prompt copied. Paste it to your agent.')} onJumpAnnotation={(annotation) => { rememberThreadOpener(); if (annotation.status === 'orphaned') { setJumpAnnotationId(null); setSelectedAnnotation(annotation); return } setJumpAnnotationId(null); window.requestAnimationFrame(() => { setJumpAnnotationId(annotation.id); setSelectedAnnotation(annotation) }) }} onClearResolved={() => void perform(() => window.strata.clearResolvedAnnotations(document.path), 'Resolved annotations cleared.')} onNudge={(id) => void perform(() => window.strata.nudge(document.path, id), 'Reattach prompt copied.')} onSetLead={(agentId) => void perform(() => window.strata.setLead(document.path, agentId))} onDisconnect={(attachment) => { if (attachment.queuedSendCount > 0) setDisconnecting(attachment); else disconnect(attachment) }} onSaveRound={(index) => window.strata.saveRound(document.path, index)} /></Boundary></div>
+        <div data-pane="rightRail" style={{ width: panelSizes.rightRailWidth, flex: 'none', minWidth: 0, '--zoom': zoom.rightRail } as CSSProperties}><Boundary region="rightRail"><RightRail document={document} headings={headings} onAddDecision={addRailDecision} selectedTab={document.reading.reviewTab} upperReviewHeight={panelSizes.upperReviewHeight} onSelectTab={selectReviewTab} onHeight={(value, commit) => updatePanel('upperReviewHeight', value, commit)} onMarkReviewed={() => void perform(() => window.strata.markReviewed(document.path), 'All changes marked reviewed. Suggestions still need Accept or Reject.')} onJumpHunk={(hunk) => { setJumpHunkId(null); window.requestAnimationFrame(() => setJumpHunkId(hunk.id)) }} onKeepHunk={(id) => void perform(() => window.strata.keepHunk(document.path, id), 'Kept.')} onRevertHunk={revert} onAcceptAllSuggestions={(agentId) => void perform(async () => { const result = await window.strata.acceptAllSuggestions(document.path, agentId); report(`${result.accepted.length} suggestion${result.accepted.length === 1 ? '' : 's'} accepted${result.skipped.length > 0 ? `; ${result.skipped.length} overlapping skipped` : ''}.`) })} onRejectAllSuggestions={(agentId) => void perform(async () => { const rejected = await window.strata.rejectAllSuggestions(document.path, agentId); report(`${rejected.length} suggestion${rejected.length === 1 ? '' : 's'} rejected.`) })} onAcceptSuggestion={(id) => void perform(() => window.strata.acceptSuggestion(document.path, id), 'Suggestion accepted as your change.')} onRejectSuggestion={(id) => void perform(() => window.strata.rejectSuggestion(document.path, id), 'Suggestion rejected.')} onRevertAll={setRevertAll} onKeepAll={(group) => void perform(async () => { for (const hunk of group.hunks) await window.strata.keepHunk(document.path, hunk.id) }, `${group.hunks.length} changes by ${group.name} kept.`)} onCopyAgentPrompt={() => void perform(() => window.strata.copyText(AGENT_PROMPT), 'Prompt copied. Paste it to your agent.')} onJumpAnnotation={(annotation) => { rememberThreadOpener(); if (annotation.status === 'orphaned' || annotation.anchor === 'document') { setJumpAnnotationId(null); setSelectedAnnotation(annotation); return } setJumpAnnotationId(null); window.requestAnimationFrame(() => { setJumpAnnotationId(annotation.id); setSelectedAnnotation(annotation) }) }} onClearResolved={() => void perform(() => window.strata.clearResolvedAnnotations(document.path), 'Resolved annotations cleared.')} onNudge={(id) => void perform(() => window.strata.nudge(document.path, id), 'Reattach prompt copied.')} onSetLead={(agentId) => void perform(() => window.strata.setLead(document.path, agentId))} onDisconnect={(attachment) => { if (attachment.queuedSendCount > 0) setDisconnecting(attachment); else disconnect(attachment) }} onSaveRound={(index) => window.strata.saveRound(document.path, index)} /></Boundary></div>
       </div>
       {composer && <SendComposer attachments={document.attachments} documentPath={document.path} size={panelSizes.sendComposer} zoom={zoom.composer} onSize={(value, commit) => updatePanelSize('sendComposer', value, commit)} onCancel={() => setComposer(false)} onPreview={preview} onSend={async (request) => { await flushBuffer(); const ids = await window.strata.send(document.path, request); setComposer(false); report(`Sent to ${ids.length} agent${ids.length === 1 ? '' : 's'}.`) }} />}
       {revertAll && <RevertAllDialog name={revertAll.name} hunks={revertAll.hunks} onCancel={() => setRevertAll(null)} onConfirm={() => {

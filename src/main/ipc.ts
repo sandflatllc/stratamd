@@ -24,14 +24,66 @@ const sendRequestSchema = z.object({
   }).strict().optional()
 }).strict()
 const themeIdSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(120)
+const readingStatePatchSchema = z.object({
+  navigationTab: z.enum(['files', 'contents']).optional(),
+  reviewTab: z.enum(['changes', 'annotations']).optional(),
+}).strict()
+const headingReferenceSchema = z.object({
+  level: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]),
+  text: z.string().trim().min(1).max(512),
+  parentText: z.string().max(512).nullable(),
+  previousText: z.string().max(512).nullable(),
+  nextText: z.string().max(512).nullable(),
+}).strict()
+const walkthroughActionSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('start') }).strict(),
+  z.object({ type: z.literal('leave') }).strict(),
+  z.object({ type: z.literal('set-level'), level: z.enum(['h2', 'h2-h3']) }).strict(),
+  z.object({ type: z.literal('set-current'), heading: headingReferenceSchema }).strict(),
+  z.object({ type: z.literal('set-included'), heading: headingReferenceSchema, included: z.boolean() }).strict(),
+  z.object({ type: z.literal('mark'), heading: headingReferenceSchema, status: z.enum(['reviewed', 'revisit']) }).strict(),
+])
+const tableReferenceSchema = z.object({
+  headingLevel: z.number().int().min(1).max(6).nullable(),
+  headingText: z.string().max(512).nullable(),
+  headers: z.array(z.string().max(512)).min(1).max(100),
+  occurrence: z.number().int().nonnegative().max(10_000),
+}).strict()
+const tableViewSchema = z.object({
+  table: tableReferenceSchema,
+  presentation: z.enum(['table', 'focus-row', 'compare']),
+  sort: z.object({ column: z.number().int().nonnegative().max(99), direction: z.enum(['ascending', 'descending']) }).strict().nullable(),
+  filter: z.object({ column: z.number().int().nonnegative().max(99), query: z.string().max(1_000) }).strict().nullable(),
+  hiddenColumns: z.array(z.number().int().nonnegative().max(99)).max(100),
+  selectedRows: z.array(z.number().int().nonnegative().max(100_000)).max(10_000),
+  focusedRow: z.number().int().nonnegative().max(100_000).nullable(),
+  focusedColumn: z.number().int().nonnegative().max(99).nullable(),
+  density: z.enum(['comfortable', 'compact']),
+  columnWidths: z.array(z.number().int().min(80).max(640)).max(100),
+}).strict()
+const tableAnnotationContextSchema = z.object({
+  kind: z.enum(['table-row', 'table-cell']),
+  heading: z.string().max(512).nullable(),
+  columns: z.array(z.string().max(512)).min(1).max(100),
+  column: z.object({ index: z.number().int().nonnegative().max(99), label: z.string().max(512) }).strict().nullable(),
+}).strict()
+const annotationContextSchema = z.union([
+  tableAnnotationContextSchema,
+  z.object({
+    kind: z.literal('screenshot-pin'),
+    component: z.literal('AnnotatedScreenshot'),
+    componentLine: z.number().int().positive().max(10_000_000),
+    image: z.string().min(1).max(16_384),
+    pin: z.number().int().positive().max(1_000_000),
+  }).strict(),
+])
 const settingsSchema = z.object({
   animatedBackground: z.boolean().optional(),
   attachmentIdleHours: z.number().positive().finite().optional(),
   panelSizes: z.object({
     explorerWidth: z.number().positive().finite(),
     rightRailWidth: z.number().positive().finite(),
-    changesHeight: z.number().positive().finite(),
-    annotationsHeight: z.number().positive().finite(),
+    upperReviewHeight: z.number().positive().finite(),
     documentMeasure: z.number().positive().finite(),
     themePanel: z.object({
       x: z.number().finite(),
@@ -69,17 +121,44 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.redo]: z.tuple([pathSchema]),
   [IPC.save]: z.tuple([pathSchema]),
   [IPC.setSourceMode]: z.tuple([pathSchema, z.boolean()]),
+  [IPC.updateReadingState]: z.tuple([pathSchema, readingStatePatchSchema]),
+  [IPC.updateWalkthrough]: z.tuple([pathSchema, walkthroughActionSchema]),
+  [IPC.updateTableView]: z.tuple([pathSchema, tableViewSchema]),
+  [IPC.updateFold]: z.tuple([pathSchema, headingReferenceSchema, z.boolean()]),
   [IPC.keepHunk]: z.tuple([pathSchema, idSchema]),
   [IPC.revertHunk]: z.tuple([pathSchema, idSchema, z.boolean().optional()]),
   [IPC.markReviewed]: z.tuple([pathSchema]),
   [IPC.saveRound]: z.tuple([pathSchema, z.number().int().nonnegative()]),
-  [IPC.addAnnotation]: z.tuple([pathSchema, z.object({
-    kind: z.enum(['comment', 'question', 'suggestion']),
-    quote: z.string().min(1),
-    text: textSchema,
-    from: z.number().int().nonnegative(),
-    to: z.number().int().nonnegative()
-  }).strict()]),
+  [IPC.addAnnotation]: z.tuple([pathSchema, z.union([
+    z.object({
+      kind: z.enum(['comment', 'question', 'suggestion']),
+      quote: z.string().min(1),
+      text: textSchema,
+      from: z.number().int().nonnegative(),
+      to: z.number().int().nonnegative(),
+      context: annotationContextSchema.optional(),
+    }).strict(),
+    z.object({
+      kind: z.literal('decision'),
+      quote: z.string().min(1),
+      text: textSchema.refine((value) => value.trim().length > 0),
+      from: z.number().int().nonnegative(),
+      to: z.number().int().nonnegative(),
+      anchor: z.enum(['quote', 'heading']),
+      options: z.array(textSchema.refine((value) => value.trim().length > 0)).min(2).max(50)
+        .refine((values) => new Set(values.map((value) => value.trim())).size === values.length),
+    }).strict(),
+    z.object({
+      kind: z.literal('decision'),
+      quote: z.literal(''),
+      text: textSchema.refine((value) => value.trim().length > 0),
+      from: z.literal(0),
+      to: z.literal(0),
+      anchor: z.literal('document'),
+      options: z.array(textSchema.refine((value) => value.trim().length > 0)).min(2).max(50)
+        .refine((values) => new Set(values.map((value) => value.trim())).size === values.length),
+    }).strict(),
+  ])]),
   [IPC.requoteAnnotation]: z.tuple([pathSchema, idSchema, z.object({
     quote: z.string().min(1),
     from: z.number().int().nonnegative(),
@@ -87,6 +166,11 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   }).strict()]),
   [IPC.reply]: z.tuple([pathSchema, idSchema, textSchema]),
   [IPC.resolveAnnotation]: z.tuple([pathSchema, idSchema]),
+  [IPC.answerDecision]: z.tuple([pathSchema, idSchema, z.union([
+    z.object({ option: textSchema.refine((value) => value.trim().length > 0) }).strict(),
+    z.object({ option: z.null(), other: textSchema.refine((value) => value.trim().length > 0) }).strict(),
+  ])]),
+  [IPC.reopenDecision]: z.tuple([pathSchema, idSchema]),
   [IPC.acceptSuggestion]: z.tuple([pathSchema, idSchema]),
   [IPC.rejectSuggestion]: z.tuple([pathSchema, idSchema]),
   [IPC.acceptAllSuggestions]: z.tuple([pathSchema, idSchema]),
@@ -116,6 +200,7 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.listFonts]: z.tuple([]),
   [IPC.openThemeSample]: z.tuple([]),
   [IPC.resolveLocalImage]: z.tuple([pathSchema, z.string().min(1).max(16_384)]),
+  [IPC.resolveLocalMarkdown]: z.tuple([pathSchema, z.string().min(1).max(16_384)]),
   [IPC.openExternal]: z.tuple([z.string().url().max(16_384)]),
   [IPC.addDictionaryWord]: z.tuple([z.string().min(1).max(512)]),
   [IPC.flashWindow]: z.tuple([]),
@@ -202,6 +287,10 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.redo]: (path: string) => options.api.redo(path),
     [IPC.save]: (path: string) => options.api.save(path),
     [IPC.setSourceMode]: (path: string, source: boolean) => options.api.setSourceMode(path, source),
+    [IPC.updateReadingState]: (path: string, state: Parameters<StrataApi['updateReadingState']>[1]) => options.api.updateReadingState(path, state),
+    [IPC.updateWalkthrough]: (path: string, action: Parameters<StrataApi['updateWalkthrough']>[1]) => options.api.updateWalkthrough(path, action),
+    [IPC.updateTableView]: (path: string, state: Parameters<StrataApi['updateTableView']>[1]) => options.api.updateTableView(path, state),
+    [IPC.updateFold]: (path: string, heading: Parameters<StrataApi['updateFold']>[1], folded: boolean) => options.api.updateFold(path, heading, folded),
     [IPC.keepHunk]: (path: string, hunkId: string) => options.api.keepHunk(path, hunkId),
     [IPC.revertHunk]: (path: string, hunkId: string, confirmMixed?: boolean) => options.api.revertHunk(path, hunkId, confirmMixed),
     [IPC.markReviewed]: (path: string) => options.api.markReviewed(path),
@@ -210,6 +299,8 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.requoteAnnotation]: (path: string, annotationId: string, range: Parameters<StrataApi['requoteAnnotation']>[2]) => options.api.requoteAnnotation(path, annotationId, range),
     [IPC.reply]: (path: string, annotationId: string, text: string) => options.api.reply(path, annotationId, text),
     [IPC.resolveAnnotation]: (path: string, annotationId: string) => options.api.resolveAnnotation(path, annotationId),
+    [IPC.answerDecision]: (path: string, annotationId: string, answer: Parameters<StrataApi['answerDecision']>[2]) => options.api.answerDecision(path, annotationId, answer),
+    [IPC.reopenDecision]: (path: string, annotationId: string) => options.api.reopenDecision(path, annotationId),
     [IPC.acceptSuggestion]: (path: string, annotationId: string) => options.api.acceptSuggestion(path, annotationId),
     [IPC.rejectSuggestion]: (path: string, annotationId: string) => options.api.rejectSuggestion(path, annotationId),
     [IPC.acceptAllSuggestions]: (path: string, agentId: string) => options.api.acceptAllSuggestions(path, agentId),
@@ -239,6 +330,7 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.listFonts]: () => options.api.listFonts(),
     [IPC.openThemeSample]: () => options.api.openThemeSample(),
     [IPC.resolveLocalImage]: (documentPath: string, source: string) => options.api.resolveLocalImage(documentPath, source),
+    [IPC.resolveLocalMarkdown]: (documentPath: string, source: string) => options.api.resolveLocalMarkdown(documentPath, source),
     [IPC.openExternal]: (url: string) => openExternal(url),
     [IPC.addDictionaryWord]: (word: string) => { options.renderer.session.addWordToSpellCheckerDictionary(word) },
     [IPC.flashWindow]: () => flashWindow(),

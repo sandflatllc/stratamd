@@ -17,12 +17,12 @@ afterEach(async () => {
 })
 
 describe('theme schema', () => {
-  it('exposes exactly 40 color swatches with the planned per-group counts and six non-color values', () => {
+  it('exposes exactly 46 color swatches with six dedicated chart colors and six non-color values', () => {
     const colors = THEME_KEYS.filter((entry) => entry.kind === 'color')
-    expect(colors).toHaveLength(40)
-    expect(new Set(colors.map((entry) => entry.key)).size).toBe(40)
+    expect(colors).toHaveLength(46)
+    expect(new Set(colors.map((entry) => entry.key)).size).toBe(46)
     const counts = Object.fromEntries(THEME_GROUPS.map((group) => [group, colors.filter((entry) => entry.group === group).length]))
-    expect(counts).toEqual({ fonts: 0, surfaces: 7, interface: 4, document: 9, controls: 7, changes: 2, people: 6, effects: 5 })
+    expect(counts).toEqual({ fonts: 0, surfaces: 7, interface: 4, document: 9, controls: 7, changes: 2, people: 6, visuals: 6, effects: 5 })
     const nonColor = THEME_KEYS.filter((entry) => entry.kind !== 'color')
     expect(nonColor.map((entry) => entry.key)).toEqual(['fonts.text', 'fonts.code', 'effects.background-style', 'effects.panel-style', 'effects.intensity', 'effects.speed'])
   })
@@ -48,7 +48,7 @@ describe('theme schema', () => {
 
 describe('stock themes', () => {
   it('declare all seven completely: every color and non-color value, explicitly', () => {
-    expect([...STOCK_THEMES.keys()]).toEqual(['strata', 'strata-vivid', 'ember', 'candyfloss', 'isotope', 'nebula', 'paper'])
+    expect([...STOCK_THEMES.keys()]).toEqual(['strata-vivid', 'strata', 'ember', 'candyfloss', 'isotope', 'nebula', 'paper'])
     for (const [id, theme] of STOCK_THEMES) {
       for (const entry of THEME_KEYS) {
         expect(theme.values[entry.key], `${id} ${entry.key}`).toBeDefined()
@@ -66,8 +66,8 @@ describe('stock themes', () => {
     }
   })
 
-  it('use the complete Strata definition as the runtime defaults', () => {
-    expect(DEFAULT_THEME_VALUES).toBe(STOCK_THEMES.get('strata')!.values)
+  it('use the complete Strata Vivid definition as the runtime defaults', () => {
+    expect(DEFAULT_THEME_VALUES).toBe(STOCK_THEMES.get('strata-vivid')!.values)
     expect(BUILT_IN_THEME.set).toHaveLength(THEME_KEYS.length)
     expect(BUILT_IN_THEME.values).toBe(DEFAULT_THEME_VALUES)
   })
@@ -126,7 +126,7 @@ describe('ThemeStore', () => {
     await writeFile(store.pathFor('broken'), '{ not json')
     await writeFile(join(store.directory, 'Bad Name.json'), '{}')
     const list = await store.list()
-    expect(list.map((theme) => theme.id)).toEqual(['strata', 'strata-vivid', 'ember', 'candyfloss', 'isotope', 'nebula', 'paper', 'broken', 'dusk'])
+    expect(list.map((theme) => theme.id)).toEqual(['strata-vivid', 'strata', 'ember', 'candyfloss', 'isotope', 'nebula', 'paper', 'broken', 'dusk'])
     expect(list[0]).toMatchObject({ builtIn: true, broken: false })
     expect(list[7]).toMatchObject({ broken: true, name: 'broken.json' })
     expect(list[7]!.problems[0]!.key).toBe('file')
@@ -135,10 +135,11 @@ describe('ThemeStore', () => {
     expect(dusk.set).toEqual(['document.bold'])
     await expect(store.load('broken')).rejects.toBeInstanceOf(ThemeBrokenError)
     await expect(store.load('missing')).rejects.toMatchObject({ code: 'ENOENT' })
-    expect(await store.load('strata')).toBe(BUILT_IN_THEME)
+    expect(await store.load('strata-vivid')).toBe(BUILT_IN_THEME)
+    expect((await store.load('strata')).name).toBe('Strata')
   })
 
-  it('a sparse user theme falls back to Strata for missing values and Use default removes the value', async () => {
+  it('a sparse user theme falls back to Strata Vivid for missing values and Use default removes the value', async () => {
     const store = new ThemeStore({ configDirectory: await temporaryDirectory() })
     await store.ensureDirectory()
     await writeFile(store.pathFor('dusk'), JSON.stringify({ name: 'Dusk', controls: { positive: '#00ff00' } }))
@@ -149,14 +150,20 @@ describe('ThemeStore', () => {
     expect(normalizeTheme(cleared).values['controls.positive']).toBe(DEFAULT_THEME_VALUES['controls.positive'])
   })
 
-  it('stamps schema-version 2 on write and round-trips unrelated unknown keys', async () => {
+  it('stamps schema-version 3 on write and leaves a sparse v2 file readable without rewriting it', async () => {
     const store = new ThemeStore({ configDirectory: await temporaryDirectory() })
     const written = await store.write('dusk', { name: 'Dusk', notes: 'mine', document: { bold: '#112233' } })
     const onDisk = JSON.parse(await readFile(written.path!, 'utf8'))
-    expect(onDisk).toEqual({ 'schema-version': 2, name: 'Dusk', notes: 'mine', document: { bold: '#112233' } })
+    expect(onDisk).toEqual({ 'schema-version': 3, name: 'Dusk', notes: 'mine', document: { bold: '#112233' } })
     const reloaded = await store.load('dusk')
-    expect(reloaded.sparse['schema-version']).toBe(2)
+    expect(reloaded.sparse['schema-version']).toBe(3)
     expect(reloaded.sparse.notes).toBe('mine')
+    const legacyPath = store.pathFor('legacy')
+    const legacy = { 'schema-version': 2, name: 'Legacy', document: { bold: '#abcdef' } }
+    await writeFile(legacyPath, JSON.stringify(legacy))
+    const loadedLegacy = await store.load('legacy')
+    expect(loadedLegacy.values['visuals.category-1']).toBe(DEFAULT_THEME_VALUES['visuals.category-1'])
+    expect(JSON.parse(await readFile(legacyPath, 'utf8'))).toEqual(legacy)
   })
 
   it('creates copies with unique ids, writes privately, and guards the shipped and active themes', async () => {
@@ -167,7 +174,7 @@ describe('ThemeStore', () => {
     const second = await store.create('My Theme', first.id)
     expect(second.id).toBe('my-theme-2')
     // A copy of a user theme stays sparse: only the source's set keys plus the marker.
-    expect(second.sparse).toEqual({ 'schema-version': 2, name: 'My Theme', document: { bold: '#ff0000' } })
+    expect(second.sparse).toEqual({ 'schema-version': 3, name: 'My Theme', document: { bold: '#ff0000' } })
     await expect(store.write('strata', {})).rejects.toThrow(/ship with StrataMD/)
     await expect(store.delete('strata', first.id)).rejects.toThrow(/ship with StrataMD/)
     await expect(store.delete(first.id, first.id)).rejects.toThrow(/active/)
@@ -187,7 +194,7 @@ describe('ThemeStore', () => {
         const [group, name] = [entry.key.slice(0, entry.key.indexOf('.')), entry.key.slice(entry.key.indexOf('.') + 1)]
         expect(onDisk[group]?.[name], `${id} ${entry.key}`).toBe(STOCK_THEMES.get(id)!.values[entry.key])
       }
-      expect(onDisk['schema-version']).toBe(2)
+      expect(onDisk['schema-version']).toBe(3)
     }
   })
 

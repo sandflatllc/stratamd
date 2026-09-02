@@ -1,7 +1,25 @@
-export type AnnotationKind = 'comment' | 'question' | 'suggestion'
+export type AnnotationKind = 'comment' | 'question' | 'suggestion' | 'decision'
 export type AnnotationStatus = 'open' | 'resolved' | 'orphaned'
+export type AnnotationAnchorKind = 'quote' | 'heading' | 'document'
 export type AttachmentState = 'waiting' | 'working' | 'pending'
 export type PendingHunkStatus = 'pending' | 'mixed'
+
+export interface TableAnnotationContext {
+  kind: 'table-row' | 'table-cell'
+  heading: string | null
+  columns: string[]
+  column: { index: number; label: string } | null
+}
+
+export interface ScreenshotPinAnnotationContext {
+  kind: 'screenshot-pin'
+  component: 'AnnotatedScreenshot'
+  componentLine: number
+  image: string
+  pin: number
+}
+
+export type AnnotationContext = TableAnnotationContext | ScreenshotPinAnnotationContext
 
 export interface AgentIdentity {
   id: string
@@ -35,11 +53,25 @@ export interface ReplyView {
   createdAt?: number
 }
 
+export interface DecisionAnswer {
+  seq: number
+  option: string | null
+  other?: string
+  author: 'user'
+  answeredAt: number
+}
+
+export interface DecisionData {
+  options: readonly string[]
+  answers: readonly DecisionAnswer[]
+}
+
 export interface AnnotationView {
   id: string
   seq: number
   kind: AnnotationKind
   status: AnnotationStatus
+  anchor?: AnnotationAnchorKind
   author: 'user' | AgentIdentity
   quote: string
   text: string
@@ -48,6 +80,8 @@ export interface AnnotationView {
   from: number | null
   to: number | null
   replacement?: string
+  context?: AnnotationContext
+  decision?: DecisionData
   /** False when a suggestion's text cannot be shown inline (a multi-paragraph replacement); the rail row then carries Accept and Reject. */
   inline?: boolean
   /** When the annotation was made, once the annotation log records it; absent until then. */
@@ -90,6 +124,84 @@ export interface DocumentTabView {
   dirty: boolean
 }
 
+export type NavigationTab = 'files' | 'contents'
+export type ReviewTab = 'changes' | 'annotations'
+
+export interface HeadingReference {
+  level: 1 | 2 | 3 | 4 | 5 | 6
+  text: string
+  parentText: string | null
+  previousText: string | null
+  nextText: string | null
+}
+
+export type WalkthroughLevel = 'h2' | 'h2-h3'
+
+export interface WalkthroughMarker {
+  heading: HeadingReference
+  status: 'reviewed' | 'revisit'
+  reviewedHash: string | null
+  sourceHash: string
+}
+
+export interface WalkthroughState {
+  active: boolean
+  level: WalkthroughLevel
+  current: HeadingReference | null
+  excluded: HeadingReference[]
+  markers: WalkthroughMarker[]
+}
+
+export type WalkthroughAction =
+  | { type: 'start' }
+  | { type: 'leave' }
+  | { type: 'set-level'; level: WalkthroughLevel }
+  | { type: 'set-current'; heading: HeadingReference }
+  | { type: 'set-included'; heading: HeadingReference; included: boolean }
+  | { type: 'mark'; heading: HeadingReference; status: 'reviewed' | 'revisit' }
+
+export interface TableReference {
+  headingLevel: number | null
+  headingText: string | null
+  headers: string[]
+  occurrence: number
+}
+
+export interface TableViewState {
+  table: TableReference
+  presentation: 'table' | 'focus-row' | 'compare'
+  sort: { column: number; direction: 'ascending' | 'descending' } | null
+  filter: { column: number; query: string } | null
+  hiddenColumns: number[]
+  selectedRows: number[]
+  focusedRow: number | null
+  focusedColumn: number | null
+  density: 'comfortable' | 'compact'
+  columnWidths: number[]
+}
+
+export interface ReadingState {
+  formatVersion: 4
+  navigationTab: NavigationTab
+  reviewTab: ReviewTab
+  walkthrough: WalkthroughState
+  tables: TableViewState[]
+  foldedHeadings: HeadingReference[]
+}
+
+export interface LocalMarkdownPreview {
+  path: string
+  source: string
+  truncated: boolean
+}
+
+export interface LocalImageResolution {
+  url: string
+  path: string
+  /** File size and nanosecond mtime; used to require screenshot-pin verification after an image changes. */
+  version: string
+}
+
 /**
  * A background job that failed for an open document: `watch` (outside edits
  * are no longer detected), `mirror` (the copy agents read is stale), or
@@ -103,6 +215,7 @@ export interface DocumentView {
   /** One source, mirroring the session's field; rows compare ids against it (PRD §6.6). */
   leadAgentId: string | null
   content: string
+  reading: ReadingState
   sourceMode: boolean
   sourceOnly: boolean
   readOnly: boolean
@@ -171,8 +284,7 @@ export interface PanelSize {
 export interface PanelSizes {
   explorerWidth: number
   rightRailWidth: number
-  changesHeight: number
-  annotationsHeight: number
+  upperReviewHeight: number
   documentMeasure: number
   themePanel: ThemePanelGeometry
   threadPanel: PanelSize
@@ -271,13 +383,18 @@ export interface SendChangeItem {
 /** One comment, reply, resolution, or verdict the composer can include or leave out, keyed by event seq. */
 export interface SendEventItem {
   seq: number
-  kind: 'annotation' | 'reply' | 'resolution' | 'verdict'
-  annotationKind?: 'comment' | 'question' | 'suggestion'
+  kind: 'annotation' | 'reply' | 'answer' | 'resolution' | 'verdict'
+  annotationKind?: AnnotationKind
   author?: 'user' | 'agent'
   name?: string
   text: string
   quote?: string
 }
+
+export type CreateAnnotationRequest =
+  | { kind: 'comment' | 'question' | 'suggestion'; quote: string; text: string; from: number; to: number; context?: AnnotationContext }
+  | { kind: 'decision'; quote: string; text: string; from: number; to: number; anchor: 'quote' | 'heading'; options: string[] }
+  | { kind: 'decision'; quote: ''; text: string; from: 0; to: 0; anchor: 'document'; options: string[] }
 
 export interface SendItems {
   changes: SendChangeItem[]
@@ -352,18 +469,25 @@ export interface StrataApi {
   updateBuffer(path: string, content: string, origin: BufferOrigin): Promise<void>
   undo(path: string): Promise<UndoResult>
   redo(path: string): Promise<RedoResult>
-  resolveLocalImage(documentPath: string, source: string): Promise<string | null>
+  resolveLocalImage(documentPath: string, source: string): Promise<LocalImageResolution | null>
+  resolveLocalMarkdown(documentPath: string, source: string): Promise<LocalMarkdownPreview | null>
   save(path: string): Promise<void>
   setSourceMode(path: string, source: boolean): Promise<void>
+  updateReadingState(path: string, state: Partial<Pick<ReadingState, 'navigationTab' | 'reviewTab'>>): Promise<void>
+  updateWalkthrough(path: string, action: WalkthroughAction): Promise<void>
+  updateTableView(path: string, state: TableViewState): Promise<void>
+  updateFold(path: string, heading: HeadingReference, folded: boolean): Promise<void>
   keepHunk(path: string, hunkId: string): Promise<void>
   revertHunk(path: string, hunkId: string, confirmMixed?: boolean): Promise<void>
   markReviewed(path: string): Promise<void>
   /** The read-only hunks of one save round, computed on demand (PRD §6.7). */
   saveRound(path: string, index: number): Promise<{ hunks: RoundHunkView[] }>
-  addAnnotation(path: string, annotation: { kind: AnnotationKind; quote: string; text: string; from: number; to: number }): Promise<void>
+  addAnnotation(path: string, annotation: CreateAnnotationRequest): Promise<string>
   requoteAnnotation(path: string, annotationId: string, range: { quote: string; from: number; to: number }): Promise<void>
   reply(path: string, annotationId: string, text: string): Promise<void>
   resolveAnnotation(path: string, annotationId: string): Promise<void>
+  answerDecision(path: string, annotationId: string, answer: { option: string | null; other?: string }): Promise<void>
+  reopenDecision(path: string, annotationId: string): Promise<void>
   acceptSuggestion(path: string, annotationId: string): Promise<void>
   rejectSuggestion(path: string, annotationId: string): Promise<void>
   acceptAllSuggestions(path: string, agentId: string): Promise<AcceptAllSuggestionsView>

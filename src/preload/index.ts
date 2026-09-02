@@ -90,14 +90,20 @@ const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyn
   redo: (path) => invoke<'redone' | 'empty'>(IPC.redo, path),
   save: (path) => invoke<void>(IPC.save, path),
   setSourceMode: (path, source) => invoke<void>(IPC.setSourceMode, path, source),
+  updateReadingState: (path, state) => invoke<void>(IPC.updateReadingState, path, state),
+  updateWalkthrough: (path, action) => invoke<void>(IPC.updateWalkthrough, path, action),
+  updateTableView: (path, state) => invoke<void>(IPC.updateTableView, path, state),
+  updateFold: (path, heading, folded) => invoke<void>(IPC.updateFold, path, heading, folded),
   keepHunk: (path, hunkId) => invoke<void>(IPC.keepHunk, path, hunkId),
   revertHunk: (path, hunkId, confirmMixed) => invoke<void>(IPC.revertHunk, path, hunkId, confirmMixed),
   markReviewed: (path) => invoke<void>(IPC.markReviewed, path),
   saveRound: (path, index) => invoke(IPC.saveRound, path, index),
-  addAnnotation: (path, annotation) => invoke<void>(IPC.addAnnotation, path, annotation),
+  addAnnotation: (path, annotation) => invoke<string>(IPC.addAnnotation, path, annotation),
   requoteAnnotation: (path, annotationId, range) => invoke<void>(IPC.requoteAnnotation, path, annotationId, range),
   reply: (path, annotationId, text) => invoke<void>(IPC.reply, path, annotationId, text),
   resolveAnnotation: (path, annotationId) => invoke<void>(IPC.resolveAnnotation, path, annotationId),
+  answerDecision: (path, annotationId, answer) => invoke<void>(IPC.answerDecision, path, annotationId, answer),
+  reopenDecision: (path, annotationId) => invoke<void>(IPC.reopenDecision, path, annotationId),
   acceptSuggestion: (path, annotationId) => invoke<void>(IPC.acceptSuggestion, path, annotationId),
   rejectSuggestion: (path, annotationId) => invoke<void>(IPC.rejectSuggestion, path, annotationId),
   acceptAllSuggestions: (path, agentId) => invoke(IPC.acceptAllSuggestions, path, agentId),
@@ -126,7 +132,8 @@ const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyn
   deleteTheme: (id) => invoke<void>(IPC.deleteTheme, id),
   listFonts: () => invoke<string[]>(IPC.listFonts),
   openThemeSample: () => invoke<void>(IPC.openThemeSample),
-  resolveLocalImage: (documentPath, source) => invoke<string | null>(IPC.resolveLocalImage, documentPath, source)
+  resolveLocalImage: (documentPath, source) => invoke(IPC.resolveLocalImage, documentPath, source),
+  resolveLocalMarkdown: (documentPath, source) => invoke(IPC.resolveLocalMarkdown, documentPath, source)
 }
 
 contextBridge.exposeInMainWorld('strata', Object.freeze(api))
@@ -147,4 +154,16 @@ if (parseVerify !== undefined) {
 // Crash probe for the e2e containment tests (docs/plans/completed/crash-hardening-plan.md §4).
 if (process.env.STRATAMD_CRASH_PROBE === '1') {
   contextBridge.exposeInMainWorld('strataCrashProbe', '1')
+}
+
+// The Phase 6 dependency proof renders the real review diagrams in the same
+// sandboxed renderer as the editor before any Mermaid NodeView is installed.
+if (process.env.STRATAMD_MERMAID_PROOF === '1') {
+  contextBridge.exposeInMainWorld('strataMermaidProofEnabled', '1')
+}
+if (process.env.STRATAMD_PHASE6_DISABLED === '1') {
+  contextBridge.exposeInMainWorld('strataPhase6Disabled', '1')
+}
+if (process.env.STRATAMD_PHASE7_DISABLED === '1') {
+  contextBridge.exposeInMainWorld('strataPhase7Disabled', '1')
 }

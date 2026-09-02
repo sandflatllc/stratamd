@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { basename, dirname, resolve } from 'node:path'
+import { basename, dirname, extname, join, resolve } from 'node:path'
 import { open, realpath, stat, type FileHandle } from 'node:fs/promises'
 import { pathForDescriptor } from '../platform/descriptor-path'
 import type {
@@ -21,11 +21,19 @@ import type {
   SendPreviewRequest,
   StrataApi,
   BufferOrigin,
+  CreateAnnotationRequest,
   DocumentProblem,
+  ReadingState,
+  TableViewState,
+  WalkthroughAction,
+  HeadingReference,
+  LocalMarkdownPreview,
+  LocalImageResolution,
 } from '../shared/contracts'
 import { logError } from './log'
 import {
   acceptAllSuggestions as acceptAllAnnotationSuggestions,
+  answerDecision as answerAnnotationDecision,
   acceptSuggestion as acceptAnnotationSuggestion,
   AnnotationAnchorError,
   annotationDeliverySlice,
@@ -48,9 +56,11 @@ import {
   rejectAllSuggestions as rejectAllAnnotationSuggestions,
   rejectSuggestion as rejectAnnotationSuggestion,
   replyToAnnotation,
+  reopenDecision as reopenAnnotationDecision,
   requoteAnnotation,
   resolveAnnotation as resolveAnnotationThread,
   isHunkVerdict,
+  lastAnnotationEvent,
   recordHunkVerdict,
   verdictQuote,
   type Annotation,
@@ -111,6 +121,7 @@ import {
   type ReviewFrame
 } from '../core/state'
 import { parseMarkdown } from '../core/markdown'
+import { analyzeComponentNode, annotatedScreenshotData, type ComponentAstNode } from '../core/markdown/components'
 import { findMarkdownByIdentity, scanAndSeedExplorer, scanExplorer, type ExplorerScanResult } from './explorer'
 import { readDiskState, readDocument, resolveAllowedLocalPath, resolveDocumentPath, saveDocumentWithHashCheck, seedGhostFromGit } from './files'
 import { localImageUrl } from './protocols'
@@ -120,9 +131,12 @@ import { DEFAULT_SETTINGS, SettingsStore, type Settings, type SettingsRecovery }
 import { BUILT_IN_THEME, listInstalledFonts, ThemeBrokenError, ThemeStore, type LoadedTheme, type ThemeSummary } from './themes'
 import { readSparseValue, THEME_KEY_BY_NAME, THEME_SCHEMA_VERSION, writeSparseValue, normalizeThemeValue, type SparseTheme } from '../shared/theme-keys'
 import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import { THEME_SAMPLE_FILE_NAME, THEME_SAMPLE_MARKDOWN } from '../shared/theme-sample'
 import { atomicWriteFile } from './storage'
+import { CURRENT_READING_VERSION, DEFAULT_READING_STATE, normalizeHeadingReference, normalizeReadingState, readReadingState, writeReadingState } from './reading'
+import { applyWalkthroughAction, buildWalkthroughIndex, reconcileFoldedHeadings, reconcileWalkthroughState, updateWalkthroughIndex, type WalkthroughIndex, type WalkthroughUpdate } from './walkthrough'
+import { reconcileTableViews } from './tables'
+import { upsertTableView } from '../shared/tables'
 import { CURRENT_META_VERSION, DEFAULT_LOCK_TIMEOUT_MS, GhostStore, type AttachmentMeta, type DeliveryMeta, type DocumentLock, type DocumentMeta, type PendingHunkMeta, type SaveAuthorMeta, type SaveMeta, type SegmentMeta } from './storage'
 import { DebouncedMirror, HashReconciler, WatchCoordinator, watchDirectory, type DirectorySubscription } from './watcher'
 import { AttachWaitRegistry } from './socket'
@@ -180,6 +194,10 @@ interface OpenDocumentSession {
   leadAgentId: string | null
   clipboardRecipient: ClipboardRecipient
   sourceMode: boolean
+  reading: ReadingState
+  walkthroughIndex: WalkthroughIndex
+  walkthroughUpdate: Pick<WalkthroughUpdate, 'durationMs' | 'hashedSections' | 'rebuilt'>
+  readingDirty: boolean
   sourceOnly: boolean
   readOnly: boolean
   invalidUtf8: boolean
@@ -655,6 +673,10 @@ export class StrataApplication implements StrataApi {
         leadAgentId: null,
         clipboardRecipient: createClipboardRecipient(),
         sourceMode: true,
+        reading: { ...DEFAULT_READING_STATE },
+        walkthroughIndex: { markdown: state.shadow, headings: [], sections: [], nextId: 1 },
+        walkthroughUpdate: { durationMs: 0, hashedSections: 0, rebuilt: false },
+        readingDirty: false,
         sourceOnly: true,
         readOnly: true,
         invalidUtf8: true,
@@ -723,6 +745,12 @@ export class StrataApplication implements StrataApi {
       this.#now(),
       this.#settings.attachmentIdleTimeoutMs
     ) }
+    const storedReading = await readReadingState(this.#store.pathsForDocument(canonical).reading)
+    const parsedShadow = parseMarkdown(state.shadow)
+    const walkthroughIndex = buildWalkthroughIndex(state.shadow, 1, parsedShadow)
+    const reconciledWalkthrough = reconcileWalkthroughState(storedReading.walkthrough, walkthroughIndex)
+    const reconciledTables = reconcileTableViews(storedReading.tables, state.shadow, parsedShadow)
+    const reconciledFolds = reconcileFoldedHeadings(storedReading.foldedHeadings, walkthroughIndex)
     const session: OpenDocumentSession = {
       path: canonical,
       diskHash: disk.hash,
@@ -735,6 +763,12 @@ export class StrataApplication implements StrataApi {
         : null,
       clipboardRecipient: restoreClipboardRecipient(meta.clipboardRecipient, saved?.clipboardRecipient),
       sourceMode: persistedBoolean(meta.sourceMode) ?? saved?.sourceMode ?? false,
+      reading: { ...storedReading, walkthrough: reconciledWalkthrough, tables: reconciledTables, foldedHeadings: reconciledFolds },
+      walkthroughIndex,
+      walkthroughUpdate: { durationMs: 0, hashedSections: 0, rebuilt: false },
+      readingDirty: JSON.stringify(storedReading.walkthrough) !== JSON.stringify(reconciledWalkthrough)
+        || JSON.stringify(storedReading.tables) !== JSON.stringify(reconciledTables)
+        || JSON.stringify(storedReading.foldedHeadings) !== JSON.stringify(reconciledFolds),
       sourceOnly: false,
       readOnly: false,
       invalidUtf8: false,
@@ -961,6 +995,70 @@ export class StrataApplication implements StrataApi {
     })
   }
 
+  updateReadingState(path: string, patch: Partial<Pick<ReadingState, 'navigationTab' | 'reviewTab'>>): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#require(path)
+      const next: ReadingState = { ...session.reading, ...patch, formatVersion: CURRENT_READING_VERSION }
+      if (!session.invalidUtf8) await writeReadingState(this.#store.pathsForDocument(path).reading, next)
+      session.reading = next
+      this.#publish()
+    })
+  }
+
+  updateWalkthrough(path: string, action: WalkthroughAction): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#require(path)
+      const walkthrough = applyWalkthroughAction(session.reading.walkthrough, action, session.walkthroughIndex)
+      session.reading = {
+        ...session.reading,
+        ...(action.type === 'start' ? { navigationTab: 'contents' as const } : {}),
+        walkthrough,
+        formatVersion: CURRENT_READING_VERSION,
+      }
+      if (!session.invalidUtf8) await writeReadingState(this.#store.pathsForDocument(path).reading, session.reading)
+      session.readingDirty = false
+      this.#publish()
+    })
+  }
+
+  updateTableView(path: string, state: TableViewState): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#require(path)
+      session.reading = normalizeReadingState({
+        ...session.reading,
+        tables: upsertTableView(session.reading.tables, state),
+        formatVersion: CURRENT_READING_VERSION,
+      })
+      if (!session.invalidUtf8) await writeReadingState(this.#store.pathsForDocument(path).reading, session.reading)
+      session.readingDirty = false
+      this.#publish()
+    })
+  }
+
+  updateFold(path: string, heading: HeadingReference, folded: boolean): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#require(path)
+      const existing = reconcileFoldedHeadings(session.reading.foldedHeadings, session.walkthroughIndex)
+      // A folded heading keeps its editor source identity while it is renamed.
+      // That update reaches this method before the debounced buffer does, so a
+      // valid new reference may briefly be absent from the main-process index.
+      // The next open reconciles it conservatively against the updated text.
+      const canonical = reconcileFoldedHeadings([heading], session.walkthroughIndex)[0]
+        ?? normalizeHeadingReference(heading)
+      if (!canonical) return
+      const key = JSON.stringify(canonical)
+      const without = existing.filter((candidate) => JSON.stringify(candidate) !== key)
+      session.reading = normalizeReadingState({
+        ...session.reading,
+        foldedHeadings: folded ? [...without, canonical] : without,
+        formatVersion: CURRENT_READING_VERSION,
+      })
+      if (!session.invalidUtf8) await writeReadingState(this.#store.pathsForDocument(path).reading, session.reading)
+      session.readingDirty = false
+      this.#publish()
+    })
+  }
+
   keepHunk(path: string, hunkId: string): Promise<void> {
     return this.#withSession(path, async () => {
       const session = this.#writable(path)
@@ -1005,22 +1103,28 @@ export class StrataApplication implements StrataApi {
     session.annotations = recordHunkVerdict(session.annotations, type, hunk.author.agentId, verdictQuote(removed, added))
   }
 
-  addAnnotation(path: string, annotation: { kind: 'comment' | 'question' | 'suggestion'; quote: string; text: string; from: number; to: number }): Promise<void> {
+  addAnnotation(path: string, annotation: CreateAnnotationRequest): Promise<string> {
     return this.#withSession(path, async () => {
       const session = this.#writable(path)
-      const start = this.#anchorQuote(session, annotation)
+      const start = annotation.kind === 'decision' && annotation.anchor === 'document'
+        ? 0
+        : this.#anchorQuote(session, annotation)
+      const id = `a_${randomUUID().slice(0, 12)}`
       session.annotations = createAnnotation(session.annotations, session.state.shadow, {
         createdAt: this.#now(),
-        id: `a_${randomUUID().slice(0, 12)}`,
+        id,
         kind: annotation.kind,
         author: 'user',
         quote: annotation.quote,
         text: annotation.text,
-        start
+        start,
+        ...(annotation.kind !== 'decision' && annotation.context ? { context: annotation.context } : {}),
+        ...(annotation.kind === 'decision' ? { anchorKind: annotation.anchor, options: annotation.options } : {}),
       }).log
       session.applicationRedo = []
       await this.#persist(session)
       this.#publish()
+      return id
     })
   }
 
@@ -1073,6 +1177,30 @@ export class StrataApplication implements StrataApi {
       const session = this.#writable(path)
       session.annotations = resolveAnnotationThread(session.annotations, annotationId).log
       session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
+      session.applicationRedo = []
+      await this.#persist(session)
+      this.#publish()
+    })
+  }
+
+  answerDecision(path: string, annotationId: string, answer: { option: string | null; other?: string }): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      session.annotations = answerAnnotationDecision(session.annotations, annotationId, {
+        ...answer,
+        answeredAt: this.#now(),
+      }).log
+      session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
+      session.applicationRedo = []
+      await this.#persist(session)
+      this.#publish()
+    })
+  }
+
+  reopenDecision(path: string, annotationId: string): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      session.annotations = reopenAnnotationDecision(session.annotations, annotationId).log
       session.applicationRedo = []
       await this.#persist(session)
       this.#publish()
@@ -1354,12 +1482,51 @@ export class StrataApplication implements StrataApi {
     this.#publish()
   }
 
-  async resolveLocalImage(documentPath: string, source: string): Promise<string | null> {
+  async resolveLocalImage(documentPath: string, source: string): Promise<LocalImageResolution | null> {
     if (/^[a-z][a-z\d+.-]*:/i.test(source) || source.startsWith('//')) return null
     const session = this.#require(documentPath)
     try {
       const safe = await resolveAllowedLocalPath(source, session.path, this.#settings.explorerFolders)
-      return safe ? localImageUrl(safe) : null
+      if (!safe) return null
+      const details = await stat(safe, { bigint: true })
+      return { url: localImageUrl(safe), path: safe, version: `${details.size}:${details.mtimeNs}` }
+    } catch {
+      return null
+    }
+  }
+
+  async resolveLocalMarkdown(documentPath: string, source: string): Promise<LocalMarkdownPreview | null> {
+    if (/^[a-z][a-z\d+.-]*:/i.test(source) || source.startsWith('//') || source.includes('\0')) return null
+    const session = this.#require(documentPath)
+    let request: string
+    try {
+      request = decodeURIComponent(source.split(/[?#]/u, 1)[0] ?? '')
+    } catch {
+      return null
+    }
+    if (!request || !['.md', '.markdown'].includes(extname(request).toLowerCase())) return null
+    try {
+      const safe = await resolveAllowedLocalPath(request, session.path, this.#settings.explorerFolders)
+      if (!safe || !['.md', '.markdown'].includes(extname(safe).toLowerCase())) return null
+      const limit = 256 * 1024
+      const handle = await open(safe, 'r')
+      try {
+        const bytes = Buffer.alloc(limit + 1)
+        const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0)
+        let end = Math.min(bytesRead, limit)
+        let source: string | null = null
+        while (end >= Math.max(0, Math.min(bytesRead, limit) - 3)) {
+          try {
+            source = new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, end))
+            break
+          } catch {
+            end -= 1
+          }
+        }
+        return source === null ? null : { path: safe, source, truncated: bytesRead > limit }
+      } finally {
+        await handle.close()
+      }
     } catch {
       return null
     }
@@ -1716,6 +1883,9 @@ export class StrataApplication implements StrataApi {
         const failures: QuoteFailureEntry[] = []
         for (const [index, annotation] of request.args.annotations.entries()) {
           const id = `a_${randomUUID().slice(0, 12)}`
+          const quote = annotation.kind === 'decision'
+            ? (annotation.heading ?? annotation.quote ?? '')
+            : annotation.quote
           try {
             next = createAnnotation(next, session.state.shadow, {
               createdAt: this.#now(),
@@ -1724,17 +1894,21 @@ export class StrataApplication implements StrataApi {
               author: 'agent',
               agent: request.args.agent,
               name: author.name,
-              quote: annotation.quote,
+              quote,
               text: annotation.text ?? '',
-              ...(annotation.label ? { label: annotation.label } : {}),
+              ...(annotation.kind !== 'decision' && annotation.label ? { label: annotation.label } : {}),
+              ...(annotation.kind === 'decision' ? {
+                anchorKind: annotation.document === true ? 'document' : annotation.heading !== undefined ? 'heading' : 'quote',
+                options: annotation.options,
+              } : {}),
               // An empty context is a document boundary, so undefined is the only "absent".
               ...(annotation.precededBy === undefined ? {} : { precededBy: annotation.precededBy }),
               ...(annotation.followedBy === undefined ? {} : { followedBy: annotation.followedBy })
             }).log
-            created.push({ id, kind: annotation.kind, quote: annotation.quote })
+            created.push({ id, kind: annotation.kind, quote })
           } catch (error) {
             if (!(error instanceof AnnotationAnchorError)) throw error
-            failures.push({ index, quote: annotation.quote, ...describeQuoteFailure(session.state.shadow, annotation.quote, error) })
+            failures.push({ index, quote, ...describeQuoteFailure(session.state.shadow, quote, error) })
           }
         }
         if (failures.length > 0) throw quoteFailureCommand(failures, 'quote')
@@ -1745,6 +1919,8 @@ export class StrataApplication implements StrataApi {
       }
       case 'edit':
         return this.#editCommand(session, request.args)
+      case 'pin':
+        return this.#pinCommand(session, request.args)
       case 'reply': {
         const replier = session.attachments[request.args.agent]
         if (!replier) throw attachmentNotFound(request.args.agent, file)
@@ -1763,6 +1939,20 @@ export class StrataApplication implements StrataApi {
         await this.#persist(session)
         this.#publish()
         return { replied: id, annotation: request.args.annotation }
+      }
+      case 'answer': {
+        const action = request.args
+        const decision = session.annotations.annotations[action.decision]
+        if (!decision) throw annotationNotFound(action.decision, file)
+        if (decision.kind !== 'decision') {
+          throw new CommandFailure(`${action.decision} is not a decision`, 3, 'NOT_A_DECISION', { annotation: action.decision })
+        }
+        throw new CommandFailure(
+          `Only the user can answer decision ${action.decision}. Reply to its thread to clarify or recommend a choice.`,
+          3,
+          'DECISION_OWNER_REQUIRED',
+          { decision: action.decision, action: 'reply' },
+        )
       }
       case 'send': {
         const message = request.args
@@ -1856,9 +2046,17 @@ export class StrataApplication implements StrataApi {
       }
       case 'resolve': {
         const action = request.args
-        if (!session.attachments[action.agent]) throw attachmentNotFound(action.agent, file)
         const record = session.annotations.annotations[action.annotation]
         if (!record) throw annotationNotFound(action.annotation, file)
+        if (record.kind === 'decision') {
+          throw new CommandFailure(
+            `Only the user can answer or reopen decision ${action.annotation}. Reply to its thread instead.`,
+            3,
+            'DECISION_OWNER_REQUIRED',
+            { decision: action.annotation, action: 'reply' },
+          )
+        }
+        if (!session.attachments[action.agent]) throw attachmentNotFound(action.agent, file)
         if (record.agent !== action.agent && session.leadAgentId !== action.agent) {
           throw this.#notLead(session, `Only the Lead may resolve annotations it did not author; ${action.annotation} belongs to ${record.agent ?? 'the user'}`)
         }
@@ -2017,6 +2215,94 @@ export class StrataApplication implements StrataApi {
         .sort((left, right) => left.index - right.index)
         .map(({ line, match, replace }) => ({ line, match, replace })),
     }
+  }
+
+  async #pinCommand(session: OpenDocumentSession, input: CommandArguments['pin']): Promise<unknown> {
+    if (session.readOnly) throw new CommandFailure('This document is read-only', 3, 'READ_ONLY')
+    if (session.recovery) {
+      throw new CommandFailure('The user must choose Recover or Discard before the buffer can change', 3, 'RECOVERY_PENDING')
+    }
+    const attachment = session.attachments[input.agent]
+    if (!attachment) throw attachmentNotFound(input.agent, session.path)
+    await session.mirror?.flush()
+    const parsed = parseMarkdown(session.state.shadow)
+    const block = parsed.blocks.find((candidate) => {
+      const node = candidate.node as unknown as ComponentAstNode
+      return candidate.span.start.line === input.componentLine
+        && node.type === 'mdxJsxFlowElement'
+        && node.name === 'AnnotatedScreenshot'
+    })
+    if (!block) {
+      throw new CommandFailure(
+        `No AnnotatedScreenshot opens on line ${input.componentLine} in ${session.path}`,
+        2,
+        'COMPONENT_NOT_FOUND',
+        { file: session.path, line: input.componentLine, component: 'AnnotatedScreenshot' },
+      )
+    }
+    const node = block.node as unknown as ComponentAstNode
+    const analysis = analyzeComponentNode(node)
+    const screenshot = annotatedScreenshotData(node)
+    if (!analysis.valid || !screenshot || screenshot.tableEnd === null) {
+      throw new CommandFailure(
+        `AnnotatedScreenshot on line ${input.componentLine} needs valid image and pin-table syntax`,
+        3,
+        'COMPONENT_INVALID',
+        { file: session.path, line: input.componentLine, problems: analysis.problems },
+      )
+    }
+    let image: string | undefined
+    try {
+      image = await resolveAllowedLocalPath(screenshot.imageSource, session.path, this.#settings.explorerFolders)
+    } catch {
+      // The command exposes one stable not-found result for missing and disallowed image paths.
+    }
+    if (!image) {
+      throw new CommandFailure(
+        `The image in AnnotatedScreenshot on line ${input.componentLine} is unavailable`,
+        2,
+        'IMAGE_NOT_FOUND',
+        { file: session.path, line: input.componentLine, source: screenshot.imageSource },
+      )
+    }
+    let version: string
+    try {
+      const details = await stat(image, { bigint: true })
+      version = `${details.size}:${details.mtimeNs}`
+    } catch {
+      throw new CommandFailure(
+        `The image ${image} is unavailable`,
+        2,
+        'IMAGE_NOT_FOUND',
+        { file: session.path, line: input.componentLine, source: screenshot.imageSource, path: image },
+      )
+    }
+    if (screenshot.pins.some((pin) => pin.version !== version)) {
+      throw new CommandFailure(
+        `The image ${screenshot.imageSource} in ${session.path} at line ${input.componentLine} changed; verify existing pin positions in StrataMD before adding another pin`,
+        3,
+        'IMAGE_VERIFICATION_REQUIRED',
+        { file: session.path, line: input.componentLine, source: screenshot.imageSource },
+      )
+    }
+    const pin = Math.max(0, ...screenshot.pins.map((entry) => entry.pin)) + 1
+    const note = input.note.replaceAll('\r', ' ').replaceAll('\n', ' ').replaceAll('\\', '\\\\').replaceAll('|', '\\|').trim()
+    if (!note) throw new CommandFailure('--note must contain visible text', 1, 'USAGE')
+    const tableEnd = screenshot.tableEnd
+    if (tableEnd < block.span.start.offset || tableEnd > block.span.end.offset) {
+      throw new CommandFailure(`AnnotatedScreenshot pin table on line ${input.componentLine} has no source end`, 3, 'COMPONENT_INVALID')
+    }
+    const lineEnding = block.source.includes('\r\n') ? '\r\n' : '\n'
+    const row = `| ${pin} | ${input.x.toFixed(1)} | ${input.y.toFixed(1)} | ${version} | ${note} |`
+    const next = session.state.shadow.slice(0, tableEnd)
+      + lineEnding + row
+      + session.state.shadow.slice(tableEnd)
+    const name = input.name ?? attachment.name
+    session.state = setExternalTag(session.state, input.agent, name, this.#now())
+    await this.#mergeExternalText(session, 'buffer', next)
+    await this.#changed(session)
+    await session.mirror?.flush()
+    return { pinned: pin, component: input.componentLine, x: input.x, y: input.y, note: input.note }
   }
 
   /** One external merge as an application step: the watcher's path, shared with `edit`. */
@@ -2248,6 +2534,17 @@ export class StrataApplication implements StrataApi {
    */
   async #persist(session: OpenDocumentSession, options: PersistOptions = {}): Promise<void> {
     if (session.invalidUtf8) return
+    const walkthrough = updateWalkthroughIndex(session.walkthroughIndex, session.state.shadow, session.reading.walkthrough)
+    session.walkthroughIndex = walkthrough.index
+    session.walkthroughUpdate = { durationMs: walkthrough.durationMs, hashedSections: walkthrough.hashedSections, rebuilt: walkthrough.rebuilt }
+    if (walkthrough.changed) {
+      session.reading = { ...session.reading, walkthrough: walkthrough.state }
+      session.readingDirty = true
+    }
+    if (session.readingDirty) {
+      await writeReadingState(this.#store.pathsForDocument(session.path).reading, session.reading)
+      session.readingDirty = false
+    }
     // One clock read stamps this pass's new segments and any save entry it
     // lands, so a round threshold of strict greater-than never splits a save
     // from the segments persisted with it.
@@ -2476,6 +2773,7 @@ export class StrataApplication implements StrataApi {
       segments: indexedSegments(session.state, session.segmentOffset, session.state.shadow),
       annotations: withAttachmentNames(slice.annotations, this.#attachmentName(session)),
       replies: slice.replies,
+      answers: slice.answers,
       resolved: slice.resolved,
       edits: slice.edits,
       note: request.note,
@@ -2509,8 +2807,31 @@ export class StrataApplication implements StrataApi {
     const agentName = (agent: string | null | undefined) =>
       agent == null ? {} : { name: session.attachments[agent]?.name ?? agent }
     const slice = annotationDeliverySlice(session.annotations, start.cursor, attachment.id)
+    const requoted = new Set(slice.resolved.filter((item) => item.resolution === 'requoted').map((item) => item.id))
+    const answerItems = new Map(slice.answers.map((answer) => [answer.seq, {
+      seq: answer.seq,
+      kind: 'answer' as const,
+      annotationKind: 'decision' as const,
+      author: 'user' as const,
+      text: answer.option === null ? `Other: ${answer.other ?? ''}` : answer.option,
+      quote: answer.parent.text,
+    }]))
+    for (const annotation of slice.annotations) {
+      if (annotation.kind !== 'decision' || annotation.decision === undefined) continue
+      for (const answer of annotation.decision.answers) {
+        if (answer.seq <= start.cursor) continue
+        answerItems.set(answer.seq, {
+          seq: answer.seq,
+          kind: 'answer',
+          annotationKind: 'decision',
+          author: 'user',
+          text: answer.option === null ? `Other: ${answer.other ?? ''}` : answer.option,
+          quote: annotation.text,
+        })
+      }
+    }
     const events: SendEventItem[] = [
-      ...slice.annotations.map((annotation) => ({
+      ...slice.annotations.filter((annotation) => !requoted.has(annotation.id)).map((annotation) => ({
         seq: annotation.seq,
         kind: 'annotation' as const,
         annotationKind: annotation.kind,
@@ -2526,11 +2847,15 @@ export class StrataApplication implements StrataApi {
         ...agentName(reply.agent),
         text: reply.text,
       })),
+      ...answerItems.values(),
       ...slice.resolved.map((resolution) => ({
         seq: resolution.seq,
         kind: 'resolution' as const,
         annotationKind: resolution.kind,
         text: resolution.resolution,
+        ...(resolution.resolution === 'requoted'
+          ? { quote: session.annotations.annotations[resolution.id]?.quote ?? '' }
+          : {}),
       })),
       ...slice.edits.map((edit) => ({
         seq: edit.seq,
@@ -2783,7 +3108,7 @@ function retainConfiguredResolvedAnnotations(
     Object.values(session.annotations.annotations)
       .filter((annotation) =>
         annotation.status === 'resolved'
-        && cursors.every((cursor) => cursor >= annotation.seq),
+        && cursors.every((cursor) => cursor >= lastAnnotationEvent(session.annotations, annotation.id).seq),
       )
       .map((annotation) => annotation.id),
   )
@@ -3165,15 +3490,18 @@ function annotationView(log: AnnotationLog, attachments: Record<string, Attachme
     seq: annotation.seq,
     kind: annotation.kind,
     status: annotation.status,
+    anchor: annotation.anchor.kind ?? 'quote',
     author: annotation.author === 'user'
       ? 'user'
       : agentIdentity(annotation.agent ?? 'agent', attachments[annotation.agent ?? '']?.name ?? annotation.agent ?? 'agent', Math.max(0, ids.indexOf(annotation.agent ?? ''))),
     quote: annotation.quote,
     text: annotation.text,
     ...(annotation.label ? { label: annotation.label } : {}),
+    ...(annotation.context ? { context: annotation.context } : {}),
+    ...(annotation.decision ? { decision: annotation.decision } : {}),
     line: annotation.status === 'orphaned' ? null : annotation.line,
-    from: annotation.status === 'orphaned' ? null : annotation.anchor.start,
-    to: annotation.status === 'orphaned' ? null : annotation.anchor.end,
+    from: annotation.status === 'orphaned' || annotation.anchor.kind === 'document' ? null : annotation.anchor.start,
+    to: annotation.status === 'orphaned' || annotation.anchor.kind === 'document' ? null : annotation.anchor.end,
     ...(annotation.kind === 'suggestion' ? { replacement: annotation.text, inline: suggestionRendersInline(annotation.quote, annotation.text) } : {}),
     ...optionalTime(annotation),
     replies: annotation.replies.map((reply) => ({
@@ -3260,6 +3588,7 @@ function documentView(session: OpenDocumentSession, store: GhostStore, now: numb
     bufferPath: store.pathsForDocument(session.path).buffer,
     leadAgentId: session.leadAgentId,
     content: session.state.shadow,
+    reading: { ...session.reading },
     sourceMode: session.sourceMode,
     sourceOnly: session.sourceOnly,
     readOnly: session.readOnly,

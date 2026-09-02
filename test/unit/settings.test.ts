@@ -29,8 +29,7 @@ describe('settings', () => {
     expect(DEFAULT_SETTINGS.panels).toEqual({
       explorerWidth: 212,
       rightRailWidth: 300,
-      changesHeight: 250,
-      annotationsHeight: 180,
+      upperReviewHeight: 444,
       documentMeasure: 860,
       themePanel: { x: -1, y: -1, width: 360, height: 560 },
       threadPanel: { width: 660, height: -1 },
@@ -57,10 +56,21 @@ describe('settings', () => {
       documentMeasure: 2000,
       explorerFolders: ['./one', './one'],
     })
-    expect(settings.formatVersion).toBe(1)
+    expect(settings.formatVersion).toBe(2)
     expect(settings.theme).toBe('strata-vivid')
     expect(settings.panels).toMatchObject({ explorerWidth: 340, rightRailWidth: 240, documentMeasure: 1600 })
     expect(settings.explorerFolders).toHaveLength(1)
+  })
+
+  it('migrates the two legacy review heights to their former combined allocation', () => {
+    expect(normalizeSettings({ formatVersion: 1, panels: { changesHeight: 300, annotationsHeight: 200 } }).panels.upperReviewHeight).toBe(514)
+    expect(normalizeSettings({ formatVersion: 1, panels: { changesHeight: 9_000, annotationsHeight: 9_000 } }).panels.upperReviewHeight).toBe(954)
+    expect(normalizeSettings({ formatVersion: 1, panels: { changesHeight: 1, annotationsHeight: 1 } }).panels.upperReviewHeight).toBe(224)
+    expect(normalizeSettings({ formatVersion: 1, panels: { changesHeight: 300 } }).panels.upperReviewHeight).toBe(300)
+    expect(normalizeSettings({ formatVersion: 1, panels: { annotationsHeight: 200 } }).panels.upperReviewHeight).toBe(200)
+    expect(normalizeSettings({ formatVersion: 1, panels: { changesHeight: 120 } }).panels.upperReviewHeight).toBe(180)
+    expect(normalizeSettings({ formatVersion: 1, panels: { annotationsHeight: 90 } }).panels.upperReviewHeight).toBe(180)
+    expect(normalizeSettings({ formatVersion: 2, panels: { upperReviewHeight: 620, changesHeight: 100 } }).panels.upperReviewHeight).toBe(620)
   })
 
   it('writes atomically with private modes and supports deep updates', async () => {
@@ -72,7 +82,7 @@ describe('settings', () => {
     expect(updated.panels.explorerWidth).toBe(DEFAULT_SETTINGS.panels.explorerWidth)
     expect((await stat(directory)).mode & 0o777).toBe(0o700)
     expect((await stat(store.path)).mode & 0o777).toBe(0o600)
-    expect(JSON.parse(await readFile(store.path, 'utf8')).formatVersion).toBe(1)
+    expect(JSON.parse(await readFile(store.path, 'utf8')).formatVersion).toBe(2)
   })
 
   it('keeps a theme id, ignores the superseded font and color fields, and clamps theme panel geometry', async () => {

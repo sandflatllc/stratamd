@@ -1,5 +1,6 @@
 import type { Node as ProseMirrorNode } from 'prosemirror-model'
 import type { EditorState, Transaction } from 'prosemirror-state'
+import type { AnnotationContext, AnnotationKind, HeadingReference, TableViewState } from '../shared/contracts'
 
 export interface SourceSpan {
   /** UTF-16 offsets into the original markdown string. */
@@ -67,6 +68,8 @@ export interface EditorSelection {
   explicit?: boolean
   /** True when the selection came from the pointer (or a right-click); false for Shift+Arrow and other keyboard selections. */
   pointer?: boolean
+  annotationKind?: AnnotationKind
+  annotationContext?: AnnotationContext
 }
 
 export interface EditorCommandHandlers {
@@ -102,12 +105,16 @@ export interface StrataEditorHandle {
   exportState(): EditorRestoreState
   setReviewState(ranges: readonly (import('./review').ReviewRange | import('../shared/contracts.js').HunkView)[]): void
   setAnnotations(ranges: readonly (import('./annotations').AnnotationRange | import('../shared/contracts.js').AnnotationView)[]): void
+  setTableViews(states: readonly TableViewState[]): void
+  setFoldedHeadings(headings: readonly HeadingReference[]): void
   getMarkdown(): string
   getState(): EditorState
   setReadOnly(readOnly: boolean): void
   command(command: string): void
   jumpToHunk(id: string): void
   jumpToAnnotation(id: string): void
+  jumpToHeading(id: string): void
+  headingSource(id: string): { quote: string; from: number; to: number; atx: boolean } | null
   /** One-shot client coordinates of an annotation's span, queried at panel-open time. */
   annotationCoordinates(id: string): { left: number; top: number; right: number; bottom: number } | null
   /** Shows drag handles on one open annotation (null hides them). */

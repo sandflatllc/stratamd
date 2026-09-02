@@ -3,13 +3,13 @@
 // variable, and `stratamd theme` prints each key with its description. The
 // table owns labels, descriptions, kinds, grouping, ranges, and highlight
 // metadata; the values themselves live in the stock definitions in
-// bundled-themes.ts, with Strata as the runtime default.
+// bundled-themes.ts, with Strata Vivid as the runtime default.
 
-import { DEFAULT_THEME_VALUES } from './bundled-themes'
+import { DEFAULT_THEME_ID, DEFAULT_THEME_NAME, DEFAULT_THEME_VALUES } from './bundled-themes'
 
 export { DEFAULT_THEME_VALUES }
 
-export const THEME_GROUPS = ['fonts', 'surfaces', 'interface', 'document', 'controls', 'changes', 'people', 'effects'] as const
+export const THEME_GROUPS = ['fonts', 'surfaces', 'interface', 'document', 'controls', 'changes', 'people', 'visuals', 'effects'] as const
 export type ThemeGroup = (typeof THEME_GROUPS)[number]
 
 export const AMBIENT_STYLES = [
@@ -25,7 +25,7 @@ export const AMBIENT_STYLES = [
 export type AmbientStyle = (typeof AMBIENT_STYLES)[number]['id']
 
 /** User theme files written from now on carry this marker. */
-export const THEME_SCHEMA_VERSION = 2
+export const THEME_SCHEMA_VERSION = 3
 
 export type ThemeKind = 'color' | 'font' | 'style' | 'range'
 
@@ -99,6 +99,13 @@ export const THEME_KEYS: readonly ThemeKeyEntry[] = Object.freeze([
   color('people.agent-4', 'Fourth attached agent', 'The fourth attached agent; later agents repeat from the first'),
   color('people.external', 'Outside changes', 'Edits made outside StrataMD, and annotations whose text was removed'),
 
+  color('visuals.category-1', 'Chart series 1', 'First categorical series in registered charts'),
+  color('visuals.category-2', 'Chart series 2', 'Second categorical series in registered charts'),
+  color('visuals.category-3', 'Chart series 3', 'Third categorical series in registered charts'),
+  color('visuals.category-4', 'Chart series 4', 'Fourth categorical series in registered charts'),
+  color('visuals.category-5', 'Chart series 5', 'Fifth categorical series in registered charts'),
+  color('visuals.category-6', 'Chart series 6', 'Sixth categorical series in registered charts'),
+
   color('effects.primary', 'Main effect color', 'The page glow, grids, shimmers, breathing tints, the biggest glows, and some motes and stars'),
   color('effects.secondary', 'Supporting effect color', 'The second aurora band, a supporting glow, and some motes and stars'),
   color('effects.tertiary', 'Third effect color', 'The third aurora band, a third glow, and some motes and stars'),
@@ -116,8 +123,8 @@ export type ThemeValues = Readonly<Record<string, string | number>>
 
 export const THEME_KEY_BY_NAME: ReadonlyMap<string, ThemeKeyEntry> = new Map(THEME_KEYS.map((entry) => [entry.key, entry]))
 
-export const BUILT_IN_THEME_ID = 'strata'
-export const BUILT_IN_THEME_NAME = 'Strata'
+export const BUILT_IN_THEME_ID = DEFAULT_THEME_ID
+export const BUILT_IN_THEME_NAME = DEFAULT_THEME_NAME
 export const BUNDLED_FONTS = ['Baloo 2', 'JetBrains Mono'] as const
 
 export interface ThemeProblem {

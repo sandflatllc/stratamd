@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION = 10 as const
+export const PROTOCOL_VERSION = 12 as const
 export const MAX_REQUEST_BYTES = 1024 * 1024
 /** Agent-to-agent message notes are capped far below the 64 KB Send note limit (PRD §6.7). */
 export const MAX_MESSAGE_BYTES = 4 * 1024
@@ -7,6 +7,7 @@ export const COMMAND_NAMES = [
   'attach',
   'annotate',
   'reply',
+  'answer',
   'state',
   'changes',
   'changed',
@@ -22,19 +23,31 @@ export const COMMAND_NAMES = [
   'resolve',
   'save',
   'docs',
-  'edit'
+  'edit',
+  'pin'
 ] as const
 
 export type CommandName = (typeof COMMAND_NAMES)[number]
 
-export interface AnnotationInput {
-  kind: 'comment' | 'question' | 'suggestion'
-  quote: string
-  text?: string
-  label?: string
-  precededBy?: string
-  followedBy?: string
-}
+export type AnnotationInput =
+  | {
+      kind: 'comment' | 'question' | 'suggestion'
+      quote: string
+      text?: string
+      label?: string
+      precededBy?: string
+      followedBy?: string
+    }
+  | {
+      kind: 'decision'
+      text: string
+      options: string[]
+      quote?: string
+      heading?: string
+      document?: true
+      precededBy?: string
+      followedBy?: string
+    }
 
 export interface AttachArguments {
   file?: string
@@ -60,6 +73,13 @@ export interface ReplyArguments {
   name?: string
   annotation: string
   text: string
+}
+
+export interface AnswerArguments extends FileArguments {
+  agent: string
+  decision: string
+  choice?: string
+  other?: string
 }
 
 export interface StateArguments {
@@ -89,6 +109,15 @@ export interface EditArguments extends FileArguments {
   edits: EditInput[]
   /** Locate every match and report where each would land without changing the buffer. */
   dryRun?: boolean
+}
+
+export interface PinArguments extends FileArguments {
+  agent: string
+  name?: string
+  componentLine: number
+  x: number
+  y: number
+  note: string
 }
 
 export interface FileArguments {
@@ -129,6 +158,7 @@ export interface CommandArguments {
   attach: AttachArguments
   annotate: AnnotateArguments
   reply: ReplyArguments
+  answer: AnswerArguments
   state: StateArguments
   changes: FileArguments
   changed: ChangedArguments
@@ -145,6 +175,7 @@ export interface CommandArguments {
   save: LeadArguments
   docs: Record<string, never>
   edit: EditArguments
+  pin: PinArguments
 }
 
 export type CommandRequest<C extends CommandName = CommandName> = {
@@ -317,6 +348,9 @@ export function isCommandRequest(value: unknown): value is CommandRequest {
       )
     case 'reply':
       return file() && string('agent') && string('name', true) && string('annotation') && stringWithinLimit(args.text)
+    case 'answer':
+      return file() && string('agent') && string('decision')
+        && ((string('choice') && args.other === undefined) || (string('other') && args.choice === undefined))
     case 'state':
       return (
         file(true) &&
@@ -336,6 +370,12 @@ export function isCommandRequest(value: unknown): value is CommandRequest {
         args.edits.every(isEditInput) &&
         optionalBoolean(args.dryRun)
       )
+    case 'pin':
+      return file() && string('agent') && string('name', true) && stringWithinLimit(args.note)
+        && (args.note as string).trim().length > 0
+        && Number.isSafeInteger(args.componentLine) && (args.componentLine as number) > 0
+        && typeof args.x === 'number' && Number.isFinite(args.x) && args.x >= 0 && args.x <= 100
+        && typeof args.y === 'number' && Number.isFinite(args.y) && args.y >= 0 && args.y <= 100
     case 'changes':
     case 'open':
     case 'checkpoint':
@@ -397,6 +437,19 @@ function messageWithinLimit(value: unknown): value is string {
 function isAnnotationInput(value: unknown): value is AnnotationInput {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const input = value as Record<string, unknown>
+  if (input.kind === 'decision') {
+    const anchors = [input.quote, input.heading, input.document === true].filter((anchor) => anchor !== undefined && anchor !== false)
+    return typeof input.text === 'string' && input.text.length > 0 && stringWithinLimit(input.text)
+      && Array.isArray(input.options) && input.options.length >= 2
+      && input.options.every((option) => typeof option === 'string' && option.trim().length > 0 && stringWithinLimit(option))
+      && new Set(input.options.map((option) => (option as string).trim())).size === input.options.length
+      && anchors.length === 1
+      && (input.quote === undefined || (typeof input.quote === 'string' && input.quote.length > 0))
+      && (input.heading === undefined || (typeof input.heading === 'string' && input.heading.length > 0))
+      && (input.document === undefined || input.document === true)
+      && (input.precededBy === undefined || typeof input.precededBy === 'string')
+      && (input.followedBy === undefined || typeof input.followedBy === 'string')
+  }
   return (
     (input.kind === 'comment' || input.kind === 'question' || input.kind === 'suggestion') &&
     typeof input.quote === 'string' &&

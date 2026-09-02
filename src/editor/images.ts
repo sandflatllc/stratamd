@@ -1,5 +1,6 @@
 import type { Node as ProseMirrorNode } from 'prosemirror-model'
 import type { NodeView, NodeViewConstructor } from 'prosemirror-view'
+import { toolbarButton } from './dom.js'
 
 export interface LocalImageRequest {
   documentPath: string
@@ -14,10 +15,121 @@ export interface ResolvedLocalImageBytes {
 export interface ResolvedLocalImageUrl {
   /** Must use StrataMD's main-process-backed strata-image protocol. */
   url: string
+  path?: string
+  version?: string
 }
 
 export type ResolvedLocalImage = ResolvedLocalImageBytes | ResolvedLocalImageUrl
 export type LocalImageResolver = (request: LocalImageRequest) => Promise<ResolvedLocalImage | null>
+
+export interface ImageInspectionState {
+  activeKey: string | null
+  zoom: number
+  panX: number
+  panY: number
+}
+
+export class ImageInspectionManager {
+  private readonly host: HTMLElement
+  private readonly state: ImageInspectionState
+  private overlay: HTMLElement | null = null
+  private origin: HTMLElement | null = null
+
+  constructor(host: HTMLElement, state: ImageInspectionState) {
+    this.host = host
+    this.state = state
+  }
+
+  isActive(key: string): boolean { return this.state.activeKey === key }
+
+  open(key: string, url: string, alt: string, title: string | null, source: string, origin: HTMLElement): void {
+    this.close(false)
+    this.state.activeKey = key
+    this.origin = origin
+    const overlay = document.createElement('section')
+    overlay.className = 'strata-image-inspector'
+    overlay.setAttribute('role', 'dialog')
+    overlay.setAttribute('aria-modal', 'false')
+    overlay.setAttribute('aria-label', `Inspect ${alt}`)
+    const editor = this.host.closest<HTMLElement>('.editor-island')
+    const bounds = editor?.getBoundingClientRect()
+    if (bounds) Object.assign(overlay.style, { left: `${bounds.left}px`, top: `${bounds.top}px`, width: `${bounds.width}px`, height: `${bounds.height}px` })
+    const header = document.createElement('header')
+    const details = document.createElement('div')
+    const heading = document.createElement('strong')
+    heading.textContent = alt
+    const metadata = document.createElement('span')
+    metadata.textContent = [title, source].filter(Boolean).join(' · ')
+    details.append(heading, metadata)
+    const controls = document.createElement('div')
+    controls.append(
+      toolbarButton('Fit', () => this.transform({ zoom: 1, panX: 0, panY: 0 }), { className: 'quiet-button' }),
+      toolbarButton('−', () => this.transform({ zoom: Math.max(0.5, this.state.zoom - 0.1) }), { className: 'quiet-button' }),
+      toolbarButton('+', () => this.transform({ zoom: Math.min(4, this.state.zoom + 0.1) }), { className: 'quiet-button' }),
+      toolbarButton('Close', () => this.close(), { className: 'quiet-button' }),
+    )
+    header.append(details, controls)
+    const viewport = document.createElement('div')
+    viewport.className = 'strata-image-inspector__viewport'
+    viewport.tabIndex = 0
+    const image = document.createElement('img')
+    image.src = url
+    image.alt = alt
+    image.draggable = false
+    viewport.append(image)
+    let drag: { x: number; y: number; panX: number; panY: number } | null = null
+    viewport.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return
+      drag = { x: event.clientX, y: event.clientY, panX: this.state.panX, panY: this.state.panY }
+      viewport.setPointerCapture(event.pointerId)
+    })
+    viewport.addEventListener('pointermove', (event) => {
+      if (!drag) return
+      this.transform({ panX: drag.panX + event.clientX - drag.x, panY: drag.panY + event.clientY - drag.y })
+    })
+    viewport.addEventListener('pointerup', () => { drag = null })
+    viewport.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); this.close(); return }
+      if (!event.key.startsWith('Arrow')) return
+      event.preventDefault()
+      const amount = event.shiftKey ? 40 : 12
+      this.transform({
+        panX: this.state.panX + (event.key === 'ArrowRight' ? amount : event.key === 'ArrowLeft' ? -amount : 0),
+        panY: this.state.panY + (event.key === 'ArrowDown' ? amount : event.key === 'ArrowUp' ? -amount : 0),
+      })
+    })
+    overlay.append(header, viewport)
+    document.body.append(overlay)
+    this.overlay = overlay
+    this.paint()
+    viewport.focus()
+  }
+
+  close(restoreFocus = true): void {
+    const origin = this.origin
+    this.overlay?.remove()
+    this.overlay = null
+    this.state.activeKey = null
+    this.origin = null
+    if (restoreFocus && origin) {
+      requestAnimationFrame(() => {
+        if (origin.isConnected) origin.focus({ preventScroll: true })
+      })
+    }
+  }
+
+  destroy(): void { this.overlay?.remove(); this.overlay = null; this.origin = null }
+
+  private transform(patch: Partial<Pick<ImageInspectionState, 'zoom' | 'panX' | 'panY'>>): void {
+    Object.assign(this.state, patch)
+    this.paint()
+  }
+
+  private paint(): void {
+    const image = this.overlay?.querySelector<HTMLImageElement>('img')
+    if (image) image.style.transform = `translate(${this.state.panX}px, ${this.state.panY}px) scale(${this.state.zoom})`
+  }
+}
 
 const imageMimeTypes = new Set([
   'image/avif',
@@ -98,13 +210,17 @@ class LocalImageNodeView implements NodeView {
   private node: ProseMirrorNode
   private readonly documentPath: string
   private readonly resolve: LocalImageResolver
+  private readonly inspection: ImageInspectionManager | null
+  private readonly key: string
   private generation = 0
   private objectUrl: string | null = null
 
-  constructor(node: ProseMirrorNode, documentPath: string, resolve: LocalImageResolver) {
+  constructor(node: ProseMirrorNode, documentPath: string, resolve: LocalImageResolver, inspection: ImageInspectionManager | null) {
     this.node = node
     this.documentPath = documentPath
     this.resolve = resolve
+    this.inspection = inspection
+    this.key = typeof node.attrs.sourceId === 'string' ? node.attrs.sourceId : String(node.attrs.src ?? '')
     this.dom = document.createElement('span')
     this.dom.className = 'strata-image strata-image--loading'
     this.dom.contentEditable = 'false'
@@ -137,6 +253,9 @@ class LocalImageNodeView implements NodeView {
     this.dom.className = `strata-image strata-image--${modifier}`
     this.dom.setAttribute('role', 'img')
     this.dom.setAttribute('aria-label', this.altText())
+    this.dom.removeAttribute('tabindex')
+    this.dom.onclick = null
+    this.dom.onkeydown = null
     const label = document.createElement('span')
     label.className = 'strata-image__placeholder'
     label.textContent = text
@@ -174,12 +293,14 @@ class LocalImageNodeView implements NodeView {
 
         this.revokeObjectUrl()
         let sourceUrl: string
+        let displayPath = source
         if ('url' in resolved) {
           if (!trustedProtocolUrl(resolved.url)) {
             this.placeholder('Image unavailable', 'missing')
             return
           }
           sourceUrl = resolved.url
+          displayPath = resolved.path ?? source
         } else {
           if (!imageMimeTypes.has(resolved.mimeType.toLowerCase())) {
             this.placeholder('Image unavailable', 'missing')
@@ -201,6 +322,25 @@ class LocalImageNodeView implements NodeView {
         this.dom.className = 'strata-image strata-image--ready'
         this.dom.removeAttribute('role')
         this.dom.removeAttribute('aria-label')
+        this.dom.tabIndex = 0
+        this.dom.setAttribute('role', 'button')
+        this.dom.setAttribute('aria-label', `Inspect ${this.altText()}`)
+        this.dom.dispatchEvent(new CustomEvent('strata-image-ready', { bubbles: true }))
+        const inspect = (): void => this.inspection?.open(
+          this.key,
+          sourceUrl,
+          this.altText(),
+          typeof this.node.attrs.title === 'string' ? this.node.attrs.title : null,
+          displayPath,
+          this.dom,
+        )
+        this.dom.onclick = inspect
+        this.dom.onkeydown = (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          event.preventDefault()
+          inspect()
+        }
+        if (this.inspection?.isActive(this.key)) inspect()
       })
       .catch(() => {
         if (generation === this.generation) this.placeholder('Image unavailable', 'missing')
@@ -212,14 +352,16 @@ class LocalImageNodeView implements NodeView {
 export function createLocalImageNodeView(
   documentPath: string,
   resolve: LocalImageResolver = resolveImageThroughMainProtocol,
+  inspection: ImageInspectionManager | null = null,
 ): NodeViewConstructor {
-  return (node) => new LocalImageNodeView(node, documentPath, resolve)
+  return (node) => new LocalImageNodeView(node, documentPath, resolve, inspection)
 }
 
 /** Convenience wrapper for direct use as EditorProps.nodeViews. */
 export function createLocalImageNodeViews(
   documentPath: string,
   resolve: LocalImageResolver = resolveImageThroughMainProtocol,
+  inspection: ImageInspectionManager | null = null,
 ): Record<'image', NodeViewConstructor> {
-  return { image: createLocalImageNodeView(documentPath, resolve) }
+  return { image: createLocalImageNodeView(documentPath, resolve, inspection) }
 }

@@ -1,6 +1,6 @@
 import { Fragment, type Mark, type Node as ProseMirrorNode, type NodeType } from 'prosemirror-model'
 import { fromMarkdown } from 'mdast-util-from-markdown'
-import { detectMarkdownConventions, parseMarkdown, serializeMarkdown, shiftOffsets } from '../core/markdown/index.js'
+import { analyzeComponentNode, detectMarkdownConventions, parseMarkdown, serializeMarkdown, shiftOffsets } from '../core/markdown/index.js'
 import { hasMathSyntax } from '../core/markdown/parser.js'
 import type {
   MarkdownAst,
@@ -27,6 +27,13 @@ interface MdastPosition {
 
 interface MdastNode {
   type: string
+  name?: string | null
+  attributes?: Array<{
+    type: string
+    name?: string
+    value?: string | { type?: string; value?: string } | null
+    position?: MdastPosition
+  }>
   value?: string
   depth?: number
   ordered?: boolean
@@ -53,6 +60,8 @@ interface LinkDefinition {
 const unsupportedNodeTypes = new Set([
   'yaml',
   'html',
+  'mdxJsxFlowElement',
+  'mdxJsxTextElement',
   'definition',
   'footnoteDefinition',
   'footnoteReference',
@@ -256,6 +265,30 @@ function blockNode(
 ): ProseMirrorNode {
   const attrs = sourceAttrs(sourceId, node, source)
   const raw = sourceSlice(node, source)
+  if (node.type === 'mdxJsxFlowElement') {
+    const component = analyzeComponentNode(node as import('../core/markdown/components.js').ComponentAstNode)
+    if (component.registered) {
+      if (!component.valid) {
+        return strataSchema.nodes.raw_block.create({
+          ...attrs,
+          raw,
+          kind: 'component-error',
+          component: component.name,
+          problem: component.problems[0]?.message ?? 'The component syntax is invalid.',
+        })
+      }
+      const children = (node.children ?? []).map((child, index) => blockNode(
+        child,
+        source,
+        definitions,
+        sourceId ? `${sourceId}:child-${index}` : null,
+      ))
+      return strataSchema.nodes.component_block.create(
+        { ...attrs, name: component.name, properties: component.explicit },
+        children,
+      )
+    }
+  }
   const unsupported = rawKind(node, raw)
   if (unsupported) return strataSchema.nodes.raw_block.create({ ...attrs, raw, kind: unsupported })
 
@@ -312,9 +345,9 @@ function blockNode(
         const cells = (row.children ?? []).map((cell, cellIndex) => {
           const cellType = rowIndex === 0 ? strataSchema.nodes.table_header : strataSchema.nodes.table_cell
           const paragraph = strataSchema.nodes.paragraph.create(null, inlineNodes(cell.children ?? [], source, definitions))
-          return cellType.create({ align: node.align?.[cellIndex] ?? null }, paragraph)
+          return cellType.create({ ...sourceAttrs(null, cell, source), align: node.align?.[cellIndex] ?? null }, paragraph)
         })
-        return strataSchema.nodes.table_row.create(null, cells)
+        return strataSchema.nodes.table_row.create(sourceAttrs(null, row, source), cells)
       })
       return strataSchema.nodes.table.create({ ...attrs, align: node.align ?? [] }, rows)
     }
@@ -473,6 +506,11 @@ const sourceAttrContainers: ReadonlySet<NodeType> = new Set([
   strataSchema.nodes.bullet_list,
   strataSchema.nodes.ordered_list,
   strataSchema.nodes.list_item,
+  strataSchema.nodes.table,
+  strataSchema.nodes.table_row,
+  strataSchema.nodes.table_cell,
+  strataSchema.nodes.table_header,
+  strataSchema.nodes.component_block,
 ])
 
 /**
@@ -1033,8 +1071,53 @@ export function serializeEditorBlock(
   node: ProseMirrorNode,
   lineEnding = '\n',
   conventions?: MarkdownConventions,
+  original?: ParsedMarkdownBlock | null,
 ): string {
   if (node.type === strataSchema.nodes.raw_block) return String(node.attrs.raw ?? '')
+  if (node.type === strataSchema.nodes.component_block) {
+    const originalNode = original?.node.type === strataSchema.nodes.component_block ? original.node : null
+    if (originalNode && original) {
+      const currentChildren = node.content.content
+      const originalChildren = originalNode.content.content
+      const base = Number(originalNode.attrs.sourceFrom)
+      const aligned = currentChildren.length === originalChildren.length
+        && currentChildren.every((child, index) => {
+          const previous = originalChildren[index]
+          return typeof child.attrs.sourceId === 'string'
+            && child.attrs.sourceId === previous?.attrs.sourceId
+            && typeof previous.attrs.sourceFrom === 'number'
+            && typeof previous.attrs.sourceTo === 'number'
+        })
+      if (aligned && Number.isFinite(base)) {
+        let cursor = 0
+        let value = ''
+        for (let index = 0; index < currentChildren.length; index += 1) {
+          const child = currentChildren[index]!
+          const previous = originalChildren[index]!
+          const from = Number(previous.attrs.sourceFrom) - base
+          const to = Number(previous.attrs.sourceTo) - base
+          if (from < cursor || to < from || to > original.raw.length) {
+            value = ''
+            break
+          }
+          value += original.raw.slice(cursor, from)
+          value += child.eq(previous)
+            ? original.raw.slice(from, to)
+            : serializeEditorBlock(child, lineEnding, conventions)
+          cursor = to
+        }
+        if (value) return value + original.raw.slice(cursor)
+      }
+    }
+    const name = String(node.attrs.name)
+    const properties = node.attrs.properties && typeof node.attrs.properties === 'object'
+      ? node.attrs.properties as Record<string, string>
+      : {}
+    const attributes = Object.entries(properties)
+      .map(([key, value]) => ` ${key}="${value.replaceAll('&', '&amp;').replaceAll('"', '&quot;')}"`)
+      .join('')
+    return `<${name}${attributes}>${lineEnding}${serializeChildren(node, lineEnding, conventions)}${lineEnding}</${name}>`
+  }
   if (node.type === strataSchema.nodes.paragraph) return inlineContent(node, conventions, lineEnding)
   if (node.type === strataSchema.nodes.heading) {
     const text = inlineContent(node, conventions, lineEnding)
@@ -1119,13 +1202,13 @@ export function serializeEditorDocument(original: ParsedEditorMarkdown, doc: Pro
   }
 
   if (!stableOrder) {
-    return update.blocks.map((block) => block.unchanged ? block.original!.raw : serializeEditorBlock(block.node, original.lineEnding, original.core.conventions))
+    return update.blocks.map((block) => block.unchanged ? block.original!.raw : serializeEditorBlock(block.node, original.lineEnding, original.core.conventions, block.original))
       .join(original.lineEnding + original.lineEnding)
   }
 
   const rendered: string[] = []
   for (const block of update.blocks) {
-    rendered.push(block.unchanged ? block.original!.raw : serializeEditorBlock(block.node, original.lineEnding, original.core.conventions))
+    rendered.push(block.unchanged ? block.original!.raw : serializeEditorBlock(block.node, original.lineEnding, original.core.conventions, block.original))
   }
   const separator = original.lineEnding + original.lineEnding
   let result = rendered.join(separator)
@@ -1192,7 +1275,7 @@ function tryCreateCoreMarkdownEdits(
     if (group.length === 1 && group[0]!.unchanged && group[0]!.original?.id === sourceBlock.id) continue
     const replacement = group.map((block) => block.unchanged && block.original
       ? block.original.raw
-      : serializeEditorBlock(block.node, original.lineEnding, original.core.conventions))
+      : serializeEditorBlock(block.node, original.lineEnding, original.core.conventions, block.original))
       .join(original.lineEnding + original.lineEnding)
     edits.push({ block: sourceBlock.id, replacement })
   }

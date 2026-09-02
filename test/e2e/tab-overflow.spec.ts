@@ -19,7 +19,7 @@ async function openDocuments(testInfo: TestInfo, count: number): Promise<Page> {
     await writeFile(file, `# Doc ${i}\n`)
     expect((await value.cli(['open', file])).code).toBe(0)
   }
-  await expect(page.getByRole('tab')).toHaveCount(count)
+  await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(count)
   return page
 }
 

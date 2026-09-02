@@ -190,6 +190,7 @@ test('3. the review board is a map: centered spans, rich rows, capped change row
     expect(annotated.code, annotated.stderr).toBe(0)
 
     // A quote containing **bold** renders bold in the row, never raw syntax.
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
     const row = page.locator('.annotations-panel .annotation-row').first()
     await expect(row.locator('strong')).toHaveText('bold')
     await expect(row).not.toContainText('**')
@@ -202,6 +203,7 @@ test('3. the review board is a map: centered spans, rich rows, capped change row
     // A hunk spanning many lines shows at most two lines in its row.
     const appended = `${original}\nAgent addition line one.\n\nAgent addition line two.\n\nAgent addition line three.\n`
     await writeTaggedBuffer(value, 'agent-a', 'Agent A', appended)
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Changes/ }).click()
     const changeRow = page.locator('.changes-panel .change-row').first()
     await expect(changeRow).toContainText('Agent A')
     await expect(changeRow.locator('.change-snippet > span')).toHaveCount(2)
@@ -283,6 +285,7 @@ test('4. the thread panel opens beside a span pages below the fold, works, and k
     expect(annotated.code, annotated.stderr).toBe(0)
 
     // A rail click centers the span and opens the panel beside it, inside the viewport.
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
     await page.locator('.annotations-panel .annotation-row').first().click()
     const panel = page.getByRole('dialog', { name: /comment thread/i })
     await expect(panel).toBeVisible()
@@ -344,6 +347,7 @@ test('4. the thread panel opens beside a span pages below the fold, works, and k
     await page.keyboard.press('Escape')
 
     // Resolve from the panel: the row leaves the rail, Clear resolved empties storage.
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
     await page.locator('.annotations-panel .annotation-row').first().click()
     await expect(panel).toBeVisible()
     await panel.getByRole('button', { name: /Resolve thread/i }).click()
@@ -376,6 +380,7 @@ test('5. an orphaned thread keeps every affordance except the jump', async ({}, 
     await setSource(page, rewritten)
     await value.waitForBuffer(rewritten)
 
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
     const row = page.locator('.annotations-panel .annotation-row').first()
     await expect(row.locator('.annotation-chip')).toHaveText('text removed')
 

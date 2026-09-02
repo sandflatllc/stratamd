@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { claimEscape } from '../escape'
 import type { ThemePanelGeometry, ThemeView } from '../../shared/contracts'
-import { AMBIENT_STYLES, BUNDLED_FONTS, DEFAULT_THEME_VALUES, readSparseValue, THEME_GROUPS, THEME_KEYS, type ThemeGroup, type ThemeKeyEntry } from '../../shared/theme-keys'
+import { AMBIENT_STYLES, BUILT_IN_THEME_ID, BUNDLED_FONTS, DEFAULT_THEME_VALUES, readSparseValue, THEME_GROUPS, THEME_KEYS, type ThemeGroup, type ThemeKeyEntry } from '../../shared/theme-keys'
 import { clampThemePanel } from '../model'
 import { AmbientDecor } from './AmbientDecor'
 
@@ -28,6 +28,7 @@ const GROUP_LABELS: Record<ThemeGroup, string> = {
   controls: 'Controls and status',
   changes: 'Reviewed changes',
   people: 'Authors and outside changes',
+  visuals: 'Charts and data',
   effects: 'Decoration and motion'
 }
 
@@ -39,6 +40,7 @@ const GROUP_NOTES: Record<ThemeGroup, string> = {
   controls: 'Buttons, selections, and status colors.',
   changes: 'Added and removed text under review.',
   people: 'One color per author, so you can see who did what.',
+  visuals: 'The ordered palette for categorical document visuals.',
   effects: 'The glows, motes, and stars behind everything.'
 }
 
@@ -180,7 +182,7 @@ export function ThemePanel({ theme, geometry, onGeometry, onClose, onHighlight, 
           }} onBlur={() => setConfirmDelete(false)}>{confirmDelete ? 'Click again to delete' : 'Delete'}</button>
         )}
       </div>
-      {locked && <p className="theme-panel-note">{active.id === 'strata' ? 'Built-in theme.' : 'Bundled theme.'} Use New from this to make an editable copy.</p>}
+      {locked && <p className="theme-panel-note">{active.id === BUILT_IN_THEME_ID ? 'Built-in theme.' : 'Bundled theme.'} Use New from this to make an editable copy.</p>}
       {active.missing && <p className="theme-panel-note">This theme's file was removed. Its last values stay until you pick another theme.</p>}
       {problems.has('file') && <p className="theme-panel-note">The file is not valid JSON ({problems.get('file')}). Setting any value rewrites it.</p>}
 

@@ -32,6 +32,8 @@ interface ThreadPanelProps {
   onSize(size: PanelSize, commit: boolean): void
   onReply(text: string): void
   onResolve(): void
+  onAnswer(answer: { option: string | null; other?: string }): void
+  onReopen(): void
   /** Accept or reject an open suggestion from the thread (PRD §6.5). */
   onAccept(): void
   onReject(): void
@@ -92,10 +94,12 @@ function ThreadTime({ time, now }: { time: number | undefined; now: number }) {
   return <time className="thread-time" dateTime={new Date(time!).toISOString()} title={absoluteTime(time!)}>{relative}</time>
 }
 
-export function ThreadPanel({ annotation, documentPath, anchor, fallbackCenter, size, zoom, onSize, onReply, onResolve, onAccept, onReject, onClose, opener }: ThreadPanelProps) {
+export function ThreadPanel({ annotation, documentPath, anchor, fallbackCenter, size, zoom, onSize, onReply, onResolve, onAnswer, onReopen, onAccept, onReject, onClose, opener }: ThreadPanelProps) {
   const draftKey = replyDraftKey(documentPath, annotation.id)
   const [reply, setReply] = useState(() => replyDrafts.get(draftKey) ?? '')
   const [position, setPosition] = useState(() => initialPosition(anchor, size.width, fallbackCenter))
+  const [choice, setChoice] = useState('')
+  const [other, setOther] = useState('')
   const root = useRef<HTMLElement>(null)
   const replyBox = useRef<HTMLTextAreaElement>(null)
   const now = useClock()
@@ -191,6 +195,7 @@ export function ThreadPanel({ annotation, documentPath, anchor, fallbackCenter, 
 
   const orphaned = annotation.status === 'orphaned'
   const openSuggestion = annotation.kind === 'suggestion' && annotation.status === 'open'
+  const decision = annotation.kind === 'decision' ? annotation.decision : undefined
   const style: CSSProperties = {
     left: position.x,
     top: position.y,
@@ -220,7 +225,28 @@ export function ThreadPanel({ annotation, documentPath, anchor, fallbackCenter, 
             <span><InlineMarkdown text={item.text} /></span>
           </div>
         ))}
+        {decision?.answers.map((answer) => (
+          <div className="reply decision-answer" style={{ borderColor: USER_ANNOTATION_COLOR }} key={answer.seq}>
+            <strong style={{ color: USER_ANNOTATION_COLOR }}>you<ThreadTime time={answer.answeredAt} now={now} /></strong>
+            <span>{answer.option === null ? <>answered Other: <InlineMarkdown text={answer.other ?? ''} /></> : <>chose “<InlineMarkdown text={answer.option} />”</>}</span>
+          </div>
+        ))}
       </div>
+      {decision && annotation.status !== 'resolved' && (
+        <fieldset className="decision-answer-form">
+          <legend>Choose one</legend>
+          {decision.options.map((option) => (
+            <label key={option}><input type="radio" name={`decision-${annotation.id}`} value={option} checked={choice === option} onChange={() => setChoice(option)} /><span><InlineMarkdown text={option} /></span></label>
+          ))}
+          <label><input type="radio" name={`decision-${annotation.id}`} value="__other__" checked={choice === '__other__'} onChange={() => setChoice('__other__')} /><span>Other</span></label>
+          {choice === '__other__' && <input aria-label="Other answer" value={other} onChange={(event) => setOther(event.target.value)} placeholder="Your answer" />}
+          <button type="button" className="keep-button" disabled={!choice || (choice === '__other__' && !other.trim())} onClick={() => {
+            onAnswer(choice === '__other__' ? { option: null, other: other.trim() } : { option: choice })
+            setChoice('')
+            setOther('')
+          }}>Answer decision</button>
+        </fieldset>
+      )}
       <div className="reply-box">
         <textarea
           ref={replyBox}
@@ -252,7 +278,8 @@ export function ThreadPanel({ annotation, documentPath, anchor, fallbackCenter, 
           <button type="button" className="revert-button" onClick={onReject}>Reject</button>
         </div>
       )}
-      {annotation.status !== 'resolved' && <button type="button" className="resolve-button" onClick={onResolve}>✓ Resolve thread</button>}
+      {annotation.kind === 'decision' && annotation.status === 'resolved' && <button type="button" className="resolve-button" onClick={onReopen}>↺ Reopen decision</button>}
+      {annotation.kind !== 'decision' && annotation.status !== 'resolved' && <button type="button" className="resolve-button" onClick={onResolve}>✓ Resolve thread</button>}
       <button type="button" className="thread-panel-resize" aria-label="Resize thread panel" onPointerDown={startResize} />
     </section>
   )

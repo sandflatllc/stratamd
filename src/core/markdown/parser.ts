@@ -3,6 +3,7 @@ import { frontmatterFromMarkdown } from 'mdast-util-frontmatter'
 import { gfmFromMarkdown } from 'mdast-util-gfm'
 import { frontmatter } from 'micromark-extension-frontmatter'
 import { gfm } from 'micromark-extension-gfm'
+import { analyzeComponentNode, applyComponentStructure, structureComponentDocument } from './components.js'
 import { detectMarkdownConventions } from './conventions.js'
 import type { MarkdownBlock, MarkdownNode, ParsedMarkdown, RawConstructKind, SourcePoint } from './types.js'
 
@@ -65,8 +66,10 @@ export function hasMathSyntax(source: string): boolean {
 }
 
 function classifyRaw(node: MarkdownNode, source: string): RawConstructKind | undefined {
+  const component = analyzeComponentNode(node as unknown as import('./components.js').ComponentAstNode)
+  if (component.registered) return undefined
   if (node.type === 'yaml') return 'frontmatter'
-  if (containsNodeType(node as NodeWithChildren, new Set(['html']))) return 'html'
+  if (containsNodeType(node as NodeWithChildren, new Set(['html', 'mdxJsxFlowElement', 'mdxJsxTextElement']))) return 'html'
   if (node.type === 'definition') return 'link-definition'
   if (containsNodeType(node as NodeWithChildren, new Set(['footnoteDefinition', 'footnoteReference']))) return 'footnote'
   if (/(^|[^\\])\[\[[\s\S]*?\]\]/.test(source)) return 'wiki-link'
@@ -107,10 +110,15 @@ function point(
 export function parseMarkdown(source: string): ParsedMarkdown {
   const bomLength = source.startsWith(BOM) ? BOM.length : 0
   const parseSource = source.slice(bomLength)
-  const ast = fromMarkdown(parseSource, {
+  let ast: ReturnType<typeof fromMarkdown>
+  const componentsEnabled = (globalThis as { strataPhase7Disabled?: unknown }).strataPhase7Disabled !== '1'
+    && (typeof process === 'undefined' || process.env?.STRATAMD_PHASE7_DISABLED !== '1')
+  const structure = componentsEnabled ? structureComponentDocument(parseSource) : null
+  ast = fromMarkdown(structure?.maskedSource ?? parseSource, {
     extensions: [gfm(), frontmatter(['yaml'])],
     mdastExtensions: [gfmFromMarkdown(), frontmatterFromMarkdown(['yaml'])]
   })
+  if (structure) applyComponentStructure(ast as unknown as import('./components.js').ComponentAstNode, structure)
   if (bomLength) shiftOffsets(ast as NodeWithChildren, bomLength)
 
   const offsets = [0, source.length]

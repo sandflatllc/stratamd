@@ -1,4 +1,6 @@
-export const PAYLOAD_VERSION = 11 as const
+import type { AnnotationAnchorKind, AnnotationContext, DecisionAnswer, DecisionData } from '../shared/contracts'
+
+export const PAYLOAD_VERSION = 13 as const
 
 export type PayloadEvent =
   | 'initial'
@@ -50,7 +52,7 @@ export interface PayloadReply {
 
 /** What a reply delivered alone says about its thread, so the recipient need not look it up. */
 export interface PayloadReplyParent {
-  kind: 'comment' | 'question' | 'suggestion'
+  kind: 'comment' | 'question' | 'suggestion' | 'decision'
   quote: string
   line: number
   text: string
@@ -65,15 +67,18 @@ export interface PayloadThreadReply extends PayloadReply {
 export interface PayloadAnnotation {
   id: string
   seq: number
-  kind: 'comment' | 'question' | 'suggestion'
+  kind: 'comment' | 'question' | 'suggestion' | 'decision'
   author: 'user' | 'agent'
   agent: string | null
   /** The authoring attachment's display name, for agent-authored annotations. */
   name?: string
   status: 'open' | 'resolved' | 'orphaned'
+  anchor?: AnnotationAnchorKind
   quote: string
   text: string
   label?: string
+  context?: AnnotationContext
+  decision?: DecisionData
   line: number
   replies: readonly PayloadReply[]
 }
@@ -81,8 +86,19 @@ export interface PayloadAnnotation {
 export interface PayloadResolution {
   id: string
   seq: number
-  kind: 'comment' | 'question' | 'suggestion'
-  resolution: 'accepted' | 'rejected' | 'resolved' | 'orphaned' | 'reattached' | 'requoted'
+  kind: 'comment' | 'question' | 'suggestion' | 'decision'
+  resolution: 'accepted' | 'rejected' | 'resolved' | 'orphaned' | 'reattached' | 'requoted' | 'reopened'
+}
+
+export interface PayloadDecisionAnswer extends DecisionAnswer {
+  annotation: string
+  parent: {
+    text: string
+    options: readonly string[]
+    anchor: AnnotationAnchorKind
+    quote: string
+    line: number
+  }
 }
 
 /** The verdict on the recipient's own kept or reverted buffer edit (PRD §6.3). */
@@ -119,6 +135,7 @@ export interface StrataPayload {
   segments?: readonly PayloadSegment[]
   annotations?: readonly PayloadAnnotation[]
   replies?: readonly PayloadThreadReply[]
+  answers?: readonly PayloadDecisionAnswer[]
   resolved?: readonly PayloadResolution[]
   edits?: readonly PayloadEditVerdict[]
   /** Present when the user left parts of the changed document out of this delivery. */
@@ -171,7 +188,20 @@ function marker(annotation: PayloadAnnotation, quote: string, withReplies = true
 }
 
 function markerLabel(annotation: PayloadAnnotation): string {
-  return annotation.label === undefined || annotation.label.length === 0 ? '' : ` [${headingText(annotation.label)}]`
+  const label = annotation.label === undefined || annotation.label.length === 0 ? '' : ` [${headingText(annotation.label)}]`
+  const choices = annotation.decision === undefined
+    ? ''
+    : ` [Choices: ${annotation.decision.options.map(headingText).join(' | ')} | Other]`
+  if (!annotation.context) return label + choices
+  if (annotation.context.kind === 'screenshot-pin') {
+    return `${label}${choices} [AnnotatedScreenshot line ${annotation.context.componentLine}; pin ${annotation.context.pin}; image ${headingText(annotation.context.image)}]`
+  }
+  const heading = annotation.context.heading ? ` under ${headingText(annotation.context.heading)}` : ''
+  const columns = annotation.context.columns.map(headingText).join(', ')
+  const column = annotation.context.column
+    ? `; column ${annotation.context.column.index + 1} ${headingText(annotation.context.column.label)}`
+    : ''
+  return `${label}${choices} [Table${heading}; columns ${columns}${column}]`
 }
 
 /** A suggestion's heading names it only; its replacement is rendered once, after the struck quote. */
@@ -186,9 +216,17 @@ function replyAuthor(reply: PayloadReply): string {
 }
 
 function renderReplies(annotation: PayloadAnnotation): string {
-  return annotation.replies
+  const replies = annotation.replies
     .map((reply) => `\n  ↳ ${replyAuthor(reply)}: ${escapeAnnotationBrackets(reply.text)}`)
     .join('')
+  const answers = annotation.decision?.answers.map((answer) => `\n  ↳ ${renderDecisionAnswerChoice(answer)}`).join('') ?? ''
+  return replies + answers
+}
+
+function renderDecisionAnswerChoice(answer: Pick<DecisionAnswer, 'option' | 'other'>): string {
+  return answer.option === null
+    ? `user answered Other: ${escapeAnnotationBrackets(answer.other ?? '')}`
+    : `user chose "${escapeAnnotationBrackets(answer.option)}"`
 }
 
 function closeMarker(annotation: PayloadAnnotation, withReplies = true): string {
@@ -219,7 +257,7 @@ function annotationPlacements(
   annotations: readonly PayloadAnnotation[],
 ): AnnotationPlacement[] {
   const placements = annotations
-    .filter((annotation) => annotation.status !== 'resolved')
+    .filter((annotation) => annotation.status !== 'resolved' && annotation.anchor !== 'document')
     .map((annotation) => ({ annotation, start: occurrenceAtLine(document, annotation) }))
     .filter((placement) => placement.start >= 0)
     .sort((left, right) => left.start - right.start || right.annotation.quote.length - left.annotation.quote.length)
@@ -262,7 +300,9 @@ function inlineAnnotations(document: string, placements: readonly AnnotationPlac
 
 function renderAnnotationFallback(annotation: PayloadAnnotation): string {
   const replies = renderReplies(annotation)
-  const location = annotation.status === 'orphaned'
+  const location = annotation.anchor === 'document'
+    ? 'whole document'
+    : annotation.status === 'orphaned'
     ? 'orphaned'
     : `${annotation.status}, line ${annotation.line}`
   return `- ${annotation.id} ${annotation.kind} (${authorName(annotation)}) [${location}]: ${escapeAnnotationBrackets(annotation.text)}\n  quote: ${escapeAnnotationBrackets(annotation.quote)}${replies}`
@@ -289,6 +329,20 @@ function renderOpenQuestions(annotations: readonly PayloadAnnotation[]): string[
       `- ${annotation.id} on line ${annotation.line}: ${headingText(annotation.text)}`,
     ),
   ]
+}
+
+function renderOpenDecisions(annotations: readonly PayloadAnnotation[]): string[] {
+  const decisions = annotations.filter(
+    (annotation) => annotation.kind === 'decision' && annotation.status === 'open' && annotation.decision !== undefined,
+  )
+  if (decisions.length === 0) return []
+  return [[
+    'Open decisions:',
+    ...decisions.map((annotation) => {
+      const location = annotation.anchor === 'document' ? 'whole document' : `line ${annotation.line}`
+      return `- ${annotation.id} (${location}): ${headingText(annotation.text)}\n  choices: ${annotation.decision!.options.map(headingText).join(' | ')} | Other`
+    }),
+  ].join('\n')]
 }
 
 /**
@@ -342,7 +396,7 @@ function surroundingParagraph(document: string, annotation: PayloadAnnotation): 
 }
 
 function renderAnnotation(annotation: PayloadAnnotation, document?: string): string {
-  if (document !== undefined) {
+  if (document !== undefined && annotation.anchor !== 'document') {
     const paragraph = surroundingParagraph(document, annotation)
     if (paragraph !== null) return paragraph
   }
@@ -371,8 +425,14 @@ function renderResolution(resolution: PayloadResolution): string {
     orphaned: 'orphaned',
     reattached: 'reattached',
     requoted: 'requoted; it is listed above with its new quote',
+    reopened: 'reopened',
   }
   return `${resolution.id} (${resolution.kind}) was ${verb[resolution.resolution]}.`
+}
+
+function renderDecisionAnswer(answer: PayloadDecisionAnswer): string {
+  const location = answer.parent.anchor === 'document' ? 'whole document' : `line ${answer.parent.line}`
+  return `${answer.annotation} ← ${renderDecisionAnswerChoice(answer)}\n  decision: ${headingText(answer.parent.text)} (${location}); choices: ${answer.parent.options.map(headingText).join(' | ')} | Other`
 }
 
 /**
@@ -387,7 +447,7 @@ export interface PayloadTrimOptions {
   brief?: boolean
   /** Drop `document`; `text` already carries the whole buffer with annotations inlined. */
   textOnly?: boolean
-  /** Drop `document`; `text` becomes the open-questions list, so `annotations` is the content. */
+  /** Drop `document`; `text` becomes the open-question and open-decision lists. */
   annotationsOnly?: boolean
 }
 
@@ -408,7 +468,7 @@ export function trimPayload<T extends { document?: unknown; text?: unknown; anno
   }
   if (options.annotationsOnly) {
     const annotations = isAnnotationList(payload.annotations) ? payload.annotations : []
-    return { ...withoutDocument, annotations, text: renderOpenQuestions(annotations).join('\n') } as T
+    return { ...withoutDocument, annotations, text: [...renderOpenQuestions(annotations), ...renderOpenDecisions(annotations)].join('\n') } as T
   }
   return withoutDocument as T
 }
@@ -433,6 +493,7 @@ export function renderPayloadText(input: PayloadInput, context: RenderContext = 
     const fallbacks = renderAnnotationFallbacks(annotations, placements)
     if (fallbacks !== null) sections.push(fallbacks)
     sections.push(...renderOpenQuestions(annotations))
+    sections.push(...renderOpenDecisions(annotations))
     return sections.filter((section) => section.length > 0).join('\n\n')
   }
 
@@ -451,6 +512,9 @@ export function renderPayloadText(input: PayloadInput, context: RenderContext = 
   }
   if (input.replies !== undefined && input.replies.length > 0) {
     sections.push(['Replies:', ...input.replies.map(renderThreadReply)].join('\n'))
+  }
+  if (input.answers !== undefined && input.answers.length > 0) {
+    sections.push(['Decision answers:', ...input.answers.map(renderDecisionAnswer)].join('\n'))
   }
   if (input.resolved !== undefined && input.resolved.length > 0) {
     sections.push(['Resolutions:', ...input.resolved.map(renderResolution)].join('\n'))

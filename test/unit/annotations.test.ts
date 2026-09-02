@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   acceptAllSuggestions,
   acceptSuggestion,
+  answerDecision,
   annotationDeliverySlice,
   annotationStepChanges,
   redoAnnotationStep,
@@ -20,12 +21,78 @@ import {
   rejectAllSuggestions,
   recordHunkVerdict,
   replyToAnnotation,
+  reopenDecision,
   requoteAnnotation,
   resolveAnnotation,
   verdictQuote,
 } from '../../src/core/annotations'
 
 describe('annotation log', () => {
+  it('creates quote, heading, and document decisions with validated choices', () => {
+    const document = '# Plan\n\nChoose this path.\n'
+    const quote = createAnnotation(createAnnotationLog(), document, {
+      id: 'dq', kind: 'decision', author: 'agent', agent: 'ag_1', quote: 'Choose this path.', text: 'Which path?', options: ['Fast', 'Safe'], anchorKind: 'quote',
+    })
+    expect(quote.annotation).toMatchObject({ kind: 'decision', status: 'open', anchor: { kind: 'quote' }, decision: { options: ['Fast', 'Safe'], answers: [] } })
+    const heading = createAnnotation(quote.log, document, {
+      id: 'dh', kind: 'decision', author: 'user', quote: '# Plan', text: 'Ship it?', options: ['Yes', 'No'], anchorKind: 'heading',
+    })
+    expect(heading.annotation).toMatchObject({ anchor: { kind: 'heading' }, line: 1 })
+    const whole = createAnnotation(heading.log, document, {
+      id: 'dd', kind: 'decision', author: 'user', quote: '', text: 'Overall?', options: ['Approve', 'Revise'], anchorKind: 'document',
+    })
+    expect(whole.annotation).toMatchObject({ quote: '', line: 1, anchor: { kind: 'document', start: 0, end: 0 } })
+    expect(() => createAnnotation(createAnnotationLog(), document, { id: 'few', kind: 'decision', author: 'user', quote: '', text: 'x', options: ['one'], anchorKind: 'document' })).toThrow('at least two')
+    expect(() => createAnnotation(createAnnotationLog(), document, { id: 'dup', kind: 'decision', author: 'user', quote: '', text: 'x', options: ['same', 'same'], anchorKind: 'document' })).toThrow('distinct')
+    expect(() => createAnnotation(createAnnotationLog(), document, { id: 'blank', kind: 'decision', author: 'user', quote: '', text: '  ', options: ['a', 'b'], anchorKind: 'document' })).toThrow('prompt')
+    expect(() => createAnnotation(createAnnotationLog(), document, { id: 'bad-heading', kind: 'decision', author: 'user', quote: 'Plan', text: 'x', options: ['a', 'b'], anchorKind: 'heading' })).toThrow('complete ATX heading')
+    expect(() => createAnnotation(createAnnotationLog(), '## Setup and installation\n', { id: 'partial-heading', kind: 'decision', author: 'user', quote: '## Setup', text: 'x', options: ['a', 'b'], anchorKind: 'heading' })).toThrow('complete heading line')
+    expect(createAnnotation(createAnnotationLog(), '## Setup and installation\n', { id: 'full-heading', kind: 'decision', author: 'user', quote: '## Setup and installation', text: 'x', options: ['a', 'b'], anchorKind: 'heading' }).annotation.anchor.start).toBe(0)
+  })
+
+  it('records owner answers, preserves them across reopen, and delivers structured answer events', () => {
+    const created = createAnnotation(createAnnotationLog(), 'Body', {
+      id: 'd1', kind: 'decision', author: 'agent', agent: 'ag_1', quote: '', text: 'Which?', options: ['A', 'B'], anchorKind: 'document',
+    })
+    const answered = answerDecision(created.log, 'd1', { option: 'B', answeredAt: 100 })
+    expect(answered.event).toMatchObject({ seq: 2, type: 'answered', author: 'user' })
+    expect(answered.annotation).toMatchObject({ status: 'resolved', decision: { answers: [{ seq: 2, option: 'B', author: 'user', answeredAt: 100 }] } })
+    const reopened = reopenDecision(answered.log, 'd1')
+    expect(reopened.event).toMatchObject({ seq: 3, type: 'reopened' })
+    expect(reopened.annotation.decision?.answers).toHaveLength(1)
+    const other = answerDecision(reopened.log, 'd1', { option: null, other: 'A little of both', answeredAt: 200 })
+    expect(other.annotation.decision?.answers).toHaveLength(2)
+    expect(annotationDeliverySlice(other.log, 1, 'ag_2')).toMatchObject({
+      answers: [
+        { annotation: 'd1', seq: 2, option: 'B', parent: { text: 'Which?', options: ['A', 'B'], anchor: 'document' } },
+        { annotation: 'd1', seq: 4, option: null, other: 'A little of both' },
+      ],
+      resolved: [{ id: 'd1', seq: 3, kind: 'decision', resolution: 'reopened' }],
+    })
+    expect(() => answerDecision(other.log, 'd1', { option: 'A', answeredAt: 300 })).toThrow('reopened')
+    expect(() => resolveAnnotation(reopened.log, 'd1')).toThrow('Answer the decision')
+
+    const wholeHistory = annotationDeliverySlice(answered.log, 0, 'ag_2')
+    expect(wholeHistory.annotations).toMatchObject([
+      { id: 'd1', seq: 1, decision: { answers: [{ seq: 2, option: 'B' }] } },
+    ])
+    expect(wholeHistory.answers).toEqual([])
+
+    const withoutAnswer = annotationDeliverySlice(answered.log, 0, 'ag_2', new Set([2]))
+    expect(withoutAnswer.annotations).toMatchObject([
+      { id: 'd1', status: 'open', decision: { answers: [] } },
+    ])
+    expect(withoutAnswer.answers).toEqual([])
+  })
+
+  it('allows an orphaned decision to be answered', () => {
+    const created = createAnnotation(createAnnotationLog(), 'Choose this.', {
+      id: 'd1', kind: 'decision', author: 'agent', agent: 'ag_1', quote: 'Choose this.', text: 'Which?', options: ['A', 'B'], anchorKind: 'quote',
+    })
+    const orphaned = relocateAnnotation(created.log, 'd1', 'The quote is gone.').log
+    expect(orphaned.annotations.d1?.status).toBe('orphaned')
+    expect(answerDecision(orphaned, 'd1', { option: 'A', answeredAt: 100 }).annotation.status).toBe('resolved')
+  })
   it('assigns one monotonic sequence to every create, reply, and resolve event', () => {
     const document = 'A useful sentence.\n\nAnother paragraph.'
     const created = createAnnotation(createAnnotationLog(), document, {
@@ -50,6 +117,37 @@ describe('annotation log', () => {
     ])
     expect(resolved.annotation.replies[0]).toMatchObject({ id: 'r1', seq: 2 })
     expect(eventsAfter(resolved.log, 1).map((event) => event.seq)).toEqual([2, 3])
+  })
+
+  it('preserves structured table context through storage and delivery', () => {
+    const document = '| Name | Verdict |\n| --- | --- |\n| Alpha | Unprotected |'
+    const context = {
+      kind: 'table-cell' as const,
+      heading: 'Island review',
+      columns: ['Name', 'Verdict'],
+      column: { index: 1, label: 'Verdict' },
+    }
+    const created = createAnnotation(createAnnotationLog(), document, {
+      id: 'a_table', kind: 'question', author: 'user', quote: '| Alpha | Unprotected |', text: 'What protects this?', context,
+    })
+    expect(created.annotation.context).toEqual(context)
+    expect(annotationDeliverySlice(created.log, 0, 'ag_1').annotations[0]?.context).toEqual(context)
+  })
+
+  it('preserves structured screenshot-pin context through storage and delivery', () => {
+    const quote = '| 2 | 80.0 | 30.0 | 68:123 | Tight spacing |'
+    const context = {
+      kind: 'screenshot-pin' as const,
+      component: 'AnnotatedScreenshot' as const,
+      componentLine: 12,
+      image: './review.png',
+      pin: 2,
+    }
+    const created = createAnnotation(createAnnotationLog(), quote, {
+      id: 'a_pin', kind: 'question', author: 'user', quote, text: 'Is this too tight?', context,
+    })
+    expect(created.annotation.context).toEqual(context)
+    expect(annotationDeliverySlice(created.log, 0, 'ag_1').annotations[0]?.context).toEqual(context)
   })
 
   it('requires an exact, unambiguous quote and uses up to 32 context characters', () => {
@@ -192,7 +290,7 @@ describe('annotation log', () => {
     expect(cleared.nextSeq).toBe(3)
     expect(annotationDeliverySlice(cleared, 0, 'ag_1')).toEqual({
       cursor: 2,
-      annotations: [],
+      annotations: [], answers: [],
       replies: [],
       resolved: [],
       edits: [],
@@ -210,7 +308,7 @@ describe('annotation log', () => {
       { id: 'a1', seq: 2, kind: 'suggestion', resolution: 'accepted' },
     ])
     expect(annotationDeliverySlice(accepted.log, 1, 'ag_other').resolved).toEqual([])
-    expect(annotationDeliverySlice(created.log, 0, 'ag_other').annotations[0]).not.toHaveProperty('anchor')
+    expect(annotationDeliverySlice(created.log, 0, 'ag_other').annotations[0]).toHaveProperty('anchor', 'quote')
   })
 
   it('delivers a reply to an older annotation alone, without replaying its thread', () => {
@@ -242,7 +340,7 @@ describe('annotation log', () => {
     const resolved = resolveAnnotation(replied.log, 'a2', 'agent', 'ag_1')
 
     const self = annotationDeliverySlice(resolved.log, 1, 'ag_1')
-    expect(self).toEqual({ cursor: 4, annotations: [], replies: [], resolved: [], edits: [], excluded: 0 })
+    expect(self).toEqual({ cursor: 4, annotations: [], replies: [], answers: [], resolved: [], edits: [], excluded: 0 })
 
     const peer = annotationDeliverySlice(resolved.log, 1, 'ag_2')
     expect(peer.annotations.map((annotation) => annotation.id)).toEqual(['a2'])
@@ -357,7 +455,7 @@ describe('requoting an annotation', () => {
     const cursor = created.nextSeq - 1
     const moved = requoteAnnotation(created, document, 'c1', { quote: 'Third one', start: document.indexOf('Third one') }).log
     const slice = annotationDeliverySlice(moved, cursor, 'ag_1')
-    expect(slice.annotations.map((annotation) => [annotation.id, annotation.quote])).toEqual([['c1', 'Third one']])
+    expect(slice.annotations.map((annotation) => [annotation.id, annotation.seq, annotation.deliveredAt, annotation.quote])).toEqual([['c1', 1, 2, 'Third one']])
     expect(slice.resolved).toEqual([{ id: 'c1', seq: 2, kind: 'comment', resolution: 'requoted' }])
   })
 
@@ -588,7 +686,7 @@ describe('names and reply context in deliveries', () => {
       id: 'a1', kind: 'comment', author: 'agent', agent: 'ag_1', name: 'GPT', label: 'Tone', quote: 'hello', text: 'hi',
     })
     expect(toDeliveredAnnotation(created.annotation)).toMatchObject({ name: 'GPT', label: 'Tone' })
-    expect(toDeliveredAnnotation(created.annotation)).not.toHaveProperty('anchor')
+    expect(toDeliveredAnnotation(created.annotation)).toHaveProperty('anchor', 'quote')
 
     const unnamed = createAnnotation(created.log, 'hello world', {
       id: 'a2', kind: 'comment', author: 'agent', agent: 'ag_2', quote: 'world', text: 'w',

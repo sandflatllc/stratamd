@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import type { AnnotationKind, AnnotationView, BufferOrigin, DocumentView, HunkView, PanelSize, RedoResult, SpellingContext, UndoResult } from '../../shared/contracts'
+import type { AnnotationContext, AnnotationKind, AnnotationView, BufferOrigin, DocumentView, HunkView, PanelSize, RedoResult, SpellingContext, TableViewState, UndoResult } from '../../shared/contracts'
 import type { EditorSelection, RendererEditorFactory, RendererEditorHandle } from '../editorAdapter'
 import { bannerFor, currentAnnotation } from '../model'
 import { NO_MATCHES, type FindResult } from '../../editor/find'
@@ -13,6 +13,7 @@ import { ResolveSuggestionDialog } from './Overlays'
 import { Resizer } from './Resizer'
 import { ThreadPanel, type SpanAnchor } from './ThreadPanel'
 import { Toolbar, type EditorCommand } from './Toolbar'
+import type { EditorHeading } from '../../editor/headings'
 
 interface EditorPaneProps {
   document: DocumentView
@@ -31,18 +32,25 @@ interface EditorPaneProps {
   onRedo(): Promise<RedoResult>
   onKeepHunk(id: string): void
   onRevertHunk(hunk: HunkView): void
-  onAddAnnotation(kind: AnnotationKind, quote: string, text: string, from: number, to: number): void
+  onAddAnnotation(kind: Exclude<AnnotationKind, 'decision'>, quote: string, text: string, from: number, to: number, context?: AnnotationContext): void
+  onAddDecision(quote: string, prompt: string, options: string[], from: number, to: number): void
+  onTableView(state: TableViewState): void
   onAdjustAnnotation(id: string, quote: string, from: number, to: number): void
   onReply(id: string, text: string): void
   onResolve(id: string): void
+  onAnswerDecision(id: string, answer: { option: string | null; other?: string }): void
+  onReopenDecision(id: string): void
   onAccept(id: string): void
   onReject(id: string): void
   selectedAnnotation: AnnotationView | null
   onSelectAnnotation(annotation: AnnotationView | null): void
   jumpHunkId: string | null
   jumpAnnotationId: string | null
+  jumpHeading: { id: string; token: number } | null
+  onHeadings(headings: readonly EditorHeading[], activeId: string | null, durationMs: number): void
   /** What opened the current thread from outside the editor; focus returns there on close (§5.11). */
   threadOpener?: RefObject<HTMLElement | null>
+  editorRef?: RefObject<RendererEditorHandle | null>
 }
 
 /** Scroll offsets per open document, so returning to a tab lands where the user left it. */
@@ -58,7 +66,8 @@ export function EditorPane(props: EditorPaneProps) {
   const [selection, setSelection] = useState<EditorSelection | null>(null)
   const [spelling, setSpelling] = useState<SpellingContext | null>(null)
   const [bannerDismissed, setBannerDismissed] = useState(false)
-  const editor = useRef<RendererEditorHandle | null>(null)
+  const localEditor = useRef<RendererEditorHandle | null>(null)
+  const editor = props.editorRef ?? localEditor
   const scroll = useRef<HTMLDivElement>(null)
   const dismissedSelection = useRef<string | null>(null)
   const banner = bannerDismissed ? null : bannerFor(document)
@@ -156,7 +165,8 @@ export function EditorPane(props: EditorPaneProps) {
   }, [document.path])
   useEffect(() => { if (props.jumpHunkId) editor.current?.jumpToHunk?.(props.jumpHunkId) }, [props.jumpHunkId])
   useEffect(() => { if (props.jumpAnnotationId) editor.current?.jumpToAnnotation?.(props.jumpAnnotationId) }, [props.jumpAnnotationId])
-  const activeAnnotationId = selectedAnnotation?.status === 'open' ? selectedAnnotation.id : null
+  useEffect(() => { if (props.jumpHeading) editor.current?.jumpToHeading?.(props.jumpHeading.id) }, [props.jumpHeading])
+  const activeAnnotationId = selectedAnnotation?.status === 'open' && selectedAnnotation.anchor !== 'document' ? selectedAnnotation.id : null
   useEffect(() => { editor.current?.setActiveAnnotation?.(activeAnnotationId) }, [activeAnnotationId])
   // One-shot coordinate query at open time, after the jump effect above has
   // centered the span; a movable panel needs no live anchor tracking.
@@ -210,6 +220,7 @@ export function EditorPane(props: EditorPaneProps) {
             readOnly={document.readOnly}
             pendingHunks={document.pendingHunks}
             annotations={document.annotations}
+            tableViews={document.reading.tables}
             historyStep={document.historyStep}
             onChange={props.onBufferChange}
             onSelection={(next) => {
@@ -231,15 +242,20 @@ export function EditorPane(props: EditorPaneProps) {
               if (document.sourceOnly && !source) { editor.current?.toggleSource(true); return }
               props.onToggleSource(source)
             }}
+            onHeadings={props.onHeadings}
+            onTableView={props.onTableView}
+            foldedHeadings={document.reading.foldedHeadings}
+            onFold={(heading, folded) => { void window.strata.updateFold(document.path, heading, folded) }}
             onRevertHunk={(id) => { const hunk = document.pendingHunks.find((item) => item.id === id); if (hunk) props.onRevertHunk(hunk) }}
             onAcceptSuggestion={props.onAccept}
             onRejectSuggestion={props.onReject}
             onUndo={props.onUndo}
             onRedo={props.onRedo}
             resolveLocalImage={async ({ source }) => {
-              const url = await window.strata.resolveLocalImage(document.path, source)
-              return url ? { url } : null
+              return window.strata.resolveLocalImage(document.path, source)
             }}
+            resolveLocalMarkdown={(source) => window.strata.resolveLocalMarkdown(document.path, source)}
+            onOpenLocalMarkdown={(path) => { void window.strata.openDocument(path) }}
           />
         </div>
         <AnnotationComposer
@@ -249,9 +265,10 @@ export function EditorPane(props: EditorPaneProps) {
           zoom={props.zoom}
           onSize={props.onComposerSize}
           onDismiss={dismissComposer}
-          onSubmit={(kind, text) => {
+          onSubmit={(kind, text, options) => {
             if (!selection) return
-            props.onAddAnnotation(kind, selection.quote, text, selection.from, selection.to)
+            if (kind === 'decision') props.onAddDecision(selection.quote, text, options ?? [], selection.from, selection.to)
+            else props.onAddAnnotation(kind, selection.quote, text, selection.from, selection.to, selection.annotationContext)
             dismissComposer()
           }}
           onReplaceWord={(suggestion) => {
@@ -294,6 +311,8 @@ export function EditorPane(props: EditorPaneProps) {
             onReply={(text) => props.onReply(selectedAnnotation.id, text)}
             // Resolving an open suggestion is neither Accept nor Reject: confirm first (PRD §6.5).
             onResolve={() => selectedAnnotation.kind === 'suggestion' && selectedAnnotation.status === 'open' ? setConfirmResolve(true) : props.onResolve(selectedAnnotation.id)}
+            onAnswer={(answer) => props.onAnswerDecision(selectedAnnotation.id, answer)}
+            onReopen={() => props.onReopenDecision(selectedAnnotation.id)}
             onAccept={() => props.onAccept(selectedAnnotation.id)}
             onReject={() => props.onReject(selectedAnnotation.id)}
             onClose={() => props.onSelectAnnotation(null)}

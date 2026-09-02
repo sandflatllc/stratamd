@@ -5,6 +5,7 @@ import { access, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { AnnotationContext } from '../../src/shared/contracts'
 
 export interface Hunk {
   oldStart: number
@@ -23,11 +24,18 @@ export interface Segment {
 
 export interface Annotation {
   id: string
-  kind: 'comment' | 'question' | 'suggestion'
+  seq?: number
+  kind: 'comment' | 'question' | 'suggestion' | 'decision'
   status: 'open' | 'resolved' | 'orphaned'
+  anchor?: 'quote' | 'heading' | 'document'
   quote: string
   text: string
+  context?: AnnotationContext
   resolution?: 'accepted' | 'rejected'
+  decision?: {
+    options: string[]
+    answers: Array<{ seq: number; option: string | null; other?: string; author: 'user'; answeredAt: number }>
+  }
 }
 
 export interface Payload {
@@ -43,6 +51,14 @@ export interface Payload {
   attachments?: Array<{ agent: string; name: string; state: string; lead: boolean }>
   segments?: Segment[]
   annotations?: Annotation[]
+  answers?: Array<{
+    annotation: string
+    seq: number
+    option: string | null
+    other?: string
+    author: 'user'
+    answeredAt: number
+  }>
   resolved?: Array<{ id: string; kind: string; resolution: string }>
   edits?: Array<{ seq: number; verdict: 'kept' | 'reverted'; quote: string }>
   partial?: boolean
@@ -180,7 +196,7 @@ export class Scenario {
     })
     this.page = await this.app.firstWindow()
     await this.page.waitForLoadState('domcontentloaded')
-    await expect(this.page.getByText(file.split('/').at(-1)!, { exact: false }).first()).toBeVisible()
+    await expect(this.page.getByText(file.split('/').at(-1)!, { exact: false }).first()).toBeVisible({ timeout: 5_000 })
     return this.page
   }
 
@@ -270,10 +286,10 @@ export class Scenario {
     await rename(temporary, path)
   }
 
-  async waitForBuffer(expected: string): Promise<void> {
+  async waitForBuffer(expected: string, timeoutMs = 5_000): Promise<void> {
     const payload = await this.state()
     expect(payload.buffer).toBeTruthy()
-    await expect.poll(async () => readFile(payload.buffer!, 'utf8')).toBe(expected)
+    await expect.poll(async () => readFile(payload.buffer!, 'utf8'), { timeout: timeoutMs }).toBe(expected)
   }
 }
 
@@ -316,7 +332,9 @@ export function expectPayload(result: CliResult): Payload {
 export async function sourceEditor(page: Page) {
   const source = page.getByRole('textbox', { name: /source editor/i })
   if (await source.count()) return source.first()
-  await page.keyboard.press(primaryKey('/'))
+  // Setup helpers should not depend on whichever control happened to receive
+  // focus at launch. Shortcut behavior is exercised directly in dedicated specs.
+  await page.getByRole('button', { name: /source$/i }).click()
   await expect(source).toBeVisible()
   return source
 }

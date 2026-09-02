@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { AGENT_HELP } from '../../src/cli/agent-help.js'
 import { deriveAgentId, runCli, sessionAgentId, type CliRuntime } from '../../src/cli/commands.js'
 import { PAYLOAD_VERSION } from '../../src/core/payload.js'
-import { PROTOCOL_VERSION, type CommandRequest, type CommandResponse } from '../../src/cli/protocol.js'
+import { CommandFailure, PROTOCOL_VERSION, type CommandRequest, type CommandResponse } from '../../src/cli/protocol.js'
 import { SocketTimeoutError, SocketUnavailableError, socketPathForEnvironment } from '../../src/cli/socket-client.js'
 import { setup, type SetupCommandRunner } from '../../src/cli/setup.js'
 
@@ -84,7 +84,9 @@ describe('agent contract', () => {
     for (const argv of [
       ['annotate', file, '--kind', 'comment', '--quote', 'Test'],
       ['edit', file, '--match', 'Test', '--replace', 'Tested'],
+      ['pin', file, '--component', '3', '--x', '25', '--y', '75', '--note', 'Inspect this'],
       ['reply', file, '--to', 'a1', '--text', 'Done'],
+      ['answer', file, '--decision', 'd1', '--choice', 'Yes'],
       ['send', file, '--text', 'ping'],
       ['lead', file],
       ['accept', file, '--annotation', 'a1'],
@@ -236,6 +238,65 @@ describe('command parsing and output', () => {
     })
     expect(io.stdout()).toBe('{"ok":true}\n')
     expect(io.stderr()).toBe('')
+  })
+
+  it('parses decision choices and exactly one explicit anchor', async () => {
+    const file = await document()
+    let sent: CommandRequest | undefined
+    const io = captureIo()
+    expect(await runCli([
+      'annotate', file, '--kind', 'decision', '--text', 'Which path?',
+      '--option', 'Fast', '--option', 'Safe', '--heading', '# Test', '--as', 'ag_test',
+    ], {
+      ...io.runtime,
+      request: async (request) => {
+        sent = request
+        return { version: PROTOCOL_VERSION, id: request.id, ok: true, result: { created: [] } }
+      },
+    })).toBe(0)
+    expect(sent).toMatchObject({ command: 'annotate', args: { annotations: [{ kind: 'decision', text: 'Which path?', options: ['Fast', 'Safe'], heading: '# Test' }] } })
+
+    for (const argv of [
+      ['annotate', file, '--kind', 'decision', '--text', 'Which?', '--option', 'One', '--document', '--as', 'ag_test'],
+      ['annotate', file, '--kind', 'decision', '--text', 'Which?', '--option', 'One', '--option', 'Two', '--document', '--quote', 'Test', '--as', 'ag_test'],
+      ['answer', file, '--decision', 'd1', '--choice', 'One', '--other', 'Two', '--as', 'ag_test'],
+    ]) {
+      const invalid = captureIo()
+      expect(await runCli(argv, { ...invalid.runtime, request: async () => { throw new Error('must not send') } })).toBe(1)
+      expect(JSON.parse(invalid.stderr())).toMatchObject({ code: 'USAGE' })
+    }
+  })
+
+  it('parses bounded screenshot pin placement as one online command', async () => {
+    const file = await document()
+    let sent: CommandRequest | undefined
+    const io = captureIo()
+    expect(await runCli([
+      'pin', file, '--component', '3', '--x', '24.5', '--y', '100',
+      '--note', 'Inspect the long row', '--as', 'ag_test', '--name', 'Reviewer',
+    ], {
+      ...io.runtime,
+      request: async (request) => {
+        sent = request
+        return { version: PROTOCOL_VERSION, id: request.id, ok: true, result: { pinned: 2, component: 3, x: 24.5, y: 100, note: 'Inspect the long row' } }
+      },
+    })).toBe(0)
+    expect(sent).toMatchObject({
+      command: 'pin',
+      args: { file, agent: 'ag_test', name: 'Reviewer', componentLine: 3, x: 24.5, y: 100, note: 'Inspect the long row' },
+    })
+    expect(JSON.parse(io.stdout())).toEqual({ pinned: 2, component: 3, x: 24.5, y: 100, note: 'Inspect the long row' })
+
+    for (const argv of [
+      ['pin', file, '--component', '0', '--x', '10', '--y', '20', '--note', 'Note', '--as', 'ag_test'],
+      ['pin', file, '--component', '3', '--x', '-1', '--y', '20', '--note', 'Note', '--as', 'ag_test'],
+      ['pin', file, '--component', '3', '--x', '10', '--y', '101', '--note', 'Note', '--as', 'ag_test'],
+      ['pin', file, '--component', '3', '--x', '10', '--y', '20', '--note', '   ', '--as', 'ag_test'],
+    ]) {
+      const invalid = captureIo()
+      expect(await runCli(argv, { ...invalid.runtime, request: async () => { throw new Error('must not send') } })).toBe(1)
+      expect(JSON.parse(invalid.stderr())).toMatchObject({ code: 'USAGE' })
+    }
   })
 
   it('validates annotate JSON before sending one all-or-nothing request', async () => {
@@ -507,7 +568,6 @@ describe('command parsing and output', () => {
       ['lead', file, '--as', 'ag_a'],
       ['accept', file, '--annotation', 'a1', '--as', 'ag_a'],
       ['reject', file, '--annotation', 'a1', '--as', 'ag_a'],
-      ['resolve', file, '--annotation', 'a1', '--as', 'ag_a'],
       ['save', file, '--as', 'ag_a'],
       ['docs'],
       ['edit', file, '--as', 'ag_a', '--match', 'Test', '--replace', 'Tested'],
@@ -571,8 +631,8 @@ describe('command parsing and output', () => {
     expect(await runCli(['theme', '--json'], { ...json.runtime, environment })).toBe(0)
     const described = JSON.parse(json.stdout())
     expect(described).toMatchObject({ id: 'dusk', name: 'Dusk', path: join(config, 'themes', 'dusk.json') })
-    expect(described.set).toEqual({ 'document.bold': '#112233', 'document.link': '#4f8dff' })
-    expect(described.defaults['document.italic']).toBe('#dbdade')
+    expect(described.set).toEqual({ 'document.bold': '#112233', 'document.link': '#5ee0b4' })
+    expect(described.defaults['document.italic']).toBe('#ff7070')
     expect(described.keys.find((entry: { key: string }) => entry.key === 'document.bold').label).toBe('Bold text')
     expect(described.problems).toEqual([{ key: 'document.link', reason: 'not a color (use #rrggbb)' }])
 
@@ -590,6 +650,60 @@ describe('command parsing and output', () => {
     await rm(config, { recursive: true, force: true })
   })
 
+  it('discovers the closed component registry offline in readable and JSON forms', async () => {
+    const json = captureIo()
+    expect(await runCli(['components', '--json'], json.runtime)).toBe(0)
+    const registry = JSON.parse(json.stdout()) as { components: Array<{ name: string; example: string }> }
+    expect(registry.components.map((component) => component.name)).toEqual([
+      'Callout', 'Verdict', 'MetricStrip', 'PhaseBoard', 'DecisionMatrix',
+      'BeforeAfter', 'Chart', 'EvidenceChain', 'AnnotatedScreenshot',
+    ])
+    expect(registry.components.every((component) => component.example.includes(`<${component.name}`))).toBe(true)
+
+    const readable = captureIo()
+    expect(await runCli(['components', 'Callout'], readable.runtime)).toBe(0)
+    expect(readable.stdout()).toContain('Callout — Keep important context')
+    expect(readable.stdout()).toContain('kind: context | warning | implication | support')
+    expect(readable.stdout()).toContain('<Callout kind="warning">')
+
+    const missing = captureIo()
+    expect(await runCli(['components', 'Timeline'], missing.runtime)).toBe(2)
+    expect(JSON.parse(missing.stderr())).toMatchObject({ code: 'COMPONENT_NOT_FOUND', detail: { name: 'Timeline' } })
+  })
+
+  it('validates component files offline without rewriting them', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'stratamd-components-'))
+    temporaryDirectories.push(directory)
+    const validFile = join(directory, 'valid.md')
+    const invalidFile = join(directory, 'invalid.md')
+    const validSource = '# Report\n\n<Callout kind="support">\nSupporting **evidence**.\n</Callout>\n'
+    const invalidSource = '<div>ordinary HTML</div>\n\n<UnknownVisual>\nNo registry entry.\n</UnknownVisual>\n\n<Verdict color="pink">\nShip.\n</Verdict>\n'
+    await writeFile(validFile, validSource)
+    await writeFile(invalidFile, invalidSource)
+
+    const valid = captureIo()
+    expect(await runCli(['validate', validFile, '--json'], valid.runtime)).toBe(0)
+    expect(JSON.parse(valid.stdout())).toMatchObject({
+      file: validFile,
+      valid: true,
+      components: [{ name: 'Callout', line: 3 }],
+      problems: [],
+    })
+    expect(await readFile(validFile, 'utf8')).toBe(validSource)
+
+    const invalid = captureIo()
+    expect(await runCli(['validate', invalidFile], invalid.runtime)).toBe(0)
+    expect(invalid.stdout()).toContain('Needs attention:')
+    expect(invalid.stdout()).toContain('COMPONENT_UNKNOWN')
+    expect(invalid.stdout()).toContain('COMPONENT_PROPERTY_UNKNOWN')
+    expect(invalid.stdout()).not.toContain('ordinary HTML')
+    expect(await readFile(invalidFile, 'utf8')).toBe(invalidSource)
+
+    const missing = captureIo()
+    expect(await runCli(['validate', join(directory, 'missing.md'), '--json'], missing.runtime)).toBe(2)
+    expect(JSON.parse(missing.stderr())).toMatchObject({ code: 'NOT_FOUND' })
+  })
+
   it('uses an injected offline handler when the app is absent', async () => {
     const file = await document()
     const io = captureIo()
@@ -602,6 +716,26 @@ describe('command parsing and output', () => {
     })
     expect(code).toBe(0)
     expect(JSON.parse(io.stdout())).toMatchObject({ event: 'state', file })
+  })
+
+  it.each(['answer', 'resolve'] as const)('routes %s through the offline decision check', async (command) => {
+    const file = await document()
+    const io = captureIo()
+    let offlineCommand = ''
+    const args = command === 'answer'
+      ? ['answer', file, '--decision', 'd1', '--choice', 'A', '--as', 'ag_a']
+      : ['resolve', file, '--annotation', 'd1', '--as', 'ag_a']
+    const code = await runCli(args, {
+      ...io.runtime,
+      request: async () => { throw new SocketUnavailableError('absent', 'ENOENT') },
+      offlineHandler: async (request) => {
+        offlineCommand = request.command
+        throw new CommandFailure('Only the user can act on decision d1', 3, 'DECISION_OWNER_REQUIRED', { decision: 'd1' })
+      },
+    })
+    expect(code).toBe(3)
+    expect(offlineCommand).toBe(command)
+    expect(JSON.parse(io.stderr())).toMatchObject({ code: 'DECISION_OWNER_REQUIRED', detail: { decision: 'd1' } })
   })
 })
 

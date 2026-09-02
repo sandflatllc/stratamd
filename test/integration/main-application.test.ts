@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, readlink, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, readlink, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -8,6 +8,10 @@ import type { Attachment } from '../../src/core/delivery'
 import { PROTOCOL_VERSION, type CommandRequest } from '../../src/cli/protocol'
 import { SettingsStore } from '../../src/main/settings'
 import { GhostStore } from '../../src/main/storage'
+import { tableReferences } from '../../src/main/tables'
+import { defaultTableView } from '../../src/shared/tables'
+import { annotatedScreenshotData, type ComponentAstNode } from '../../src/core/markdown/components'
+import { parseMarkdown } from '../../src/core/markdown'
 
 const applications: StrataApplication[] = []
 
@@ -98,13 +102,184 @@ async function trackedDescriptors(path: string): Promise<string[]> {
 }
 
 describe('StrataApplication', () => {
+  it('keeps private shell tab choices in reading.json across close and restart without touching meta.json', async () => {
+    const value = await fixture()
+    await value.app.openDocument(value.path)
+    const metaBefore = await readFile(value.store.pathsForDocument(value.path).meta, 'utf8')
+    await value.app.updateReadingState(value.path, { navigationTab: 'contents', reviewTab: 'annotations' })
+    expect((await value.app.getState()).activeDocument?.reading).toEqual({ formatVersion: 4, navigationTab: 'contents', reviewTab: 'annotations', walkthrough: { active: false, level: 'h2', current: null, excluded: [], markers: [] }, tables: [], foldedHeadings: [] })
+    expect(await readFile(value.store.pathsForDocument(value.path).meta, 'utf8')).toBe(metaBefore)
+    await value.app.closeDocument(value.path)
+    await value.app.openDocument(value.path)
+    expect((await value.app.getState()).activeDocument?.reading).toMatchObject({ navigationTab: 'contents', reviewTab: 'annotations' })
+    await value.app.shutdown()
+    const reopened = await createStrataApplication({ store: value.store, settingsStore: value.settingsStore, watch: false })
+    await reopened.openDocument(value.path)
+    expect((await reopened.getState()).activeDocument?.reading).toMatchObject({ navigationTab: 'contents', reviewTab: 'annotations' })
+  })
+
+  it('persists table views outside meta.json and drops a table whose identity disappears', async () => {
+    const source = '# Report\n\n## Islands\n\n| Name | Score |\n| --- | ---: |\n| Alpha | 12 |\n| Beta | 3 |\n'
+    const value = await fixture(source)
+    await value.app.openDocument(value.path)
+    const metaBefore = await readFile(value.store.pathsForDocument(value.path).meta, 'utf8')
+    const table = tableReferences(source)[0]!
+    const state = {
+      ...defaultTableView(table),
+      presentation: 'compare' as const,
+      sort: { column: 1, direction: 'descending' as const },
+      hiddenColumns: [1],
+      selectedRows: [0, 1],
+      focusedRow: 1,
+      focusedColumn: 0,
+      density: 'compact' as const,
+      columnWidths: [240, 110],
+    }
+    await value.app.updateTableView(value.path, state)
+    expect((await value.app.getState()).activeDocument?.reading.tables).toEqual([state])
+    expect(await readFile(value.store.pathsForDocument(value.path).meta, 'utf8')).toBe(metaBefore)
+
+    await value.app.closeDocument(value.path)
+    await value.app.openDocument(value.path)
+    expect((await value.app.getState()).activeDocument?.reading.tables).toEqual([state])
+    await value.app.shutdown()
+    const reopened = await createStrataApplication({ store: value.store, settingsStore: value.settingsStore, watch: false })
+    await reopened.openDocument(value.path)
+    expect((await reopened.getState()).activeDocument?.reading.tables).toEqual([state])
+
+    await reopened.closeDocument(value.path)
+    await writeFile(value.path, source.replace('| Name | Score |', '| Island | Score |'))
+    await reopened.openDocument(value.path)
+    expect((await reopened.getState()).activeDocument?.reading.tables).toEqual([])
+  })
+
+  it('returns a table annotation id and sends exact row text with structured context', async () => {
+    const source = '# Report\n\n## Islands\n\n| Name | Verdict |\n| --- | --- |\n| Alpha | Unprotected |\n'
+    const value = await fixture(source)
+    await value.app.openDocument(value.path)
+    await command(value.app, 'attach', { file: value.path, agent: 'ag_1', name: 'Editor', timeout: 0 })
+    const quote = '| Alpha | Unprotected |'
+    const from = source.indexOf(quote)
+    const context = {
+      kind: 'table-cell' as const,
+      heading: 'Islands',
+      columns: ['Name', 'Verdict'],
+      column: { index: 1, label: 'Verdict' },
+    }
+    const id = await value.app.addAnnotation(value.path, { kind: 'question', quote, text: 'What protects this?', from, to: from + quote.length, context })
+    const annotation = (await value.app.getState()).activeDocument?.annotations.find((candidate) => candidate.id === id)
+    expect(annotation).toMatchObject({ id, quote, context })
+    const preview = await value.app.previewSend(value.path, { recipients: ['ag_1'], note: '', includeExternal: false })
+    expect(preview[0]?.text).toContain('[Table under Islands; columns Name, Verdict; column 2 Verdict]')
+  })
+
+  it('keeps reading choices session-only for invalid UTF-8 without creating a ghost entry', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'stratamd-reading-invalid-'))
+    const path = join(root, 'invalid.md')
+    await writeFile(path, Buffer.from([0xff, 0xfe]))
+    const store = new GhostStore({ dataDirectory: join(root, 'data') })
+    const app = await createStrataApplication({ store, settingsStore: new SettingsStore({ configDirectory: join(root, 'config') }), watch: false })
+    await app.openDocument(path)
+    await app.updateReadingState(path, { navigationTab: 'contents', reviewTab: 'annotations' })
+    expect((await app.getState()).activeDocument?.reading).toMatchObject({ navigationTab: 'contents', reviewTab: 'annotations' })
+    expect(await store.hasDocument(path)).toBe(false)
+    await expect(readFile(store.pathsForDocument(path).reading, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('updates Reviewed and Revisit through user and agent text paths without touching meta.json', async () => {
+    const original = '# Guide\n\n## One\n\nBody.\n\n## Two\n\nEnd.\n'
+    const value = await fixture(original)
+    await value.app.openDocument(value.path)
+    const metaBefore = await readFile(value.store.pathsForDocument(value.path).meta, 'utf8')
+    await value.app.updateWalkthrough(value.path, { type: 'start' })
+    const first = (await value.app.getState()).activeDocument!.reading.walkthrough.current!
+    await value.app.updateWalkthrough(value.path, { type: 'mark', heading: first, status: 'reviewed' })
+    expect((await value.app.getState()).activeDocument!.reading.walkthrough.markers[0]!.status).toBe('reviewed')
+    expect(await readFile(value.store.pathsForDocument(value.path).meta, 'utf8')).toBe(metaBefore)
+
+    const userEdit = original.replace('Body.', 'User changed body.')
+    await value.app.updateBuffer(value.path, userEdit)
+    expect((await value.app.getState()).activeDocument!.reading.walkthrough.markers[0]!.status).toBe('revisit')
+    await value.app.updateBuffer(value.path, original, 'history')
+    expect((await value.app.getState()).activeDocument!.reading.walkthrough.markers[0]!.status).toBe('reviewed')
+    await value.app.updateBuffer(value.path, userEdit, 'history')
+    expect((await value.app.getState()).activeDocument!.reading.walkthrough.markers[0]!.status).toBe('revisit')
+    await value.app.updateBuffer(value.path, original, 'history')
+    expect((await value.app.getState()).activeDocument!.reading.walkthrough.markers[0]!.status).toBe('reviewed')
+
+    await command(value.app, 'attach', { file: value.path, agent: 'ag_1', name: 'Editor', timeout: 0 })
+    await command(value.app, 'edit', { file: value.path, agent: 'ag_1', edits: [{ match: 'Body.', replace: 'Agent body.' }] })
+    const changed = (await value.app.getState()).activeDocument!
+    expect(changed.reading.walkthrough.markers[0]!.status).toBe('revisit')
+    await value.app.revertHunk(value.path, changed.pendingHunks[0]!.id)
+    expect((await value.app.getState()).activeDocument!.reading.walkthrough.markers[0]!.status).toBe('reviewed')
+
+    const outsideEdit = original.replace('Body.', 'Outside body.')
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    await value.store.writeBuffer(value.path, outsideEdit)
+    await value.app.recheckFocused()
+    let outside = (await value.app.getState()).activeDocument!
+    expect(outside.reading.walkthrough.markers[0]!.status).toBe('revisit')
+    await value.app.keepHunk(value.path, outside.pendingHunks[0]!.id)
+    expect((await value.app.getState()).activeDocument!.reading.walkthrough.markers[0]!.status).toBe('revisit')
+    await expect(value.app.undo(value.path)).resolves.toBe('undone')
+    outside = (await value.app.getState()).activeDocument!
+    expect(outside.reading.walkthrough.markers[0]!.status).toBe('revisit')
+    await value.app.revertHunk(value.path, outside.pendingHunks[0]!.id)
+    expect((await value.app.getState()).activeDocument!.reading.walkthrough.markers[0]!.status).toBe('reviewed')
+
+    await command(value.app, 'annotate', {
+      file: value.path,
+      agent: 'ag_1',
+      annotations: [{ kind: 'suggestion', quote: 'Body.', text: 'Suggested body.' }],
+    })
+    const suggestion = (await value.app.getState()).activeDocument!.annotations.find((annotation) => annotation.kind === 'suggestion')!
+    await value.app.acceptSuggestion(value.path, suggestion.id)
+    expect((await value.app.getState()).activeDocument!.reading.walkthrough.markers[0]!.status).toBe('revisit')
+    await expect(value.app.undo(value.path)).resolves.toBe('undone')
+    expect((await value.app.getState()).activeDocument!.reading.walkthrough.markers[0]!.status).toBe('reviewed')
+    await expect(value.app.redo(value.path)).resolves.toBe('redone')
+    expect((await value.app.getState()).activeDocument!.reading.walkthrough.markers[0]!.status).toBe('revisit')
+    await expect(value.app.undo(value.path)).resolves.toBe('undone')
+    expect((await value.app.getState()).activeDocument!.reading.walkthrough.markers[0]!.status).toBe('reviewed')
+
+    expect(JSON.parse(await readFile(value.store.pathsForDocument(value.path).reading, 'utf8'))).toMatchObject({
+      formatVersion: 4,
+      navigationTab: 'contents',
+      walkthrough: { active: true, markers: [{ status: 'reviewed' }] },
+    })
+  })
+
+  it('relocates a unique walkthrough marker on reopen and drops it when the heading becomes ambiguous', async () => {
+    const original = '# Old title\n\n## One\n\nBody.\n\n## Two\n\nEnd.\n'
+    const value = await fixture(original)
+    await value.app.openDocument(value.path)
+    await value.app.updateWalkthrough(value.path, { type: 'start' })
+    const first = (await value.app.getState()).activeDocument!.reading.walkthrough.current!
+    await value.app.updateWalkthrough(value.path, { type: 'mark', heading: first, status: 'reviewed' })
+    await expect(value.app.closeDocument(value.path)).resolves.toBe('closed')
+
+    const retitled = original.replace('# Old title', '# New title')
+    await writeFile(value.path, retitled)
+    await value.app.openDocument(value.path)
+    const marker = (await value.app.getState()).activeDocument!.reading.walkthrough.markers[0]!
+    expect(marker).toMatchObject({ status: 'reviewed', heading: { text: 'One', parentText: 'New title' } })
+    expect(JSON.parse(await readFile(value.store.pathsForDocument(value.path).reading, 'utf8'))).toMatchObject({
+      walkthrough: { markers: [{ heading: { text: 'One', parentText: 'New title' } }] },
+    })
+    await expect(value.app.closeDocument(value.path)).resolves.toBe('closed')
+
+    await writeFile(value.path, '# New title\n\n## One\n\nFirst.\n\n## Middle\n\nMiddle.\n\n## One\n\nSecond.\n')
+    await value.app.openDocument(value.path)
+    expect((await value.app.getState()).activeDocument!.reading.walkthrough.markers).toEqual([])
+  })
+
   it('opens, mirrors, and saves a user edit without changing disk before Save', async () => {
     const { app, path, store } = await fixture()
     await app.openDocument(path)
     await app.updateBuffer(path, '# Plan\n\nChanged.\n')
     expect(await readFile(path, 'utf8')).toContain('Original')
-    await new Promise((resolve) => setTimeout(resolve, 100))
-    expect((await store.readBuffer(path))?.toString('utf8')).toContain('Changed')
+    await expect.poll(async () => (await store.readBuffer(path))?.toString('utf8')).toContain('Changed')
     await app.save(path)
     expect(await readFile(path, 'utf8')).toContain('Changed')
     expect((await app.getState()).activeDocument?.dirty).toBe(false)
@@ -176,8 +351,57 @@ describe('StrataApplication', () => {
     const { app, path, root } = await fixture()
     await writeFile(join(root, 'photo.png'), Buffer.from([137, 80, 78, 71]))
     await app.openDocument(path)
-    expect(await app.resolveLocalImage(path, 'photo.png')).toMatch(/^strata-image:\/\/local\//)
+    expect(await app.resolveLocalImage(path, 'photo.png')).toMatchObject({ url: expect.stringMatching(/^strata-image:\/\/local\//), path: join(root, 'photo.png') })
     expect(await app.resolveLocalImage(path, 'https://example.test/photo.png')).toBeNull()
+  })
+
+  it('returns only bounded allowlisted Markdown previews', async () => {
+    const { app, path, root } = await fixture()
+    const target = join(root, 'notes.md')
+    await writeFile(target, `# Notes\n\n${'x'.repeat(300_000)}`)
+    await writeFile(join(root, 'notes.ts'), 'export {}\n')
+    await app.openDocument(path)
+    const preview = await app.resolveLocalMarkdown(path, 'notes.md#notes')
+    expect(preview).toMatchObject({ path: target, truncated: true })
+    expect(Buffer.byteLength(preview?.source ?? '', 'utf8')).toBe(256 * 1024)
+    expect(await app.resolveLocalMarkdown(path, 'notes.ts')).toBeNull()
+    expect(await app.resolveLocalMarkdown(path, 'https://example.test/notes.md')).toBeNull()
+    expect(await app.resolveLocalMarkdown(path, '../outside.md')).toBeNull()
+  })
+
+  it('persists folded headings in reading.json v4 without changing Markdown or meta', async () => {
+    const value = await fixture('# Plan\n\n## Part\n\nBody.\n')
+    await value.app.openDocument(value.path)
+    const beforeMeta = await readFile(value.store.pathsForDocument(value.path).meta, 'utf8')
+    const beforeDocument = await readFile(value.path, 'utf8')
+    const heading = { level: 2 as const, text: 'Part', parentText: 'Plan', previousText: 'Plan', nextText: null }
+    await value.app.updateFold(value.path, heading, true)
+    expect((await value.app.getState()).activeDocument?.reading.foldedHeadings).toEqual([heading])
+    expect(await readFile(value.path, 'utf8')).toBe(beforeDocument)
+    expect(await readFile(value.store.pathsForDocument(value.path).meta, 'utf8')).toBe(beforeMeta)
+    expect(JSON.parse(await readFile(value.store.pathsForDocument(value.path).reading, 'utf8'))).toMatchObject({ formatVersion: 4, foldedHeadings: [heading] })
+  })
+
+  it('accepts a folded heading rename before the debounced buffer and relocates it on reopen', async () => {
+    const before = '# Plan\n\n## Part\n\nBody.\n'
+    const after = before.replace('## Part', '## Renamed part')
+    const value = await fixture(before)
+    await value.app.openDocument(value.path)
+    const original = { level: 2 as const, text: 'Part', parentText: 'Plan', previousText: 'Plan', nextText: null }
+    const renamed = { ...original, text: 'Renamed part' }
+
+    await value.app.updateFold(value.path, original, true)
+    // Editor transactions report the source-identity rename before the 180 ms
+    // buffer mirror reaches the main process.
+    await value.app.updateFold(value.path, renamed, true)
+    expect((await value.app.getState()).activeDocument?.reading.foldedHeadings).toEqual([original, renamed])
+    await value.app.updateBuffer(value.path, after)
+    await value.app.flushPersistence()
+    await value.app.shutdown()
+
+    const reopened = await createStrataApplication({ store: value.store, settingsStore: value.settingsStore, watch: false })
+    await reopened.openDocument(value.path)
+    expect((await reopened.getState()).activeDocument?.reading.foldedHeadings).toEqual([renamed])
   })
 
   it('accepts into shadow and ghost while remapping later annotations', async () => {
@@ -782,6 +1006,35 @@ describe('StrataApplication', () => {
     expect(stored.annotations.nextSeq).toBe(3)
   })
 
+  it('delivers an answer once before pruning a resolved decision', async () => {
+    const value = await fixture('# Decision\n')
+    await value.settingsStore.update({ keepResolvedAnnotations: false })
+    const app = await createStrataApplication({
+      store: value.store,
+      settingsStore: value.settingsStore,
+      watch: false,
+      clipboardWrite: async () => undefined,
+    })
+    await app.openDocument(value.path)
+    await command(app, 'attach', { file: value.path, agent: 'ag_1', name: 'One', timeout: 0 })
+    const created = await command(app, 'annotate', {
+      file: value.path,
+      agent: 'ag_1',
+      annotations: [{ kind: 'decision', text: 'Which?', options: ['A', 'B'], document: true }],
+    }) as { created: Array<{ id: string }> }
+    const decision = created.created[0]!.id
+    const [initialDelivery] = await app.send(value.path, { recipients: ['ag_1'], note: '', includeExternal: false })
+    await command(app, 'ack', { file: value.path, agent: 'ag_1', deliveryId: initialDelivery })
+    await app.copyForAgent(value.path, '', false)
+
+    await app.answerDecision(value.path, decision, { option: 'A' })
+    await command(app, 'changed', { file: value.path, agent: 'ag_1', name: 'One' })
+    expect((await storedApplication(value.store, value.path)).annotations.annotations[decision]).toBeDefined()
+    await app.send(value.path, { recipients: ['ag_1'], note: '', includeExternal: false })
+    expect((await storedApplication(value.store, value.path)).attachments.ag_1?.deliveries.at(-1)?.payload.answers)
+      .toEqual([expect.objectContaining({ annotation: decision, option: 'A' })])
+  })
+
   it('retains resolved records after delivery when retention is on until explicit Clear', async () => {
     const value = await fixture('A quoted sentence.\n')
     await value.settingsStore.update({ keepResolvedAnnotations: true })
@@ -1117,6 +1370,37 @@ describe('the Lead agent', () => {
       .resolves.toEqual({ resolved: suggestion.id })
   })
 
+  it('keeps decision answers owner-only and sends their structured history without a document change', async () => {
+    const { app, path, store } = await leadFixture('# Lead\n\nChoose here.\n')
+    const created = await command(app, 'annotate', {
+      file: path, agent: 'ag_peer',
+      annotations: [{ kind: 'decision', text: 'Which gate?', options: ['CI', 'Manual'], document: true }],
+    }) as { created: Array<{ id: string }> }
+    const id = created.created[0]!.id
+    await command(app, 'lead', { file: path, agent: 'ag_lead' })
+    await expect(command(app, 'answer', { file: path, agent: 'ag_peer', decision: id, choice: 'CI' }))
+      .rejects.toMatchObject({ exitCode: 3, code: 'DECISION_OWNER_REQUIRED' })
+    await expect(command(app, 'resolve', { file: path, agent: 'ag_lead', annotation: id }))
+      .rejects.toMatchObject({ exitCode: 3, code: 'DECISION_OWNER_REQUIRED' })
+
+    const before = (await app.getState()).activeDocument!.content
+    await app.answerDecision(path, id, { option: 'CI' })
+    const answered = (await app.getState()).activeDocument!.annotations.find((annotation) => annotation.id === id)!
+    expect(answered).toMatchObject({ kind: 'decision', status: 'resolved', anchor: 'document', from: null, to: null, decision: { options: ['CI', 'Manual'], answers: [{ option: 'CI', author: 'user' }] } })
+    expect((await app.getState()).activeDocument!.content).toBe(before)
+    expect((await app.getState()).activeDocument!.pendingHunks).toEqual([])
+    const [preview] = await app.previewSend(path, { recipients: ['ag_peer'], note: '', includeExternal: false })
+    expect(preview?.items.events).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'answer', annotationKind: 'decision', text: 'CI' })]))
+    expect(preview?.text).toContain('Decision answers:')
+    await app.send(path, { recipients: ['ag_peer'], note: '', includeExternal: false })
+    expect((await storedApplication(store, path)).attachments.ag_peer?.deliveries.at(-1)?.payload.answers)
+      .toEqual([expect.objectContaining({ annotation: id, option: 'CI' })])
+
+    await app.reopenDecision(path, id)
+    await app.answerDecision(path, id, { option: null, other: 'Stage it' })
+    expect((await storedApplication(store, path)).annotations.annotations[id]?.decision?.answers).toHaveLength(2)
+  })
+
   it('accepts and saves as the Lead: external authorship, a surviving pending hunk, and routed events', async () => {
     const original = 'Use the old wording here.\n'
     const { app, path, store } = await leadFixture(original)
@@ -1242,6 +1526,65 @@ describe('the Lead agent', () => {
 })
 
 describe('agent command results and views', () => {
+  it('adds an agent-attributed screenshot pin to the buffer without writing the document', async () => {
+    const value = await fixture()
+    const image = join(value.root, 'review.png')
+    await writeFile(image, Buffer.from([137, 80, 78, 71]))
+    const details = await stat(image, { bigint: true })
+    const version = `${details.size}:${details.mtimeNs}`
+    const original = [
+      '# Review', '', '<AnnotatedScreenshot>', '![Review](./review.png)', '',
+      '| Pin | X | Y | Image version | Note |', '|---:|---:|---:|---|---|',
+      `| 1 | 10.0 | 20.0 | ${version} | Existing note. |`, '', 'Caption after the table.', '</AnnotatedScreenshot>', '',
+    ].join('\n')
+    await writeFile(value.path, original)
+    await value.app.openDocument(value.path)
+    await command(value.app, 'attach', { file: value.path, agent: 'ag_1', name: 'Inspector', timeout: 0 })
+
+    const result = await command(value.app, 'pin', {
+      file: value.path, agent: 'ag_1', name: 'Inspector', componentLine: 3,
+      x: 24.25, y: 81, note: 'Check | boundary',
+    })
+    expect(result).toEqual({ pinned: 2, component: 3, x: 24.25, y: 81, note: 'Check | boundary' })
+    const document = (await value.app.getState()).activeDocument!
+    expect(document.content).toContain(`| 2 | 24.3 | 81.0 | ${version} | Check \\| boundary |`)
+    expect(document.content.indexOf('| 2 |')).toBeLessThan(document.content.indexOf('Caption after the table.'))
+    const component = parseMarkdown(document.content).blocks.find((block) => (block.node as { type: string }).type === 'mdxJsxFlowElement')?.node as unknown as ComponentAstNode
+    expect(annotatedScreenshotData(component)?.pins).toHaveLength(2)
+    expect(document.pendingHunks).toHaveLength(1)
+    expect(document.pendingHunks[0]).toMatchObject({ author: { id: 'ag_1', name: 'Inspector' } })
+    expect((await value.store.readBuffer(value.path))?.toString('utf8')).toBe(document.content)
+    expect(await readFile(value.path, 'utf8')).toBe(original)
+  })
+
+  it('refuses stale pins, missing images, and a nonmatching component line', async () => {
+    const stale = await fixture([
+      '# Review', '', '<AnnotatedScreenshot>', '![Review](./review.png)', '',
+      '| Pin | X | Y | Image version | Note |', '|---:|---:|---:|---|---|',
+      '| 1 | 10 | 20 | 1:1 | Existing. |', '</AnnotatedScreenshot>', '',
+    ].join('\n'))
+    await writeFile(join(stale.root, 'review.png'), Buffer.from([137, 80, 78, 71]))
+    await stale.app.openDocument(stale.path)
+    await command(stale.app, 'attach', { file: stale.path, agent: 'ag_1', name: 'Inspector', timeout: 0 })
+    await expect(command(stale.app, 'pin', {
+      file: stale.path, agent: 'ag_1', componentLine: 3, x: 10, y: 20, note: 'Another',
+    })).rejects.toMatchObject({ exitCode: 3, code: 'IMAGE_VERIFICATION_REQUIRED' })
+    await expect(command(stale.app, 'pin', {
+      file: stale.path, agent: 'ag_1', componentLine: 4, x: 10, y: 20, note: 'Another',
+    })).rejects.toMatchObject({ exitCode: 2, code: 'COMPONENT_NOT_FOUND' })
+
+    const missing = await fixture([
+      '# Review', '', '<AnnotatedScreenshot>', '![Missing](./missing.png)', '',
+      '| Pin | X | Y | Image version | Note |', '|---:|---:|---:|---|---|',
+      '</AnnotatedScreenshot>', '',
+    ].join('\n'))
+    await missing.app.openDocument(missing.path)
+    await command(missing.app, 'attach', { file: missing.path, agent: 'ag_1', name: 'Inspector', timeout: 0 })
+    await expect(command(missing.app, 'pin', {
+      file: missing.path, agent: 'ag_1', componentLine: 3, x: 10, y: 20, note: 'First',
+    })).rejects.toMatchObject({ exitCode: 2, code: 'IMAGE_NOT_FOUND' })
+  })
+
   it('returns the created annotation ids and the reply id', async () => {
     const { app, path } = await fixture('First line.\n\nSecond line.\n')
     await app.openDocument(path)

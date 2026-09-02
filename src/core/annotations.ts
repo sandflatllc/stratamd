@@ -1,4 +1,6 @@
-export type AnnotationKind = 'comment' | 'question' | 'suggestion'
+import type { AnnotationAnchorKind, AnnotationContext, DecisionAnswer, DecisionData } from '../shared/contracts'
+
+export type AnnotationKind = 'comment' | 'question' | 'suggestion' | 'decision'
 export type AnnotationStatus = 'open' | 'resolved' | 'orphaned'
 export type AnnotationAuthor = 'user' | 'agent'
 export type AnnotationEventType =
@@ -10,8 +12,12 @@ export type AnnotationEventType =
   | 'orphaned'
   | 'reattached'
   | 'requoted'
+  | 'answered'
+  | 'reopened'
 
 export interface AnnotationAnchor {
+  /** Missing on pre-decision records and read as `quote`. */
+  kind?: AnnotationAnchorKind
   quote: string
   prefix: string
   suffix: string
@@ -43,6 +49,8 @@ export interface Annotation {
   quote: string
   text: string
   label?: string
+  context?: AnnotationContext
+  decision?: DecisionData
   line: number
   anchor: AnnotationAnchor
   replies: readonly AnnotationReply[]
@@ -97,6 +105,9 @@ export interface CreateAnnotationInput {
   quote: string
   text: string
   label?: string
+  context?: AnnotationContext
+  anchorKind?: AnnotationAnchorKind
+  options?: readonly string[]
   precededBy?: string
   followedBy?: string
   start?: number
@@ -112,23 +123,45 @@ export interface AnnotationResult {
 export class AnnotationAnchorError extends Error {
   readonly code: 'quote_missing' | 'quote_ambiguous' | 'invalid_suggestion'
   readonly matches: readonly number[]
+  readonly heading: boolean
 
   constructor(
     code: 'quote_missing' | 'quote_ambiguous' | 'invalid_suggestion',
     message: string,
     matches: readonly number[] = [],
+    heading = false,
   ) {
     super(message)
     this.name = 'AnnotationAnchorError'
     this.code = code
     this.matches = matches
+    this.heading = heading
   }
 }
 
 const MAX_CONTEXT = 32
 const MAX_ANNOTATION_BYTES = 64 * 1024
 
-function lastAnnotationEvent(log: AnnotationLog, annotationId: string): AnnotationEvent {
+export function annotationAnchorKind(annotation: Pick<Annotation, 'anchor'>): AnnotationAnchorKind {
+  return annotation.anchor.kind ?? 'quote'
+}
+
+function validateDecisionOptions(options: readonly string[] | undefined): string[] {
+  if (options === undefined || options.length < 2) throw new Error('A decision needs at least two options')
+  const normalized = options.map((option) => option.trim())
+  if (normalized.some((option) => option.length === 0)) throw new Error('Decision options cannot be empty')
+  if (new Set(normalized).size !== normalized.length) throw new Error('Decision options must be distinct')
+  for (const option of normalized) assertTextLimit(option, 'Decision option')
+  return normalized
+}
+
+function assertHeadingAnchor(quote: string): void {
+  if (quote.includes('\n') || !/^ {0,3}#{1,6}(?:[\t ]+|$).*$/u.test(quote)) {
+    throw new AnnotationAnchorError('quote_missing', 'A decision heading must be one complete ATX heading line', [], true)
+  }
+}
+
+export function lastAnnotationEvent(log: AnnotationLog, annotationId: string): AnnotationEvent {
   return log.events.findLast(
     (event): event is AnnotationEvent => !isHunkVerdict(event) && event.annotationId === annotationId,
   )!
@@ -246,6 +279,21 @@ function closestLines(document: string, quote: string): QuoteCandidate[] {
     .map((candidate) => ({ line: candidate.index + 1, before: '', quote: candidate.line.slice(0, 256), after: '' }))
 }
 
+function closestHeadingLines(document: string, quote: string): QuoteCandidate[] {
+  const queryWords = new Set(quote.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? [])
+  return document.split(/\r?\n/u)
+    .map((line, index) => {
+      const words = new Set(line.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? [])
+      let score = 0
+      for (const word of queryWords) if (words.has(word)) score += 1
+      return { line, index, score }
+    })
+    .filter((candidate) => /^ {0,3}#{1,6}(?:[\t ]+|$)/u.test(candidate.line) && candidate.score > 0)
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .slice(0, MAX_CANDIDATES)
+    .map((candidate) => ({ line: candidate.index + 1, before: '', quote: candidate.line, after: '' }))
+}
+
 interface NormalizedText {
   text: string
   /** Original offset of each normalized character, plus one entry for the end. */
@@ -311,6 +359,15 @@ export function describeQuoteFailure(
   error: AnnotationAnchorError,
   noun: 'quote' | 'match' = 'quote',
 ): QuoteFailure {
+  if (error.heading && error.code === 'quote_missing') {
+    return {
+      reason: 'missing',
+      message: error.message,
+      total: 0,
+      candidates: closestHeadingLines(document, quote),
+      hint: 'Pass the complete heading line, starting with its # characters.',
+    }
+  }
   if (error.code === 'invalid_suggestion') {
     const start = error.matches[0] ?? 0
     return {
@@ -516,6 +573,22 @@ function anchorAt(document: string, quote: string, start: number): AnnotationAnc
   }
 }
 
+function headingAnchor(document: string, quote: string, preferred?: number): AnnotationAnchor {
+  const matches = allOccurrences(document, quote).filter((start) => {
+    const end = start + quote.length
+    const startsLine = start === 0 || document[start - 1] === '\n'
+    const endsLine = end === document.length || document[end] === '\n' || (document[end] === '\r' && document[end + 1] === '\n')
+    return startsLine && endsLine
+  })
+  if (matches.length === 0 || (preferred !== undefined && !matches.includes(preferred))) {
+    throw new AnnotationAnchorError('quote_missing', 'The complete heading line does not occur in the current buffer', matches, true)
+  }
+  if (preferred === undefined && matches.length > 1) {
+    throw new AnnotationAnchorError('quote_ambiguous', 'The heading line is ambiguous in the current buffer', matches, true)
+  }
+  return anchorAt(document, quote, preferred ?? matches[0]!)
+}
+
 function topLevelBlockRange(document: string, offset: number): { start: number; end: number } {
   const before = document.lastIndexOf('\n\n', Math.max(0, offset - 1))
   const after = document.indexOf('\n\n', offset)
@@ -567,11 +640,26 @@ export function createAnnotation(
   input: CreateAnnotationInput,
 ): AnnotationResult {
   if (log.annotations[input.id] !== undefined) throw new Error(`Annotation ${input.id} already exists`)
-  if (input.quote.length === 0) throw new AnnotationAnchorError('quote_missing', 'An annotation quote cannot be empty')
+  const anchorKind = input.anchorKind ?? 'quote'
+  if (anchorKind === 'document' && input.kind !== 'decision') throw new Error('Only a decision can use a document anchor')
+  if (anchorKind !== 'document' && input.quote.length === 0) throw new AnnotationAnchorError('quote_missing', 'An annotation quote cannot be empty')
+  if (input.kind !== 'decision' && (input.options !== undefined || anchorKind !== 'quote')) {
+    throw new Error('Only decisions can have choices or a non-quote anchor')
+  }
   assertTextLimit(input.text, 'Annotation text')
-  const anchor = input.start === undefined
-    ? locateQuote(document, input.quote, input.precededBy, input.followedBy)
-    : anchorAt(document, input.quote, input.start)
+  if (input.kind === 'decision' && input.text.trim().length === 0) throw new Error('A decision needs a prompt')
+  const options = input.kind === 'decision' ? validateDecisionOptions(input.options) : undefined
+  if (anchorKind === 'heading') assertHeadingAnchor(input.quote)
+  const anchor: AnnotationAnchor = anchorKind === 'document'
+    ? { kind: 'document', quote: '', prefix: '', suffix: '', start: 0, end: 0 }
+    : anchorKind === 'heading'
+      ? { ...headingAnchor(document, input.quote, input.start), kind: 'heading' }
+    : {
+        ...(input.start === undefined
+          ? locateQuote(document, input.quote, input.precededBy, input.followedBy)
+          : anchorAt(document, input.quote, input.start)),
+        kind: anchorKind,
+      }
   if (input.kind === 'suggestion') assertSuggestionInOneBlock(document, anchor)
 
   const annotation: Annotation = {
@@ -585,12 +673,51 @@ export function createAnnotation(
     quote: input.quote,
     text: input.text,
     ...(input.label === undefined ? {} : { label: input.label }),
-    line: lineAt(document, anchor.start),
+    ...(input.context === undefined ? {} : { context: input.context }),
+    ...(options === undefined ? {} : { decision: { options, answers: [] } }),
+    line: anchorKind === 'document' ? 1 : lineAt(document, anchor.start),
     anchor,
     replies: [],
     ...(input.createdAt === undefined ? {} : { createdAt: input.createdAt }),
   }
   return withEvent(log, annotation, 'created', input.author, annotation.agent)
+}
+
+export function answerDecision(
+  log: AnnotationLog,
+  annotationId: string,
+  answer: { option: string | null; other?: string; answeredAt: number },
+): AnnotationResult {
+  const annotation = requireAnnotation(log, annotationId)
+  if (annotation.kind !== 'decision' || annotation.decision === undefined) throw new Error(`${annotationId} is not a decision`)
+  if (annotation.status === 'resolved') throw new Error('A resolved decision must be reopened before it can be answered')
+  const other = answer.other?.trim()
+  if (answer.option === null) {
+    if (!other) throw new Error('Other needs an answer')
+    assertTextLimit(other, 'Decision answer')
+  } else {
+    if (!annotation.decision.options.includes(answer.option)) throw new Error('The answer is not one of this decision’s options')
+    if (other !== undefined && other.length > 0) throw new Error('Other text cannot be combined with a listed option')
+  }
+  const recorded: DecisionAnswer = {
+    seq: log.nextSeq,
+    option: answer.option,
+    ...(answer.option === null ? { other: other! } : {}),
+    author: 'user',
+    answeredAt: answer.answeredAt,
+  }
+  return withEvent(log, {
+    ...annotation,
+    status: 'resolved',
+    decision: { ...annotation.decision, answers: [...annotation.decision.answers, recorded] },
+  }, 'answered', 'user', null)
+}
+
+export function reopenDecision(log: AnnotationLog, annotationId: string): AnnotationResult {
+  const annotation = requireAnnotation(log, annotationId)
+  if (annotation.kind !== 'decision' || annotation.decision === undefined) throw new Error(`${annotationId} is not a decision`)
+  if (annotation.status === 'open') return { log, annotation, event: lastAnnotationEvent(log, annotationId) }
+  return withEvent(log, { ...annotation, status: 'open' }, 'reopened', 'user', null)
 }
 
 function requireAnnotation(log: AnnotationLog, id: string): Annotation {
@@ -636,6 +763,7 @@ export function resolveAnnotation(
   agent: string | null = null,
 ): AnnotationResult {
   const annotation = requireAnnotation(log, annotationId)
+  if (annotation.kind === 'decision') throw new Error('Answer the decision instead of resolving it')
   if (annotation.status === 'resolved') {
     return { log, annotation, event: lastAnnotationEvent(log, annotationId) }
   }
@@ -660,8 +788,9 @@ export function requoteAnnotation(
 ): AnnotationResult {
   const annotation = requireAnnotation(log, annotationId)
   if (annotation.status === 'resolved') throw new Error('A resolved annotation cannot be requoted')
+  if (annotationAnchorKind(annotation) === 'document') throw new Error('A document-wide decision has no quote to move')
   if (input.quote.length === 0) throw new AnnotationAnchorError('quote_missing', 'An annotation quote cannot be empty')
-  const anchor = anchorAt(document, input.quote, input.start)
+  const anchor = { ...anchorAt(document, input.quote, input.start), kind: annotationAnchorKind(annotation) }
   if (annotation.kind === 'suggestion') assertSuggestionInOneBlock(document, anchor)
   if (annotation.status === 'open' && anchor.start === annotation.anchor.start && anchor.end === annotation.anchor.end && input.quote === annotation.quote) {
     return { log, annotation, event: lastAnnotationEvent(log, annotationId) }
@@ -743,6 +872,7 @@ export function mapAnnotationsThroughEdit(
   const editEnd = edit.start + edit.deleteCount
   const delta = edit.insertText.length - edit.deleteCount
   const mapped = Object.fromEntries(Object.entries(log.annotations).map(([id, annotation]) => {
+    if (annotationAnchorKind(annotation) === 'document') return [id, annotation]
     const { start, end } = annotation.anchor
     let nextStart = start
     let nextEnd = end
@@ -762,12 +892,13 @@ export function mapAnnotationsThroughEdit(
 }
 
 function relocationCandidate(document: string, annotation: Annotation): AnnotationAnchor | null {
+  if (annotationAnchorKind(annotation) === 'document') return annotation.anchor
   const matches = allOccurrences(document, annotation.quote)
-  if (matches.length === 1) return anchorAt(document, annotation.quote, matches[0]!)
+  if (matches.length === 1) return { ...anchorAt(document, annotation.quote, matches[0]!), kind: annotationAnchorKind(annotation) }
   const contextual = matches.filter((start) =>
     contextMatches(document, start, annotation.quote, annotation.anchor.prefix, annotation.anchor.suffix),
   )
-  return contextual.length === 1 ? anchorAt(document, annotation.quote, contextual[0]!) : null
+  return contextual.length === 1 ? { ...anchorAt(document, annotation.quote, contextual[0]!), kind: annotationAnchorKind(annotation) } : null
 }
 
 export function relocateAnnotation(
@@ -778,6 +909,14 @@ export function relocateAnnotation(
   const annotation = requireAnnotation(log, annotationId)
   if (annotation.status === 'resolved') {
     return { log, annotation, event: lastAnnotationEvent(log, annotationId) }
+  }
+  if (annotationAnchorKind(annotation) === 'document') {
+    const anchored = annotation.anchor.kind === 'document'
+      ? annotation
+      : { ...annotation, anchor: { ...annotation.anchor, kind: 'document' as const }, line: 1 }
+    return anchored === annotation
+      ? { log, annotation, event: lastAnnotationEvent(log, annotationId) }
+      : { log: { ...log, annotations: { ...log.annotations, [annotation.id]: anchored } }, annotation: anchored, event: lastAnnotationEvent(log, annotationId) }
   }
   const anchor = relocationCandidate(document, annotation)
   if (anchor === null) {
@@ -945,21 +1084,26 @@ export interface AnnotationDeliveryResolution {
   id: string
   seq: number
   kind: AnnotationKind
-  resolution: 'accepted' | 'rejected' | 'resolved' | 'orphaned' | 'reattached' | 'requoted'
+  resolution: 'accepted' | 'rejected' | 'resolved' | 'orphaned' | 'reattached' | 'requoted' | 'reopened'
 }
 
 export interface DeliveredAnnotation {
   id: string
   seq: number
+  /** Event that caused this record to be included; ordering only. */
+  deliveredAt: number
   kind: AnnotationKind
   author: AnnotationAuthor
   agent: string | null
   /** The authoring attachment's display name, for agent-authored annotations. */
   name?: string
   status: AnnotationStatus
+  anchor: AnnotationAnchorKind
   quote: string
   text: string
   label?: string
+  context?: AnnotationContext
+  decision?: DecisionData
   line: number
   replies: readonly AnnotationReply[]
 }
@@ -970,6 +1114,17 @@ export interface DeliveredReplyParent {
   quote: string
   line: number
   text: string
+}
+
+export interface DeliveredDecisionAnswer extends DecisionAnswer {
+  annotation: string
+  parent: {
+    text: string
+    options: readonly string[]
+    anchor: AnnotationAnchorKind
+    quote: string
+    line: number
+  }
 }
 
 export interface DeliveredReply {
@@ -993,6 +1148,7 @@ export interface AnnotationDeliverySlice {
   cursor: number
   annotations: readonly DeliveredAnnotation[]
   replies: readonly DeliveredReply[]
+  answers: readonly DeliveredDecisionAnswer[]
   resolved: readonly AnnotationDeliveryResolution[]
   edits: readonly DeliveredEdit[]
   /** Events the recipient would have received but the user unchecked; feeds the delivery's `partial` flag. */
@@ -1004,14 +1160,18 @@ export function toDeliveredAnnotation(annotation: Annotation): DeliveredAnnotati
   return {
     id: annotation.id,
     seq: annotation.seq,
+    deliveredAt: annotation.seq,
     kind: annotation.kind,
     author: annotation.author,
     agent: annotation.agent,
     ...(annotation.name === undefined ? {} : { name: annotation.name }),
     status: annotation.status,
+    anchor: annotationAnchorKind(annotation),
     quote: annotation.quote,
     text: annotation.text,
     ...(annotation.label === undefined ? {} : { label: annotation.label }),
+    ...(annotation.context === undefined ? {} : { context: annotation.context }),
+    ...(annotation.decision === undefined ? {} : { decision: annotation.decision }),
     line: annotation.line,
     replies: annotation.replies,
   }
@@ -1043,8 +1203,9 @@ export function annotationDeliverySlice(
   excludedEvents: ReadonlySet<number> = new Set(),
 ): AnnotationDeliverySlice {
   const events = eventsAfter(log, cursor)
-  const created = new Set<string>()
+  const created = new Map<string, number>()
   const replies: DeliveredReply[] = []
+  const answers: DeliveredDecisionAnswer[] = []
   const resolved: AnnotationDeliveryResolution[] = []
   const edits: DeliveredEdit[] = []
   let excluded = 0
@@ -1069,7 +1230,7 @@ export function annotationDeliverySlice(
       continue
     }
     if (event.type === 'created') {
-      created.add(annotation.id)
+      created.set(annotation.id, event.seq)
     } else if (event.type === 'replied') {
       if (created.has(annotation.id)) continue
       const reply = annotation.replies.find((candidate) => candidate.id === event.replyId)
@@ -1084,6 +1245,21 @@ export function annotationDeliverySlice(
         text: reply.text,
         parent: { kind: annotation.kind, quote: annotation.quote, line: annotation.line, text: annotation.text },
       })
+    } else if (event.type === 'answered') {
+      if (created.has(annotation.id)) continue
+      const answer = annotation.decision?.answers.find((candidate) => candidate.seq === event.seq)
+      if (answer === undefined) continue
+      answers.push({
+        ...answer,
+        annotation: annotation.id,
+        parent: {
+          text: annotation.text,
+          options: annotation.decision!.options,
+          anchor: annotationAnchorKind(annotation),
+          quote: annotation.quote,
+          line: annotation.line,
+        },
+      })
     } else if (event.type === 'resolved') {
       resolved.push({ id: annotation.id, seq: event.seq, kind: annotation.kind, resolution: 'resolved' })
     } else if (event.type === 'accepted' || event.type === 'rejected') {
@@ -1094,16 +1270,44 @@ export function annotationDeliverySlice(
       resolved.push({ id: annotation.id, seq: event.seq, kind: annotation.kind, resolution: event.type })
     } else if (event.type === 'requoted') {
       // The recipient sees the annotation again with its new quote and a line saying why.
-      created.add(annotation.id)
+      if (!created.has(annotation.id)) created.set(annotation.id, event.seq)
       resolved.push({ id: annotation.id, seq: event.seq, kind: annotation.kind, resolution: 'requoted' })
+    } else if (event.type === 'reopened') {
+      resolved.push({ id: annotation.id, seq: event.seq, kind: annotation.kind, resolution: 'reopened' })
     }
   }
   return {
     cursor: log.nextSeq - 1,
     annotations: [...created]
-      .map((id) => toDeliveredAnnotation(log.annotations[id]!))
-      .sort((left, right) => left.seq - right.seq),
+      .map(([id, seq]) => {
+        const stored = log.annotations[id]!
+        const creationSeq = log.events.find((event) => !isHunkVerdict(event) && event.annotationId === id && event.type === 'created')?.seq
+          ?? stored.seq
+        const delivered = { ...toDeliveredAnnotation(stored), seq: creationSeq, deliveredAt: seq }
+        const includedEvents = events.filter((event) =>
+          !isHunkVerdict(event) && event.annotationId === id && !excludedEvents.has(event.seq),
+        )
+        let status: AnnotationStatus = 'open'
+        for (const event of includedEvents) {
+          if (event.type === 'answered' || event.type === 'resolved' || event.type === 'accepted' || event.type === 'rejected') status = 'resolved'
+          else if (event.type === 'orphaned') status = 'orphaned'
+          else if (event.type === 'reopened' || event.type === 'reattached' || event.type === 'requoted') status = 'open'
+        }
+        return {
+          ...delivered,
+          status,
+          replies: delivered.replies.filter((reply) => !excludedEvents.has(reply.seq)),
+          ...(delivered.decision === undefined ? {} : {
+            decision: {
+              ...delivered.decision,
+              answers: delivered.decision.answers.filter((answer) => !excludedEvents.has(answer.seq)),
+            },
+          }),
+        }
+      })
+      .sort((left, right) => left.deliveredAt - right.deliveredAt),
     replies,
+    answers,
     resolved,
     edits,
     excluded,

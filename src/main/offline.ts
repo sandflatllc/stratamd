@@ -240,6 +240,7 @@ async function annotate(
 
   for (const [index, input] of args.annotations.entries()) {
     const id = makeId('a')
+    const quote = input.kind === 'decision' ? (input.heading ?? input.quote ?? '') : input.quote
     try {
       const result = createAnnotation(log, current.text, {
         createdAt: Date.now(),
@@ -248,17 +249,21 @@ async function annotate(
         author: 'agent',
         agent: args.agent,
         ...(args.name === undefined ? {} : { name: args.name }),
-        quote: input.quote,
+        quote,
         text: input.text ?? '',
-        ...(input.label === undefined ? {} : { label: input.label }),
+      ...(input.kind !== 'decision' && input.label !== undefined ? { label: input.label } : {}),
+        ...(input.kind === 'decision' ? {
+          anchorKind: input.document === true ? 'document' : input.heading !== undefined ? 'heading' : 'quote',
+          options: input.options,
+        } : {}),
         ...(input.precededBy === undefined ? {} : { precededBy: input.precededBy }),
         ...(input.followedBy === undefined ? {} : { followedBy: input.followedBy }),
       })
       log = result.log
-      created.push({ id, kind: input.kind, quote: input.quote })
+      created.push({ id, kind: input.kind, quote })
     } catch (error) {
       if (!(error instanceof AnnotationAnchorError)) throw error
-      failures.push(quoteFailure(current.text, input.quote, index, error))
+      failures.push(quoteFailure(current.text, quote, index, error))
     }
   }
 
@@ -453,6 +458,37 @@ export function createOfflineCommandHandler(
             return annotate(store, current, request.args, makeId)
           case 'reply':
             return reply(store, current, request.args, makeId)
+          case 'answer': {
+            const log = annotationLog(current.meta)
+            const decision = log.annotations[request.args.decision]
+            if (decision === undefined) {
+              throw new CommandFailure(`Annotation ${request.args.decision} was not found`, 2, 'ANNOTATION_NOT_FOUND', { annotation: request.args.decision })
+            }
+            if (decision.kind !== 'decision') {
+              throw new CommandFailure(`${request.args.decision} is not a decision`, 3, 'NOT_A_DECISION', { annotation: request.args.decision })
+            }
+            throw new CommandFailure(
+              `Only the user can answer decision ${request.args.decision}. Reply to its thread to clarify or recommend a choice.`,
+              3,
+              'DECISION_OWNER_REQUIRED',
+              { decision: request.args.decision, action: 'reply' },
+            )
+          }
+          case 'resolve': {
+            const record = annotationLog(current.meta).annotations[request.args.annotation]
+            if (record === undefined) {
+              throw new CommandFailure(`Annotation ${request.args.annotation} was not found`, 2, 'ANNOTATION_NOT_FOUND', { annotation: request.args.annotation })
+            }
+            if (record.kind === 'decision') {
+              throw new CommandFailure(
+                `Only the user can answer or reopen decision ${request.args.annotation}. Reply to its thread instead.`,
+                3,
+                'DECISION_OWNER_REQUIRED',
+                { decision: request.args.annotation, action: 'reply' },
+              )
+            }
+            throw new CommandFailure('Command resolve is unavailable offline', 4, 'INSTANCE_UNREACHABLE')
+          }
           case 'changes':
             return changesPayload(store, current, now())
           case 'changed': {

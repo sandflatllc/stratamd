@@ -22,8 +22,10 @@ export interface TextHunk {
   added: string
 }
 
-export function contentHash(content: string): string {
-  return createHash('sha256').update(content, 'utf8').digest('hex')
+export function contentHash(content: string | Uint8Array): string {
+  return typeof content === 'string'
+    ? createHash('sha256').update(content, 'utf8').digest('hex')
+    : createHash('sha256').update(content).digest('hex')
 }
 
 function lineStarts(text: string): number[] {

@@ -16,8 +16,7 @@ const view: AppView = {
     panelSizes: {
       explorerWidth: 260,
       rightRailWidth: 320,
-      changesHeight: 240,
-      annotationsHeight: 240,
+      upperReviewHeight: 494,
       documentMeasure: 780,
       themePanel: { x: -1, y: -1, width: 360, height: 560 },
       threadPanel: { width: 660, height: -1 },
@@ -44,14 +43,20 @@ function fakeApi(): StrataApi {
     redo: vi.fn(async () => 'empty' as const),
     save: vi.fn(async () => undefined),
     setSourceMode: vi.fn(async () => undefined),
+    updateReadingState: vi.fn(async () => undefined),
+    updateWalkthrough: vi.fn(async () => undefined),
+    updateTableView: vi.fn(async () => undefined),
+    updateFold: vi.fn(async () => undefined),
     keepHunk: vi.fn(async () => undefined),
     revertHunk: vi.fn(async () => undefined),
     markReviewed: vi.fn(async () => undefined),
     saveRound: vi.fn(async () => ({ hunks: [] })),
-    addAnnotation: vi.fn(async () => undefined),
+    addAnnotation: vi.fn(async () => 'a_test'),
     requoteAnnotation: vi.fn(async () => undefined),
     reply: vi.fn(async () => undefined),
     resolveAnnotation: vi.fn(async () => undefined),
+    answerDecision: vi.fn(async () => undefined),
+    reopenDecision: vi.fn(async () => undefined),
     acceptSuggestion: vi.fn(async () => undefined),
     rejectSuggestion: vi.fn(async () => undefined),
     acceptAllSuggestions: vi.fn(async () => ({ accepted: [], skipped: [] })),
@@ -80,7 +85,8 @@ function fakeApi(): StrataApi {
     refreshExplorer: vi.fn(async () => undefined),
     forgetDocument: vi.fn(async () => undefined),
     updateSettings: vi.fn(async () => undefined),
-    resolveLocalImage: vi.fn(async () => null)
+    resolveLocalImage: vi.fn(async () => null),
+    resolveLocalMarkdown: vi.fn(async () => null)
   }
 }
 
@@ -129,6 +135,27 @@ describe('renderer IPC boundary', () => {
     await expect(redo?.(event, '')).rejects.toThrow()
     await expect(redo?.(event, '/tmp/plan.md')).resolves.toBe('empty')
     expect(api.redo).toHaveBeenCalledWith('/tmp/plan.md')
+
+    const tableState = {
+      table: { headingLevel: 2, headingText: 'Islands', headers: ['Name', 'Verdict'], occurrence: 0 },
+      presentation: 'focus-row', sort: null, filter: null, hiddenColumns: [], selectedRows: [],
+      focusedRow: 0, focusedColumn: 1, density: 'comfortable', columnWidths: [180, 220],
+    }
+    const updateTable = handlers.get(IPC.updateTableView)
+    await updateTable?.(event, '/tmp/plan.md', tableState)
+    expect(api.updateTableView).toHaveBeenCalledWith('/tmp/plan.md', tableState)
+    await expect(updateTable?.(event, '/tmp/plan.md', { ...tableState, presentation: 'editable-sort' })).rejects.toThrow()
+
+    const context = { kind: 'table-cell', heading: 'Islands', columns: ['Name', 'Verdict'], column: { index: 1, label: 'Verdict' } }
+    const addAnnotation = handlers.get(IPC.addAnnotation)
+    await expect(addAnnotation?.(event, '/tmp/plan.md', { kind: 'question', quote: '| A | No |', text: 'Why?', from: 10, to: 20, context })).resolves.toBe('a_test')
+    expect(api.addAnnotation).toHaveBeenCalledWith('/tmp/plan.md', { kind: 'question', quote: '| A | No |', text: 'Why?', from: 10, to: 20, context })
+    await expect(addAnnotation?.(event, '/tmp/plan.md', { kind: 'question', quote: '| A | No |', text: 'Why?', from: 10, to: 20, context: { ...context, column: { index: -1, label: 'Verdict' } } })).rejects.toThrow()
+
+    const screenshotContext = { kind: 'screenshot-pin', component: 'AnnotatedScreenshot', componentLine: 40, image: './review.png', pin: 3 }
+    await expect(addAnnotation?.(event, '/tmp/plan.md', { kind: 'question', quote: '| 3 | 75 | 20 | version | Note |', text: 'Aligned?', from: 30, to: 65, context: screenshotContext })).resolves.toBe('a_test')
+    expect(api.addAnnotation).toHaveBeenLastCalledWith('/tmp/plan.md', { kind: 'question', quote: '| 3 | 75 | 20 | version | Note |', text: 'Aligned?', from: 30, to: 65, context: screenshotContext })
+    await expect(addAnnotation?.(event, '/tmp/plan.md', { kind: 'question', quote: 'row', text: 'Why?', from: 1, to: 4, context: { ...screenshotContext, pin: 0 } })).rejects.toThrow()
   })
 
   it('publishes state only to the registered renderer and unregisters every handler', () => {

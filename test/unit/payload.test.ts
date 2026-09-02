@@ -13,7 +13,7 @@ import {
 const file = '/docs/plan.md'
 const buffer = '/data/stratamd/buffer.md'
 
-describe('payload v10', () => {
+describe('payload v13', () => {
   it.each<PayloadEvent>(['initial', 'resync'])('starts %s text with the full write guardrail', (event) => {
     const payload = createPayload({ file, buffer, agent: 'ag_1', event })
     expect(payload.text.split('\n')[0]).toBe(
@@ -31,13 +31,75 @@ describe('payload v10', () => {
     expect(payload.text.split('\n')[0]).not.toContain(file)
   })
 
-  it('serializes documented fields as version 10 and omits absent fields', () => {
+  it('serializes documented fields as version 13 and omits absent fields', () => {
     const payload = createPayload({ file, buffer, agent: 'ag_1', event: 'timeout' })
     const json = JSON.parse(serializePayload(payload)) as Record<string, unknown>
     expect(json.version).toBe(PAYLOAD_VERSION)
     expect(json).not.toHaveProperty('deliveryId')
     expect(json).not.toHaveProperty('document')
     expect(json).not.toHaveProperty('notes')
+  })
+
+  it('renders table discussion context in structured data and readable text', () => {
+    const context = {
+      kind: 'table-cell' as const,
+      heading: 'Island review',
+      columns: ['Name', 'Verdict'],
+      column: { index: 1, label: 'Verdict' },
+    }
+    const payload = createPayload({
+      file, buffer, agent: 'ag_1', event: 'send', deliveryId: 'd_table',
+      annotations: [{
+        id: 'a_table', seq: 1, kind: 'question', author: 'user', agent: null, status: 'open',
+        quote: '| Alpha | Unprotected |', text: 'What protects this?', line: 3, replies: [], context,
+      }],
+    }, { currentDocument: '| Name | Verdict |\n| --- | --- |\n| Alpha | Unprotected |' })
+    expect(payload.annotations?.[0]?.context).toEqual(context)
+    expect(payload.text).toContain('[Table under Island review; columns Name, Verdict; column 2 Verdict]')
+  })
+
+  it('renders screenshot-pin discussion context in structured data and readable text', () => {
+    const context = {
+      kind: 'screenshot-pin' as const,
+      component: 'AnnotatedScreenshot' as const,
+      componentLine: 40,
+      image: './review.png',
+      pin: 3,
+    }
+    const quote = '| 3 | 75.0 | 20.0 | 68:123 | Agent pin |'
+    const payload = createPayload({
+      file, buffer, agent: 'ag_1', event: 'send', deliveryId: 'd_pin',
+      annotations: [{
+        id: 'a_pin', seq: 1, kind: 'question', author: 'user', agent: null, status: 'open',
+        quote, text: 'Does this align?', line: 45, replies: [], context,
+      }],
+    }, { currentDocument: `<AnnotatedScreenshot>\n![Review](./review.png)\n\n${quote}\n</AnnotatedScreenshot>` })
+    expect(payload.annotations?.[0]?.context).toEqual(context)
+    expect(payload.text).toContain('[AnnotatedScreenshot line 40; pin 3; image ./review.png]')
+  })
+
+  it('renders open decisions and incremental structured owner answers', () => {
+    const payload = createPayload({
+      file, buffer, agent: 'ag_1', event: 'send', cursor: 3,
+      annotations: [{
+        id: 'd1', seq: 1, kind: 'decision', author: 'agent', agent: 'ag_2', status: 'open',
+        anchor: 'document', quote: '', text: 'Which gate?', line: 1, replies: [],
+        decision: { options: ['CI', 'Manual'], answers: [] },
+      }],
+      answers: [{
+        annotation: 'd0', seq: 3, option: null, other: 'Stage it', author: 'user', answeredAt: 100,
+        parent: { text: 'How should this ship?', options: ['Now', 'Later'], anchor: 'heading', quote: '## Delivery', line: 8 },
+      }],
+    })
+    expect(payload.text).toContain('d1 decision (ag_2) [Choices: CI | Manual | Other]')
+    expect(payload.text).toContain('Decision answers:\nd0 ← user answered Other: Stage it')
+    expect(payload.text).toContain('decision: How should this ship? (line 8); choices: Now | Later | Other')
+
+    const state = createPayload({
+      file, buffer, agent: 'ag_1', event: 'state', document: 'Body\n', cursor: 3,
+      annotations: payload.annotations!,
+    })
+    expect(state.text).toContain('Open decisions:\n- d1 (whole document): Which gate?\n  choices: CI | Manual | Other')
   })
 
   it('renders a message as the sender line, the note, and the fixed guidance line', () => {
@@ -61,7 +123,7 @@ describe('payload v10', () => {
 
     const json = JSON.parse(serializePayload(payload)) as Record<string, unknown>
     expect(json).toMatchObject({
-      version: 11,
+      version: 13,
       event: 'message',
       deliveryId: 'm_1',
       from: { agent: 'ag_2', name: 'GPT' },
@@ -283,5 +345,13 @@ describe('payload markers and delivery context', () => {
     expect(view.annotations).toHaveLength(2)
     expect(view.text).toBe('Open questions:\n- a1 on line 1: Justify this')
     expect(payload.document).toBe('Why now?\n')
+  })
+
+  it('includes open decisions in the annotations-only text view', () => {
+    const payload = createPayload({
+      file, buffer, agent: 'ag_1', event: 'state', document: 'Body',
+      annotations: [{ id: 'd1', seq: 1, kind: 'decision', author: 'user', agent: null, status: 'open', anchor: 'document', quote: '', text: 'Choose?', line: 1, replies: [], decision: { options: ['A', 'B'], answers: [] } }],
+    })
+    expect(trimPayload(payload, { annotationsOnly: true }).text).toBe('Open decisions:\n- d1 (whole document): Choose?\n  choices: A | B | Other')
   })
 })

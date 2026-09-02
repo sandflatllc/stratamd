@@ -9,7 +9,7 @@ import {
   type StorageEnvironment,
 } from './storage'
 
-export const CURRENT_SETTINGS_VERSION = 1
+export const CURRENT_SETTINGS_VERSION = 2
 export const DEFAULT_ATTACHMENT_IDLE_TIMEOUT = 24 * 60 * 60 * 1000
 /** A year: far beyond any useful idle window, and well inside what a timer can represent. */
 export const MAX_ATTACHMENT_IDLE_TIMEOUT = 365 * 24 * 60 * 60 * 1000
@@ -37,8 +37,7 @@ export interface PanelSize {
 export interface PanelSettings {
   readonly explorerWidth: number
   readonly rightRailWidth: number
-  readonly changesHeight: number
-  readonly annotationsHeight: number
+  readonly upperReviewHeight: number
   readonly documentMeasure: number
   readonly themePanel: ThemePanelGeometry
   readonly threadPanel: PanelSize
@@ -59,7 +58,7 @@ export const ZOOM_STEP = 0.1
 
 export interface Settings {
   readonly formatVersion: typeof CURRENT_SETTINGS_VERSION
-  /** Active theme id (PRD §6.13). Strata Vivid is the default view; `strata` is the built-in fallback. */
+  /** Active theme id (PRD §6.13). Strata Vivid is the default and built-in fallback. */
   readonly theme: string
   readonly keepResolvedAnnotations: boolean
   readonly attachmentIdleTimeoutMs: number
@@ -89,8 +88,7 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   panels: Object.freeze({
     explorerWidth: 212,
     rightRailWidth: 300,
-    changesHeight: 250,
-    annotationsHeight: 180,
+    upperReviewHeight: 444,
     documentMeasure: 860,
     themePanel: Object.freeze({ x: -1, y: -1, width: 360, height: 560 }),
     threadPanel: Object.freeze({ width: 660, height: -1 }),
@@ -123,6 +121,22 @@ function numberInRange(value: unknown, fallback: number, minimum: number, maximu
   return typeof value === 'number' && Number.isFinite(value)
     ? Math.min(maximum, Math.max(minimum, value))
     : fallback
+}
+
+function readableNumber(value: unknown, minimum: number, maximum: number): number | null {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(maximum, Math.max(minimum, value))
+    : null
+}
+
+/** Version-one had two stacked review windows with a 14px resizer between them. */
+function upperReviewHeight(panelValue: Record<string, unknown>): number {
+  const explicit = readableNumber(panelValue.upperReviewHeight, 180, 954)
+  if (explicit !== null) return explicit
+  const changes = readableNumber(panelValue.changesHeight, 120, 520)
+  const annotations = readableNumber(panelValue.annotationsHeight, 90, 420)
+  if (changes !== null && annotations !== null) return Math.min(954, Math.max(180, changes + 14 + annotations))
+  return Math.min(954, Math.max(180, changes ?? annotations ?? DEFAULT_SETTINGS.panels.upperReviewHeight))
 }
 
 export function normalizeZoom(value: unknown): number {
@@ -184,8 +198,7 @@ export function normalizeSettings(value: unknown): Settings {
     panels: {
       explorerWidth: numberInRange(panelValue.explorerWidth, 212, 160, 340),
       rightRailWidth: numberInRange(panelValue.rightRailWidth, 300, 240, 440),
-      changesHeight: numberInRange(panelValue.changesHeight, 250, 120, 520),
-      annotationsHeight: numberInRange(panelValue.annotationsHeight, 180, 90, 420),
+      upperReviewHeight: upperReviewHeight(panelValue),
       documentMeasure: numberInRange(panelValue.documentMeasure, 860, 620, 1600),
       themePanel: {
         x: numberInRange(themePanelValue.x, -1, -1, 20_000),
