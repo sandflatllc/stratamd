@@ -1,6 +1,7 @@
 import { join, resolve } from 'node:path'
-import { readFile } from 'node:fs/promises'
+import { readFile, rename } from 'node:fs/promises'
 import { getConfigDirectory as getPlatformConfigDirectory } from '../platform/paths.js'
+import { logError } from './log.js'
 import {
   atomicWriteFile,
   ensurePrivateDirectory,
@@ -10,6 +11,15 @@ import {
 
 export const CURRENT_SETTINGS_VERSION = 1
 export const DEFAULT_ATTACHMENT_IDLE_TIMEOUT = 24 * 60 * 60 * 1000
+/** A year: far beyond any useful idle window, and well inside what a timer can represent. */
+export const MAX_ATTACHMENT_IDLE_TIMEOUT = 365 * 24 * 60 * 60 * 1000
+
+/** A settings file that could not be read, kept aside so nothing in it is lost. */
+export interface SettingsRecovery {
+  /** Where the unreadable file was moved. */
+  readonly preservedPath: string
+  readonly reason: string
+}
 
 export interface ThemePanelGeometry {
   readonly x: number
@@ -120,8 +130,9 @@ export function normalizeZoom(value: unknown): number {
   return Math.round(clamped * 10) / 10
 }
 
-function positiveInteger(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : fallback
+function idleTimeout(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return fallback
+  return Math.min(MAX_ATTACHMENT_IDLE_TIMEOUT, Math.max(1, Math.round(value)))
 }
 
 export function normalizeSettings(value: unknown): Settings {
@@ -165,7 +176,7 @@ export function normalizeSettings(value: unknown): Settings {
     keepResolvedAnnotations: typeof value.keepResolvedAnnotations === 'boolean'
       ? value.keepResolvedAnnotations
       : DEFAULT_SETTINGS.keepResolvedAnnotations,
-    attachmentIdleTimeoutMs: positiveInteger(
+    attachmentIdleTimeoutMs: idleTimeout(
       value.attachmentIdleTimeoutMs,
       DEFAULT_SETTINGS.attachmentIdleTimeoutMs,
     ),
@@ -201,6 +212,7 @@ export function normalizeSettings(value: unknown): Settings {
 export class SettingsStore {
   readonly configDirectory: string
   readonly path: string
+  #recovery: SettingsRecovery | null = null
 
   constructor(options: SettingsStoreOptions = {}) {
     this.configDirectory = options.configDirectory
@@ -209,13 +221,44 @@ export class SettingsStore {
     this.path = join(this.configDirectory, 'settings.json')
   }
 
+  /** Set when the last load found an unreadable file and moved it aside. */
+  get recovery(): SettingsRecovery | null {
+    return this.#recovery
+  }
+
+  /**
+   * A file this build cannot read (corrupt JSON, or written by a newer
+   * build) is moved to settings.json.broken-<time> and the defaults apply.
+   * Nothing is deleted: the user or a newer build can still read the copy.
+   */
   async load(): Promise<Settings> {
+    let text: string
     try {
-      const value: unknown = JSON.parse(await readFile(this.path, 'utf8'))
-      return normalizeSettings(value)
+      text = await readFile(this.path, 'utf8')
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return structuredClone(DEFAULT_SETTINGS)
       throw error
+    }
+    try {
+      const settings = normalizeSettings(JSON.parse(text))
+      this.#recovery = null
+      return settings
+    } catch (error) {
+      await this.#preserveBroken(error)
+      return structuredClone(DEFAULT_SETTINGS)
+    }
+  }
+
+  async #preserveBroken(error: unknown): Promise<void> {
+    const reason = error instanceof Error ? error.message : String(error)
+    const preservedPath = `${this.path}.broken-${new Date().toISOString().replace(/[:.]/g, '-')}`
+    try {
+      await rename(this.path, preservedPath)
+      logError('settings', `Settings could not be read; the file was kept at ${preservedPath} and defaults apply`, error)
+      this.#recovery = { preservedPath, reason }
+    } catch (renameError) {
+      logError('settings', `Settings could not be read and the file could not be moved aside (${this.path}); defaults apply`, renameError)
+      this.#recovery = { preservedPath: this.path, reason }
     }
   }
 

@@ -16,12 +16,11 @@ The UI contract used by the suite is semantic:
 
 These names follow the PRD and design handoff and make the same controls available to keyboard and assistive-technology users.
 
-Commands:
+Commands, from the repository root:
 
 ```sh
-pnpm exec playwright test --list
-pnpm build
-pnpm exec playwright test
+./node_modules/.bin/playwright test --list
+./node_modules/.bin/electron-vite build && xvfb-run -a ./node_modules/.bin/playwright test
 ```
 
-The first command compiles and enumerates the tests without requiring a working app build. The other two are the release checks.
+The first command compiles and enumerates the tests without a working app build. The second is the E2E step of the gate in `AGENTS.md`, which also lists the xvfb, chrome-sandbox, and spell-dictionary setup a headless box needs. Call the binaries directly; `pnpm <script>` is for CI and fresh clones, not the owner's checkout.

@@ -198,7 +198,14 @@ function recordSegment(
   if (mayExtend && last !== undefined) {
     const segments = next.segments.slice()
     segments[segments.length - 1] = { ...last, afterSnapshotId }
-    return { ...next, segments, forceNewUserSegment: false }
+    // The superseded end of the segment is one keystroke's worth of text that
+    // nothing names any more; keeping it would grow snapshots per keystroke.
+    const superseded = last.afterSnapshotId
+    const stillReferenced = superseded === afterSnapshotId
+      || segments.some((segment) => segment.beforeSnapshotId === superseded || segment.afterSnapshotId === superseded)
+    if (stillReferenced) return { ...next, segments, forceNewUserSegment: false }
+    const { [superseded]: _dropped, ...snapshots } = next.snapshots
+    return { ...next, segments, snapshots, forceNewUserSegment: false }
   }
 
   let id: string
@@ -698,6 +705,38 @@ export function prepareSave(state: DocumentState, observedDisk: string): SaveRes
     pendingHunks: saved.pendingHunks,
   }
   return { status: 'saved', state: next, content: state.shadow }
+}
+
+/**
+ * Fold a completed Save into the live state. `saved` is prepareSave's result
+ * for the content that was written; `live` is the state now, which may have
+ * moved on while the write was in flight. Disk and ghost come from the save;
+ * the shadow stays live, so a document edited during the write remains dirty
+ * with exactly the unsaved keystrokes. Pending hunks keep their live shadow
+ * ranges and take the ghost ranges the save computed for them.
+ */
+export function applySavedContent(live: DocumentState, saved: DocumentState): DocumentState {
+  if (live.shadow === saved.shadow) return { ...live, disk: saved.disk, ghost: saved.ghost, pendingHunks: saved.pendingHunks }
+  const savedById = new Map(saved.pendingHunks.map((hunk) => [hunk.id, hunk]))
+  return {
+    ...live,
+    disk: saved.disk,
+    ghost: saved.ghost,
+    pendingHunks: live.pendingHunks.map((hunk) => {
+      const counterpart = savedById.get(hunk.id)
+      return counterpart === undefined ? hunk : { ...hunk, ghost: { ...counterpart.ghost } }
+    }),
+  }
+}
+
+/** Snapshot ids the state itself still names: every segment boundary. */
+export function segmentSnapshotIds(state: DocumentState): Set<string> {
+  const ids = new Set<string>()
+  for (const segment of state.segments) {
+    ids.add(segment.beforeSnapshotId)
+    ids.add(segment.afterSnapshotId)
+  }
+  return ids
 }
 
 export function markSendBoundary(state: DocumentState): DocumentState {

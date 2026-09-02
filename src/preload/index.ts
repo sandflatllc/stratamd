@@ -73,6 +73,13 @@ const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyn
     return () => ipcRenderer.removeListener(IPC.spelling, wrapped)
   },
   addDictionaryWord: (word) => invoke<void>(IPC.addDictionaryWord, word),
+  flashWindow: () => { void invoke<void>(IPC.flashWindow).catch(() => undefined) },
+  createFile: (directory, name) => invoke<string>(IPC.createFile, directory, name),
+  renameFile: (path, name) => invoke<string>(IPC.renameFile, path, name),
+  trashFile: (path) => invoke<void>(IPC.trashFile, path),
+  revealFile: (path) => invoke<void>(IPC.revealFile, path),
+  openFileDialog: () => invoke<void>(IPC.openFileDialog),
+  pasteFromClipboard: () => invoke<void>(IPC.pasteFromClipboard),
   openDocument: (path) => invoke<void>(IPC.openDocument, path),
   async openDroppedFiles(files) {
     for (const file of files) await invoke<void>(IPC.openDocument, webUtils.getPathForFile(file))

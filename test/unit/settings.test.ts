@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -89,10 +89,39 @@ describe('settings', () => {
     expect(normalizeSettings({ theme: 'Not A Slug' }).theme).toBe('strata-vivid')
   })
 
-  it('rejects newer settings instead of losing unknown state', async () => {
+  it('preserves newer settings aside and falls back to defaults', async () => {
     const directory = await temporaryDirectory()
     const store = new SettingsStore({ configDirectory: directory })
-    await writeFile(store.path, JSON.stringify({ formatVersion: 99 }))
-    await expect(store.load()).rejects.toThrow('newer than this build')
+    const newer = JSON.stringify({ formatVersion: 99, future: true })
+    await writeFile(store.path, newer)
+    expect(await store.load()).toEqual(DEFAULT_SETTINGS)
+    expect(store.recovery).toMatchObject({ reason: expect.stringContaining('newer than this build') })
+    const kept = (await readdir(directory)).filter((name) => name.startsWith('settings.json.broken-'))
+    expect(kept).toHaveLength(1)
+    expect(await readFile(join(directory, kept[0]!), 'utf8')).toBe(newer)
+    expect(store.recovery?.preservedPath).toBe(join(directory, kept[0]!))
+    // The next write starts a fresh file; the preserved copy stays untouched,
+    // and once a readable file loads the recovery record clears.
+    await store.update({ ambientMotion: false })
+    expect(JSON.parse(await readFile(store.path, 'utf8')).ambientMotion).toBe(false)
+    await store.load()
+    expect(store.recovery).toBeNull()
+    expect(await readFile(join(directory, kept[0]!), 'utf8')).toBe(newer)
+  })
+
+  it('preserves a corrupt settings file the same way', async () => {
+    const directory = await temporaryDirectory()
+    const store = new SettingsStore({ configDirectory: directory })
+    await writeFile(store.path, '{ not json')
+    expect(await store.load()).toEqual(DEFAULT_SETTINGS)
+    expect(store.recovery?.preservedPath).toMatch(/settings\.json\.broken-/)
+    await expect(readFile(store.path, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('caps the attachment idle timeout and rounds fractional values', () => {
+    expect(normalizeSettings({ attachmentIdleTimeoutMs: Number.MAX_SAFE_INTEGER }).attachmentIdleTimeoutMs)
+      .toBe(365 * 24 * 60 * 60 * 1000)
+    expect(normalizeSettings({ attachmentIdleTimeoutMs: 100.00000000000001 }).attachmentIdleTimeoutMs).toBe(100)
+    expect(normalizeSettings({ attachmentIdleTimeoutMs: 0 }).attachmentIdleTimeoutMs).toBe(DEFAULT_SETTINGS.attachmentIdleTimeoutMs)
   })
 })

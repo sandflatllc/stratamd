@@ -34,11 +34,14 @@ import {
   undoAnnotationStep,
   type AnnotationStepChanges,
   clearResolvedAnnotations as clearResolvedAnnotationLog,
-  closestAnnotationMatches,
   createAnnotation,
   createAnnotationLog,
-  locateQuote,
+  describeQuoteFailure,
+  locateEdit,
   mapAnnotationsThroughEdit,
+  quoteCandidateForLines,
+  type QuoteFailure,
+  withAttachmentNames,
   nearestQuoteStart,
   pruneResolvedAnnotations,
   relocateAnnotation,
@@ -50,6 +53,7 @@ import {
   isHunkVerdict,
   recordHunkVerdict,
   verdictQuote,
+  type Annotation,
   type LogEvent,
   type AnnotationLog
 } from '../core/annotations'
@@ -73,14 +77,16 @@ import {
   type Attachment,
   type ClipboardRecipient,
   type DeliverySource,
+  type FrozenDelivery,
   type IndexedSegment
 } from '../core/delivery'
 import { createPayload, PAYLOAD_VERSION, trimPayload, type PayloadAttachment, type PayloadSegment } from '../core/payload'
-import { computeHunks, contentHash, mapOldRangeToNew, rangesTouch, type TextRange } from '../core/diff'
+import { computeHunks, contentHash, contextHunks, mapOldPositionToNew, mapOldRangeToNew, rangesTouch, type TextRange } from '../core/diff'
 import {
   acceptAgentReplacement,
   acceptUserReplacement,
   applyExternalChange,
+  applySavedContent,
   applyUserEdit,
   createDocumentState,
   discardOnClose,
@@ -89,11 +95,13 @@ import {
   markSendBoundary,
   persistPendingHunkAnchors,
   prepareSave,
+  recomputePendingHunks,
   recordMirrorWrite,
   resolveExternalConflict,
   revertHunk as revertPendingHunk,
   restoreReviewFrame,
   reviewFrame,
+  segmentSnapshotIds,
   setExternalTag,
   type ExternalAttribution,
   type ExternalChangeResult,
@@ -108,22 +116,46 @@ import { readDiskState, readDocument, resolveAllowedLocalPath, resolveDocumentPa
 import { localImageUrl } from './protocols'
 import { lineAt, stableValue } from './view-stability'
 import { SessionRegistry } from './session'
-import { DEFAULT_SETTINGS, SettingsStore, type Settings } from './settings'
+import { DEFAULT_SETTINGS, SettingsStore, type Settings, type SettingsRecovery } from './settings'
 import { BUILT_IN_THEME, listInstalledFonts, ThemeBrokenError, ThemeStore, type LoadedTheme, type ThemeSummary } from './themes'
 import { readSparseValue, THEME_KEY_BY_NAME, THEME_SCHEMA_VERSION, writeSparseValue, normalizeThemeValue, type SparseTheme } from '../shared/theme-keys'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { THEME_SAMPLE_FILE_NAME, THEME_SAMPLE_MARKDOWN } from '../shared/theme-sample'
 import { atomicWriteFile } from './storage'
-import watcher, { type AsyncSubscription } from '@parcel/watcher'
-import { CURRENT_META_VERSION, GhostStore, type AttachmentMeta, type DocumentLock, type DocumentMeta, type SaveAuthorMeta, type SaveMeta, type SegmentMeta } from './storage'
-import { DebouncedMirror, HashReconciler, WatchCoordinator } from './watcher'
+import { CURRENT_META_VERSION, DEFAULT_LOCK_TIMEOUT_MS, GhostStore, type AttachmentMeta, type DeliveryMeta, type DocumentLock, type DocumentMeta, type PendingHunkMeta, type SaveAuthorMeta, type SaveMeta, type SegmentMeta } from './storage'
+import { DebouncedMirror, HashReconciler, WatchCoordinator, watchDirectory, type DirectorySubscription } from './watcher'
 import { AttachWaitRegistry } from './socket'
 import { CommandFailure, type CommandArguments, type CommandRequest, type SocketCommandHandler } from '../cli/protocol'
 import { toDeliveredAnnotation } from '../core/annotations'
 
-/** Every anchor failure outside annotate says what to do next (PRD §6.8). */
-const ANCHOR_HINT = 'The text moved; run state and quote the current text, or reject it.'
+/** One QUOTE_INVALID entry: the unified failure plus which input it was (PRD §6.8). */
+interface QuoteFailureEntry extends QuoteFailure {
+  index: number
+  quote: string
+}
+
+/** One failure's message is the top-level error; several get the summary. */
+function quoteFailureCommand(failures: readonly QuoteFailureEntry[], noun: 'quote' | 'match'): CommandFailure {
+  const message = failures.length === 1
+    ? failures[0]!.message
+    : noun === 'match' ? 'One or more matches are invalid' : 'One or more quotes are invalid'
+  return new CommandFailure(message, 3, 'QUOTE_INVALID', failures)
+}
+
+function attachmentNotFound(agent: string, file: string, hint = 'run stratamd attach first'): CommandFailure {
+  return new CommandFailure(`Attachment ${agent} is not attached to ${file}; ${hint}`, 2, 'ATTACHMENT_NOT_FOUND', { agent, file })
+}
+
+function annotationNotFound(annotation: string, file: string): CommandFailure {
+  return new CommandFailure(`Annotation ${annotation} was not found in ${file}`, 2, 'ANNOTATION_NOT_FOUND', { annotation, file })
+}
+/** The theme problem key under which a failed file write is reported (plan 4.14). */
+const THEME_WRITE_PROBLEM_KEY = 'write'
+/** The longest delay a Node timer represents faithfully. */
+const MAX_TIMER_DELAY_MS = 2 ** 31 - 1
+/** How long typing may go on before its meta reaches disk; the buffer mirror (80 ms) carries the text itself. */
+const META_WRITE_DEBOUNCE_MS = 1_000
 
 interface PersistedApplicationState {
   state: DocumentState
@@ -181,6 +213,40 @@ interface OpenDocumentSession {
   /** Increases once per application step; published so the editor can order it against typing. */
   historyStep: number
   attachWaitVersions: Record<string, number>
+  /** The shadow-versus-disk diff behind hunk save states, reused while neither side changes. */
+  unsavedRangesCache?: { disk: string; shadow: string; ranges: TextRange[] }
+  /**
+   * The entry's stored form as last read or written. Every persist derives the
+   * next meta from it and the in-memory state; meta.json is never re-read
+   * while the session holds the lock (plan 4.11).
+   */
+  meta?: DocumentMeta
+  /** A debounced meta write is pending; see #persist. */
+  metaDirty: boolean
+  metaTimer: ReturnType<typeof setTimeout> | null
+  /**
+   * When each segment was first persisted or scheduled for persisting. A
+   * deferred write must not move a segment into a later save round, so the
+   * stamp is taken when the change is recorded, not when meta.json is written.
+   */
+  segmentTimes: Map<string, number>
+  /**
+   * When each pending hunk was first recorded, by hunk id, stamped in the same
+   * #persist pass and with the same clock read as the segments recorded with
+   * it. Hunks are stamped directly rather than traced to a segment: a hunk
+   * holds no segment reference, its id is reallocated when a later edit
+   * re-diffs it, and the segment that produced it is trimmed from the session
+   * once persisted, so the trace would fail for exactly the older hunks whose
+   * age matters most. Written to meta.json with the hunk and restored from it.
+   */
+  hunkTimes: Map<string, number>
+  /** Object ids of delivery payloads proven written this session, by payload identity. */
+  payloadBlobs: WeakMap<object, string>
+}
+
+interface PersistOptions {
+  /** Coalesce with other writes over about a second instead of writing now. */
+  debounce?: boolean
 }
 
 /** The typed inverse of one application step: only what the step owns. */
@@ -213,7 +279,7 @@ export class StrataApplication implements StrataApi {
   #themeWriteTimer: ReturnType<typeof setTimeout> | null = null
   #themeWriteQueue: Promise<void> = Promise.resolve()
   #themeLastWritten = ''
-  #themeSubscription: AsyncSubscription | null = null
+  #themeSubscription: DirectorySubscription | null = null
   #themeRelistTimer: ReturnType<typeof setTimeout> | null = null
   #fontsCache: string[] | null = null
   readonly #clipboardWrite: (text: string) => Promise<void>
@@ -221,6 +287,8 @@ export class StrataApplication implements StrataApi {
   readonly #now: () => number
   readonly #watch: boolean
   readonly #sessions = new Map<string, OpenDocumentSession>()
+  /** The tail of each document's turn queue; see #withSession. */
+  readonly #sessionTurns = new Map<string, Promise<void>>()
   readonly #listeners = new Set<(state: AppView) => void>()
   readonly #tabs: SessionRegistry
   readonly #attachWaits = new AttachWaitRegistry<ReturnType<typeof createPayload>>()
@@ -265,6 +333,11 @@ export class StrataApplication implements StrataApi {
     return this.#theme
   }
 
+  /** A settings file that could not be read at startup and was moved aside (plan 4.1). */
+  get settingsRecovery(): SettingsRecovery | null {
+    return this.#settingsStore.recovery
+  }
+
   async #loadActiveTheme(id: string): Promise<void> {
     try {
       this.#theme = await this.#themeStore.load(id)
@@ -286,10 +359,10 @@ export class StrataApplication implements StrataApi {
   }
 
   async #watchThemes(): Promise<void> {
-    this.#themeSubscription = await watcher.subscribe(this.#themeStore.directory, (error, events) => {
+    this.#themeSubscription = await watchDirectory(this.#themeStore.directory, (error, filename) => {
       if (error) return
       const activePath = this.#theme.path
-      const activeTouched = activePath !== null && events.some((event) => event.path === activePath)
+      const activeTouched = activePath !== null && (filename === null || filename === basename(activePath))
       if (this.#themeRelistTimer) clearTimeout(this.#themeRelistTimer)
       this.#themeRelistTimer = setTimeout(() => {
         this.#themeRelistTimer = null
@@ -392,7 +465,30 @@ export class StrataApplication implements StrataApi {
     this.#themeWriteQueue = this.#themeWriteQueue
       .then(() => this.#themeStore.write(id, sparse))
       .then(() => this.#relistThemes())
-      .then(() => this.#publish(), () => undefined)
+      .then(
+        () => {
+          if (this.#theme.id === id && this.#theme.problems.some((problem) => problem.key === THEME_WRITE_PROBLEM_KEY)) {
+            this.#theme = { ...this.#theme, problems: this.#theme.problems.filter((problem) => problem.key !== THEME_WRITE_PROBLEM_KEY) }
+          }
+          this.#publish()
+        },
+        (error: unknown) => {
+          // The edit is live in memory; only the file is stale. Say so where
+          // the theme panel already lists problems, and keep the record.
+          logError('theme', `Theme file write failed: ${this.#themeStore.pathFor(id)}`, error)
+          if (this.#theme.id === id) {
+            const reason = `The theme could not be written to ${this.#themeStore.pathFor(id)}: ${error instanceof Error ? error.message : String(error)}`
+            this.#theme = {
+              ...this.#theme,
+              problems: [
+                ...this.#theme.problems.filter((problem) => problem.key !== THEME_WRITE_PROBLEM_KEY),
+                { key: THEME_WRITE_PROBLEM_KEY, reason },
+              ],
+            }
+          }
+          this.#publish()
+        },
+      )
   }
 
   /** Test hook: resolves once pending theme writes have reached disk. */
@@ -474,12 +570,24 @@ export class StrataApplication implements StrataApi {
     this.#attachWaits.rejectAll(new Error('StrataMD is shutting down'))
     const sessions = [...this.#sessions.values()]
     this.#listeners.clear()
-    const results = await Promise.allSettled(sessions.map(async (session) => {
+    const results = await Promise.allSettled(sessions.map((session) => this.#withSession(session.path, async () => {
+      // Typing that has not reached the buffer yet is the user's only copy of
+      // it until the next open; the mirror flushes before anything is released.
+      try {
+        await session.mirror?.flush()
+      } catch (error) {
+        logError('mirror', `Buffer mirror flush failed during shutdown: ${session.path}`, error)
+      }
       session.mirror?.cancel()
+      try {
+        await this.#persist(session)
+      } catch (error) {
+        logError('persist', `Persisting document state failed during shutdown: ${session.path}`, error)
+      }
       await releaseSessionResources(session)
       this.#sessions.delete(session.path)
       this.#tabs.close(session.path)
-    }))
+    })))
     const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
     if (failed) throw failed.reason
   }
@@ -490,6 +598,42 @@ export class StrataApplication implements StrataApi {
       return
     }
     const canonical = await resolveDocumentPath(path)
+    // Two opens of one closed document (a double click, a CLI call racing the
+    // explorer) queue on the same key; the second finds the session the first
+    // built and focuses it (plan 4.7).
+    await this.#withSession(canonical, () => this.#openLocked(canonical))
+  }
+
+  /** The paths of every open document whose buffer differs from the file. */
+  dirtyDocumentPaths(): string[] {
+    return [...this.#sessions.values()]
+      .filter((session) => session.state.shadow !== session.state.disk)
+      .map((session) => session.path)
+  }
+
+  /**
+   * One async turn per document (plan 2.4). Every method that reads and then
+   * writes a session across an await runs inside it, including socket
+   * commands, watcher merges, and background persists, so no two of them
+   * interleave. The lock is not reentrant: a method that needs another
+   * session operation calls its #...Locked form.
+   */
+  async #withSession<T>(path: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.#sessionTurns.get(path) ?? Promise.resolve()
+    let release!: () => void
+    const turn = new Promise<void>((resolve) => { release = resolve })
+    const tail = previous.then(() => turn)
+    this.#sessionTurns.set(path, tail)
+    await previous
+    try {
+      return await operation()
+    } finally {
+      release()
+      if (this.#sessionTurns.get(path) === tail) this.#sessionTurns.delete(path)
+    }
+  }
+
+  async #openLocked(canonical: string): Promise<void> {
     if (this.#sessions.has(canonical)) {
       this.#tabs.focus(canonical)
       await this.#sessions.get(canonical)?.reconciler?.wake('focus')
@@ -527,6 +671,11 @@ export class StrataApplication implements StrataApi {
         persistedContentBlobs: new Map(),
         historyStep: 0,
         attachWaitVersions: {},
+        metaDirty: false,
+        metaTimer: null,
+        segmentTimes: new Map(),
+        hunkTimes: new Map(),
+        payloadBlobs: new WeakMap(),
         documentHandle: tracked.handle,
         identity: tracked.identity,
       })
@@ -568,8 +717,9 @@ export class StrataApplication implements StrataApi {
     const annotations = restoredAnnotationLog(meta)
     // The expiry filter runs before the Lead is restored, so a holder that aged
     // past the idle timeout while the app was closed comes back with no Lead.
+    const payloadBlobs = new WeakMap<object, string>()
     const attachments = { ...expireIdleAttachments(
-      restoreAttachments(meta, saved?.attachments),
+      await restoreAttachments(meta, saved?.attachments, this.#store, payloadBlobs),
       this.#now(),
       this.#settings.attachmentIdleTimeoutMs
     ) }
@@ -601,14 +751,20 @@ export class StrataApplication implements StrataApi {
       persistedBlobs: new Set(),
       persistedContentBlobs: new Map(),
       historyStep: 0,
-      attachWaitVersions: {}
+      attachWaitVersions: {},
+      meta,
+      metaDirty: false,
+      metaTimer: null,
+      segmentTimes: new Map(meta.segments.flatMap((segment) => segment.id ? [[segment.id, segment.time] as const] : [])),
+      hunkTimes: restoredHunkTimes(meta, state, this.#now()),
+      payloadBlobs,
     }
     session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
     const tracked = await openTrackedDocument(canonical)
     session.documentHandle = tracked.handle
     session.identity = tracked.identity
     try {
-      session.lock = await this.#store.acquireLock(canonical)
+      session.lock = await this.#store.acquireLock(canonical, DEFAULT_LOCK_TIMEOUT_MS)
     } catch (error) {
       await tracked.handle.close()
       throw error
@@ -626,89 +782,109 @@ export class StrataApplication implements StrataApi {
     this.#publish()
   }
 
-  async closeDocument(path: string, decision?: 'save' | 'discard' | 'cancel'): Promise<'closed' | 'needs-decision' | 'cancelled'> {
-    const session = this.#require(path)
-    if (session.state.shadow !== session.state.disk && !decision) return 'needs-decision'
-    if (decision === 'cancel') return 'cancelled'
-    if (decision === 'save') await this.save(path)
-    if (decision === 'discard') {
-      await session.mirror?.flush()
-      this.#clearApplicationHistory(session)
-      session.state = discardOnClose(session.state)
-      session.mirror?.cancel()
-      await this.#store.writeBuffer(path, session.state.disk)
-      await this.#persist(session)
-    }
-    if (Object.keys(session.attachments).length > 0) {
-      await this.#enqueueDeliveries(
-        session,
-        { recipients: Object.keys(session.attachments), note: '', includeExternal: false },
-        Object.keys(session.attachments),
-        'closed'
-      )
-      for (const [agent, attachment] of Object.entries(session.attachments)) {
-        const delivery = collectOldest(attachment)
-        if (delivery) this.#attachWaits.deliver(attachKey(path, agent), delivery.payload)
+  closeDocument(path: string, decision?: 'save' | 'discard' | 'cancel'): Promise<'closed' | 'needs-decision' | 'cancelled'> {
+    return this.#withSession(path, async () => {
+      const session = this.#require(path)
+      if (session.state.shadow !== session.state.disk && !decision) return 'needs-decision'
+      if (decision === 'cancel') return 'cancelled'
+      if (decision === 'save') await this.#saveLocked(path)
+      if (decision === 'discard') {
+        await session.mirror?.flush()
+        this.#clearApplicationHistory(session)
+        session.state = discardOnClose(session.state)
+        session.mirror?.cancel()
+        await this.#store.writeBuffer(path, session.state.disk)
+        await this.#persist(session)
       }
-      await this.#persist(session)
-    }
-    session.mirror?.cancel()
-    await releaseSessionResources(session)
-    this.#sessions.delete(path)
-    this.#tabs.close(path)
-    this.#scheduleIdleExpiry()
-    return 'closed'
+      if (Object.keys(session.attachments).length > 0) {
+        await this.#enqueueDeliveries(
+          session,
+          { recipients: Object.keys(session.attachments), note: '', includeExternal: false },
+          Object.keys(session.attachments),
+          'closed'
+        )
+        // Persist before waking any blocked attach: a delivery handed out
+        // before it is durable could be acknowledged against a store that never
+        // held it.
+        await this.#persist(session)
+        for (const [agent, attachment] of Object.entries(session.attachments)) {
+          const delivery = collectOldest(attachment)
+          if (delivery) this.#attachWaits.deliver(attachKey(path, agent), delivery.payload)
+        }
+      }
+      session.mirror?.cancel()
+      await releaseSessionResources(session)
+      this.#sessions.delete(path)
+      this.#tabs.close(path)
+      this.#scheduleIdleExpiry()
+      return 'closed'
+    })
   }
 
-  async updateBuffer(path: string, content: string, origin: BufferOrigin = 'edit'): Promise<void> {
-    const session = this.#writable(path)
-    if (content === session.state.shadow) return
-    if (origin === 'edit') session.applicationRedo = []
-    for (const hunk of computeHunks(session.state.shadow, content).sort((a, b) => b.before.from - a.before.from)) {
-      session.state = applyUserEdit(session.state, { ...hunk.before, insert: hunk.added })
-      session.annotations = mapAnnotationsThroughEdit(session.annotations, {
-        start: hunk.before.from,
-        deleteCount: hunk.before.to - hunk.before.from,
-        insertText: hunk.added
-      })
-    }
-    for (const annotation of Object.values(session.annotations.annotations)) {
-      if (annotation.status !== 'resolved') session.annotations = relocateAnnotation(session.annotations, annotation.id, session.state.shadow).log
-    }
-    session.mirror?.schedule(session.state.shadow)
-    await this.#persist(session)
-    this.#scheduleIdleExpiry()
-    this.#publish()
+  updateBuffer(path: string, content: string, origin: BufferOrigin = 'edit'): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      if (content === session.state.shadow) return
+      if (origin === 'edit') session.applicationRedo = []
+      for (const hunk of computeHunks(session.state.shadow, content).sort((a, b) => b.before.from - a.before.from)) {
+        session.state = applyUserEdit(session.state, { ...hunk.before, insert: hunk.added })
+        session.annotations = mapAnnotationsThroughEdit(session.annotations, {
+          start: hunk.before.from,
+          deleteCount: hunk.before.to - hunk.before.from,
+          insertText: hunk.added
+        })
+      }
+      for (const annotation of Object.values(session.annotations.annotations)) {
+        if (annotation.status !== 'resolved') session.annotations = relocateAnnotation(session.annotations, annotation.id, session.state.shadow).log
+      }
+      session.mirror?.schedule(session.state.shadow)
+      await this.#persist(session, { debounce: true })
+      this.#scheduleIdleExpiry()
+      this.#publish()
+    })
   }
 
-  async undo(path: string): Promise<'undone' | 'empty'> {
-    const session = this.#writable(path)
-    const entry = session.applicationUndo.pop()
-    if (!entry) return 'empty'
-    this.#restoreApplicationStep(session, entry.before, undoAnnotationStep(session.annotations, entry.annotations))
-    session.applicationRedo.push(entry)
-    await this.#changed(session)
-    return 'undone'
+  undo(path: string): Promise<'undone' | 'empty'> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      const entry = session.applicationUndo.pop()
+      if (!entry) return 'empty'
+      this.#restoreApplicationStep(session, entry.before, undoAnnotationStep(session.annotations, entry.annotations))
+      session.applicationRedo.push(entry)
+      await this.#changed(session)
+      return 'undone'
+    })
   }
 
-  async redo(path: string): Promise<'redone' | 'empty'> {
-    const session = this.#writable(path)
-    const entry = session.applicationRedo.pop()
-    if (!entry) return 'empty'
-    this.#restoreApplicationStep(session, entry.after, redoAnnotationStep(session.annotations, entry.annotations))
-    session.applicationUndo.push(entry)
-    await this.#changed(session)
-    return 'redone'
+  redo(path: string): Promise<'redone' | 'empty'> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      const entry = session.applicationRedo.pop()
+      if (!entry) return 'empty'
+      this.#restoreApplicationStep(session, entry.after, redoAnnotationStep(session.annotations, entry.annotations))
+      session.applicationUndo.push(entry)
+      await this.#changed(session)
+      return 'redone'
+    })
   }
 
-  async save(path: string): Promise<void> {
+  save(path: string): Promise<void> {
+    return this.#withSession(path, () => this.#saveLocked(path))
+  }
+
+  async #saveLocked(path: string): Promise<void> {
     const session = this.#writable(path)
     await session.reconciler?.wake('before-save')
     if (session.state.conflicts.length > 0) throw new Error('Resolve external changes before saving')
-    const cancelOwnedWrite = session.reconciler?.noteOwnedWrite('document', session.state.shadow)
+    // The state at the moment of the write is what the save describes. If
+    // the shadow moves before the write returns, the clean state is derived
+    // from this capture and the session stays dirty by the difference.
+    const captured = session.state
+    const content = captured.shadow
+    const cancelOwnedWrite = session.reconciler?.noteOwnedWrite('document', content)
     const result = await saveDocumentWithHashCheck(
       path,
-      session.state.shadow,
+      content,
       session.deleted ? null : session.diskHash,
     ).catch((error: unknown) => {
       cancelOwnedWrite?.()
@@ -729,21 +905,21 @@ export class StrataApplication implements StrataApi {
       }
       throw new Error('The document changed on disk. Resolve the incoming change before saving.')
     }
-    const prepared = prepareSave(session.state, session.state.disk)
+    const prepared = prepareSave(captured, captured.disk)
     if (prepared.status !== 'saved') throw new Error('The document changed on disk')
     // Record the round before the state flips: the content this save replaced,
     // the content it wrote, and the previous save's time as the round threshold
     // (falling back to lastSavedAt on stores whose history predates the format).
     // A save that changed nothing records nothing (PRD §6.7).
-    if (session.state.disk !== prepared.content) {
-      const beforeBlob = await this.#persistContent(session, session.state.disk)
+    if (captured.disk !== prepared.content) {
+      const beforeBlob = await this.#persistContent(session, captured.disk)
       session.pendingSaveRecord = {
         beforeBlob,
         afterBlob: contentHash(prepared.content),
         threshold: session.saves.at(-1)?.time ?? session.lastSavedAt ?? Number.NEGATIVE_INFINITY,
       }
     }
-    session.state = prepared.state
+    session.state = applySavedContent(session.state, prepared.state)
     this.#clearApplicationHistory(session)
     session.diskHash = result.disk.hash
     session.deleted = false
@@ -756,58 +932,68 @@ export class StrataApplication implements StrataApi {
   }
 
   /** The hunks of one past save round, read-only, from the entry's own snapshots (PRD §6.7). */
-  async saveRound(path: string, index: number): Promise<{ hunks: RoundHunkView[] }> {
-    const session = this.#require(path)
-    const save = session.saves[index]
-    if (save === undefined) throw new Error('No such save')
-    const before = await this.#store.getObjectText(save.beforeBlob)
-    const after = await this.#store.getObjectText(save.afterBlob)
-    return {
-      hunks: computeHunks(before, after).map((hunk) => ({
-        oldStart: hunk.oldStartLine,
-        oldLines: hunk.removedLines,
-        newStart: hunk.newStartLine,
-        newLines: hunk.addedLines,
-        removed: splitLines(hunk.removed),
-        added: splitLines(hunk.added),
-      })),
-    }
-  }
-
-  async setSourceMode(path: string, source: boolean): Promise<void> {
-    const session = this.#require(path)
-    session.sourceMode = session.sourceOnly || source
-    await this.#persist(session)
-    this.#publish()
-  }
-
-  async keepHunk(path: string, hunkId: string): Promise<void> {
-    const session = this.#writable(path)
-    await this.#applyApplicationStep(session, () => {
-      this.#recordVerdict(session, hunkId, 'hunk-kept')
-      session.state = keepPendingHunk(session.state, hunkId)
+  saveRound(path: string, index: number): Promise<{ hunks: RoundHunkView[] }> {
+    return this.#withSession(path, async () => {
+      const session = this.#require(path)
+      const save = session.saves[index]
+      if (save === undefined) throw new Error('No such save')
+      const before = await this.#store.getObjectText(save.beforeBlob)
+      const after = await this.#store.getObjectText(save.afterBlob)
+      return {
+        hunks: computeHunks(before, after).map((hunk) => ({
+          oldStart: hunk.oldStartLine,
+          oldLines: hunk.removedLines,
+          newStart: hunk.newStartLine,
+          newLines: hunk.addedLines,
+          removed: splitLines(hunk.removed),
+          added: splitLines(hunk.added),
+        })),
+      }
     })
-    await this.#changed(session)
   }
 
-  async revertHunk(path: string, hunkId: string, confirmMixed = false): Promise<void> {
-    const session = this.#writable(path)
-    await this.#applyApplicationStep(session, () => {
-      const result = revertPendingHunk(session.state, hunkId, confirmMixed)
-      if (result.status === 'confirmation-required') throw new Error('Reverting this mixed hunk requires confirmation')
-      this.#recordVerdict(session, hunkId, 'hunk-reverted')
-      session.state = result.state
+  setSourceMode(path: string, source: boolean): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#require(path)
+      session.sourceMode = session.sourceOnly || source
+      await this.#persist(session)
+      this.#publish()
     })
-    await this.#changed(session)
   }
 
-  async markReviewed(path: string): Promise<void> {
-    const session = this.#writable(path)
-    await this.#applyApplicationStep(session, () => {
-      for (const hunk of session.state.pendingHunks) this.#recordVerdict(session, hunk.id, 'hunk-kept')
-      session.state = reviewAll(session.state)
+  keepHunk(path: string, hunkId: string): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      await this.#applyApplicationStep(session, () => {
+        this.#recordVerdict(session, hunkId, 'hunk-kept')
+        session.state = keepPendingHunk(session.state, hunkId)
+      })
+      await this.#changed(session)
     })
-    await this.#changed(session)
+  }
+
+  revertHunk(path: string, hunkId: string, confirmMixed = false): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      await this.#applyApplicationStep(session, () => {
+        const result = revertPendingHunk(session.state, hunkId, confirmMixed)
+        if (result.status === 'confirmation-required') throw new Error('Reverting this mixed hunk requires confirmation')
+        this.#recordVerdict(session, hunkId, 'hunk-reverted')
+        session.state = result.state
+      })
+      await this.#changed(session)
+    })
+  }
+
+  markReviewed(path: string): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      await this.#applyApplicationStep(session, () => {
+        for (const hunk of session.state.pendingHunks) this.#recordVerdict(session, hunk.id, 'hunk-kept')
+        session.state = reviewAll(session.state)
+      })
+      await this.#changed(session)
+    })
   }
 
   /** The author of a kept or reverted hunk learns the verdict as an event, never as its own text diffed back (PRD §6.3). */
@@ -819,21 +1005,23 @@ export class StrataApplication implements StrataApi {
     session.annotations = recordHunkVerdict(session.annotations, type, hunk.author.agentId, verdictQuote(removed, added))
   }
 
-  async addAnnotation(path: string, annotation: { kind: 'comment' | 'question' | 'suggestion'; quote: string; text: string; from: number; to: number }): Promise<void> {
-    const session = this.#writable(path)
-    const start = this.#anchorQuote(session, annotation)
-    session.annotations = createAnnotation(session.annotations, session.state.shadow, {
-      createdAt: this.#now(),
-      id: `a_${randomUUID().slice(0, 12)}`,
-      kind: annotation.kind,
-      author: 'user',
-      quote: annotation.quote,
-      text: annotation.text,
-      start
-    }).log
-    session.applicationRedo = []
-    await this.#persist(session)
-    this.#publish()
+  addAnnotation(path: string, annotation: { kind: 'comment' | 'question' | 'suggestion'; quote: string; text: string; from: number; to: number }): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      const start = this.#anchorQuote(session, annotation)
+      session.annotations = createAnnotation(session.annotations, session.state.shadow, {
+        createdAt: this.#now(),
+        id: `a_${randomUUID().slice(0, 12)}`,
+        kind: annotation.kind,
+        author: 'user',
+        quote: annotation.quote,
+        text: annotation.text,
+        start
+      }).log
+      session.applicationRedo = []
+      await this.#persist(session)
+      this.#publish()
+    })
   }
 
   /**
@@ -849,238 +1037,264 @@ export class StrataApplication implements StrataApi {
     return relocated
   }
 
-  async requoteAnnotation(path: string, annotationId: string, range: { quote: string; from: number; to: number }): Promise<void> {
-    const session = this.#writable(path)
-    const start = this.#anchorQuote(session, range)
-    const applied = await this.#applyApplicationStep(session, () => {
-      const result = requoteAnnotation(session.annotations, session.state.shadow, annotationId, { quote: range.quote, start })
-      if (result.log === session.annotations) return false
-      session.annotations = result.log
-      return true
-    })
-    if (!applied) return
-    await this.#persist(session)
-    this.#publish()
-  }
-
-  async reply(path: string, annotationId: string, text: string): Promise<void> {
-    const session = this.#writable(path)
-    session.annotations = replyToAnnotation(session.annotations, annotationId, {
-      createdAt: this.#now(),
-      id: `r_${randomUUID().slice(0, 12)}`,
-      author: 'user',
-      text
-    }).log
-    session.applicationRedo = []
-    await this.#persist(session)
-    this.#publish()
-  }
-
-  async resolveAnnotation(path: string, annotationId: string): Promise<void> {
-    const session = this.#writable(path)
-    session.annotations = resolveAnnotationThread(session.annotations, annotationId).log
-    session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
-    session.applicationRedo = []
-    await this.#persist(session)
-    this.#publish()
-  }
-
-  async acceptSuggestion(path: string, annotationId: string): Promise<void> {
-    const session = this.#writable(path)
-    await this.#applyApplicationStep(session, () => {
-      const attribution = suggestionAttribution(session, annotationId)
-      const result = acceptAnnotationSuggestion(session.annotations, session.state.shadow, annotationId)
-      if (result.userChange) {
-        session.state = acceptUserReplacement(session.state, {
-          from: result.userChange.start,
-          to: result.userChange.end,
-          insert: result.userChange.added
-        }, attribution)
-        session.annotations = relocateOpenAnnotations(
-          mapAnnotationsThroughEdit(result.log, {
-            start: result.userChange.start,
-            deleteCount: result.userChange.end - result.userChange.start,
-            insertText: result.userChange.added
-          }),
-          session.state.shadow,
-        )
-      } else {
+  requoteAnnotation(path: string, annotationId: string, range: { quote: string; from: number; to: number }): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      const start = this.#anchorQuote(session, range)
+      const applied = await this.#applyApplicationStep(session, () => {
+        const result = requoteAnnotation(session.annotations, session.state.shadow, annotationId, { quote: range.quote, start })
+        if (result.log === session.annotations) return false
         session.annotations = result.log
-      }
+        return true
+      })
+      if (!applied) return
+      await this.#persist(session)
+      this.#publish()
+    })
+  }
+
+  reply(path: string, annotationId: string, text: string): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      session.annotations = replyToAnnotation(session.annotations, annotationId, {
+        createdAt: this.#now(),
+        id: `r_${randomUUID().slice(0, 12)}`,
+        author: 'user',
+        text
+      }).log
+      session.applicationRedo = []
+      await this.#persist(session)
+      this.#publish()
+    })
+  }
+
+  resolveAnnotation(path: string, annotationId: string): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      session.annotations = resolveAnnotationThread(session.annotations, annotationId).log
       session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
+      session.applicationRedo = []
+      await this.#persist(session)
+      this.#publish()
     })
-    await this.#changed(session)
   }
 
-  async rejectSuggestion(path: string, annotationId: string): Promise<void> {
-    const session = this.#writable(path)
-    session.annotations = rejectAnnotationSuggestion(session.annotations, annotationId).log
-    session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
-    session.applicationRedo = []
-    await this.#persist(session)
-    this.#publish()
+  acceptSuggestion(path: string, annotationId: string): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      await this.#applyApplicationStep(session, () => {
+        const attribution = suggestionAttribution(session, annotationId)
+        const result = acceptAnnotationSuggestion(session.annotations, session.state.shadow, annotationId)
+        if (result.userChange) {
+          session.state = acceptUserReplacement(session.state, {
+            from: result.userChange.start,
+            to: result.userChange.end,
+            insert: result.userChange.added
+          }, attribution)
+          session.annotations = relocateOpenAnnotations(
+            mapAnnotationsThroughEdit(result.log, {
+              start: result.userChange.start,
+              deleteCount: result.userChange.end - result.userChange.start,
+              insertText: result.userChange.added
+            }),
+            session.state.shadow,
+          )
+        } else {
+          session.annotations = result.log
+        }
+        session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
+      })
+      await this.#changed(session)
+    })
   }
 
-  async acceptAllSuggestions(path: string, agentId: string): Promise<{ accepted: string[]; skipped: string[] }> {
-    const session = this.#writable(path)
-    let outcome: { accepted: string[]; skipped: string[] } = { accepted: [], skipped: [] }
-    await this.#applyApplicationStep(session, () => {
-      const attribution: ExternalAttribution = { agentId, name: session.attachments[agentId]?.name ?? agentId }
-      const result = acceptAllAnnotationSuggestions(session.annotations, session.state.shadow, agentId)
-      for (const change of result.changes) {
-        session.state = acceptUserReplacement(session.state, {
-          from: change.start,
-          to: change.end,
-          insert: change.added
-        }, attribution)
-      }
-      session.annotations = relocateOpenAnnotations(result.log, session.state.shadow)
+  rejectSuggestion(path: string, annotationId: string): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      session.annotations = rejectAnnotationSuggestion(session.annotations, annotationId).log
       session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
-      outcome = { accepted: [...result.accepted], skipped: [...result.skipped] }
-      return result.changes.length > 0
+      session.applicationRedo = []
+      await this.#persist(session)
+      this.#publish()
     })
-    await this.#changed(session)
-    return outcome
   }
 
-  async rejectAllSuggestions(path: string, agentId: string): Promise<string[]> {
-    const session = this.#writable(path)
-    const result = rejectAllAnnotationSuggestions(session.annotations, agentId)
-    session.annotations = result.log
-    session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
-    session.applicationRedo = []
-    await this.#persist(session)
-    this.#publish()
-    return [...result.rejected]
-  }
-
-  async clearResolvedAnnotations(path: string): Promise<void> {
-    const session = this.#writable(path)
-    session.annotations = clearResolvedAnnotationLog(session.annotations)
-    session.applicationRedo = []
-    await this.#persist(session)
-    this.#publish()
-  }
-
-  async resolveRecovery(path: string, decision: 'recover' | 'discard'): Promise<void> {
-    const session = this.#require(path)
-    if (session.readOnly) throw new Error('This document is read-only')
-    if (!session.recovery) return
-    this.#clearApplicationHistory(session)
-    if (decision === 'recover') {
-      const buffer = await this.#store.readBuffer(path)
-      if (buffer) {
-        const meta = await this.#store.loadMeta(path)
-        session.state = await restoreDocumentState(
-          this.#store,
-          meta,
-          persistedApplication(meta)?.state,
-          session.state.disk,
-          session.state.ghost,
-          buffer.toString('utf8'),
-          buffer.toString('utf8'),
-        )
-      }
-    } else {
-      await this.#store.writeBuffer(path, session.state.disk)
-      session.state = discardOnClose(session.state)
-      session.reconciler?.noteOwnedWrite('buffer', session.state.disk)
-    }
-    session.annotations = relocateOpenAnnotations(session.annotations, session.state.shadow)
-    delete session.recovery
-    await this.#persist(session)
-    this.#publish()
-  }
-
-  async resolveConflict(path: string, conflictId: string, decision: 'mine' | 'incoming'): Promise<void> {
-    const session = this.#writable(path)
-    await this.#applyApplicationStep(session, () => {
-      session.state = resolveExternalConflict(session.state, conflictId, decision)
+  acceptAllSuggestions(path: string, agentId: string): Promise<{ accepted: string[]; skipped: string[] }> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      let outcome: { accepted: string[]; skipped: string[] } = { accepted: [], skipped: [] }
+      await this.#applyApplicationStep(session, () => {
+        const attribution: ExternalAttribution = { agentId, name: session.attachments[agentId]?.name ?? agentId }
+        const result = acceptAllAnnotationSuggestions(session.annotations, session.state.shadow, agentId)
+        for (const change of result.changes) {
+          session.state = acceptUserReplacement(session.state, {
+            from: change.start,
+            to: change.end,
+            insert: change.added
+          }, attribution)
+        }
+        session.annotations = relocateOpenAnnotations(result.log, session.state.shadow)
+        session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
+        outcome = { accepted: [...result.accepted], skipped: [...result.skipped] }
+        return result.changes.length > 0
+      })
+      await this.#changed(session)
+      return outcome
     })
-    await this.#changed(session)
   }
 
-  async previewSend(path: string, request: SendPreviewRequest): Promise<SendPreview[]> {
-    const session = this.#require(path)
-    const token = this.#documentToken(session)
-    return Promise.all(request.recipients.map(async (id) => {
-      const attachment = session.attachments[id]
-      if (!attachment) throw new Error(`Attachment ${id} was not found`)
-      const delivery = freezeDelivery(attachment, await this.#deliverySource(session, request, id))
-      return {
-        recipient: agentIdentity(id, attachment.name, Object.keys(session.attachments).indexOf(id)),
-        text: delivery.payload.text,
-        token,
-        items: delivery.payload.event === 'resync' ? { changes: [], events: [] } : this.#sendItems(session, attachment),
-        ...(delivery.payload.event === 'resync' ? { resync: true } : {}),
-        ...(attachment.deliveries.at(-1) ? { queuedAfter: attachment.deliveries.at(-1)!.id } : {}),
-        dependentExternalHunks: dependentExternalHunkCount(
-          session.state,
-          deliveryStart(attachment).segmentIndex,
-          session.segmentOffset,
-        )
-      }
-    }))
+  rejectAllSuggestions(path: string, agentId: string): Promise<string[]> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      const result = rejectAllAnnotationSuggestions(session.annotations, agentId)
+      session.annotations = result.log
+      session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
+      session.applicationRedo = []
+      await this.#persist(session)
+      this.#publish()
+      return [...result.rejected]
+    })
   }
 
-  async send(path: string, request: SendPreviewRequest): Promise<string[]> {
-    const session = this.#writable(path)
-    if (request.recipients.length === 0) throw new Error('Select at least one recipient')
-    await session.mirror?.flush()
-    // A frozen delivery must equal the preview the user saw: an edit landing
-    // between preview and click can add content never shown, and a segment
-    // extension renumbers hunk keys under the captured exclusions.
-    if (request.token !== undefined) {
-      const current = this.#documentToken(session)
-      if (current.snapshotId !== request.token.snapshotId
-        || current.segmentIndex !== request.token.segmentIndex
-        || current.cursor !== request.token.cursor) {
-        throw new Error("The document changed. Check what you're sending again.")
+  clearResolvedAnnotations(path: string): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      session.annotations = clearResolvedAnnotationLog(session.annotations)
+      session.applicationRedo = []
+      await this.#persist(session)
+      this.#publish()
+    })
+  }
+
+  resolveRecovery(path: string, decision: 'recover' | 'discard'): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#require(path)
+      if (session.readOnly) throw new Error('This document is read-only')
+      if (!session.recovery) return
+      this.#clearApplicationHistory(session)
+      if (decision === 'recover') {
+        const buffer = await this.#store.readBuffer(path)
+        if (buffer) {
+          const meta = session.meta ?? await this.#store.loadMeta(path)
+          session.state = await restoreDocumentState(
+            this.#store,
+            meta,
+            persistedApplication(meta)?.state,
+            session.state.disk,
+            session.state.ghost,
+            buffer.toString('utf8'),
+            buffer.toString('utf8'),
+          )
+        }
+      } else {
+        await this.#store.writeBuffer(path, session.state.disk)
+        session.state = discardOnClose(session.state)
+        session.reconciler?.noteOwnedWrite('buffer', session.state.disk)
       }
-    }
-    session.state = markSendBoundary(session.state)
-    const deliveries = await this.#enqueueDeliveries(session, request, request.recipients)
-    session.lastSentSegmentIndex = currentSegmentIndex(session)
-    session.lastSentAnnotationSeq = session.annotations.nextSeq - 1
-    this.#clearApplicationHistory(session)
-    for (const id of request.recipients) {
-      const delivery = collectOldest(session.attachments[id]!)
-      if (delivery) this.#attachWaits.deliver(attachKey(path, id), delivery.payload)
-    }
-    await this.#persist(session)
-    this.#scheduleIdleExpiry()
-    this.#publish()
-    return deliveries.map((delivery) => delivery.id)
+      session.annotations = relocateOpenAnnotations(session.annotations, session.state.shadow)
+      delete session.recovery
+      await this.#persist(session)
+      this.#publish()
+    })
+  }
+
+  resolveConflict(path: string, conflictId: string, decision: 'mine' | 'incoming'): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      await this.#applyApplicationStep(session, () => {
+        session.state = resolveExternalConflict(session.state, conflictId, decision)
+      })
+      await this.#changed(session)
+    })
+  }
+
+  previewSend(path: string, request: SendPreviewRequest): Promise<SendPreview[]> {
+    return this.#withSession(path, async () => {
+      const session = this.#require(path)
+      const token = this.#documentToken(session)
+      return Promise.all(request.recipients.map(async (id) => {
+        const attachment = session.attachments[id]
+        if (!attachment) throw new Error(`Attachment ${id} was not found`)
+        const delivery = freezeDelivery(attachment, await this.#deliverySource(session, request, id))
+        return {
+          recipient: agentIdentity(id, attachment.name, Object.keys(session.attachments).indexOf(id)),
+          text: delivery.payload.text,
+          token,
+          items: delivery.payload.event === 'resync' ? { changes: [], events: [] } : this.#sendItems(session, attachment),
+          ...(delivery.payload.event === 'resync' ? { resync: true } : {}),
+          ...(attachment.deliveries.at(-1) ? { queuedAfter: attachment.deliveries.at(-1)!.id } : {}),
+          dependentExternalHunks: dependentExternalHunkCount(
+            session.state,
+            deliveryStart(attachment).segmentIndex,
+            session.segmentOffset,
+          )
+        }
+      }))
+    })
+  }
+
+  send(path: string, request: SendPreviewRequest): Promise<string[]> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      if (request.recipients.length === 0) throw new Error('Select at least one recipient')
+      await session.mirror?.flush()
+      // A frozen delivery must equal the preview the user saw: an edit landing
+      // between preview and click can add content never shown, and a segment
+      // extension renumbers hunk keys under the captured exclusions.
+      if (request.token !== undefined) {
+        const current = this.#documentToken(session)
+        if (current.snapshotId !== request.token.snapshotId
+          || current.segmentIndex !== request.token.segmentIndex
+          || current.cursor !== request.token.cursor) {
+          throw new Error("The document changed. Check what you're sending again.")
+        }
+      }
+      session.state = markSendBoundary(session.state)
+      const deliveries = await this.#enqueueDeliveries(session, request, request.recipients)
+      session.lastSentSegmentIndex = currentSegmentIndex(session)
+      session.lastSentAnnotationSeq = session.annotations.nextSeq - 1
+      this.#clearApplicationHistory(session)
+      await this.#persist(session)
+      for (const id of request.recipients) {
+        const delivery = collectOldest(session.attachments[id]!)
+        if (delivery) this.#attachWaits.deliver(attachKey(path, id), delivery.payload)
+      }
+      this.#scheduleIdleExpiry()
+      this.#publish()
+      return deliveries.map((delivery) => delivery.id)
+    })
   }
 
   async copyText(text: string): Promise<void> {
     await this.#clipboardWrite(text)
   }
 
-  async copyForAgent(path: string, note: string, includeExternal: boolean): Promise<void> {
-    const session = this.#require(path)
-    await session.mirror?.flush()
-    session.state = markSendBoundary(session.state)
-    const prepared = prepareClipboardDelivery(
-      session.clipboardRecipient,
-      await this.#deliverySource(session, { recipients: [], note, includeExternal }, 'clipboard'),
-    )
-    session.clipboardRecipient = prepared.recipient
-    await this.#persist(session)
-    try {
-      await this.#clipboardWrite(prepared.delivery.payload.text)
-      session.clipboardRecipient = acknowledgeClipboardWrite(session.clipboardRecipient, prepared.delivery.id, true)
-      session.lastSentSegmentIndex = currentSegmentIndex(session)
-      session.lastSentAnnotationSeq = session.annotations.nextSeq - 1
-      session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
-      this.#clearApplicationHistory(session)
-    } catch (error) {
-      session.clipboardRecipient = acknowledgeClipboardWrite(session.clipboardRecipient, prepared.delivery.id, false)
-      throw error
-    } finally {
+  copyForAgent(path: string, note: string, includeExternal: boolean): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#require(path)
+      await session.mirror?.flush()
+      session.state = markSendBoundary(session.state)
+      const prepared = prepareClipboardDelivery(
+        session.clipboardRecipient,
+        await this.#deliverySource(session, { recipients: [], note, includeExternal }, 'clipboard'),
+      )
+      session.clipboardRecipient = prepared.recipient
       await this.#persist(session)
-      this.#publish()
-    }
+      try {
+        await this.#clipboardWrite(prepared.delivery.payload.text)
+        session.clipboardRecipient = acknowledgeClipboardWrite(session.clipboardRecipient, prepared.delivery.id, true)
+        session.lastSentSegmentIndex = currentSegmentIndex(session)
+        session.lastSentAnnotationSeq = session.annotations.nextSeq - 1
+        session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
+        this.#clearApplicationHistory(session)
+      } catch (error) {
+        session.clipboardRecipient = acknowledgeClipboardWrite(session.clipboardRecipient, prepared.delivery.id, false)
+        throw error
+      } finally {
+        await this.#persist(session)
+        this.#publish()
+      }
+    })
   }
 
   async nudge(path: string, agentId: string): Promise<void> {
@@ -1124,6 +1338,7 @@ export class StrataApplication implements StrataApi {
     for (const session of this.#sessions.values()) {
       session.persistedBlobs = new Set()
       session.persistedContentBlobs = new Map()
+      session.payloadBlobs = new WeakMap()
     }
     await this.refreshExplorer()
   }
@@ -1131,7 +1346,7 @@ export class StrataApplication implements StrataApi {
   async updateSettings(settings: Partial<Omit<AppSettingsView, 'theme'>>): Promise<void> {
     this.#settings = await this.#settingsStore.update({
       ...(settings.animatedBackground === undefined ? {} : { ambientMotion: settings.animatedBackground }),
-      ...(settings.attachmentIdleHours === undefined ? {} : { attachmentIdleTimeoutMs: settings.attachmentIdleHours * 60 * 60 * 1_000 }),
+      ...(settings.attachmentIdleHours === undefined ? {} : { attachmentIdleTimeoutMs: Math.round(settings.attachmentIdleHours * 60 * 60 * 1_000) }),
       ...(settings.panelSizes === undefined ? {} : { panels: settings.panelSizes }),
       ...(settings.zoom === undefined ? {} : { zoom: settings.zoom })
     })
@@ -1152,7 +1367,10 @@ export class StrataApplication implements StrataApi {
 
   async recheckFocused(): Promise<void> {
     const path = this.#tabs.focusedPath
-    if (path) await this.#sessions.get(path)?.reconciler?.wake('focus')
+    if (!path) return
+    await this.#withSession(path, async () => {
+      await this.#sessions.get(path)?.reconciler?.wake('focus')
+    })
   }
 
   commandHandler(): SocketCommandHandler {
@@ -1162,10 +1380,16 @@ export class StrataApplication implements StrataApi {
       } catch (error) {
         if (error instanceof CommandFailure) throw error
         if (error instanceof AnnotationAnchorError) {
-          throw new CommandFailure(error.message, 3, 'QUOTE_INVALID', { code: error.code, matches: [], hint: ANCHOR_HINT })
+          throw quoteFailureCommand([{ index: 0, quote: '', ...describeQuoteFailure('', '', error) }], 'quote')
         }
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-          throw new CommandFailure('Document not found', 2, 'NOT_FOUND')
+          const file = (request.args as { file?: unknown }).file
+          throw new CommandFailure(
+            typeof file === 'string' ? `Document not found: ${file}` : 'Document not found',
+            2,
+            'NOT_FOUND',
+            typeof file === 'string' ? { file } : undefined,
+          )
         }
         throw error
       }
@@ -1197,14 +1421,18 @@ export class StrataApplication implements StrataApi {
       const seed = await seedGhostFromGit(file, disk.bytes)
       const open = this.#sessions.get(file)
       if (open) {
-        open.state = {
-          ...open.state,
-          ghost: seed.content.toString('utf8'),
-          pendingHunks: [],
-          conflicts: [],
-        }
-        await this.#persist(open)
-        this.#publish()
+        await this.#withSession(file, async () => {
+          // The offline handler leaves every difference between the new ghost
+          // and the text as a pending hunk, so `changes` agrees online and off.
+          open.state = recomputePendingHunks({
+            ...open.state,
+            ghost: seed.content.toString('utf8'),
+            pendingHunks: [],
+            conflicts: [],
+          })
+          await this.#persist(open)
+          this.#publish()
+        })
       } else if (await this.#store.hasDocument(file)) {
         const existing = await this.#store.loadMeta(file)
         const ghostBlob = await this.#store.putObject(seed.content)
@@ -1222,24 +1450,171 @@ export class StrataApplication implements StrataApi {
     if (request.command === 'state' && !this.#sessions.has(file)) {
       return trimPayload(await this.#closedStatePayload(file), request.args)
     }
-    if (!this.#sessions.has(file)) await this.openDocument(file)
-    const session = this.#require(file)
+    if ((request.command === 'ack' || request.command === 'detach') && !this.#sessions.has(file)) {
+      return this.#withSession(file, () => this.#closedAttachmentCommand(request, file, signal))
+    }
+    if (request.command === 'attach') return this.#attachCommand(request.args, file, signal)
+    return this.#withSession(file, async () => {
+      if (!this.#sessions.has(file)) await this.#openLocked(file)
+      const session = this.#require(file)
+      try {
+        return await this.#dispatch(request, session, file, signal)
+      } catch (error) {
+        if (error instanceof AnnotationAnchorError) throw this.#anchorFailure(session, error)
+        throw error
+      }
+    })
+  }
+
+  /**
+   * `ack` and `detach` for a document that is not open work on the stored
+   * attachment alone (plan 2.7). Opening the document to acknowledge its own
+   * `closed` delivery would put the tab straight back; the CLI's final ack
+   * after the user closed a document must leave it closed.
+   */
+  async #closedAttachmentCommand(
+    request: CommandRequest<'ack'> | CommandRequest<'detach'>,
+    file: string,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    // An open that was queued ahead of this turn may have finished by now.
+    if (this.#sessions.has(file)) return this.#dispatch(request, this.#require(file), file, signal)
+    const agent = request.args.agent
+    const notAttached = new CommandFailure(`Attachment ${agent} was not found for ${file}`, 2, 'ATTACHMENT_NOT_FOUND', { agent, file })
+    if (!await this.#store.hasDocument(file)) throw notAttached
+    return this.#store.withLock(file, async () => {
+      const meta = await this.#store.loadMeta(file)
+      const payloadBlobs = new WeakMap<object, string>()
+      const attachment = (await restoreAttachments(meta, persistedApplication(meta)?.attachments, this.#store, payloadBlobs))[agent]
+      if (!attachment) throw notAttached
+      if (request.command === 'ack') {
+        const result = acknowledgeDelivery(attachment, request.args.deliveryId)
+        if (!result.acknowledged) throw unknownDeliveryFailure(attachment, request.args.deliveryId)
+        await this.#store.saveMeta({
+          ...meta,
+          attachments: { ...meta.attachments, [agent]: await persistAttachment(this.#store, payloadBlobs, result.attachment) },
+        })
+        return { acknowledged: true }
+      }
+      const { [agent]: _removed, ...remaining } = meta.attachments
+      await this.#store.saveMeta({
+        ...meta,
+        attachments: remaining,
+        leadAgentId: meta.leadAgentId === agent ? null : meta.leadAgentId ?? null,
+      })
+      this.#attachWaits.cancel(attachKey(file, agent), new Error('Attachment detached'))
+      return { detached: true }
+    }, DEFAULT_LOCK_TIMEOUT_MS)
+  }
+
+  /**
+   * `attach` blocks until a delivery arrives, and that delivery comes from
+   * another turn on the same document (a Send, a close). The wait therefore
+   * sits between two locked phases instead of inside one.
+   */
+  async #attachCommand(
+    attach: CommandArguments['attach'],
+    file: string,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const trim = { textOnly: attach.textOnly === true }
+    const registered = await this.#withSession(file, async () => {
+      if (!this.#sessions.has(file)) await this.#openLocked(file)
+      const session = this.#require(file)
+      let attachment = session.attachments[attach.agent]
+      if (!attachment) {
+        const snapshot = deliverySnapshot(session)
+        attachment = createAttachment({ id: attach.agent, name: attach.name, now: this.#now(), snapshot })
+        session.attachments[attach.agent] = attachment
+        await this.#persist(session)
+        this.#scheduleIdleExpiry()
+        this.#publish()
+        return { payload: trimPayload(createInitialPayload(
+          attachment,
+          file,
+          this.#store.pathsForDocument(file).buffer,
+          snapshot,
+          withAttachmentNames(Object.values(session.annotations.annotations).map(toDeliveredAnnotation), this.#attachmentName(session))
+        ), trim) }
+      }
+      attachment = noteAttachCall(attachment, this.#now())
+      session.attachments[attach.agent] = attachment
+      const queued = collectOldest(attachment)
+      if (queued) {
+        session.attachments[attach.agent] = finishAttachCall(attachment, this.#now())
+        await this.#persist(session)
+        this.#scheduleIdleExpiry()
+        this.#publish()
+        return { payload: trimPayload(queued.payload, trim) }
+      }
+      const waitVersion = (session.attachWaitVersions[attach.agent] ?? 0) + 1
+      session.attachWaitVersions[attach.agent] = waitVersion
+      // The wait must be registered before this handler yields: a delivery
+      // enqueued during the persist below would call deliver() against an
+      // empty registry and the attach would sit blind until its timeout.
+      const wait = this.#attachWaits.wait(attachKey(file, attach.agent), attach.timeout * 1_000, signal)
+      try {
+        await this.#persist(session)
+      } catch (error) {
+        this.#attachWaits.cancel(attachKey(file, attach.agent), error)
+        wait.catch(() => {})
+        throw error
+      }
+      this.#scheduleIdleExpiry()
+      this.#publish()
+      return { wait, waitVersion, session }
+    })
+    if ('payload' in registered) return registered.payload
+    const { wait, waitVersion, session } = registered
     try {
-      return await this.#dispatch(request, session, file, signal)
-    } catch (error) {
-      if (error instanceof AnnotationAnchorError) throw this.#anchorFailure(session, error)
-      throw error
+      const result = await wait
+      if (result.event === 'delivery') return trimPayload(result.value, trim)
+      return createPayload({
+        file,
+        buffer: this.#store.pathsForDocument(file).buffer,
+        agent: attach.agent,
+        event: result.event
+      })
+    } finally {
+      await this.#withSession(file, async () => {
+        if (session.attachWaitVersions[attach.agent] !== waitVersion) return
+        const current = session.attachments[attach.agent]
+        if (current) session.attachments[attach.agent] = finishAttachCall(current, this.#now())
+        // The document may have closed while the call waited; its state is
+        // already durable and a closed session is not written again.
+        if (this.#sessions.get(file) !== session) return
+        await this.#persist(session)
+        this.#scheduleIdleExpiry()
+        this.#publish()
+      })
     }
   }
 
-  /** Anchor failures outside annotate carry the same excerpts annotate lists, plus what to do next. */
-  #anchorFailure(session: OpenDocumentSession, error: AnnotationAnchorError, quote?: string): CommandFailure {
-    return new CommandFailure(error.message, 3, 'QUOTE_INVALID', {
-      code: error.code,
-      ...(quote === undefined ? {} : { quote }),
-      matches: quote === undefined ? [] : closestAnnotationMatches(session.state.shadow, quote, error.matches),
-      hint: ANCHOR_HINT,
-    })
+  /** Anchor failures outside annotate and edit take the same shape those two report. */
+  #anchorFailure(session: OpenDocumentSession, error: AnnotationAnchorError, quote = ''): CommandFailure {
+    return quoteFailureCommand([{ index: 0, quote, ...describeQuoteFailure(session.state.shadow, quote, error) }], 'quote')
+  }
+
+  /**
+   * A Lead accept whose suggestion text moved: the most useful candidate is
+   * whatever now stands on the lines the suggestion anchored to.
+   */
+  #movedSuggestionFailure(session: OpenDocumentSession, suggestion: Annotation, error: AnnotationAnchorError): CommandFailure {
+    const shadow = session.state.shadow
+    const described = describeQuoteFailure(shadow, suggestion.quote, error)
+    const here = quoteCandidateForLines(shadow, suggestion.anchor.start, suggestion.anchor.end)
+    return quoteFailureCommand([{
+      index: 0,
+      quote: suggestion.quote,
+      ...described,
+      candidates: [here, ...described.candidates.filter((candidate) => candidate.line !== here.line)],
+      hint: 'The text this suggestion quotes moved; candidates show what stands there now: run stratamd state to read the current buffer, or reject the suggestion.',
+    }], 'quote')
+  }
+
+  /** The name an attachment has now, for annotations written before names were recorded. */
+  #attachmentName(session: OpenDocumentSession): (agent: string) => string | undefined {
+    return (agent) => session.attachments[agent]?.name
   }
 
   #attachmentRows(session: OpenDocumentSession): PayloadAttachment[] {
@@ -1258,6 +1633,7 @@ export class StrataApplication implements StrataApi {
       const session = this.#require(tab.path)
       return {
         file: tab.path,
+        buffer: this.#store.pathsForDocument(tab.path).buffer,
         focused: tab.path === focused,
         dirty: session.state.shadow !== session.state.disk,
         attachments: this.#attachmentRows(session)
@@ -1280,74 +1656,12 @@ export class StrataApplication implements StrataApi {
     signal: AbortSignal,
   ): Promise<unknown> {
     switch (request.command) {
-      case 'attach': {
-        const attach = request.args
-        const trim = { textOnly: attach.textOnly === true }
-        let attachment = session.attachments[attach.agent]
-        if (!attachment) {
-          const snapshot = deliverySnapshot(session)
-          attachment = createAttachment({ id: attach.agent, name: attach.name, now: this.#now(), snapshot })
-          session.attachments[attach.agent] = attachment
-          await this.#persist(session)
-          this.#scheduleIdleExpiry()
-          this.#publish()
-          return trimPayload(createInitialPayload(
-            attachment,
-            file,
-            this.#store.pathsForDocument(file).buffer,
-            snapshot,
-            Object.values(session.annotations.annotations).map(toDeliveredAnnotation)
-          ), trim)
-        }
-        attachment = noteAttachCall(attachment, this.#now())
-        session.attachments[attach.agent] = attachment
-        const queued = collectOldest(attachment)
-        if (queued) {
-          session.attachments[attach.agent] = finishAttachCall(attachment, this.#now())
-          await this.#persist(session)
-          this.#scheduleIdleExpiry()
-          this.#publish()
-          return trimPayload(queued.payload, trim)
-        }
-        const waitVersion = (session.attachWaitVersions[attach.agent] ?? 0) + 1
-        session.attachWaitVersions[attach.agent] = waitVersion
-        // The wait must be registered before this handler yields: a delivery
-        // enqueued during the persist below would call deliver() against an
-        // empty registry and the attach would sit blind until its timeout.
-        const waitPromise = this.#attachWaits.wait(attachKey(file, attach.agent), attach.timeout * 1_000, signal)
-        try {
-          await this.#persist(session)
-        } catch (error) {
-          this.#attachWaits.cancel(attachKey(file, attach.agent), error)
-          waitPromise.catch(() => {})
-          throw error
-        }
-        this.#scheduleIdleExpiry()
-        this.#publish()
-        try {
-          const result = await waitPromise
-          if (result.event === 'delivery') return trimPayload(result.value, trim)
-          return createPayload({
-            file,
-            buffer: this.#store.pathsForDocument(file).buffer,
-            agent: attach.agent,
-            event: result.event
-          })
-        } finally {
-          if (session.attachWaitVersions[attach.agent] === waitVersion) {
-            const current = session.attachments[attach.agent]
-            if (current) session.attachments[attach.agent] = finishAttachCall(current, this.#now())
-            await this.#persist(session)
-            this.#scheduleIdleExpiry()
-            this.#publish()
-          }
-        }
-      }
       case 'ack': {
         const ack = request.args
         const attachment = session.attachments[ack.agent]
-        if (!attachment) throw new CommandFailure('Attachment not found', 2, 'ATTACHMENT_NOT_FOUND')
+        if (!attachment) throw attachmentNotFound(ack.agent, file, 'nothing is queued for it')
         const result = acknowledgeDelivery(attachment, ack.deliveryId)
+        if (!result.acknowledged) throw unknownDeliveryFailure(attachment, ack.deliveryId)
         session.attachments[ack.agent] = result.attachment
         session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
         await this.#persist(session)
@@ -1357,7 +1671,7 @@ export class StrataApplication implements StrataApi {
       }
       case 'detach': {
         if (!session.attachments[request.args.agent]) {
-          throw new CommandFailure('Attachment not found', 2, 'ATTACHMENT_NOT_FOUND')
+          throw attachmentNotFound(request.args.agent, file, 'there is nothing to detach')
         }
         this.#removeAttachment(session, request.args.agent)
         await this.#persist(session)
@@ -1376,7 +1690,7 @@ export class StrataApplication implements StrataApi {
             open: true,
             cursor: snapshot.cursor,
             document: snapshot.document,
-            annotations: Object.values(session.annotations.annotations).map(toDeliveredAnnotation),
+            annotations: withAttachmentNames(Object.values(session.annotations.annotations).map(toDeliveredAnnotation), this.#attachmentName(session)),
             attachments: this.#attachmentRows(session)
           })),
           theme: this.#themeSummary()
@@ -1395,9 +1709,11 @@ export class StrataApplication implements StrataApi {
         await this.#persist(session)
         return { tagged: true }
       case 'annotate': {
+        const author = session.attachments[request.args.agent]
+        if (!author) throw attachmentNotFound(request.args.agent, file)
         let next = session.annotations
         const created: Array<{ id: string; kind: string; quote: string }> = []
-        const failures: Array<{ index: number; quote: string; code: string; matches: readonly string[] }> = []
+        const failures: QuoteFailureEntry[] = []
         for (const [index, annotation] of request.args.annotations.entries()) {
           const id = `a_${randomUUID().slice(0, 12)}`
           try {
@@ -1407,26 +1723,21 @@ export class StrataApplication implements StrataApi {
               kind: annotation.kind,
               author: 'agent',
               agent: request.args.agent,
+              name: author.name,
               quote: annotation.quote,
               text: annotation.text ?? '',
               ...(annotation.label ? { label: annotation.label } : {}),
-              ...(annotation.precededBy ? { precededBy: annotation.precededBy } : {}),
-              ...(annotation.followedBy ? { followedBy: annotation.followedBy } : {})
+              // An empty context is a document boundary, so undefined is the only "absent".
+              ...(annotation.precededBy === undefined ? {} : { precededBy: annotation.precededBy }),
+              ...(annotation.followedBy === undefined ? {} : { followedBy: annotation.followedBy })
             }).log
             created.push({ id, kind: annotation.kind, quote: annotation.quote })
           } catch (error) {
             if (!(error instanceof AnnotationAnchorError)) throw error
-            failures.push({
-              index,
-              quote: annotation.quote,
-              code: error.code,
-              matches: closestAnnotationMatches(session.state.shadow, annotation.quote, error.matches),
-            })
+            failures.push({ index, quote: annotation.quote, ...describeQuoteFailure(session.state.shadow, annotation.quote, error) })
           }
         }
-        if (failures.length > 0) {
-          throw new CommandFailure('One or more annotation quotes are invalid', 3, 'QUOTE_INVALID', failures)
-        }
+        if (failures.length > 0) throw quoteFailureCommand(failures, 'quote')
         session.annotations = next
         await this.#persist(session)
         this.#publish()
@@ -1435,8 +1746,10 @@ export class StrataApplication implements StrataApi {
       case 'edit':
         return this.#editCommand(session, request.args)
       case 'reply': {
+        const replier = session.attachments[request.args.agent]
+        if (!replier) throw attachmentNotFound(request.args.agent, file)
         if (!session.annotations.annotations[request.args.annotation]) {
-          throw new CommandFailure('Annotation not found', 2, 'ANNOTATION_NOT_FOUND')
+          throw annotationNotFound(request.args.annotation, file)
         }
         const id = `r_${randomUUID().slice(0, 12)}`
         session.annotations = replyToAnnotation(session.annotations, request.args.annotation, {
@@ -1444,6 +1757,7 @@ export class StrataApplication implements StrataApi {
           id,
           author: 'agent',
           agent: request.args.agent,
+          name: replier.name,
           text: request.args.text
         }).log
         await this.#persist(session)
@@ -1453,7 +1767,7 @@ export class StrataApplication implements StrataApi {
       case 'send': {
         const message = request.args
         const sender = session.attachments[message.agent]
-        if (!sender) throw new CommandFailure('Sender is not attached', 2, 'ATTACHMENT_NOT_FOUND')
+        if (!sender) throw attachmentNotFound(message.agent, file)
         const requested = message.to ?? Object.keys(session.attachments).filter((id) => id !== message.agent)
         if (requested.includes(message.agent)) {
           throw new CommandFailure('A message cannot name its sender as a recipient', 2, 'SELF_RECIPIENT')
@@ -1464,7 +1778,7 @@ export class StrataApplication implements StrataApi {
         const recipients = [...new Set(requested)]
         const missing = recipients.filter((id) => session.attachments[id] === undefined)
         if (missing.length > 0) {
-          throw new CommandFailure('Recipient is not attached', 2, 'ATTACHMENT_NOT_FOUND', { recipients: missing })
+          throw new CommandFailure(`Recipient ${missing.join(', ')} is not attached to ${file}`, 2, 'ATTACHMENT_NOT_FOUND', { recipients: missing, file })
         }
         // All-or-nothing: every sender→recipient slot is checked before anything
         // is enqueued, so a failed send never double-delivers on retry.
@@ -1491,27 +1805,21 @@ export class StrataApplication implements StrataApi {
           }))
           return { agent: id, name: attachment.name }
         })
+        await this.#persist(session)
         for (const { agent } of sent) {
           const delivery = collectOldest(session.attachments[agent]!)
           if (delivery) this.#attachWaits.deliver(attachKey(file, agent), delivery.payload)
         }
-        await this.#persist(session)
         this.#scheduleIdleExpiry()
         this.#publish()
         return { sent }
       }
       case 'lead': {
         const claim = request.args
-        if (!session.attachments[claim.agent]) {
-          throw new CommandFailure('Attachment not found', 2, 'ATTACHMENT_NOT_FOUND')
-        }
+        if (!session.attachments[claim.agent]) throw attachmentNotFound(claim.agent, file)
         if (session.leadAgentId !== null && session.leadAgentId !== claim.agent) {
-          throw new CommandFailure('Another agent already holds the Lead', 3, 'LEAD_TAKEN', {
-            holder: {
-              agent: session.leadAgentId,
-              name: session.attachments[session.leadAgentId]?.name ?? session.leadAgentId
-            }
-          })
+          const holder = this.#leadHolder(session)!
+          throw new CommandFailure(`${holder.name} (${holder.agent}) already holds the Lead`, 3, 'LEAD_TAKEN', { holder })
         }
         session.leadAgentId = claim.agent
         await this.#persist(session)
@@ -1522,11 +1830,11 @@ export class StrataApplication implements StrataApi {
         const action = request.args
         this.#requireLead(session, action.agent)
         const suggestion = session.annotations.annotations[action.annotation]
-        if (!suggestion) throw new CommandFailure('Annotation not found', 2, 'ANNOTATION_NOT_FOUND')
+        if (!suggestion) throw annotationNotFound(action.annotation, file)
         try {
           await this.#acceptSuggestionAsLead(session, action.annotation, action.agent)
         } catch (error) {
-          if (error instanceof AnnotationAnchorError) throw this.#anchorFailure(session, error, suggestion.quote)
+          if (error instanceof AnnotationAnchorError) throw this.#movedSuggestionFailure(session, suggestion, error)
           throw error
         }
         return { accepted: action.annotation }
@@ -1534,9 +1842,7 @@ export class StrataApplication implements StrataApi {
       case 'reject': {
         const action = request.args
         this.#requireLead(session, action.agent)
-        if (!session.annotations.annotations[action.annotation]) {
-          throw new CommandFailure('Annotation not found', 2, 'ANNOTATION_NOT_FOUND')
-        }
+        if (!session.annotations.annotations[action.annotation]) throw annotationNotFound(action.annotation, file)
         session.annotations = rejectAnnotationSuggestion(
           session.annotations,
           action.annotation,
@@ -1550,13 +1856,11 @@ export class StrataApplication implements StrataApi {
       }
       case 'resolve': {
         const action = request.args
-        if (!session.attachments[action.agent]) {
-          throw new CommandFailure('Attachment not found', 2, 'ATTACHMENT_NOT_FOUND')
-        }
+        if (!session.attachments[action.agent]) throw attachmentNotFound(action.agent, file)
         const record = session.annotations.annotations[action.annotation]
-        if (!record) throw new CommandFailure('Annotation not found', 2, 'ANNOTATION_NOT_FOUND')
+        if (!record) throw annotationNotFound(action.annotation, file)
         if (record.agent !== action.agent && session.leadAgentId !== action.agent) {
-          throw new CommandFailure('Only the Lead may resolve annotations it did not author', 3, 'NOT_LEAD')
+          throw this.#notLead(session, `Only the Lead may resolve annotations it did not author; ${action.annotation} belongs to ${record.agent ?? 'the user'}`)
         }
         session.annotations = resolveAnnotationThread(session.annotations, action.annotation, 'agent', action.agent).log
         session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
@@ -1567,7 +1871,7 @@ export class StrataApplication implements StrataApi {
       case 'save': {
         this.#requireLead(session, request.args.agent)
         try {
-          await this.save(file)
+          await this.#saveLocked(file)
         } catch (error) {
           // A conflict or pending recovery needs the user; the round may end unsaved.
           throw new CommandFailure(
@@ -1585,24 +1889,28 @@ export class StrataApplication implements StrataApi {
   }
 
   /** The user's transfer or revoke from the attachments panel; authoritative over agent claims. */
-  async setLead(path: string, agentId: string | null): Promise<void> {
-    const session = this.#require(path)
-    if (agentId !== null && !session.attachments[agentId]) {
-      throw new Error(`Attachment ${agentId} was not found`)
-    }
-    session.leadAgentId = agentId
-    await this.#persist(session)
-    this.#publish()
+  setLead(path: string, agentId: string | null): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#require(path)
+      if (agentId !== null && !session.attachments[agentId]) {
+        throw new Error(`Attachment ${agentId} was not found`)
+      }
+      session.leadAgentId = agentId
+      await this.#persist(session)
+      this.#publish()
+    })
   }
 
   /** The panel's disconnect: the same path as agent `detach`, cancelling a blocked attach call. */
-  async disconnectAgent(path: string, agentId: string): Promise<void> {
-    const session = this.#require(path)
-    if (!session.attachments[agentId]) throw new Error(`Attachment ${agentId} was not found`)
-    this.#removeAttachment(session, agentId)
-    await this.#persist(session)
-    this.#scheduleIdleExpiry()
-    this.#publish()
+  disconnectAgent(path: string, agentId: string): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#require(path)
+      if (!session.attachments[agentId]) throw new Error(`Attachment ${agentId} was not found`)
+      this.#removeAttachment(session, agentId)
+      await this.#persist(session)
+      this.#scheduleIdleExpiry()
+      this.#publish()
+    })
   }
 
   #removeAttachment(session: OpenDocumentSession, agentId: string): void {
@@ -1612,13 +1920,22 @@ export class StrataApplication implements StrataApi {
     this.#attachWaits.cancel(attachKey(session.path, agentId), new Error('Attachment detached'))
   }
 
+  #leadHolder(session: OpenDocumentSession): { agent: string; name: string } | null {
+    const id = session.leadAgentId
+    if (id === null) return null
+    return { agent: id, name: session.attachments[id]?.name ?? id }
+  }
+
+  /** NOT_LEAD always says who holds it, or that nobody does and how to claim it. */
+  #notLead(session: OpenDocumentSession, message: string): CommandFailure {
+    const holder = this.#leadHolder(session)
+    const who = holder === null ? 'no agent holds the Lead; run stratamd lead to claim it' : `${holder.name} (${holder.agent}) holds the Lead`
+    return new CommandFailure(`${message}: ${who}`, 3, 'NOT_LEAD', { holder })
+  }
+
   #requireLead(session: OpenDocumentSession, agentId: string): void {
-    if (!session.attachments[agentId]) {
-      throw new CommandFailure('Attachment not found', 2, 'ATTACHMENT_NOT_FOUND')
-    }
-    if (session.leadAgentId !== agentId) {
-      throw new CommandFailure('This action needs the Lead', 3, 'NOT_LEAD')
-    }
+    if (!session.attachments[agentId]) throw attachmentNotFound(agentId, session.path)
+    if (session.leadAgentId !== agentId) throw this.#notLead(session, 'This action needs the Lead')
   }
 
   /**
@@ -1633,34 +1950,44 @@ export class StrataApplication implements StrataApi {
     if (session.recovery) {
       throw new CommandFailure('The user must choose Recover or Discard before the buffer can change', 3, 'RECOVERY_PENDING')
     }
+    if (!session.attachments[edit.agent]) throw attachmentNotFound(edit.agent, session.path)
     await session.mirror?.flush()
     const shadow = session.state.shadow
     const located: Array<{ index: number; start: number; end: number; replace: string }> = []
-    const failures: Array<{ index: number; match: string; code: string; matches: readonly string[]; hint: string }> = []
+    const failures: QuoteFailureEntry[] = []
     for (const [index, input] of edit.edits.entries()) {
       try {
-        const anchor = locateQuote(shadow, input.match, input.precededBy, input.followedBy)
+        const anchor = locateEdit(shadow, input)
         located.push({ index, start: anchor.start, end: anchor.end, replace: input.replace })
       } catch (error) {
         if (!(error instanceof AnnotationAnchorError)) throw error
-        failures.push({
-          index,
-          match: input.match,
-          code: error.code,
-          matches: closestAnnotationMatches(shadow, input.match, error.matches),
-          hint: ANCHOR_HINT,
-        })
+        failures.push({ index, quote: input.match, ...describeQuoteFailure(shadow, input.match, error, 'match') })
       }
     }
-    if (failures.length > 0) {
-      throw new CommandFailure('One or more edit matches are invalid', 3, 'QUOTE_INVALID', failures)
-    }
-    located.sort((left, right) => left.start - right.start)
+    if (failures.length > 0) throw quoteFailureCommand(failures, 'match')
+    located.sort((left, right) => left.start - right.start || left.index - right.index)
     for (let position = 1; position < located.length; position += 1) {
-      if (located[position]!.start < located[position - 1]!.end) {
-        throw new CommandFailure('Two edits overlap in the buffer', 1, 'EDITS_OVERLAP', {
-          edits: [located[position - 1]!.index, located[position]!.index],
-        })
+      const previous = located[position - 1]!
+      const current = located[position]!
+      // Two zero-width inserts at one point are fine; anything sharing text is not.
+      if (current.start < previous.end) {
+        throw new CommandFailure(
+          `Edits ${previous.index + 1} and ${current.index + 1} overlap in the buffer`,
+          3,
+          'EDITS_OVERLAP',
+          {
+            edits: [previous.index, current.index],
+            matches: [edit.edits[previous.index]!.match, edit.edits[current.index]!.match],
+          },
+        )
+      }
+    }
+    if (edit.dryRun === true) {
+      return {
+        located: located
+          .slice()
+          .sort((left, right) => left.index - right.index)
+          .map((entry) => ({ line: lineAt(shadow, entry.start), match: edit.edits[entry.index]!.match })),
       }
     }
 
@@ -1796,23 +2123,26 @@ export class StrataApplication implements StrataApi {
           await this.#replaceDocumentHandle(session, session.path)
           session.mirror?.schedule(session.state.shadow)
         }
-        await this.#persist(session)
+        await this.#persist(session, { debounce: true })
         this.#publish()
       }
     })
     session.reconciler = reconciler
     session.mirror = new DebouncedMirror({
       writer: { write: async (content) => {
-        session.state = recordMirrorWrite(session.state, content)
         const cancelOwnedWrite = reconciler.noteOwnedWrite('buffer', content)
         await this.#store.writeBuffer(session.path, content).catch((error: unknown) => {
           cancelOwnedWrite()
           throw error
         })
       } },
-      onWritten: () => {
-        if (session.problems.delete('mirror')) this.#publish()
-        this.#persistInBackground(session)
+      onWritten: (content) => {
+        // The mirror is what agents can read; it moves only once the write
+        // landed, so a failed write never claims the buffer holds new text.
+        this.#persistInBackground(session, () => {
+          session.state = recordMirrorWrite(session.state, content)
+          if (session.problems.delete('mirror')) this.#publish()
+        }, { debounce: true })
       },
       onError: (error) => {
         this.#reportProblem(session, 'mirror', 'Buffer mirror write failed', error)
@@ -1821,8 +2151,10 @@ export class StrataApplication implements StrataApi {
     if (this.#watch) {
       session.watcher = new WatchCoordinator({
         documentPath: session.path,
-        ghostEntryPath: paths.directory,
-        reconcile: (reason) => reconciler.wake(reason),
+        bufferPath: paths.buffer,
+        // Every wake runs as a turn on the document, so a merge from disk
+        // never interleaves with a save or an edit in flight.
+        reconcile: (reason) => this.#withSession(session.path, () => reconciler.wake(reason)),
         onError: (error) => {
           this.#reportProblem(session, 'watch', 'File watcher reported an error', error)
         }
@@ -1849,29 +2181,40 @@ export class StrataApplication implements StrataApi {
     }
   }
 
-  /** A persist nobody awaits: its failure is reported instead of dropped. */
-  #persistInBackground(session: OpenDocumentSession): void {
-    this.#persist(session).catch((error: unknown) => {
+  /**
+   * A persist nobody awaits, run as its own turn on the document so it never
+   * writes a state another operation is halfway through changing. Its
+   * failure is reported instead of dropped. A session closed in the meantime
+   * is left alone: its final state was written by the close.
+   */
+  #persistInBackground(session: OpenDocumentSession, before?: () => void, options: PersistOptions = {}): void {
+    this.#withSession(session.path, async () => {
+      if (this.#sessions.get(session.path) !== session) return
+      before?.()
+      await this.#persist(session, options)
+    }).catch((error: unknown) => {
       this.#reportProblem(session, 'persist', 'Persisting document state failed', error)
     })
   }
 
+  /**
+   * The tracked descriptor answers first; failing that, only the document's
+   * own directory is searched. Walking every explorer root on each missing
+   * file was a full tree scan per event; a move across roots is picked up by
+   * an explicit explorer refresh instead (plan 4.4).
+   */
   async #findRename(session: OpenDocumentSession): Promise<string | null> {
     if (!session.identity) return null
     const trackedPath = await pathForTrackedDocument(session)
     if (trackedPath && trackedPath !== session.path) return trackedPath
-    return findMarkdownByIdentity(
-      [dirname(session.path), ...this.#settings.explorerFolders],
-      session.identity,
-      [session.path],
-    )
+    return findMarkdownByIdentity([dirname(session.path)], session.identity, [session.path])
   }
 
   async #followRename(session: OpenDocumentSession, target: string): Promise<void> {
     const previous = session.path
     await session.watcher?.stop()
     session.mirror?.cancel()
-    await this.#store.moveDocument(previous, target, session.lock)
+    session.meta = await this.#store.moveDocument(previous, target, session.lock)
     this.#sessions.delete(previous)
     session.path = target
     this.#sessions.set(target, session)
@@ -1897,13 +2240,65 @@ export class StrataApplication implements StrataApi {
     this.#publish()
   }
 
-  async #persist(session: OpenDocumentSession): Promise<void> {
+  /**
+   * Bring meta.json up to date with the session. Typing, mirror writes, and
+   * watcher merges ask for a debounced write: they arrive many times a second
+   * and the buffer mirror already carries the text. Everything else (a save,
+   * a send, an annotation, a close) writes at once.
+   */
+  async #persist(session: OpenDocumentSession, options: PersistOptions = {}): Promise<void> {
     if (session.invalidUtf8) return
-    const existing = await this.#store.loadMeta(session.path)
+    // One clock read stamps this pass's new segments and any save entry it
+    // lands, so a round threshold of strict greater-than never splits a save
+    // from the segments persisted with it.
+    const now = this.#now()
+    for (const segment of session.state.segments) {
+      if (!session.segmentTimes.has(segment.id)) session.segmentTimes.set(segment.id, now)
+    }
+    for (const hunk of session.state.pendingHunks) {
+      if (!session.hunkTimes.has(hunk.id)) session.hunkTimes.set(hunk.id, now)
+    }
+    if (options.debounce) {
+      session.metaDirty = true
+      if (!session.metaTimer) {
+        session.metaTimer = setTimeout(() => {
+          session.metaTimer = null
+          this.#persistInBackground(session)
+        }, META_WRITE_DEBOUNCE_MS)
+        session.metaTimer.unref?.()
+      }
+      return
+    }
+    await this.#flushMeta(session, now)
+  }
+
+  /** Test hook: resolves once every pending meta write for `path` (or all documents) has reached disk. */
+  async flushPersistence(path?: string): Promise<void> {
+    const sessions = path === undefined
+      ? [...this.#sessions.values()]
+      : [this.#sessions.get(path)].filter((session): session is OpenDocumentSession => session !== undefined)
+    await Promise.all(sessions.map((session) => this.#withSession(session.path, async () => {
+      if (this.#sessions.get(session.path) !== session) return
+      if (session.metaDirty || session.metaTimer) await this.#flushMeta(session)
+    })))
+  }
+
+  async #flushMeta(session: OpenDocumentSession, persistNow = this.#now()): Promise<void> {
+    if (session.metaTimer) {
+      clearTimeout(session.metaTimer)
+      session.metaTimer = null
+    }
+    session.metaDirty = false
+    session.meta ??= await this.#store.loadMeta(session.path)
+    const existing = session.meta
     const ghostBlob = await this.#persistContent(session, session.state.ghost)
     const diskBlob = await this.#persistContent(session, session.state.disk)
     const shadowBlob = await this.#persistContent(session, session.state.shadow)
     const mirrorBlob = await this.#persistContent(session, session.state.mirror)
+    // Snapshots live only as long as something names them: a segment
+    // boundary, a delivery baseline, the current contents. Anything else is a
+    // keystroke's leftover and is dropped here rather than written (plan 2.6).
+    session.state = pruneSnapshots(session, [ghostBlob, diskBlob, shadowBlob, mirrorBlob])
     const snapshotBlobs: string[] = []
     for (const [id, content] of Object.entries(session.state.snapshots)) {
       if (!session.persistedBlobs.has(id)) {
@@ -1914,18 +2309,31 @@ export class StrataApplication implements StrataApi {
       snapshotBlobs.push(id)
     }
     const previousSegmentTimes = new Map(existing.segments.map((segment) => [segment.id, segment.time]))
-    // One clock read stamps this pass's new segments and any save entry it
-    // lands, so a round threshold of strict greater-than never splits a save
-    // from the segments persisted with it.
-    const persistNow = this.#now()
     const segments: SegmentMeta[] = session.state.segments.map((segment) => ({
       id: segment.id,
       beforeBlob: segment.beforeSnapshotId,
       afterBlob: segment.afterSnapshotId,
       author: segment.author,
       ...(segment.attribution ? { tag: segment.attribution } : {}),
-      time: previousSegmentTimes.get(segment.id) ?? persistNow,
+      time: session.segmentTimes.get(segment.id) ?? previousSegmentTimes.get(segment.id) ?? persistNow,
     }))
+    const liveSegmentIds = new Set(session.state.segments.map((segment) => segment.id))
+    for (const id of [...session.segmentTimes.keys()]) {
+      if (!liveSegmentIds.has(id)) session.segmentTimes.delete(id)
+    }
+    // A hunk's stamp lives as long as an undo or redo could bring the hunk back;
+    // otherwise Keep, undo, Keep would show the hunk as brand new.
+    const pendingHunks: PendingHunkMeta[] = persistPendingHunkAnchors(session.state).map((anchor) => ({
+      ...anchor,
+      changedAt: session.hunkTimes.get(anchor.id) ?? persistNow,
+    }))
+    const liveHunkIds = new Set([
+      session.state.pendingHunks,
+      ...[...session.applicationUndo, ...session.applicationRedo].flatMap((entry) => [entry.before.pendingHunks, entry.after.pendingHunks]),
+    ].flat().map((hunk) => hunk.id))
+    for (const id of [...session.hunkTimes.keys()]) {
+      if (!liveHunkIds.has(id)) session.hunkTimes.delete(id)
+    }
     const record = session.pendingSaveRecord
     if (record !== null) {
       session.pendingSaveRecord = null
@@ -1947,10 +2355,10 @@ export class StrataApplication implements StrataApi {
         { beforeBlob: record.beforeBlob, afterBlob: record.afterBlob, time: persistNow, authors },
       ]
     }
-    const attachments = Object.fromEntries(Object.entries(session.attachments).map(([id, attachment]) => [
-      id,
-      persistAttachment(attachment),
-    ]))
+    const attachments: Record<string, AttachmentMeta> = {}
+    for (const [id, attachment] of Object.entries(session.attachments)) {
+      attachments[id] = await persistAttachment(this.#store, session.payloadBlobs, attachment)
+    }
     const { application: _legacyApplication, ...canonical } = existing
     const persisted = await this.#store.saveMeta({
       ...canonical,
@@ -1963,7 +2371,7 @@ export class StrataApplication implements StrataApi {
       mirrorBlob,
       snapshotBlobs,
       segmentOffset: session.segmentOffset,
-      pendingHunks: persistPendingHunkAnchors(session.state),
+      pendingHunks,
       segments,
       conflicts: session.state.conflicts,
       nextId: session.state.nextId,
@@ -1980,28 +2388,12 @@ export class StrataApplication implements StrataApi {
       lastSentSegmentIndex: session.lastSentSegmentIndex,
       lastSentAnnotationSeq: session.lastSentAnnotationSeq,
     })
+    session.meta = persisted
     const removedCount = persisted.segmentOffset - session.segmentOffset
     if (removedCount > 0) {
-      const segments = session.state.segments.slice(removedCount)
-      const retainedSnapshots = new Set<string>([
-        contentHash(session.state.ghost),
-        contentHash(session.state.disk),
-        contentHash(session.state.shadow),
-        contentHash(session.state.mirror),
-      ])
-      for (const segment of segments) {
-        retainedSnapshots.add(segment.beforeSnapshotId)
-        retainedSnapshots.add(segment.afterSnapshotId)
-      }
-      session.state = {
-        ...session.state,
-        segments,
-        snapshots: Object.fromEntries(
-          Object.entries(session.state.snapshots)
-            .filter(([id]) => retainedSnapshots.has(id)),
-        ),
-      }
+      session.state = { ...session.state, segments: session.state.segments.slice(removedCount) }
       session.segmentOffset = persisted.segmentOffset
+      session.state = pruneSnapshots(session, [ghostBlob, diskBlob, shadowBlob, mirrorBlob])
     }
     // Cached ids stay within what the saved meta references, so garbage
     // collection of unreferenced objects can never invalidate a cache entry.
@@ -2081,8 +2473,8 @@ export class StrataApplication implements StrataApi {
         cursor,
         document: session.state.shadow
       },
-      segments: indexedSegments(session.state, session.segmentOffset),
-      annotations: slice.annotations,
+      segments: indexedSegments(session.state, session.segmentOffset, session.state.shadow),
+      annotations: withAttachmentNames(slice.annotations, this.#attachmentName(session)),
       replies: slice.replies,
       resolved: slice.resolved,
       edits: slice.edits,
@@ -2260,30 +2652,36 @@ export class StrataApplication implements StrataApi {
       }
     }
     if (!Number.isFinite(deadline)) return
+    // setTimeout treats a delay beyond 2^31-1 ms as 1 ms; a long idle window
+    // would then expire attachments at once. Wait in bounded steps and re-arm.
+    const delay = Math.min(MAX_TIMER_DELAY_MS, Math.max(0, deadline - this.#now()))
     this.#idleTimer = setTimeout(() => {
       this.#idleTimer = null
       void this.#expireIdleAttachmentsLive()
-    }, Math.max(0, deadline - this.#now()))
+    }, delay)
     this.#idleTimer.unref?.()
   }
 
   async #expireIdleAttachmentsLive(): Promise<void> {
     const now = this.#now()
     let changed = false
-    for (const session of this.#sessions.values()) {
-      const retained = expireIdleAttachments(
-        session.attachments,
-        now,
-        this.#settings.attachmentIdleTimeoutMs,
-      )
-      if (Object.keys(retained).length === Object.keys(session.attachments).length) continue
-      session.attachments = { ...retained }
-      if (session.leadAgentId !== null && session.attachments[session.leadAgentId] === undefined) {
-        session.leadAgentId = null
-      }
-      session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
-      changed = true
-      await this.#persist(session)
+    for (const session of [...this.#sessions.values()]) {
+      await this.#withSession(session.path, async () => {
+        if (this.#sessions.get(session.path) !== session) return
+        const retained = expireIdleAttachments(
+          session.attachments,
+          now,
+          this.#settings.attachmentIdleTimeoutMs,
+        )
+        if (Object.keys(retained).length === Object.keys(session.attachments).length) return
+        session.attachments = { ...retained }
+        if (session.leadAgentId !== null && session.attachments[session.leadAgentId] === undefined) {
+          session.leadAgentId = null
+        }
+        session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
+        changed = true
+        await this.#persist(session)
+      })
     }
     this.#scheduleIdleExpiry()
     if (changed) this.#publish()
@@ -2321,7 +2719,7 @@ export class StrataApplication implements StrataApi {
           dirty: session.state.shadow !== session.state.disk
         }
       }),
-      activeDocument: focused ? documentView(this.#sessions.get(focused)!, this.#store) : null,
+      activeDocument: focused ? documentView(this.#sessions.get(focused)!, this.#store, this.#now()) : null,
       explorer: explorerView(this.#explorer, this.#sessions),
       settings: { ...settingsView(this.#settings), theme: this.#themeView() }
     }
@@ -2499,6 +2897,25 @@ function isPendingAnchor(value: unknown): boolean {
   return stored(candidate.shadow) && stored(candidate.ghost)
 }
 
+/**
+ * Hunk stamps from the stored entry. A hunk the entry never timed (metadata
+ * from before stamps were written, or a hunk re-diffed on open) takes the
+ * newest segment time, the last moment the document is known to have changed;
+ * an entry with no segments falls back to the open time.
+ */
+function restoredHunkTimes(meta: DocumentMeta, state: DocumentState, openedAt: number): Map<string, number> {
+  const times = new Map<string, number>()
+  for (const hunk of meta.pendingHunks) {
+    if (typeof hunk.changedAt === 'number' && hunk.changedAt > 0) times.set(hunk.id, hunk.changedAt)
+  }
+  const newestSegment = Math.max(0, ...meta.segments.map((segment) => segment.time))
+  const fallback = newestSegment > 0 ? newestSegment : openedAt
+  for (const hunk of state.pendingHunks) {
+    if (!times.has(hunk.id)) times.set(hunk.id, fallback)
+  }
+  return times
+}
+
 async function restoreDocumentState(
   store: GhostStore,
   meta: DocumentMeta,
@@ -2589,24 +3006,70 @@ async function restoreDocumentState(
   }
 }
 
-function restoreAttachments(
+/**
+ * Queued deliveries come back with their payloads: by hash from the object
+ * store (format 3), or inline from older entries. A payload object that is
+ * missing leaves its delivery out and is logged; nothing can be handed to
+ * the agent without it, and the next Send freezes a fresh one.
+ */
+async function restoreAttachments(
   meta: DocumentMeta,
   legacy: Record<string, Attachment> | undefined,
-): Record<string, Attachment> {
+  store: GhostStore,
+  payloadBlobs: WeakMap<object, string>,
+): Promise<Record<string, Attachment>> {
   if (Object.keys(meta.attachments).length === 0) return structuredClone(legacy ?? {})
-  return Object.fromEntries(Object.entries(meta.attachments).map(([id, stored]) => [id, {
-    id: stored.id ?? id,
-    name: stored.name ?? id,
-    attachedAt: stored.attachedAt ?? 0,
-    lastCallAt: stored.lastCallAt ?? stored.attachedAt ?? 0,
-    waiting: false,
-    baseline: { snapshotId: stored.baselineBlob, segmentIndex: stored.segmentIndex },
-    cursor: stored.cursor,
-    deliveries: stored.deliveries.map(({ snapshotBlob: _snapshotBlob, ...delivery }) => delivery),
-  } as unknown as Attachment]))
+  const attachments: Record<string, Attachment> = {}
+  for (const [id, stored] of Object.entries(meta.attachments)) {
+    const deliveries: FrozenDelivery[] = []
+    for (const entry of stored.deliveries) {
+      const { snapshotBlob: _snapshotBlob, payloadBlob, ...rest } = entry as DeliveryMeta & Record<string, unknown>
+      let delivery = rest as unknown as FrozenDelivery
+      if (typeof payloadBlob === 'string') {
+        try {
+          const payload = JSON.parse(await store.getObjectText(payloadBlob)) as FrozenDelivery['payload']
+          delivery = { ...delivery, payload }
+          payloadBlobs.set(payload, payloadBlob)
+        } catch (error) {
+          logError('persist', `Queued delivery ${delivery.id} for ${id} lost its payload ${payloadBlob}: ${meta.realpath}`, error)
+          continue
+        }
+      } else if (delivery.payload === undefined) {
+        logError('persist', `Queued delivery ${delivery.id} for ${id} has no payload: ${meta.realpath}`)
+        continue
+      }
+      deliveries.push(delivery)
+    }
+    attachments[id] = {
+      id: stored.id ?? id,
+      name: stored.name ?? id,
+      attachedAt: stored.attachedAt ?? 0,
+      lastCallAt: stored.lastCallAt ?? stored.attachedAt ?? 0,
+      waiting: false,
+      baseline: { snapshotId: stored.baselineBlob, segmentIndex: stored.segmentIndex },
+      cursor: stored.cursor,
+      deliveries,
+    }
+  }
+  return attachments
 }
 
-function persistAttachment(attachment: Attachment): AttachmentMeta {
+/** The stored form: delivery payloads go to the object store once and are named by hash (plan 4.11). */
+async function persistAttachment(
+  store: GhostStore,
+  payloadBlobs: WeakMap<object, string>,
+  attachment: Attachment,
+): Promise<AttachmentMeta> {
+  const deliveries: DeliveryMeta[] = []
+  for (const delivery of attachment.deliveries) {
+    const { payload, ...rest } = delivery
+    let payloadBlob = payloadBlobs.get(payload)
+    if (payloadBlob === undefined) {
+      payloadBlob = await store.putObject(JSON.stringify(payload))
+      payloadBlobs.set(payload, payloadBlob)
+    }
+    deliveries.push({ ...rest, snapshotBlob: delivery.to.snapshotId, payloadBlob })
+  }
   return {
     id: attachment.id,
     name: attachment.name,
@@ -2616,10 +3079,7 @@ function persistAttachment(attachment: Attachment): AttachmentMeta {
     baselineBlob: attachment.baseline.snapshotId,
     segmentIndex: attachment.baseline.segmentIndex,
     cursor: attachment.cursor,
-    deliveries: attachment.deliveries.map((delivery) => ({
-      ...delivery,
-      snapshotBlob: delivery.to.snapshotId,
-    })),
+    deliveries,
   }
 }
 
@@ -2738,14 +3198,24 @@ function optionalTime(record: object): { createdAt: number } | Record<string, ne
   return typeof value === 'number' && value > 0 ? { createdAt: value } : {}
 }
 
-function hunkViews(state: DocumentState, attachments: Record<string, Attachment>): HunkView[] {
+function hunkViews(session: OpenDocumentSession, now: number): HunkView[] {
+  const { state, attachments } = session
   const ids = Object.keys(attachments)
   // Save-state classification (PRD §6.9): a hunk is saved when its shadow
   // region already matches the file, read off the shadow-vs-disk diff. With
   // nothing pending there is nothing to classify, so plain typing never diffs.
-  const unsavedRanges = state.pendingHunks.length === 0 || state.disk === state.shadow
-    ? []
-    : computeHunks(state.disk, state.shadow).map((hunk) => hunk.after)
+  // The diff is kept while neither side changes: every publish rebuilds the
+  // view, and a document with pending hunks would otherwise diff per keystroke
+  // of unrelated state (plan 4.15).
+  let unsavedRanges: TextRange[]
+  if (state.pendingHunks.length === 0 || state.disk === state.shadow) {
+    unsavedRanges = []
+  } else if (session.unsavedRangesCache?.disk === state.disk && session.unsavedRangesCache.shadow === state.shadow) {
+    unsavedRanges = session.unsavedRangesCache.ranges
+  } else {
+    unsavedRanges = computeHunks(state.disk, state.shadow).map((hunk) => hunk.after)
+    session.unsavedRangesCache = { disk: state.disk, shadow: state.shadow, ranges: unsavedRanges }
+  }
   return state.pendingHunks.map((pending) => {
     const removed = state.ghost.slice(pending.ghost.from, pending.ghost.to)
     const added = state.shadow.slice(pending.shadow.from, pending.shadow.to)
@@ -2763,12 +3233,15 @@ function hunkViews(state: DocumentState, attachments: Record<string, Attachment>
         : null,
       source: 'buffer',
       inline: !removed.includes('\n\n') && !added.includes('\n\n'),
-      saved: !unsavedRanges.some((range) => rangesTouch(range, pending.shadow))
+      saved: !unsavedRanges.some((range) => rangesTouch(range, pending.shadow)),
+      // Every change persists before it publishes, so a hunk without a stamp
+      // was recorded since the last #persist pass: it is new.
+      changedAt: session.hunkTimes.get(pending.id) ?? now
     }
   })
 }
 
-function documentView(session: OpenDocumentSession, store: GhostStore): DocumentView {
+function documentView(session: OpenDocumentSession, store: GhostStore, now: number): DocumentView {
   const ids = Object.keys(session.attachments)
   const attachments: AttachmentView[] = ids.map((id, index) => {
     const attachment = session.attachments[id]!
@@ -2777,7 +3250,9 @@ function documentView(session: OpenDocumentSession, store: GhostStore): Document
       attachedAt: attachment.attachedAt,
       state: attachmentDisplayState(attachment),
       queuedDeliveries: attachment.deliveries.map((delivery) => delivery.id),
-      queuedSendCount: attachment.deliveries.filter((delivery) => !isMessageDelivery(delivery)).length
+      queuedSendCount: attachment.deliveries.filter((delivery) => !isMessageDelivery(delivery)).length,
+      // Metadata from before calls were timed restores as zero; that is no time at all.
+      lastCallAt: attachment.lastCallAt > 0 ? attachment.lastCallAt : null
     }
   })
   return {
@@ -2794,7 +3269,7 @@ function documentView(session: OpenDocumentSession, store: GhostStore): Document
     problems: [...session.problems],
     lastSavedAt: session.lastSavedAt,
     historyStep: session.historyStep,
-    pendingHunks: hunkViews(session.state, session.attachments),
+    pendingHunks: hunkViews(session, now),
     saves: session.saves.map((save) => ({
       time: save.time,
       authors: save.authors.map((author) => ({ ...author })),
@@ -2844,23 +3319,50 @@ function settingsView(settings: Settings): Omit<AppSettingsView, 'theme'> {
   }
 }
 
-function indexedSegments(state: DocumentState, segmentOffset = 0): IndexedSegment[] {
+function lineStartOffset(text: string, line: number): number {
+  let offset = 0
+  for (let current = 1; current < line; current += 1) {
+    const next = text.indexOf('\n', offset)
+    if (next < 0) return text.length
+    offset = next + 1
+  }
+  return Math.min(offset, text.length)
+}
+
+/**
+ * Each segment's hunks against its own before state, with one context line
+ * either side. When `delivered` is given (the shadow a delivery snapshots),
+ * every hunk's `line` is mapped forward through the later segments and any
+ * unsegmented tail, so it points into the document the recipient reads.
+ */
+function indexedSegments(state: DocumentState, segmentOffset = 0, delivered?: string): IndexedSegment[] {
+  const texts = state.segments.map((segment) => ({
+    before: state.snapshots[segment.beforeSnapshotId] ?? '',
+    after: state.snapshots[segment.afterSnapshotId] ?? '',
+  }))
+  // Hop k maps offsets in segment k's after text into segment k+1's after
+  // text (its own change included); the last hop lands in the delivered document.
+  const hops = delivered === undefined
+    ? []
+    : texts.map((text, index) => {
+        const target = index + 1 < texts.length ? texts[index + 1]!.after : delivered
+        return text.after === target ? [] : computeHunks(text.after, target)
+      })
   return state.segments.map((segment, index) => {
-    const before = state.snapshots[segment.beforeSnapshotId] ?? ''
-    const after = state.snapshots[segment.afterSnapshotId] ?? ''
+    const { before, after } = texts[index]!
     return {
       index: segmentOffset + index,
       id: segment.id,
       author: segment.author,
       ...(segment.attribution?.agentId ? { tag: { agent: segment.attribution.agentId, name: segment.attribution.name } } : {}),
-      hunks: computeHunks(before, after).map((hunk) => ({
-        oldStart: hunk.oldStartLine,
-        oldLines: hunk.removedLines,
-        newStart: hunk.newStartLine,
-        newLines: hunk.addedLines,
-        removed: splitLines(hunk.removed),
-        added: splitLines(hunk.added)
-      }))
+      hunks: contextHunks(before, after).map((hunk) => {
+        if (delivered === undefined) return hunk
+        let offset = lineStartOffset(after, hunk.line)
+        for (let hop = index; hop < hops.length; hop += 1) {
+          if (hops[hop]!.length > 0) offset = mapOldPositionToNew(offset, hops[hop]!, -1)
+        }
+        return { ...hunk, line: lineAt(delivered, Math.min(offset, delivered.length)) }
+      })
     }
   })
 }
@@ -2874,6 +3376,48 @@ function splitLines(text: string): string[] {
 
 function attachKey(file: string, agent: string): string {
   return `${file}\0${agent}`
+}
+
+/** Everything outside the segments that still names a snapshot, so persist keeps exactly what reopen can use. */
+function pruneSnapshots(session: OpenDocumentSession, current: readonly string[]): DocumentState {
+  const referenced = segmentSnapshotIds(session.state)
+  for (const id of current) referenced.add(id)
+  for (const attachment of Object.values(session.attachments)) {
+    referenced.add(attachment.baseline.snapshotId)
+    for (const delivery of attachment.deliveries) {
+      referenced.add(delivery.from.snapshotId)
+      referenced.add(delivery.to.snapshotId)
+    }
+  }
+  if (session.clipboardRecipient.baseline) referenced.add(session.clipboardRecipient.baseline.snapshotId)
+  if (session.clipboardRecipient.pending) {
+    referenced.add(session.clipboardRecipient.pending.from.snapshotId)
+    referenced.add(session.clipboardRecipient.pending.to.snapshotId)
+  }
+  for (const save of session.saves) {
+    referenced.add(save.beforeBlob)
+    referenced.add(save.afterBlob)
+  }
+  const snapshots = session.state.snapshots
+  const keys = Object.keys(snapshots)
+  if (keys.every((id) => referenced.has(id))) return session.state
+  return {
+    ...session.state,
+    snapshots: Object.fromEntries(keys.filter((id) => referenced.has(id)).map((id) => [id, snapshots[id]!])),
+  }
+}
+
+/** An ack that names no queued delivery is refused, never silently absorbed (plan 4.5). */
+function unknownDeliveryFailure(attachment: Attachment, deliveryId: string): CommandFailure {
+  const head = attachment.deliveries[0]?.id ?? null
+  const message = head === null
+    ? `No delivery ${deliveryId} is queued for ${attachment.id}; nothing is waiting to be acknowledged`
+    : `No delivery ${deliveryId} is at the head of ${attachment.id}'s queue; acknowledge ${head} first`
+  return new CommandFailure(message, 2, 'DELIVERY_NOT_FOUND', {
+    deliveryId,
+    agent: attachment.id,
+    queued: attachment.deliveries.map((delivery) => delivery.id),
+  })
 }
 
 function deliverySnapshot(session: OpenDocumentSession) {

@@ -15,6 +15,10 @@ interface TopBarProps {
   onOpenTab(path: string): void
   onCloseTab(tab: DocumentTabView): void
   onCopyPath(path: string): void
+  /** Tab menu bulk actions (§5.16). */
+  onCloseOthers?(path: string): void
+  onCloseAll?(): void
+  onCloseSaved?(): void
   onSend(): void
   onCopy(): void
   zoomed: boolean
@@ -22,7 +26,7 @@ interface TopBarProps {
   onOpenTheme(): void
 }
 
-export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onSend, onCopy, zoomed, onResetZoom, onOpenTheme }: TopBarProps) {
+export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onSend, onCopy, zoomed, onResetZoom, onOpenTheme }: TopBarProps) {
   const tabStrip = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState<PathContextMenuState | null>(null)
   const activePath = tabs.find((tab) => tab.active)?.path
@@ -81,11 +85,11 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
           </button>
         ))}
       </div>
-      {menu && <PathContextMenu menu={menu} onCopyPath={onCopyPath} onClose={closeMenu} />}
+      {menu && <PathContextMenu menu={menu} onCopyPath={onCopyPath} onClose={closeMenu} {...(onCloseOthers ? { onCloseOthers } : {})} {...(onCloseAll ? { onCloseAll } : {})} {...(onCloseSaved ? { onCloseSaved } : {})} />}
       <div className="topbar-spacer" />
       <button type="button" className="text-action theme-button" onClick={onOpenTheme}>Theme</button>
       {zoomed && <button type="button" className="text-action reset-zoom" onClick={onResetZoom}>Reset zoom</button>}
-      <span className="pending-status" data-unsaved={pendingUnsaved} title="Next change · F7. Previous change · Shift+F7">{pending} pending</span>
+      <span className="pending-status" data-unsaved={pendingUnsaved} title="Next change · F7. Previous change · Shift+F7. All shortcuts · F1">{pending} pending</span>
       <kbd>{primaryModifierLabel()}+Enter</kbd>
       {hasAgents ? (
         <button type="button" className="send-button" data-enabled={canSend} onClick={onSend} disabled={!canSend}>Send ↗</button>

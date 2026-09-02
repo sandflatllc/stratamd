@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import type { AnnotationKind, AnnotationView, BufferOrigin, DocumentView, HunkView, PanelSize, RedoResult, SpellingContext, UndoResult } from '../../shared/contracts'
 import type { EditorSelection, RendererEditorFactory, RendererEditorHandle } from '../editorAdapter'
@@ -41,6 +41,8 @@ interface EditorPaneProps {
   onSelectAnnotation(annotation: AnnotationView | null): void
   jumpHunkId: string | null
   jumpAnnotationId: string | null
+  /** What opened the current thread from outside the editor; focus returns there on close (§5.11). */
+  threadOpener?: RefObject<HTMLElement | null>
 }
 
 /** Scroll offsets per open document, so returning to a tab lands where the user left it. */
@@ -94,7 +96,13 @@ export function EditorPane(props: EditorPaneProps) {
     dismissedSelection.current = selection ? `${selection.from}:${selection.to}` : null
     setSelection(null)
     setSpelling(null)
-    window.requestAnimationFrame(() => editor.current?.focus())
+    window.requestAnimationFrame(() => {
+      // Hand focus back to the editor only when nothing else took it meanwhile
+      // (a closing thread panel returns focus to the rail row that opened it).
+      const active = globalThis.document.activeElement
+      if (active instanceof HTMLElement && active !== globalThis.document.body && !active.closest('.prosemirror-host, .selection-menu, .annotation-composer')) return
+      editor.current?.focus()
+    })
   }
   // The pill opens synchronously on right-click; the misspelling and its
   // suggestions land one IPC hop later and attach by exact word match.
@@ -210,11 +218,19 @@ export function EditorPane(props: EditorPaneProps) {
               dismissedSelection.current = null
               if (!next || !scroll.current) { setSelection(next); return }
               const bounds = scroll.current.getBoundingClientRect()
-              setSelection({ ...next, left: next.left - bounds.left + scroll.current.scrollLeft, top: next.top - bounds.top + scroll.current.scrollTop })
+              const placed = { ...next, left: next.left - bounds.left + scroll.current.scrollLeft, top: next.top - bounds.top + scroll.current.scrollTop }
+              // The mouseup and selectionchange reports that follow a right-click
+              // describe the same range; they must not strip its explicit flag.
+              setSelection((current) => current?.explicit && !placed.explicit && current.from === placed.from && current.to === placed.to ? { ...placed, explicit: true } : placed)
             }}
             onOpenAnnotation={(id) => props.onSelectAnnotation(document.annotations.find((item) => item.id === id) ?? null)}
             onAdjustAnnotation={(id, range) => props.onAdjustAnnotation(id, range.quote, range.from, range.to)}
             onKeepHunk={props.onKeepHunk}
+            onToggleSource={(source) => {
+              // A source-only document has no visual view to switch to.
+              if (document.sourceOnly && !source) { editor.current?.toggleSource(true); return }
+              props.onToggleSource(source)
+            }}
             onRevertHunk={(id) => { const hunk = document.pendingHunks.find((item) => item.id === id); if (hunk) props.onRevertHunk(hunk) }}
             onAcceptSuggestion={props.onAccept}
             onRejectSuggestion={props.onReject}
@@ -248,6 +264,20 @@ export function EditorPane(props: EditorPaneProps) {
             void window.strata.addDictionaryWord?.(word)
             setSpelling(null)
           }}
+          // Cut and copy run the platform command with focus kept in the editor,
+          // so ProseMirror's own clipboard handlers serialize the selection (§5.15).
+          onCut={() => { editor.current?.focus(); globalThis.document.execCommand('cut'); setSelection(null) }}
+          onCopy={() => { editor.current?.focus(); globalThis.document.execCommand('copy'); setSelection(null) }}
+          onPaste={() => {
+            setSelection(null)
+            editor.current?.focus()
+            // A native paste into the focused editor: the sandboxed page cannot read
+            // the clipboard itself, and the paste event runs the editor's own handling.
+            const paste = window.strata.pasteFromClipboard
+            if (paste) { void paste().catch(() => undefined); return }
+            void navigator.clipboard.readText().then((text) => { if (text) editor.current?.pasteText?.(text) }).catch(() => undefined)
+          }}
+          onSelectAll={() => editor.current?.selectAll?.()}
         />
       </div>
       {selectedAnnotation && thread && thread.id === selectedAnnotation.id && createPortal(
@@ -267,6 +297,7 @@ export function EditorPane(props: EditorPaneProps) {
             onAccept={() => props.onAccept(selectedAnnotation.id)}
             onReject={() => props.onReject(selectedAnnotation.id)}
             onClose={() => props.onSelectAnnotation(null)}
+            {...(props.threadOpener ? { opener: props.threadOpener } : {})}
           />
           {confirmResolve && (
             <ResolveSuggestionDialog

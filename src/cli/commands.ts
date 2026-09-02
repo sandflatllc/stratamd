@@ -1,19 +1,23 @@
 import { spawn } from 'node:child_process'
 import { randomBytes, randomUUID, createHash } from 'node:crypto'
-import { access, readFile, realpath } from 'node:fs/promises'
+import { access, lstat, readdir, readFile, realpath } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { PAYLOAD_VERSION } from '../core/payload.js'
+import { getConfigDirectory, getDataDirectory } from '../platform/paths.js'
 import { AGENT_HELP } from './agent-help.js'
 import {
   CommandFailure,
   PROTOCOL_VERSION,
+  protocolMismatchFailure,
   type AgentPayload,
   type AnnotationInput,
   type CommandArguments,
   type EditInput,
   type CommandName,
   type CommandRequest,
+  type CommandResponse,
   type SocketCommandHandler
 } from './protocol.js'
 import {
@@ -38,9 +42,39 @@ const OFFLINE_COMMANDS = new Set<CommandName>([
   'forget'
 ])
 const IDENTITY_USAGE = 'Pass --as <the agent id your first attach returned>'
+/**
+ * Below the 120 s command limit common to agent harnesses, with the 15 s
+ * socket margin on top; a call the harness kills is safe, the delivery repeats.
+ */
+const DEFAULT_ATTACH_TIMEOUT_SECONDS = 90
 
 const GENERAL_USAGE =
-  'Usage: stratamd <attach|annotate|edit|reply|send|lead|accept|reject|resolve|save|state|docs|theme|changes|changed|open|checkpoint|detach|forget|setup> [options]'
+  'Usage: stratamd <attach|annotate|edit|reply|send|lead|accept|reject|resolve|save|state|docs|theme|changes|changed|open|checkpoint|detach|forget|setup|doctor> [options], stratamd --help, stratamd --agent-help, stratamd --version'
+
+const HELP_TEXT = `${GENERAL_USAGE}
+
+  attach [file] [--as <id>] [--name <who>] [--timeout <seconds>] [--text-only]
+  annotate <file> --kind <comment|question|suggestion> --quote <text>
+           [--text <text> | --text -] [--label <text>] [--as <id>]
+  edit <file> --match <text> --replace <text> [--preceded-by <text>]
+       [--followed-by <text>] [--append] [--dry-run] [--as <id>]
+  reply <file> --to <annotation id> --text <text> [--as <id>]
+  send <file> --as <id> --text <note> [--to <id,id>]
+  lead | accept | reject | resolve | save <file> --as <id> [--annotation <id>]
+  state [file] [--brief | --text-only | --annotations | --raw]
+  docs
+  changes <file> | changed <file> --as <id> | open <file> | forget <file>
+  checkpoint <file or directory> | detach <file> --as <id>
+  theme [id] [--json]
+  setup [--skill <claude|codex|agents|dir>] [--default] [--remove]
+  doctor              checks the socket, directories, log, and lock files
+  --version           app, protocol, and payload versions; CLI and app paths
+  --agent-help        the full command reference, written for agents
+
+Every command prints one JSON object on stdout; errors go to stderr as
+{error, code, detail}. Exit codes: 0 done, 1 usage, 2 not found, 3 refused
+by the document's state, 4 the app is not reachable or its build differs.
+`
 
 interface ParsedOptions {
   positionals: string[]
@@ -93,7 +127,9 @@ function parseOptions(tokens: string[], definitions: OptionDefinitions): ParsedO
     const equals = token.indexOf('=')
     const name = token.slice(2, equals === -1 ? undefined : equals)
     const definition = definitions[name]
-    if (!definition) usage(`Unknown option --${name}`)
+    if (!definition) {
+      usage(`Unknown option --${name}`, { valid: Object.keys(definitions).map((known) => `--${known}`) })
+    }
     if (options.has(name)) usage(`Option --${name} may only be given once`)
 
     if (!definition.value) {
@@ -121,12 +157,18 @@ function requireOption(parsed: ParsedOptions, name: string): string {
   return value
 }
 
-function exactPositionals(parsed: ParsedOptions, count: number, command: string): void {
-  if (parsed.positionals.length !== count) usage(`Invalid ${command} arguments`)
+function exactPositionals(parsed: ParsedOptions, count: number, command: string, expected = '<file>'): void {
+  if (parsed.positionals.length !== count) {
+    usage(`${command} takes ${count === 0 ? 'no arguments' : `exactly ${expected}`}; got ${parsed.positionals.length}`, {
+      positionals: parsed.positionals,
+    })
+  }
 }
 
-function atMostPositionals(parsed: ParsedOptions, count: number, command: string): void {
-  if (parsed.positionals.length > count) usage(`Invalid ${command} arguments`)
+function atMostPositionals(parsed: ParsedOptions, count: number, command: string, expected = '[file]'): void {
+  if (parsed.positionals.length > count) {
+    usage(`${command} takes at most ${expected}; got ${parsed.positionals.length}`, { positionals: parsed.positionals })
+  }
 }
 
 function byteLengthWithin(value: string, label: string): string {
@@ -161,7 +203,13 @@ async function canonicalPath(path: string): Promise<string> {
   }
 }
 
-/** The stable id a harness session implies, or undefined outside any known harness. */
+/**
+ * The stable id a harness session implies, or undefined outside any known
+ * harness. A Claude Code subagent shares the session id with its parent and
+ * marks itself with CLAUDE_CODE_CHILD_SESSION, so that mark is mixed in: a
+ * subagent never silently acts under the parent's attachment. Sibling
+ * subagents are not told apart by the environment, so they pass --as.
+ */
 export function sessionAgentId(environment: NodeJS.ProcessEnv = process.env): string | undefined {
   const session =
     environment.CLAUDE_CODE_SESSION_ID ??
@@ -170,7 +218,9 @@ export function sessionAgentId(environment: NodeJS.ProcessEnv = process.env): st
     environment.T3_CODE_SESSION_ID ??
     environment.CURSOR_AGENT_SESSION_ID
   if (!session) return undefined
-  return `ag_${createHash('sha256').update(session).digest('hex').slice(0, 12)}`
+  const child = environment.CLAUDE_CODE_CHILD_SESSION
+  const identity = child ? `${session}\0child:${child}` : session
+  return `ag_${createHash('sha256').update(identity).digest('hex').slice(0, 12)}`
 }
 
 /** A first attach may mint a fresh id; every other command needs one it can prove (PRD §7). */
@@ -261,20 +311,28 @@ function editInput(value: unknown, index?: number): EditInput {
   const prefix = index === undefined ? 'Edit' : `Edit ${index + 1}`
   if (!value || typeof value !== 'object' || Array.isArray(value)) usage(`${prefix} must be an object`)
   const input = value as Record<string, unknown>
-  const allowed = new Set(['match', 'replace', 'precededBy', 'followedBy'])
+  const allowed = new Set(['match', 'replace', 'precededBy', 'followedBy', 'append'])
   const unknown = Object.keys(input).filter((key) => !allowed.has(key))
-  if (unknown.length) usage(`${prefix} has unknown fields`, unknown)
-  if (typeof input.match !== 'string' || input.match.length === 0) usage(`${prefix} needs a non-empty match`)
-  if (typeof input.replace !== 'string') usage(`${prefix} needs a replace string`)
+  if (unknown.length) usage(`${prefix} has unknown fields`, { unknown, valid: [...allowed] })
+  const match = input.match === undefined && input.append === true ? '' : input.match
+  if (typeof match !== 'string') usage(`${prefix} needs a match string`)
+  if (input.append !== undefined && input.append !== true) usage(`${prefix}.append must be true when present`)
   for (const key of ['precededBy', 'followedBy'] as const) {
     if (input[key] !== undefined && typeof input[key] !== 'string') usage(`${prefix}.${key} must be a string`)
   }
+  const anchored = input.append === true || input.precededBy !== undefined || input.followedBy !== undefined
+  if (match.length === 0 && !anchored) {
+    usage(`${prefix} needs a non-empty match, or an empty match with precededBy or followedBy, or append`)
+  }
+  if (input.append === true && match.length > 0) usage(`${prefix} cannot combine append with a match`)
+  if (typeof input.replace !== 'string') usage(`${prefix} needs a replace string`)
   byteLengthWithin(input.replace, `${prefix}.replace`)
   return {
-    match: input.match,
+    match,
     replace: input.replace,
     ...(typeof input.precededBy === 'string' ? { precededBy: input.precededBy } : {}),
-    ...(typeof input.followedBy === 'string' ? { followedBy: input.followedBy } : {})
+    ...(typeof input.followedBy === 'string' ? { followedBy: input.followedBy } : {}),
+    ...(input.append === true ? { append: true } : {})
   }
 }
 
@@ -305,23 +363,28 @@ async function readEdits(parsed: ParsedOptions, stdin: NodeJS.ReadableStream): P
       parsed.options.has('match') ||
       parsed.options.has('replace') ||
       parsed.options.has('preceded-by') ||
-      parsed.options.has('followed-by')
+      parsed.options.has('followed-by') ||
+      parsed.options.has('append')
     ) {
       usage('--json cannot be combined with individual edit options')
     }
     return (await readJsonSource(jsonSource, stdin, 'Edit')).map((value, index) => editInput(value, index))
   }
 
-  const match = requireOption(parsed, 'match')
+  const append = parsed.options.has('append')
+  const match = option(parsed, 'match')
+  if (match === undefined && !append) usage('Missing --match (or --append to insert at the end)')
+  if (append && match !== undefined && match.length > 0) usage('--append takes no --match; it inserts at the end of the buffer')
   let replace = option(parsed, 'replace')
   if (replace === undefined) usage('Missing --replace')
   if (replace === '-') replace = await readStandardInput(stdin)
   return [
     editInput({
-      match,
+      match: match ?? '',
       replace,
       ...(option(parsed, 'preceded-by') === undefined ? {} : { precededBy: option(parsed, 'preceded-by') }),
-      ...(option(parsed, 'followed-by') === undefined ? {} : { followedBy: option(parsed, 'followed-by') })
+      ...(option(parsed, 'followed-by') === undefined ? {} : { followedBy: option(parsed, 'followed-by') }),
+      ...(append ? { append: true } : {})
     })
   ]
 }
@@ -330,9 +393,21 @@ async function parseCommand(
   argv: string[],
   environment: NodeJS.ProcessEnv,
   stdin: NodeJS.ReadableStream
-): Promise<{ command: CommandName; args: CommandArguments[CommandName] } | { setup: true; remove: boolean; makeDefault: boolean } | { theme: true; id?: string; json: boolean } | { launch: true }> {
+): Promise<
+  | { command: CommandName; args: CommandArguments[CommandName]; raw?: boolean }
+  | { setup: true; remove: boolean; makeDefault: boolean; skill?: string }
+  | { theme: true; id?: string; json: boolean }
+  | { launch: true }
+  | { doctor: true }
+> {
   const command = argv[0]
   const rest = argv.slice(1)
+
+  if (command === 'doctor') {
+    const parsed = parseOptions(rest, {})
+    exactPositionals(parsed, 0, 'doctor')
+    return { doctor: true }
+  }
 
   if (command === 'theme') {
     const parsed = parseOptions(rest, { json: { value: false } })
@@ -343,15 +418,21 @@ async function parseCommand(
   }
 
   if (command === 'setup') {
-    const parsed = parseOptions(rest, { remove: { value: false }, default: { value: false } })
+    const parsed = parseOptions(rest, { remove: { value: false }, default: { value: false }, skill: { value: true } })
     exactPositionals(parsed, 0, 'setup')
     if (parsed.options.has('remove') && parsed.options.has('default')) {
       usage('setup --remove and setup --default cannot be combined')
     }
+    if (parsed.options.has('remove') && parsed.options.has('skill')) {
+      usage('setup --remove does not touch skill copies; run it without --skill')
+    }
+    const skill = option(parsed, 'skill')
+    if (skill === '') usage('--skill needs claude, codex, agents, or a skills directory')
     return {
       setup: true,
       remove: parsed.options.has('remove'),
-      makeDefault: parsed.options.has('default')
+      makeDefault: parsed.options.has('default'),
+      ...(skill === undefined ? {} : { skill })
     }
   }
 
@@ -364,7 +445,7 @@ async function parseCommand(
     })
     atMostPositionals(parsed, 1, command)
     const agent = option(parsed, 'as') || deriveAgentId(environment)
-    const rawTimeout = option(parsed, 'timeout') ?? '600'
+    const rawTimeout = option(parsed, 'timeout') ?? String(DEFAULT_ATTACH_TIMEOUT_SECONDS)
     if (!/^\d+$/.test(rawTimeout)) usage('--timeout must be a non-negative integer')
     const timeout = Number(rawTimeout)
     if (!Number.isSafeInteger(timeout) || timeout > 86_400) usage('--timeout must be at most 86400 seconds')
@@ -394,11 +475,13 @@ async function parseCommand(
     })
     exactPositionals(parsed, 1, command)
     const agent = requireAgent(parsed, environment)
+    const name = environment.AI_AGENT
     return {
       command,
       args: {
         file: await canonicalPath(parsed.positionals[0]!),
         agent,
+        ...(name ? { name } : {}),
         annotations: await readAnnotations(parsed, stdin)
       }
     }
@@ -410,6 +493,8 @@ async function parseCommand(
       replace: { value: true },
       'preceded-by': { value: true },
       'followed-by': { value: true },
+      append: { value: false },
+      'dry-run': { value: false },
       as: { value: true },
       name: { value: true },
       json: { value: true }
@@ -423,7 +508,8 @@ async function parseCommand(
         file: await canonicalPath(parsed.positionals[0]!),
         agent,
         ...(name ? { name } : {}),
-        edits: await readEdits(parsed, stdin)
+        edits: await readEdits(parsed, stdin),
+        ...(parsed.options.has('dry-run') ? { dryRun: true } : {})
       }
     }
   }
@@ -438,11 +524,13 @@ async function parseCommand(
     const agent = requireAgent(parsed, environment)
     let text = requireOption(parsed, 'text')
     if (text === '-') text = await readStandardInput(stdin)
+    const name = environment.AI_AGENT
     return {
       command,
       args: {
         file: await canonicalPath(parsed.positionals[0]!),
         agent,
+        ...(name ? { name } : {}),
         annotation: requireOption(parsed, 'to'),
         text: byteLengthWithin(text, '--text')
       }
@@ -450,16 +538,25 @@ async function parseCommand(
   }
 
   if (command === 'state') {
-    const parsed = parseOptions(rest, { brief: { value: false }, 'text-only': { value: false } })
+    const parsed = parseOptions(rest, {
+      brief: { value: false },
+      'text-only': { value: false },
+      annotations: { value: false },
+      raw: { value: false }
+    })
     atMostPositionals(parsed, 1, command)
+    const views = ['brief', 'text-only', 'annotations', 'raw'].filter((view) => parsed.options.has(view))
+    if (views.length > 1) usage(`state takes one view; got ${views.map((view) => `--${view}`).join(' and ')}`)
     const file = parsed.positionals[0]
     return {
       command,
       args: {
         ...(file === undefined ? {} : { file: await canonicalPath(file) }),
         ...(parsed.options.has('brief') ? { brief: true } : {}),
-        ...(parsed.options.has('text-only') ? { textOnly: true } : {})
-      }
+        ...(parsed.options.has('text-only') ? { textOnly: true } : {}),
+        ...(parsed.options.has('annotations') ? { annotationsOnly: true } : {})
+      },
+      ...(parsed.options.has('raw') ? { raw: true } : {})
     }
   }
 
@@ -557,14 +654,14 @@ async function parseCommand(
 
   if (['changes', 'checkpoint', 'forget'].includes(command ?? '')) {
     const parsed = parseOptions(rest, {})
-    exactPositionals(parsed, 1, command!)
+    exactPositionals(parsed, 1, command!, command === 'checkpoint' ? '<file or directory>' : '<file>')
     return {
       command: command as 'changes' | 'checkpoint' | 'forget',
       args: { file: await canonicalPath(parsed.positionals[0]!) }
     }
   }
 
-  usage(command ? `Unknown command: ${command}` : GENERAL_USAGE)
+  usage(command ? `Unknown command: ${command}` : GENERAL_USAGE, { usage: GENERAL_USAGE })
 }
 
 async function writeLine(stream: NodeJS.WritableStream, value: unknown): Promise<void> {
@@ -574,9 +671,12 @@ async function writeLine(stream: NodeJS.WritableStream, value: unknown): Promise
   })
 }
 
-async function defaultLaunchApp(): Promise<void> {
-  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
-  const configured = process.env.STRATAMD_APP_EXECUTABLE
+const projectRoot = (): string => resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+
+/** The app executable a launch would use: the packaged one from the launcher script, else a development electron. */
+async function resolveAppExecutable(environment: NodeJS.ProcessEnv = process.env): Promise<string | undefined> {
+  const root = projectRoot()
+  const configured = environment.STRATAMD_APP_EXECUTABLE
   // Development fallbacks cover both electron layouts: the Linux binary and
   // the Mac app bundle.
   const candidates = configured
@@ -585,16 +685,196 @@ async function defaultLaunchApp(): Promise<void> {
         resolve(root, 'node_modules', 'electron', 'dist', 'electron'),
         resolve(root, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron'),
       ]
-  let executable: string | undefined
   for (const candidate of candidates) {
     try {
       await access(candidate)
-      executable = candidate
-      break
+      return candidate
     } catch {
       // Try the next layout.
     }
   }
+  return undefined
+}
+
+/** The version in package.json, two levels above this module in both the source tree and the packaged asar. */
+async function readAppVersion(): Promise<string> {
+  try {
+    const parsed = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as { version?: unknown }
+    return typeof parsed.version === 'string' ? parsed.version : 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
+
+export interface VersionReport {
+  version: string
+  protocol: number
+  payload: number
+  cli: string
+  app: string | null
+}
+
+export async function versionReport(environment: NodeJS.ProcessEnv = process.env): Promise<VersionReport> {
+  return {
+    version: await readAppVersion(),
+    protocol: PROTOCOL_VERSION,
+    payload: PAYLOAD_VERSION,
+    cli: environment.STRATAMD_CLI_EXECUTABLE || process.argv[1] || 'stratamd',
+    app: (await resolveAppExecutable(environment)) ?? null
+  }
+}
+
+function logPathFor(environment: NodeJS.ProcessEnv, home: string): string {
+  return join(getDataDirectory({ env: environment, home }), 'logs', 'stratamd.log')
+}
+
+function unreachable(message: string, socketPath: string, environment: NodeJS.ProcessEnv, home: string): CommandFailure {
+  return new CommandFailure(message, 4, 'INSTANCE_UNREACHABLE', {
+    socket: socketPath,
+    log: logPathFor(environment, home),
+    hint: 'Run stratamd doctor'
+  })
+}
+
+export interface DoctorReport {
+  ok: boolean
+  version: VersionReport
+  socket: { path: string; exists: boolean; answers: boolean; protocol: number | null; error?: string }
+  directories: { data: string; config: string }
+  log: { path: string; errors: string[] }
+  locks: Array<{ path: string; document: string | null; pid: number | null; alive: boolean | null }>
+  problems: string[]
+}
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
+
+async function readLogErrors(path: string, count = 5): Promise<string[]> {
+  let raw: string
+  try {
+    raw = await readFile(path, 'utf8')
+  } catch {
+    return []
+  }
+  const errors: string[] = []
+  for (const line of raw.split('\n')) {
+    if (line.length === 0) continue
+    try {
+      const record = JSON.parse(line) as { level?: unknown; time?: unknown; scope?: unknown; message?: unknown }
+      if (record.level !== 'error') continue
+      errors.push(`${String(record.time ?? '')} ${String(record.scope ?? '')}: ${String(record.message ?? '')}`.trim())
+    } catch {
+      errors.push(line)
+    }
+  }
+  return errors.slice(-count)
+}
+
+async function lockReports(dataDirectory: string): Promise<DoctorReport['locks']> {
+  const docs = join(dataDirectory, 'docs')
+  let entries: string[]
+  try {
+    entries = await readdir(docs)
+  } catch {
+    return []
+  }
+  const locks: DoctorReport['locks'] = []
+  for (const entry of entries.sort()) {
+    const path = join(docs, entry, 'lock')
+    let raw: string
+    try {
+      raw = await readFile(path, 'utf8')
+    } catch {
+      continue
+    }
+    let pid: number | null = null
+    try {
+      const parsed = JSON.parse(raw) as { pid?: unknown }
+      if (Number.isInteger(parsed.pid)) pid = parsed.pid as number
+    } catch {
+      // An unreadable lock is still reported, with no pid.
+    }
+    let document: string | null = null
+    try {
+      const meta = JSON.parse(await readFile(join(docs, entry, 'meta.json'), 'utf8')) as { realpath?: unknown }
+      if (typeof meta.realpath === 'string') document = meta.realpath
+    } catch {
+      // A lock without readable meta is reported by path alone.
+    }
+    locks.push({ path, document, pid, alive: pid === null ? null : pidAlive(pid) })
+  }
+  return locks
+}
+
+/**
+ * Everything an agent or the owner needs when a command fails for reasons
+ * outside the document: is the app there, does it speak this protocol, where
+ * do its files and log live, and which documents are locked by whom. Runs
+ * without the app and never changes anything.
+ */
+export async function doctor(
+  environment: NodeJS.ProcessEnv,
+  home: string,
+  socketPath: string,
+  requestFunction: typeof requestOverSocket
+): Promise<DoctorReport> {
+  const problems: string[] = []
+  const version = await versionReport(environment)
+  if (version.app === null) problems.push('The app executable was not found; set STRATAMD_APP_EXECUTABLE or run from the packaged launcher')
+
+  let exists = false
+  try {
+    exists = (await lstat(socketPath)).isSocket()
+  } catch {
+    // No socket: the app is not running.
+  }
+  const socket: DoctorReport['socket'] = { path: socketPath, exists, answers: false, protocol: null }
+  try {
+    const response = await requestFunction(requestFor('docs', {}), { socketPath, timeoutMs: 5_000 })
+    socket.answers = true
+    socket.protocol = typeof response.version === 'number' ? response.version : null
+    if (!response.ok && response.error.code === 'PROTOCOL_MISMATCH') {
+      problems.push(response.error.error)
+    } else if (socket.protocol !== PROTOCOL_VERSION) {
+      problems.push(protocolMismatchFailure('cli', PROTOCOL_VERSION, socket.protocol ?? 0).message)
+    } else if (!response.ok) {
+      problems.push(`The app answered the probe with ${response.error.code}: ${response.error.error}`)
+    }
+  } catch (error) {
+    socket.error = error instanceof Error ? error.message : String(error)
+    if (error instanceof SocketTimeoutError) {
+      problems.push('StrataMD accepted the connection but did not answer in time; it may be stalled')
+    } else if (exists) {
+      problems.push('A socket file exists but nothing answers on it; StrataMD may have exited without cleaning up. Start the app again')
+    } else {
+      problems.push('StrataMD is not running (no socket). Start the app, or run stratamd open <file>')
+    }
+  }
+
+  const context = { env: environment, home }
+  const directories = { data: getDataDirectory(context), config: getConfigDirectory(context) }
+  const logPath = logPathFor(environment, home)
+  const errors = await readLogErrors(logPath)
+  if (errors.length > 0) problems.push(`The log has recent errors (last: ${errors.at(-1)}); see ${logPath}`)
+
+  const locks = await lockReports(directories.data)
+  for (const lock of locks) {
+    if (lock.alive === false) problems.push(`Stale lock ${lock.path}: process ${lock.pid} is not running${lock.document ? ` (document ${lock.document})` : ''}`)
+    if (lock.alive === null) problems.push(`Unreadable lock ${lock.path}`)
+  }
+
+  return { ok: problems.length === 0, version, socket, directories, log: { path: logPath, errors }, locks, problems }
+}
+
+async function defaultLaunchApp(): Promise<void> {
+  const root = projectRoot()
+  const executable = await resolveAppExecutable()
   if (!executable) {
     throw new SocketUnavailableError('StrataMD application executable was not found', 'ENOENT')
   }
@@ -705,6 +985,17 @@ function isPayload(value: unknown): value is AgentPayload {
   return !!value && typeof value === 'object' && typeof (value as { event?: unknown }).event === 'string'
 }
 
+/** A response from another build: the app already said so, or its version differs from ours. */
+function responseMismatch(response: CommandResponse): CommandFailure | undefined {
+  if (!response.ok && response.error.code === 'PROTOCOL_MISMATCH') {
+    return new CommandFailure(response.error.error, 4, 'PROTOCOL_MISMATCH', response.error.detail)
+  }
+  if (response.version !== PROTOCOL_VERSION) {
+    return protocolMismatchFailure('cli', PROTOCOL_VERSION, typeof response.version === 'number' ? response.version : 0)
+  }
+  return undefined
+}
+
 export async function runCli(argv: string[], runtime: CliRuntime = {}): Promise<number> {
   const environment = runtime.environment ?? process.env
   const io: CliIo = {
@@ -713,14 +1004,23 @@ export async function runCli(argv: string[], runtime: CliRuntime = {}): Promise<
     stderr: runtime.io?.stderr ?? process.stderr
   }
 
+  const home = environment.HOME || homedir()
+  const requestFunction = runtime.request ?? requestOverSocket
+  const socketPath = runtime.socketPath ?? socketPathForEnvironment(environment, home)
+
   try {
     if (argv.includes('--agent-help')) {
       if (argv.length !== 1) usage('--agent-help cannot be combined with a command')
-      await new Promise<void>((resolveWrite, rejectWrite) => {
-        io.stdout.write(`${AGENT_HELP}\n`, 'utf8', (error?: Error | null) =>
-          error ? rejectWrite(error) : resolveWrite()
-        )
-      })
+      await writeText(io.stdout, `${AGENT_HELP}\n`)
+      return 0
+    }
+    if (argv[0] === '--version' || argv[0] === '-v') {
+      if (argv.length !== 1) usage('--version cannot be combined with a command')
+      await writeLine(io.stdout, await versionReport(environment))
+      return 0
+    }
+    if (argv[0] === '--help' || argv[0] === '-h' || argv[0] === 'help') {
+      await writeText(io.stdout, HELP_TEXT)
       return 0
     }
 
@@ -734,6 +1034,10 @@ export async function runCli(argv: string[], runtime: CliRuntime = {}): Promise<
       await (runtime.launchApp ?? defaultLaunchApp)()
       return 0
     }
+    if ('doctor' in parsed) {
+      await writeLine(io.stdout, await doctor(environment, home, socketPath, requestFunction))
+      return 0
+    }
     if ('theme' in parsed) {
       const offline = await loadOfflineModule(environment)
       if (!offline?.describeThemeOffline) throw new CommandFailure('Theme files are unavailable from this install', 4, 'INSTANCE_UNREACHABLE')
@@ -743,20 +1047,21 @@ export async function runCli(argv: string[], runtime: CliRuntime = {}): Promise<
       return 0
     }
     if ('setup' in parsed) {
-      await setup({
+      // Notices go to stderr so stdout stays one JSON line like every other command.
+      const result = await setup({
         remove: parsed.remove,
         makeDefault: parsed.makeDefault,
+        ...(parsed.skill === undefined ? {} : { skill: parsed.skill }),
         environment,
         home: environment.HOME || homedir(),
-        report: (text) => writeText(io.stdout, text)
+        report: (text) => writeText(io.stderr, text)
       })
+      await writeLine(io.stdout, result)
       return 0
     }
 
     const request = requestFor(parsed.command, parsed.args as never)
-    const requestFunction = runtime.request ?? requestOverSocket
-    const socketPath = runtime.socketPath ?? socketPathForEnvironment(environment, environment.HOME || homedir())
-    let response
+    let response: CommandResponse
     const requestTimeout =
       parsed.command === 'attach'
         ? ((parsed.args as CommandArguments['attach']).timeout + 15) * 1_000
@@ -775,7 +1080,7 @@ export async function runCli(argv: string[], runtime: CliRuntime = {}): Promise<
       } else if (OFFLINE_COMMANDS.has(parsed.command)) {
         const offline = runtime.offlineHandler ?? (await loadOfflineHandler(environment))
         if (!offline) {
-          throw new CommandFailure('StrataMD is not running and offline commands are unavailable', 4, 'INSTANCE_UNREACHABLE')
+          throw unreachable('StrataMD is not running and offline commands are unavailable', socketPath, environment, home)
         }
         const result = await offline(request, {
           connectionId: `offline-${request.id}`,
@@ -789,18 +1094,30 @@ export async function runCli(argv: string[], runtime: CliRuntime = {}): Promise<
           ...(result === undefined ? {} : { result })
         }
       } else {
-        throw new CommandFailure('StrataMD is not running', 4, 'INSTANCE_UNREACHABLE')
+        throw unreachable('StrataMD is not running', socketPath, environment, home)
       }
     }
+
+    const mismatch = responseMismatch(response)
+    if (mismatch) throw mismatch
 
     if (!response.ok) {
       await writeLine(io.stderr, response.error)
       return response.exitCode
     }
 
-    if (response.result !== undefined) {
-      await writeLine(io.stdout, response.result)
+    if ('raw' in parsed && parsed.raw) {
+      const document = (response.result as { document?: unknown } | undefined)?.document
+      if (typeof document !== 'string') {
+        throw new CommandFailure('The state payload carried no document', 4, 'COMMAND_FAILED')
+      }
+      await writeText(io.stdout, document)
+      return 0
     }
+
+    // Every command answers with one JSON object, so a caller never has to
+    // treat empty output as success.
+    await writeLine(io.stdout, response.result === undefined ? { ok: true } : response.result)
 
     if (isPayload(response.result) && response.result.deliveryId) {
       if (!response.result.file || !response.result.agent) {
@@ -811,10 +1128,20 @@ export async function runCli(argv: string[], runtime: CliRuntime = {}): Promise<
         agent: response.result.agent,
         deliveryId: response.result.deliveryId
       })
-      const acknowledged = await requestFunction(ack, { socketPath, timeoutMs: 15_000 })
-      if (!acknowledged.ok) {
-        await writeLine(io.stderr, acknowledged.error)
-        return acknowledged.exitCode
+      // The payload is already on stdout, so a failed ack is a warning: the
+      // same delivery arrives again on the next attach, with the same id.
+      const ackWarning = 'The delivery was printed but not acknowledged; it repeats on your next attach with the same deliveryId'
+      try {
+        const acknowledged = await requestFunction(ack, { socketPath, timeoutMs: 15_000 })
+        const ackMismatch = responseMismatch(acknowledged)
+        if (ackMismatch) throw ackMismatch
+        if (!acknowledged.ok) await writeLine(io.stderr, { warning: ackWarning, ...acknowledged.error })
+      } catch (error) {
+        await writeLine(io.stderr, {
+          warning: ackWarning,
+          error: error instanceof Error ? error.message : String(error),
+          code: error instanceof CommandFailure ? error.code : 'ACK_FAILED'
+        })
       }
     }
     return 0
@@ -823,7 +1150,7 @@ export async function runCli(argv: string[], runtime: CliRuntime = {}): Promise<
       error instanceof CommandFailure
         ? error
         : error instanceof SocketUnavailableError
-          ? new CommandFailure(error.message, 4, 'INSTANCE_UNREACHABLE')
+          ? unreachable(error.message, socketPath, environment, home)
           : error instanceof SocketTimeoutError
             ? new CommandFailure(error.message, 4, 'INSTANCE_TIMEOUT')
             : new CommandFailure(error instanceof Error ? error.message : 'Command failed', 1, 'COMMAND_FAILED')

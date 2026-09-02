@@ -219,3 +219,69 @@ describe('payload v10', () => {
     expect(changes.text).toContain('@@ -0,0 +1 @@')
   })
 })
+
+describe('payload markers and delivery context', () => {
+  it('escapes annotation text in markers, collapses heading newlines, and names the agent', () => {
+    const payload = createPayload({
+      file, buffer, agent: 'ag_1', event: 'state', document: 'alpha beta',
+      annotations: [{
+        id: 'a1', seq: 1, kind: 'comment', author: 'agent', agent: 'ag_2', name: 'GPT', label: 'Tone',
+        status: 'open', quote: 'beta', text: 'first ⟦line⟧\nsecond line', line: 1, replies: [],
+      }],
+    })
+    expect(payload.text).toContain('alpha ⟦a1 comment (GPT ag_2) [Tone]: first \\⟦line\\⟧ second line⟧beta⟦/a1⟧')
+  })
+
+  it('renders a suggestion replacement once, escaped, after the struck quote', () => {
+    const payload = createPayload({
+      file, buffer, agent: 'ag_1', event: 'state', document: 'keep old text here',
+      annotations: [{
+        id: 's1', seq: 1, kind: 'suggestion', author: 'agent', agent: 'ag_2',
+        status: 'open', quote: 'old text', text: 'new ⟦text⟧', line: 1, replies: [],
+      }],
+    })
+    expect(payload.text).toContain('keep ⟦s1 suggestion (ag_2)⟧~~old text~~ new \\⟦text\\⟧⟦/s1⟧ here')
+    expect(payload.text.match(/new \\⟦text\\⟧/g)).toHaveLength(1)
+  })
+
+  it('renders a lone reply with the thread it continues', () => {
+    const payload = createPayload({
+      file, buffer, agent: 'ag_1', event: 'send', deliveryId: 'd_3', cursor: 9,
+      replies: [{
+        id: 'r2', seq: 8, annotation: 'a1', author: 'agent', agent: 'ag_2', name: 'GPT', text: 'Agreed.',
+        parent: { kind: 'question', quote: 'the long\nspan', line: 4, text: 'Why?' },
+      }],
+    })
+    expect(payload.text).toContain('Replies:\na1 ← GPT ag_2: Agreed.\n  thread: question on line 4 about "the long span": Why?')
+  })
+
+  it('renders hunk context lines and widens the header to cover them', () => {
+    const payload = createPayload({
+      file, buffer, agent: 'ag_1', event: 'send', deliveryId: 'd_4',
+      segments: [{
+        author: 'user',
+        hunks: [
+          { oldStart: 2, oldLines: 1, newStart: 2, newLines: 1, removed: ['old'], added: ['new'], contextBefore: ['first'], contextAfter: ['third'], line: 2 },
+          { oldStart: 1, oldLines: 0, newStart: 1, newLines: 1, removed: [], added: ['top'], contextBefore: [], contextAfter: ['first'], line: 1 },
+        ],
+      }],
+    })
+    expect(payload.text).toContain('@@ -1,3 +1,3 @@\n first\n-old\n+new\n third')
+    expect(payload.text).toContain('@@ -1 +1,2 @@\n+top\n first')
+  })
+
+  it('trims to the annotations view: no document, text is the open questions', () => {
+    const payload = createPayload({
+      file, buffer, agent: 'ag_1', event: 'state', open: true, cursor: 2, document: 'Why now?\n',
+      annotations: [
+        { id: 'a1', seq: 1, kind: 'question', author: 'user', agent: null, status: 'open', quote: 'Why now?', text: 'Justify\nthis', line: 1, replies: [] },
+        { id: 'a2', seq: 2, kind: 'comment', author: 'user', agent: null, status: 'open', quote: 'now', text: 'note', line: 1, replies: [] },
+      ],
+    })
+    const view = trimPayload(payload, { annotationsOnly: true })
+    expect(view).not.toHaveProperty('document')
+    expect(view.annotations).toHaveLength(2)
+    expect(view.text).toBe('Open questions:\n- a1 on line 1: Justify this')
+    expect(payload.document).toBe('Why now?\n')
+  })
+})

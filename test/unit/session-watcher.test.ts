@@ -180,11 +180,36 @@ describe('DebouncedMirror', () => {
 
 describe('WatchCoordinator', () => {
   it('re-reads after events and watcher errors', async () => {
-    const callbacks: Array<(error: Error | null) => unknown> = []
+    const callbacks: Array<(error: Error | null, filename: string | null) => unknown> = []
+    const directories: string[] = []
     const reconcile = vi.fn(async () => undefined)
     const coordinator = new WatchCoordinator({
       documentPath: '/docs/doc.md',
-      ghostEntryPath: '/data/ghost',
+      bufferPath: '/data/ghost/abc/buffer.md',
+      reconcile,
+      subscribe: vi.fn(async (path, callback) => {
+        directories.push(path)
+        callbacks.push(callback)
+        return { unsubscribe: vi.fn(async () => undefined) }
+      })
+    })
+    await coordinator.start()
+    // Flat watches on exactly the two parents, never a recursive one above them.
+    expect(directories).toEqual(['/docs', '/data/ghost/abc'])
+    callbacks[0]?.(null, 'doc.md')
+    callbacks[1]?.(new Error('overflow'), null)
+    await vi.waitFor(() => expect(reconcile).toHaveBeenCalledTimes(2))
+    expect(reconcile).toHaveBeenNthCalledWith(1, 'watch-event')
+    expect(reconcile).toHaveBeenNthCalledWith(2, 'watch-error')
+    await coordinator.stop()
+  })
+
+  it('ignores events for other names in the same directory and wakes on nameless ones', async () => {
+    const callbacks: Array<(error: Error | null, filename: string | null) => unknown> = []
+    const reconcile = vi.fn(async () => undefined)
+    const coordinator = new WatchCoordinator({
+      documentPath: '/docs/doc.md',
+      bufferPath: '/docs/.ghost/buffer.md',
       reconcile,
       subscribe: vi.fn(async (_path, callback) => {
         callbacks.push(callback)
@@ -192,11 +217,36 @@ describe('WatchCoordinator', () => {
       })
     })
     await coordinator.start()
-    callbacks[0]?.(null)
-    callbacks[1]?.(new Error('overflow'))
-    await vi.waitFor(() => expect(reconcile).toHaveBeenCalledTimes(2))
-    expect(reconcile).toHaveBeenNthCalledWith(1, 'watch-event')
-    expect(reconcile).toHaveBeenNthCalledWith(2, 'watch-error')
+    callbacks[0]?.(null, 'other.md')
+    callbacks[0]?.(null, 'notes.txt')
+    expect(reconcile).not.toHaveBeenCalled()
+    callbacks[0]?.(null, 'doc.md')
+    callbacks[1]?.(null, 'meta.json')
+    callbacks[1]?.(null, 'buffer.md')
+    callbacks[1]?.(null, null)
+    await vi.waitFor(() => expect(reconcile).toHaveBeenCalledTimes(3))
+    await coordinator.stop()
+  })
+
+  it('shares one real directory watch and reports a rename of the document', async () => {
+    const { mkdtemp, writeFile, rename } = await import('node:fs/promises')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const root = await mkdtemp(join(tmpdir(), 'stratamd-watch-'))
+    const document = join(root, 'doc.md')
+    await writeFile(document, 'one')
+    const reconcile = vi.fn(async () => undefined)
+    const coordinator = new WatchCoordinator({
+      documentPath: document,
+      bufferPath: join(root, 'buffer.md'),
+      reconcile,
+    })
+    await coordinator.start()
+    await writeFile(document, 'two')
+    await vi.waitFor(() => expect(reconcile).toHaveBeenCalledWith('watch-event'))
+    reconcile.mockClear()
+    await rename(document, join(root, 'moved.md'))
+    await vi.waitFor(() => expect(reconcile).toHaveBeenCalledWith('watch-event'))
     await coordinator.stop()
   })
 })

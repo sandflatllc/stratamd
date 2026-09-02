@@ -4,6 +4,7 @@ import type { ColdEditorState, EditorRestoreState } from '../../editor/types'
 import { toColdEditorState } from '../../editor/index'
 import type { RendererEditorFactory, RendererEditorHandle, RendererEditorOptions } from '../editorAdapter'
 import { AGENT_COLORS, EXTERNAL_COLOR, textColorFor, USER_ANNOTATION_COLOR } from '../model'
+import { forgetFlushed, lastFlushedContent, peekPendingBuffer } from '../pendingBuffer'
 
 interface EditorMountProps extends RendererEditorOptions {
   createEditor: RendererEditorFactory
@@ -40,6 +41,7 @@ function evictBeyondLimit(): void {
 /** Drop saved editor state for documents that are no longer open. */
 export function forgetClosedEditors(openPaths: ReadonlySet<string>): void {
   for (const path of savedEditors.keys()) if (!openPaths.has(path)) savedEditors.delete(path)
+  forgetFlushed(openPaths)
 }
 
 export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(function EditorMount(
@@ -98,6 +100,8 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
     annotationCoordinates: (id) => editorRef.current?.annotationCoordinates?.(id) ?? null,
     setActiveAnnotation: (id) => editorRef.current?.setActiveAnnotation?.(id),
     replaceSelection: (text) => editorRef.current?.replaceSelection?.(text),
+    pasteText: (text) => editorRef.current?.pasteText?.(text),
+    selectAll: () => editorRef.current?.selectAll?.(),
     find: (query) => editorRef.current?.find?.(query) ?? { count: 0, current: 0 },
     findStep: (direction) => editorRef.current?.findStep?.(direction) ?? { count: 0, current: 0 },
     closeFind: () => editorRef.current?.closeFind?.(),
@@ -128,7 +132,8 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
       onAcceptSuggestion: (id) => flashAndRun('annotationId', id, () => handlersRef.current.onAcceptSuggestion(id)),
       onRejectSuggestion: (id) => flashAndRun('annotationId', id, () => handlersRef.current.onRejectSuggestion(id)),
       onUndo: () => handlersRef.current.onUndo(),
-      onRedo: () => handlersRef.current.onRedo()
+      onRedo: () => handlersRef.current.onRedo(),
+      onToggleSource: (source) => handlersRef.current.onToggleSource(source)
     })
     editorRef.current = handle
     paintDecorations(options.pendingHunks, options.annotations)
@@ -144,7 +149,14 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createEditor, documentPath])
 
-  useEffect(() => { editorRef.current?.setContent(options.content) }, [options.content])
+  // A pushed view that merely echoes what this editor already sent (or an
+  // older flush while newer typing waits) must not replace the editor's text:
+  // that is how keystrokes typed across a flush boundary were lost (§5.3).
+  useEffect(() => {
+    if (peekPendingBuffer()?.path === documentPath) return
+    if (lastFlushedContent(documentPath) === options.content) return
+    editorRef.current?.setContent(options.content)
+  }, [options.content])
   useEffect(() => { editorRef.current?.setHistoryStep(options.historyStep) }, [options.historyStep])
   useEffect(() => { editorRef.current?.setReviewState(options.pendingHunks); paintDecorations(options.pendingHunks, options.annotations) }, [options.pendingHunks])
   useEffect(() => { editorRef.current?.setAnnotations(options.annotations); paintDecorations(options.pendingHunks, options.annotations) }, [options.annotations])

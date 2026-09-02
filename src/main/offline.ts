@@ -3,16 +3,17 @@ import { readFile, stat } from 'node:fs/promises'
 import { extname } from 'node:path'
 import {
   AnnotationAnchorError,
-  closestAnnotationMatches,
   createAnnotation,
   createAnnotationLog,
+  describeQuoteFailure,
   replyToAnnotation,
   toDeliveredAnnotation,
   type Annotation,
   type AnnotationEvent,
   type AnnotationLog,
+  type QuoteFailure,
 } from '../core/annotations.js'
-import { computeHunks } from '../core/diff.js'
+import { contextHunks } from '../core/diff.js'
 import { createPayload, trimPayload, type PayloadInput, type StrataPayload } from '../core/payload.js'
 import { EXTERNAL_TAG_TTL_MS } from '../core/state.js'
 import {
@@ -64,12 +65,10 @@ export interface OfflineCommandHandlerOptions {
   readonly lockTimeoutMs?: number
 }
 
-interface QuoteFailureDetail {
+/** One entry of a QUOTE_INVALID detail: the unified failure plus which input it was. */
+interface QuoteFailureDetail extends QuoteFailure {
   readonly index: number
   readonly quote: string
-  readonly code: AnnotationAnchorError['code']
-  readonly error: string
-  readonly matches: readonly string[]
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -206,13 +205,7 @@ function quoteFailure(
   index: number,
   error: AnnotationAnchorError,
 ): QuoteFailureDetail {
-  return {
-    index,
-    quote,
-    code: error.code,
-    error: error.message,
-    matches: closestAnnotationMatches(document, quote, error.matches),
-  }
+  return { index, quote, ...describeQuoteFailure(document, quote, error) }
 }
 
 function payloadWithoutSyntheticAgent(
@@ -220,13 +213,6 @@ function payloadWithoutSyntheticAgent(
 ): Omit<StrataPayload, 'agent'> {
   const { agent: _agent, ...payload } = createPayload({ ...input, agent: '' })
   return payload
-}
-
-function textLines(text: string): string[] {
-  if (text.length === 0) return []
-  const lines = text.split('\n')
-  if (text.endsWith('\n')) lines.pop()
-  return lines
 }
 
 function pendingTag(meta: DurableAnnotationMeta, now: number): PendingTag | undefined {
@@ -261,6 +247,7 @@ async function annotate(
         kind: input.kind,
         author: 'agent',
         agent: args.agent,
+        ...(args.name === undefined ? {} : { name: args.name }),
         quote: input.quote,
         text: input.text ?? '',
         ...(input.label === undefined ? {} : { label: input.label }),
@@ -277,7 +264,7 @@ async function annotate(
 
   if (failures.length > 0) {
     throw new CommandFailure(
-      failures.length === 1 ? failures[0]!.error : 'One or more annotation quotes are invalid',
+      failures.length === 1 ? failures[0]!.message : 'One or more annotation quotes are invalid',
       3,
       'QUOTE_INVALID',
       failures,
@@ -308,6 +295,7 @@ async function reply(
     id,
     author: 'agent',
     agent: args.agent,
+    ...(args.name === undefined ? {} : { name: args.name }),
     text: args.text,
   })
   await store.saveMeta(withAnnotationLog(current.meta, result.log))
@@ -361,14 +349,9 @@ async function changesPayload(
   now: number,
 ): Promise<Omit<StrataPayload, 'agent'>> {
   const ghost = await store.getObjectText(current.meta.ghostBlob)
-  const hunks = computeHunks(ghost, current.text).map((hunk) => ({
-    oldStart: hunk.oldStartLine,
-    oldLines: hunk.removedLines,
-    newStart: hunk.newStartLine,
-    newLines: hunk.addedLines,
-    removed: textLines(hunk.removed),
-    added: textLines(hunk.added),
-  }))
+  // One segment against the current text, so each hunk's line is already
+  // against the document the agent reads.
+  const hunks = contextHunks(ghost, current.text)
   const tag = pendingTag(current.meta, now)
   return payloadWithoutSyntheticAgent({
     file: current.path,

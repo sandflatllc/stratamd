@@ -79,3 +79,33 @@ describe('range mapping', () => {
     expect(mapOldRangeToNew({ from: 4, to: 6 }, hunks)).toEqual({ from: 9, to: 11 })
   })
 })
+
+describe('context hunks for deliveries', () => {
+  it('carries one unchanged line each side and the line in the after text', async () => {
+    const { contextHunks } = await import('../../src/core/diff')
+    const before = 'one\ntwo\nthree\nfour\n'
+    const after = 'one\n2\nthree\nfour\nfive\n'
+    const hunks = contextHunks(before, after)
+    expect(hunks).toEqual([
+      {
+        oldStart: 2, oldLines: 1, newStart: 2, newLines: 1,
+        removed: ['two'], added: ['2'],
+        contextBefore: ['one'], contextAfter: ['three'], line: 2,
+      },
+      {
+        oldStart: 5, oldLines: 0, newStart: 5, newLines: 1,
+        removed: [], added: ['five'],
+        contextBefore: ['four'], contextAfter: [], line: 5,
+      },
+    ])
+  })
+
+  it('has no context at the document edges and reports a top insertion at line 1', async () => {
+    const { contextHunks } = await import('../../src/core/diff')
+    const [top] = contextHunks('body\n', 'title\nbody\n')
+    expect(top).toMatchObject({ oldStart: 1, oldLines: 0, newStart: 1, contextBefore: [], contextAfter: ['body'], line: 1 })
+    const [deletion] = contextHunks('a\nb\n', 'a\n')
+    expect(deletion).toMatchObject({ oldStart: 2, oldLines: 1, newLines: 0, contextBefore: ['a'], contextAfter: [] })
+    expect(deletion!.line).toBe(deletion!.newStart)
+  })
+})

@@ -8,6 +8,7 @@ import {
   PROTOCOL_VERSION,
   errorResponse,
   isCommandRequest,
+  protocolMismatch,
   type CommandRequest,
   type CommandResponse,
   type SocketCommandHandler
@@ -21,7 +22,11 @@ export interface CommandSocketServerOptions {
   uid?: number
   getPeerUid?: (socket: Socket) => number | undefined
   maxRequestBytes?: number
+  /** How long a connection may sit without completing its request line. */
+  idleTimeoutMs?: number
 }
+
+const IDLE_REQUEST_TIMEOUT_MS = 30_000
 
 export interface CommandSocketServer {
   readonly path: string
@@ -181,43 +186,66 @@ export async function createCommandSocketServer(
 
     let input = ''
     let dispatched = false
+    let responded = false
     const controller = new AbortController()
     const connectionId = randomUUID()
+    const respond = (response: CommandResponse): void => {
+      responded = true
+      writeResponse(socket, response)
+    }
 
     socket.setEncoding('utf8')
-    socket.on('data', (chunk: string) => {
+    // A client that connects and never finishes its line would otherwise hold
+    // the connection (and its abort controller) forever. Once a request is
+    // dispatched the handler's own timeout governs, so the idle limit lifts.
+    socket.setTimeout(options.idleTimeoutMs ?? IDLE_REQUEST_TIMEOUT_MS)
+    socket.once('timeout', () => {
       if (dispatched) return
+      dispatched = true
+      respond(errorResponse('invalid', new CommandFailure('Request was not completed in time', 1, 'REQUEST_TIMEOUT')))
+    })
+    socket.on('data', (chunk: string) => {
+      if (dispatched) {
+        // One request per connection: bytes after the dispatched line are a
+        // protocol violation, and the connection closes rather than buffering.
+        if (!responded) socket.destroy()
+        return
+      }
       input += chunk
       if (Buffer.byteLength(input) > maxBytes) {
         dispatched = true
-        writeResponse(
-          socket,
-          errorResponse('invalid', new CommandFailure('Request is too large', 1, 'REQUEST_TOO_LARGE'))
-        )
+        respond(errorResponse('invalid', new CommandFailure('Request is too large', 1, 'REQUEST_TOO_LARGE')))
         return
       }
 
       const newline = input.indexOf('\n')
       if (newline === -1) return
       dispatched = true
+      socket.setTimeout(0)
       const line = input.slice(0, newline)
       let request: CommandRequest
+      let requestId = 'invalid'
       try {
         const parsed: unknown = JSON.parse(line)
+        // A request from another build is answered by version, not shape, so
+        // the caller learns which side to refresh (PRD §6.8).
+        const mismatch = protocolMismatch(parsed)
+        if (mismatch) {
+          const id = (parsed as { id?: unknown }).id
+          if (typeof id === 'string') requestId = id
+          throw mismatch
+        }
         if (!isCommandRequest(parsed)) {
           throw new CommandFailure('Invalid socket request', 1, 'INVALID_REQUEST')
         }
         request = parsed
       } catch (error) {
-        writeResponse(
-          socket,
-          errorResponse(
-            'invalid',
-            error instanceof CommandFailure
-              ? error
-              : new CommandFailure('Malformed JSON request', 1, 'INVALID_JSON')
-          )
-        )
+        respond(errorResponse(
+          requestId,
+          error instanceof CommandFailure
+            ? error
+            : new CommandFailure('Malformed JSON request', 1, 'INVALID_JSON')
+        ))
         return
       }
 
@@ -235,9 +263,9 @@ export async function createCommandSocketServer(
             ok: true,
             ...(result === undefined ? {} : { result })
           }
-          writeResponse(socket, response)
+          respond(response)
         },
-        (error: unknown) => writeResponse(socket, errorResponse(request.id, error))
+        (error: unknown) => respond(errorResponse(request.id, error))
       )
     })
     socket.once('close', () => controller.abort(new Error('Socket client disconnected')))

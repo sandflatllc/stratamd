@@ -13,6 +13,8 @@ export interface EditorSelection {
   top: number
   /** Set on a right-click selection, which must show the menu even for a just-dismissed range. */
   explicit?: boolean
+  /** True when the selection came from the pointer (or a right-click); false for Shift+Arrow and other keyboard selections. */
+  pointer?: boolean
 }
 
 export interface RendererEditorOptions {
@@ -34,6 +36,8 @@ export interface RendererEditorOptions {
   onRejectSuggestion(annotationId: string): void
   onUndo(): Promise<UndoResult>
   onRedo(): Promise<RedoResult>
+  /** The editor switched views from its own shortcut; `source` is the view it now shows. */
+  onToggleSource(source: boolean): void
   resolveLocalImage(request: LocalImageRequest): Promise<ResolvedLocalImage | null>
 }
 
@@ -55,6 +59,8 @@ export interface RendererEditorHandle {
   setActiveAnnotation?(annotationId: string | null): void
   /** Replaces the current visual selection through the normal edit path (the annotate menu's spelling column). */
   replaceSelection?(text: string): void
+  pasteText?(text: string): void
+  selectAll?(): void
   find?(query: string): FindResult
   findStep?(direction: 1 | -1): FindResult
   closeFind?(): void

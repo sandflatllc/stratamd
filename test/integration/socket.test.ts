@@ -74,7 +74,7 @@ describe('newline JSON socket', () => {
     expect((await stat(path)).mode & 0o777).toBe(0o600)
     const response = await requestOverSocket(stateRequest(), { socketPath: path, timeoutMs: 1_000 })
     expect(response).toEqual({
-      version: 9,
+      version: PROTOCOL_VERSION,
       id: 'request-1',
       ok: true,
       result: { version: 11, event: 'state', text: 'request-1' }
@@ -118,13 +118,65 @@ describe('newline JSON socket', () => {
       let input = ''
       client.setEncoding('utf8')
       client.once('connect', () =>
-        client.write(`${JSON.stringify({ version: 11, id: 'bad', command: 'attach', args: { timeout: -1 } })}\n`)
+        client.write(`${JSON.stringify({ version: PROTOCOL_VERSION, id: 'bad', command: 'attach', args: { timeout: -1 } })}\n`)
       )
       client.on('data', (chunk) => (input += chunk))
       client.once('end', () => resolve(input))
     })
     expect(JSON.parse(response)).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } })
     expect(dispatched).toBe(false)
+  })
+
+  it('answers a request from another protocol version with PROTOCOL_MISMATCH, naming both sides', async () => {
+    const path = await socketPath()
+    let dispatched = false
+    const server = await createCommandSocketServer({ socketPath: path, handler: () => { dispatched = true } })
+    servers.push(server)
+
+    const send = (version: number): Promise<Record<string, unknown>> => new Promise((resolve) => {
+      const client = connect(path)
+      let input = ''
+      client.setEncoding('utf8')
+      client.once('connect', () =>
+        client.write(`${JSON.stringify({ version, id: `v${version}`, command: 'state', args: {} })}\n`)
+      )
+      client.on('data', (chunk) => (input += chunk))
+      client.once('end', () => resolve(JSON.parse(input) as Record<string, unknown>))
+    })
+
+    // A newer CLI than the app: the app must be restarted.
+    const newer = await send(PROTOCOL_VERSION + 1)
+    expect(newer).toMatchObject({
+      version: PROTOCOL_VERSION,
+      id: `v${PROTOCOL_VERSION + 1}`,
+      ok: false,
+      exitCode: 4,
+      error: {
+        code: 'PROTOCOL_MISMATCH',
+        detail: { app: PROTOCOL_VERSION, cli: PROTOCOL_VERSION + 1 },
+      },
+    })
+    expect((newer.error as { error: string }).error).toContain('restart StrataMD to pick up the new build')
+
+    // An older CLI than the app: the command must be updated.
+    const older = await send(PROTOCOL_VERSION - 1)
+    expect(older).toMatchObject({ ok: false, exitCode: 4, error: { code: 'PROTOCOL_MISMATCH' } })
+    expect((older.error as { error: string }).error).toContain('update the stratamd command')
+    expect(dispatched).toBe(false)
+
+    // The version check comes before argument validation, so a stale build
+    // never sees INVALID_REQUEST for a shape it cannot know.
+    const staleShape = await new Promise<Record<string, unknown>>((resolve) => {
+      const client = connect(path)
+      let input = ''
+      client.setEncoding('utf8')
+      client.once('connect', () =>
+        client.write(`${JSON.stringify({ version: PROTOCOL_VERSION + 1, id: 'shape', command: 'edit', args: { nonsense: true } })}\n`)
+      )
+      client.on('data', (chunk) => (input += chunk))
+      client.once('end', () => resolve(JSON.parse(input) as Record<string, unknown>))
+    })
+    expect(staleShape).toMatchObject({ error: { code: 'PROTOCOL_MISMATCH' } })
   })
 
   it('rejects a peer uid mismatch before dispatch', async () => {
@@ -157,6 +209,61 @@ describe('newline JSON socket', () => {
     const response = await requestOverSocket(stateRequest(), { socketPath: path, timeoutMs: 1_000 })
     expect(response).toMatchObject({ ok: false, exitCode: 4, error: { code: 'PEER_REJECTED' } })
     expect(dispatched).toBe(false)
+  })
+})
+
+describe('connection hygiene', () => {
+  it('times out a connection that never completes its request line', async () => {
+    const path = await socketPath()
+    let dispatched = false
+    const server = await createCommandSocketServer({
+      socketPath: path,
+      idleTimeoutMs: 100,
+      handler: () => { dispatched = true }
+    })
+    servers.push(server)
+
+    const response = await new Promise<string>((resolve) => {
+      const client = connect(path)
+      let input = ''
+      client.setEncoding('utf8')
+      // Half a request, no newline: the server must not wait forever.
+      client.once('connect', () => client.write('{"version":9,"id":"slow"'))
+      client.on('data', (chunk) => (input += chunk))
+      client.once('end', () => resolve(input))
+    })
+    expect(JSON.parse(response)).toMatchObject({ ok: false, error: { code: 'REQUEST_TIMEOUT' } })
+    expect(dispatched).toBe(false)
+  })
+
+  it('closes the connection when bytes follow the dispatched request', async () => {
+    const path = await socketPath()
+    let release!: () => void
+    const held = new Promise<void>((resolve) => { release = resolve })
+    const server = await createCommandSocketServer({
+      socketPath: path,
+      handler: async () => {
+        await held
+        return { late: true }
+      }
+    })
+    servers.push(server)
+
+    const outcome = await new Promise<{ closed: boolean; input: string }>((resolve) => {
+      const client = connect(path)
+      let input = ''
+      client.setEncoding('utf8')
+      client.once('connect', () => {
+        client.write(`${JSON.stringify(stateRequest('first'))}\n`)
+        setTimeout(() => client.write('second line while the first is in flight\n'), 50)
+      })
+      client.on('data', (chunk) => (input += chunk))
+      client.once('close', () => resolve({ closed: true, input }))
+      setTimeout(() => resolve({ closed: false, input }), 1_500)
+    })
+    release()
+    expect(outcome.closed).toBe(true)
+    expect(outcome.input).toBe('')
   })
 })
 

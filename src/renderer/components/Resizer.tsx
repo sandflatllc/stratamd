@@ -26,10 +26,12 @@ export function Resizer({ axis, label, value, min, max, invert = false, onChange
     const finish = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', finish)
+      window.removeEventListener('pointercancel', finish)
       onCommit(latest)
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', finish, { once: true })
+    window.addEventListener('pointercancel', finish, { once: true })
   }, [axis, invert, max, min, onChange, onCommit, value])
 
   return (

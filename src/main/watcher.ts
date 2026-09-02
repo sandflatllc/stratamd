@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
+import { watch, type FSWatcher } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
-import watcher, { type AsyncSubscription } from '@parcel/watcher'
+import { basename, dirname } from 'node:path'
 
 export type WatchedSource = 'document' | 'buffer'
 export type WakeReason = 'open' | 'focus' | 'before-save' | 'app-start' | 'watch-event' | 'watch-error'
@@ -171,40 +171,114 @@ export class HashReconciler {
   }
 }
 
-export interface WatchCoordinatorOptions {
-  documentPath: string
-  ghostEntryPath: string
-  reconcile: (reason: WakeReason) => void | Promise<void>
-  onError?: (error: Error) => void
-  subscribe?: typeof watcher.subscribe
+export type DirectoryListener = (error: Error | null, filename: string | null) => void
+export interface DirectorySubscription {
+  unsubscribe(): Promise<void>
+}
+export type DirectorySubscriber = (
+  directory: string,
+  listener: DirectoryListener,
+) => Promise<DirectorySubscription>
+
+interface SharedDirectoryWatch {
+  watcher: FSWatcher
+  listeners: Set<DirectoryListener>
 }
 
+/**
+ * One non-recursive fs.watch per directory, shared by every subscriber. A
+ * document's parent may be the user's home or a large project; a recursive
+ * watch there costs an inotify handle per subdirectory and wakes on every
+ * unrelated write, so watches are flat and filtered by name at the caller.
+ */
+class SharedDirectoryWatches {
+  readonly #watches = new Map<string, SharedDirectoryWatch>()
+
+  async subscribe(directory: string, listener: DirectoryListener): Promise<DirectorySubscription> {
+    let shared = this.#watches.get(directory)
+    if (!shared) {
+      const listeners = new Set<DirectoryListener>()
+      const watcher = watch(directory, { persistent: false }, (_eventType, filename) => {
+        const name = typeof filename === 'string' ? filename : filename === null || filename === undefined ? null : String(filename)
+        for (const subscriber of [...listeners]) subscriber(null, name)
+      })
+      shared = { watcher, listeners }
+      watcher.once('error', (error) => {
+        // The handle is dead after an error; drop it so the next subscribe
+        // creates a fresh one, and let every subscriber re-read its files.
+        if (this.#watches.get(directory) === shared) this.#watches.delete(directory)
+        for (const subscriber of [...listeners]) subscriber(error, null)
+      })
+      this.#watches.set(directory, shared)
+    }
+    const entry = shared
+    entry.listeners.add(listener)
+    let active = true
+    return {
+      unsubscribe: async () => {
+        if (!active) return
+        active = false
+        entry.listeners.delete(listener)
+        if (entry.listeners.size === 0) {
+          if (this.#watches.get(directory) === entry) this.#watches.delete(directory)
+          entry.watcher.close()
+        }
+      },
+    }
+  }
+}
+
+const sharedWatches = new SharedDirectoryWatches()
+
+/** The process-wide shared directory watch. */
+export const watchDirectory: DirectorySubscriber = (directory, listener) => sharedWatches.subscribe(directory, listener)
+
+export interface WatchCoordinatorOptions {
+  documentPath: string
+  bufferPath: string
+  reconcile: (reason: WakeReason) => void | Promise<void>
+  onError?: (error: Error) => void
+  subscribe?: DirectorySubscriber
+}
+
+/**
+ * Wakes the reconciler when the document or its buffer mirror may have
+ * changed: flat watches on their two parent directories, filtered to the two
+ * names (a rename event carries the old name, so a moved document still
+ * wakes). An event without a name wakes unconditionally.
+ */
 export class WatchCoordinator {
-  readonly #directories: string[]
+  readonly #interests = new Map<string, Set<string>>()
   readonly #reconcile: WatchCoordinatorOptions['reconcile']
   readonly #onError?: WatchCoordinatorOptions['onError']
-  readonly #subscribe: typeof watcher.subscribe
-  readonly #subscriptions: AsyncSubscription[] = []
+  readonly #subscribe: DirectorySubscriber
+  readonly #subscriptions: DirectorySubscription[] = []
   #started = false
 
   constructor(options: WatchCoordinatorOptions) {
-    this.#directories = [...new Set([dirname(options.documentPath), options.ghostEntryPath])]
+    for (const path of [options.documentPath, options.bufferPath]) {
+      const directory = dirname(path)
+      const names = this.#interests.get(directory) ?? new Set<string>()
+      names.add(basename(path))
+      this.#interests.set(directory, names)
+    }
     this.#reconcile = options.reconcile
     this.#onError = options.onError
-    this.#subscribe = options.subscribe ?? watcher.subscribe
+    this.#subscribe = options.subscribe ?? watchDirectory
   }
 
   async start(): Promise<void> {
     if (this.#started) return
     this.#started = true
     try {
-      for (const directory of this.#directories) {
-        const subscription = await this.#subscribe(directory, (error) => {
+      for (const [directory, names] of this.#interests) {
+        const subscription = await this.#subscribe(directory, (error, filename) => {
           if (error) {
             this.#onError?.(error)
             void this.#reconcile('watch-error')
             return
           }
+          if (filename !== null && filename !== undefined && !names.has(filename)) return
           void this.#reconcile('watch-event')
         })
         this.#subscriptions.push(subscription)

@@ -3,6 +3,7 @@ import type {
   AnnotationView,
   AppView,
   AttachmentState,
+  AttachmentView,
   DocumentTabView,
   DocumentView,
   ExplorerFileView,
@@ -17,6 +18,7 @@ import type {
   DocumentProblem,
 } from '../shared/contracts'
 import type { CSSProperties } from 'react'
+import { sameJson } from '../shared/view-sync'
 import { AMBIENT_STYLES, BUILT_IN_THEME_ID, BUILT_IN_THEME_NAME, contrastingText, DEFAULT_THEME_VALUES, mixHex, THEME_KEYS, type AmbientStyle } from '../shared/theme-keys'
 
 export type NumericPanelKey = Exclude<keyof PanelSizes, 'themePanel' | 'threadPanel' | 'annotationComposer' | 'sendComposer'>
@@ -219,6 +221,38 @@ export function attachedAgo(attachedAt: number, now = Date.now()): string {
   return `attached ${timeAgo(now - attachedAt)}`
 }
 
+/** The compact form for rail rows: "just now", "3 min ago", "2 h ago", "yesterday". */
+export function timeAgoShort(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000))
+  if (seconds < 60) return 'just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes} min ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} h ago`
+  const days = Math.floor(hours / 24)
+  return days === 1 ? 'yesterday' : `${days} days ago`
+}
+
+/** An agent that has not called in for this long while "working" is not listening. */
+export const NOT_LISTENING_AFTER_MS = 10 * 60_000
+
+/**
+ * The attachment row's state line: the state, then when the agent last called
+ * in. A working agent that has gone quiet reads as not listening instead, so
+ * the row does not promise attention the agent is not paying.
+ */
+export function attachmentStatusLine(
+  attachment: Pick<AttachmentView, 'state' | 'lastCallAt' | 'queuedSendCount'>,
+  now = Date.now(),
+): string {
+  const { state, lastCallAt, queuedSendCount } = attachment
+  const quiet = state === 'working' && lastCallAt !== null && now - lastCallAt > NOT_LISTENING_AFTER_MS
+  const parts = [quiet ? 'not listening' : attachmentStateLabel(state)]
+  if (lastCallAt !== null) parts.push(`last heard ${timeAgoShort(now - lastCallAt)}`)
+  if (queuedSendCount > 0) parts.push(`${queuedSendCount} update${queuedSendCount === 1 ? '' : 's'} waiting for it`)
+  return parts.join(' · ')
+}
+
 export function absoluteTime(time: number): string {
   return new Date(time).toLocaleString()
 }
@@ -318,9 +352,17 @@ export function cycleTab(tabs: readonly DocumentTabView[], direction: 1 | -1): D
 }
 
 export interface ReviewTarget {
-  kind: 'hunk' | 'suggestion'
+  kind: 'hunk' | 'suggestion' | 'thread'
   id: string
   line: number
+}
+
+/** Open comments and questions in document order, for F8 / Shift+F8 (§5.12). */
+export function threadTargets(document: DocumentView): ReviewTarget[] {
+  return document.annotations
+    .filter((annotation) => annotation.kind !== 'suggestion' && annotation.status === 'open' && annotation.line !== null)
+    .map((annotation): ReviewTarget => ({ kind: 'thread', id: annotation.id, line: annotation.line! }))
+    .sort((left, right) => left.line - right.line)
 }
 
 /** Pending hunks and open suggestions in document order (PRD §6.1 next/previous change). */
@@ -414,4 +456,88 @@ export function explorerTree(root: { path: string; name: string; files: Explorer
   }
   sort(tree)
   return tree
+}
+
+// ---- Agent activity (§5.4): what a document push added since the last one.
+
+export interface ActivitySnapshot {
+  hunkIds: readonly string[]
+  suggestionIds: readonly string[]
+}
+
+export function activitySnapshot(document: DocumentView): ActivitySnapshot {
+  return {
+    hunkIds: document.pendingHunks.map((hunk) => hunk.id),
+    suggestionIds: document.annotations.filter((annotation) => annotation.kind === 'suggestion' && annotation.status === 'open').map((annotation) => annotation.id),
+  }
+}
+
+export interface AgentActivity {
+  /** Agent names, in order of first appearance. */
+  authors: string[]
+  changes: number
+  suggestions: number
+  /** The first new item in document order, for the toast's Show button. */
+  target: ReviewTarget
+}
+
+/** New pending changes and open suggestions by agents since `previous`; null when there are none. */
+export function agentActivity(previous: ActivitySnapshot | null, document: DocumentView): AgentActivity | null {
+  if (!previous) return null
+  const knownHunks = new Set(previous.hunkIds)
+  const knownSuggestions = new Set(previous.suggestionIds)
+  const hunks = document.pendingHunks.filter((hunk) => hunk.author !== null && !knownHunks.has(hunk.id))
+  const suggestions = document.annotations.filter((annotation) =>
+    annotation.kind === 'suggestion' && annotation.status === 'open' && annotation.author !== 'user' && !knownSuggestions.has(annotation.id))
+  if (hunks.length === 0 && suggestions.length === 0) return null
+  const authors: string[] = []
+  for (const name of [...hunks.map((hunk) => hunk.author!.name), ...suggestions.map((annotation) => (annotation.author as AgentIdentity).name)]) {
+    if (!authors.includes(name)) authors.push(name)
+  }
+  const targets: ReviewTarget[] = [
+    ...hunks.map((hunk): ReviewTarget => ({ kind: 'hunk', id: hunk.id, line: hunk.newStart })),
+    ...suggestions.filter((annotation) => annotation.line !== null).map((annotation): ReviewTarget => ({ kind: 'suggestion', id: annotation.id, line: annotation.line! })),
+  ].sort((left, right) => left.line - right.line)
+  const target = targets[0] ?? { kind: 'suggestion', id: suggestions[0]!.id, line: 0 }
+  return { authors, changes: hunks.length, suggestions: suggestions.length, target }
+}
+
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`
+}
+
+/** "Claude changed 3 passages", "Claude suggested 2 changes", "Claude and GPT changed 1 passage and suggested 1 change". */
+export function agentActivityMessage(activity: AgentActivity): string {
+  const who = activity.authors.length <= 2
+    ? activity.authors.join(' and ')
+    : `${activity.authors.slice(0, -1).join(', ')}, and ${activity.authors.at(-1)}`
+  const parts: string[] = []
+  if (activity.changes > 0) parts.push(`changed ${plural(activity.changes, 'passage', 'passages')}`)
+  if (activity.suggestions > 0) parts.push(`suggested ${plural(activity.suggestions, 'change', 'changes')}`)
+  return `${who} ${parts.join(' and ')}`
+}
+
+/**
+ * Whether a pushed panel size or zoom should replace the local value (§5.14):
+ * only when it differs from what this window last committed, so an echo of an
+ * older commit never clobbers a drag in progress.
+ */
+export function shouldAdoptPushed(pushed: unknown, lastCommitted: unknown): boolean {
+  return lastCommitted === undefined || lastCommitted === null || !sameJson(pushed, lastCommitted)
+}
+
+// ---- Recent documents (§5.10), kept in this window's local storage.
+
+export const RECENTS_LIMIT = 8
+
+export function pushRecent(recents: readonly string[], path: string, limit = RECENTS_LIMIT): string[] {
+  return [path, ...recents.filter((entry) => entry !== path)].slice(0, limit)
+}
+
+/** Tab-menu bulk close (§5.16): clean tabs close; tabs with unsaved edits stay and are counted. */
+export function tabsToClose(tabs: readonly DocumentTabView[], mode: 'others' | 'all' | 'saved', keepPath: string): { close: DocumentTabView[]; keptDirty: number } {
+  const candidates = tabs.filter((tab) => mode === 'others' ? tab.path !== keepPath : true)
+  const close = candidates.filter((tab) => !tab.dirty)
+  const keptDirty = mode === 'saved' ? 0 : candidates.length - close.length
+  return { close, keptDirty }
 }

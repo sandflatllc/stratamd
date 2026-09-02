@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createStrataApplication, type StrataApplication } from '../../src/main/application'
+import { PROTOCOL_VERSION, type CommandRequest } from '../../src/cli/protocol'
 import { SettingsStore } from '../../src/main/settings'
 import { GhostStore } from '../../src/main/storage'
 
@@ -19,6 +20,13 @@ async function fixture() {
   const app = await createStrataApplication({ store, settingsStore, watch: false })
   applications.push(app)
   return { root, store, app }
+}
+
+async function command(app: StrataApplication, command: CommandRequest['command'], args: unknown) {
+  return app.commandHandler()(
+    { version: PROTOCOL_VERSION, id: `test-${command}`, command, args } as CommandRequest,
+    { connectionId: 'test', signal: new AbortController().signal },
+  )
 }
 
 async function document(root: string, name: string, content: string): Promise<string> {
@@ -88,5 +96,31 @@ describe('persist blob caching', () => {
     await app.undo(keep)
     await app.updateBuffer(keep, '# Keep\n\nStable line edited final.\n')
     await expectMetaBlobsPresent(store, keep)
+  })
+
+  it('keeps the snapshot set bounded across a long typing session', async () => {
+    const { root, store, app } = await fixture()
+    const path = await document(root, 'typing.md', '# Notes\n\n')
+    await app.openDocument(path)
+    await command(app, 'attach', { file: path, agent: 'ag_1', name: 'Agent', timeout: 0 })
+
+    let text = '# Notes\n\n'
+    for (let step = 0; step < 120; step += 1) {
+      text += step % 7 === 6 ? '\n' : String.fromCharCode(97 + (step % 26))
+      await app.updateBuffer(path, text)
+      // A Save every so often starts a fresh segment, as a real session does.
+      if (step % 40 === 39) await app.save(path)
+    }
+    await app.flushPersistence(path)
+    const meta = await store.loadMeta(path)
+    // One user segment per round plus the current content: never a snapshot per keystroke.
+    expect(meta.segments.length).toBeLessThanOrEqual(4)
+    expect((meta.snapshotBlobs ?? []).length).toBeLessThanOrEqual(2 * meta.segments.length + 6)
+    await expectMetaBlobsPresent(store, path)
+    // Reopening from the pruned set still replays the rounds.
+    await app.closeDocument(path)
+    await app.openDocument(path)
+    const collected = await command(app, 'attach', { file: path, agent: 'ag_1', name: 'Agent', timeout: 0 }) as { event: string }
+    expect(collected.event).toBe('closed')
   })
 })

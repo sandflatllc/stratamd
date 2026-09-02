@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION = 9 as const
+export const PROTOCOL_VERSION = 10 as const
 export const MAX_REQUEST_BYTES = 1024 * 1024
 /** Agent-to-agent message notes are capped far below the 64 KB Send note limit (PRD §6.7). */
 export const MAX_MESSAGE_BYTES = 4 * 1024
@@ -48,12 +48,16 @@ export interface AttachArguments {
 export interface AnnotateArguments {
   file: string
   agent: string
+  /** Display name recorded on the annotations; the attachment's name wins when the app knows it. */
+  name?: string
   annotations: AnnotationInput[]
 }
 
 export interface ReplyArguments {
   file: string
   agent: string
+  /** Display name recorded on the reply; the attachment's name wins when the app knows it. */
+  name?: string
   annotation: string
   text: string
 }
@@ -64,13 +68,18 @@ export interface StateArguments {
   brief?: boolean
   /** Omit `document`; `text` carries the buffer. */
   textOnly?: boolean
+  /** Omit `document`; `text` carries only the open questions. */
+  annotationsOnly?: boolean
 }
 
 export interface EditInput {
+  /** Exact buffer text; empty with `precededBy`/`followedBy` (a point) or `append`. */
   match: string
   replace: string
   precededBy?: string
   followedBy?: string
+  /** Insert at the end of the buffer; `match` is empty. */
+  append?: boolean
 }
 
 export interface EditArguments extends FileArguments {
@@ -78,6 +87,8 @@ export interface EditArguments extends FileArguments {
   /** Display name for the tagged hunk; the attachment's name when absent. */
   name?: string
   edits: EditInput[]
+  /** Locate every match and report where each would land without changing the buffer. */
+  dryRun?: boolean
 }
 
 export interface FileArguments {
@@ -138,7 +149,7 @@ export interface CommandArguments {
 
 export type CommandRequest<C extends CommandName = CommandName> = {
   [K in C]: {
-    version: typeof PROTOCOL_VERSION
+    version: number
     id: string
     command: K
     args: CommandArguments[K]
@@ -202,13 +213,13 @@ export interface CommandErrorBody {
 
 export type CommandResponse =
   | {
-      version: typeof PROTOCOL_VERSION
+      version: number
       id: string
       ok: true
       result?: unknown
     }
   | {
-      version: typeof PROTOCOL_VERSION
+      version: number
       id: string
       ok: false
       exitCode: 1 | 2 | 3 | 4
@@ -228,6 +239,38 @@ export type SocketCommandHandler = (
 
 export function isCommandName(value: unknown): value is CommandName {
   return typeof value === 'string' && (COMMAND_NAMES as readonly string[]).includes(value)
+}
+
+/**
+ * A well-formed request whose `version` is not ours. The app answers this
+ * before validating anything else, so a stale build on either side gets one
+ * clear instruction instead of INVALID_REQUEST (PRD §6.8).
+ */
+export function protocolMismatch(value: unknown, local: number = PROTOCOL_VERSION): CommandFailure | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const input = value as Record<string, unknown>
+  if (typeof input.version !== 'number' || input.version === local) return undefined
+  if (typeof input.id !== 'string' || !isCommandName(input.command)) return undefined
+  return protocolMismatchFailure('app', local, input.version)
+}
+
+/**
+ * The one PROTOCOL_MISMATCH message, built from whichever side noticed. The
+ * older side is the one to refresh: an app older than the CLI needs a restart
+ * to pick up the new build; a CLI older than the app needs updating.
+ */
+export function protocolMismatchFailure(local: 'app' | 'cli', localVersion: number, remoteVersion: number): CommandFailure {
+  const app = local === 'app' ? localVersion : remoteVersion
+  const cli = local === 'cli' ? localVersion : remoteVersion
+  const instruction = app < cli
+    ? 'restart StrataMD to pick up the new build'
+    : 'update the stratamd command (run stratamd setup from the new build)'
+  return new CommandFailure(
+    `The running StrataMD speaks protocol ${app} and this stratamd command speaks protocol ${cli}: ${instruction}`,
+    4,
+    'PROTOCOL_MISMATCH',
+    { app, cli, hint: 'Run stratamd doctor to see both versions and the log path' },
+  )
 }
 
 export function isCommandRequest(value: unknown): value is CommandRequest {
@@ -267,14 +310,20 @@ export function isCommandRequest(value: unknown): value is CommandRequest {
       return (
         file() &&
         string('agent') &&
+        string('name', true) &&
         Array.isArray(args.annotations) &&
         args.annotations.length > 0 &&
         args.annotations.every(isAnnotationInput)
       )
     case 'reply':
-      return file() && string('agent') && string('annotation') && stringWithinLimit(args.text)
+      return file() && string('agent') && string('name', true) && string('annotation') && stringWithinLimit(args.text)
     case 'state':
-      return file(true) && optionalBoolean(args.brief) && optionalBoolean(args.textOnly)
+      return (
+        file(true) &&
+        optionalBoolean(args.brief) &&
+        optionalBoolean(args.textOnly) &&
+        optionalBoolean(args.annotationsOnly)
+      )
     case 'docs':
       return Object.keys(args).length === 0
     case 'edit':
@@ -284,7 +333,8 @@ export function isCommandRequest(value: unknown): value is CommandRequest {
         string('name', true) &&
         Array.isArray(args.edits) &&
         args.edits.length > 0 &&
-        args.edits.every(isEditInput)
+        args.edits.every(isEditInput) &&
+        optionalBoolean(args.dryRun)
       )
     case 'changes':
     case 'open':
@@ -324,9 +374,12 @@ function optionalBoolean(value: unknown): boolean {
 function isEditInput(value: unknown): value is EditInput {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const input = value as Record<string, unknown>
+  const anchored =
+    input.append === true || input.precededBy !== undefined || input.followedBy !== undefined
   return (
     typeof input.match === 'string' &&
-    input.match.length > 0 &&
+    (input.match.length > 0 || anchored) &&
+    (input.append === undefined || (input.append === true && input.match === '')) &&
     stringWithinLimit(input.replace) &&
     (input.precededBy === undefined || typeof input.precededBy === 'string') &&
     (input.followedBy === undefined || typeof input.followedBy === 'string')

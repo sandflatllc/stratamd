@@ -114,3 +114,16 @@ describe('parseMarkdown', () => {
     expect(parseMarkdown('no newline').conventions.hasFinalNewline).toBe(false)
   })
 })
+
+describe('math classification (usability round 2 §5.7)', () => {
+  it('keeps dollar amounts editable and classifies real math as raw', () => {
+    // Pandoc's rule: an opening $ is followed by a non-space; a closing $ is preceded by a non-space and not followed by a digit.
+    const prose = ['$5 and $10', 'It costs $5 and $10 total.', 'Pay 5$ or 10 $ here', '$ alone', 'Escaped \\$x\\$ stays text']
+    for (const source of prose) expect(parseMarkdown(`${source}\n`).blocks[0]?.presentation, source).toBe('visual')
+    const math = ['$x$', 'Euler: $e^{i\\pi} + 1 = 0$ holds', '$$\nx = 1\n$$', 'Inline $$x$$ display', '\\(a\\)', '\\[a\\]', '$5 and 10$.']
+    for (const source of math) {
+      const block = parseMarkdown(`${source}\n`).blocks[0]
+      expect(block?.rawKind, source).toBe('math')
+    }
+  })
+})

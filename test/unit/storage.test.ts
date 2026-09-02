@@ -12,6 +12,7 @@ import {
   sha256,
   type DocumentMeta,
 } from '../../src/main/storage'
+import { currentProcessIdentity } from '../../src/platform/process-identity'
 
 const temporaryDirectories: string[] = []
 
@@ -182,6 +183,64 @@ describe('GhostStore', () => {
     expect(await store.forgetDocument(document)).toBe(true)
     expect(await store.collectGarbage()).toEqual([])
     await expect(store.getObject(meta.ghostBlob)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('treats a lock from a recycled pid as stale and names the lock path when it is held', async () => {
+    const directory = await temporaryDirectory()
+    const document = join(directory, 'locked.md')
+    await writeFile(document, 'content')
+    const store = new GhostStore({ dataDirectory: join(directory, 'data') })
+    await store.createDocument(document, 'content')
+    const lockPath = store.pathsForDocument(document).lock
+    const identity = await currentProcessIdentity()
+
+    // A live pid from a previous boot: the lock cannot belong to it.
+    await writeFile(lockPath, JSON.stringify({ pid: process.pid, token: 'old-boot', bootId: 'not-this-boot' }))
+    await (await store.acquireLock(document)).release()
+
+    // The same pid and boot, but a process that started at another time.
+    if (identity.startTime !== null) {
+      await writeFile(lockPath, JSON.stringify({
+        pid: process.pid, token: 'reused-pid', bootId: identity.bootId, startTime: 'some other start',
+      }))
+      await (await store.acquireLock(document)).release()
+    }
+
+    // This very process: the lock is live, and the error says which file holds it.
+    const lock = await store.acquireLock(document)
+    const written = JSON.parse(await readFile(lockPath, 'utf8')) as Record<string, unknown>
+    expect(written.pid).toBe(process.pid)
+    if (identity.bootId !== null) expect(written.bootId).toBe(identity.bootId)
+    if (identity.startTime !== null) expect(written.startTime).toBe(identity.startTime)
+    const failure = await store.acquireLock(document).catch((error: unknown) => error)
+    expect(failure).toMatchObject({ code: 'ELOCKED', path: lockPath })
+    expect((failure as Error).message).toContain(lockPath)
+    await lock.release()
+  })
+
+  it('reports a broken entry as present, names it in errors, and forgets it', async () => {
+    const directory = await temporaryDirectory()
+    const document = join(directory, 'broken.md')
+    await writeFile(document, 'content')
+    const store = new GhostStore({ dataDirectory: join(directory, 'data') })
+    await store.createDocument(document, 'content')
+    const paths = store.pathsForDocument(document)
+
+    await writeFile(paths.meta, '{ this is not json')
+    expect(await store.documentStatus(document)).toBe('broken')
+    expect(await store.hasDocument(document)).toBe(true)
+    const failure = await store.loadMeta(document).catch((error: unknown) => error)
+    expect(failure).toMatchObject({ code: 'EMETABROKEN', path: paths.meta })
+    expect((failure as Error).message).toContain(paths.meta)
+
+    await writeFile(paths.meta, JSON.stringify({ formatVersion: 99, realpath: document }))
+    expect(await store.documentStatus(document)).toBe('broken')
+    await expect(store.loadMeta(document)).rejects.toThrow(/newer than this build/)
+
+    expect(await store.forgetDocument(document)).toBe(true)
+    await expect(stat(paths.directory)).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(await store.documentStatus(document)).toBe('absent')
+    expect(await store.hasDocument(document)).toBe(false)
   })
 
   it('moves an open document entry and its held lock exactly once', async () => {

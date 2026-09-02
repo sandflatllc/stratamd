@@ -24,6 +24,8 @@ export interface AnnotationReply {
   seq: number
   author: AnnotationAuthor
   agent: string | null
+  /** The authoring attachment's display name at the time, for agent replies. */
+  name?: string
   text: string
   /** Wall-clock creation time; absent on records written before it was recorded. */
   createdAt?: number
@@ -35,6 +37,8 @@ export interface Annotation {
   kind: AnnotationKind
   author: AnnotationAuthor
   agent: string | null
+  /** The authoring attachment's display name at the time, for agent-authored annotations. */
+  name?: string
   status: AnnotationStatus
   quote: string
   text: string
@@ -88,6 +92,8 @@ export interface CreateAnnotationInput {
   kind: AnnotationKind
   author: AnnotationAuthor
   agent?: string | null
+  /** The attachment's display name at the time; kept on the record for delivery markers. */
+  name?: string
   quote: string
   text: string
   label?: string
@@ -132,18 +138,99 @@ export function createAnnotationLog(): AnnotationLog {
   return { nextSeq: 1, annotations: {}, events: [] }
 }
 
-/** Human-readable excerpts used by both online and offline annotate failures. */
-export function closestAnnotationMatches(
-  document: string,
-  quote: string,
-  positions: readonly number[],
-): string[] {
-  if (positions.length > 0) {
-    return positions.slice(0, 5).map((position) =>
-      document.slice(Math.max(0, position - 32), Math.min(document.length, position + quote.length + 32)),
-    )
-  }
+export type QuoteFailureReason = 'missing' | 'ambiguous' | 'multi_block' | 'whitespace'
 
+/** One place the quote occurs, with enough text either side to serve as --preceded-by / --followed-by. */
+export interface QuoteCandidate {
+  line: number
+  before: string
+  quote: string
+  after: string
+}
+
+/** The one QUOTE_INVALID detail shape for annotate, edit, and a Lead accept (PRD §6.8). */
+export interface QuoteFailure {
+  reason: QuoteFailureReason
+  message: string
+  total: number
+  candidates: QuoteCandidate[]
+  hint: string
+  /** With reason `whitespace`: the buffer's own text, to use as the quote. */
+  exact?: string
+}
+
+const CANDIDATE_CONTEXT = 40
+const MAX_CANDIDATES = 5
+
+export const QUOTE_FAILURE_HINTS: Record<QuoteFailureReason, string> = {
+  missing: 'Copy the quote from the "document" field or the buffer file, never from "text"; candidates lists the closest lines.',
+  ambiguous: 'Pick the candidate you mean and pass its before text as --preceded-by or its after text as --followed-by.',
+  multi_block: 'A suggestion quote stays inside one paragraph, list item, heading, or cell. Quote a span inside one block, or use a comment for the whole passage.',
+  whitespace: 'The quote differs from the buffer only in spacing or line breaks. Use the text in "exact".',
+}
+
+function lineStartIndex(document: string, offset: number): number {
+  return document.lastIndexOf('\n', offset - 1) + 1
+}
+
+function lineEndIndex(document: string, offset: number): number {
+  const end = document.indexOf('\n', offset)
+  return end < 0 ? document.length : end
+}
+
+/**
+ * About 40 characters before an offset, trimmed to a word boundary and kept on
+ * the quote's own line unless the quote starts the line.
+ */
+function contextBefore(document: string, offset: number): string {
+  const lineStart = lineStartIndex(document, offset)
+  const start = Math.max(0, offset - CANDIDATE_CONTEXT)
+  let slice = document.slice(Math.max(start, lineStart), offset)
+  if (slice.length === 0) slice = document.slice(start, offset)
+  if (start < offset - slice.length) return slice
+  if (start > 0 && !/\s/.test(document[start - 1]!) && !/\s/.test(slice[0] ?? ' ')) {
+    const boundary = slice.search(/\s/)
+    if (boundary > 0 && boundary < slice.length) slice = slice.slice(boundary)
+  }
+  return slice
+}
+
+function contextAfter(document: string, offset: number): string {
+  const lineEnd = lineEndIndex(document, offset)
+  const end = Math.min(document.length, offset + CANDIDATE_CONTEXT)
+  let slice = document.slice(offset, Math.min(end, lineEnd))
+  if (slice.length === 0) slice = document.slice(offset, end)
+  if (end > offset + slice.length) return slice
+  if (end < document.length && !/\s/.test(document[end]!) && !/\s/.test(slice.at(-1) ?? ' ')) {
+    const boundary = slice.search(/\s\S*$/)
+    if (boundary > 0) slice = slice.slice(0, boundary + 1)
+  }
+  return slice
+}
+
+/** The candidate for an exact span: its line and the text either side. */
+export function quoteCandidateAt(document: string, start: number, end: number): QuoteCandidate {
+  return candidateAt(document, start, end)
+}
+
+/** The whole lines a span now covers: what stands where a moved quote used to be. */
+export function quoteCandidateForLines(document: string, start: number, end: number): QuoteCandidate {
+  const from = lineStartIndex(document, Math.min(start, document.length))
+  const to = lineEndIndex(document, Math.min(end, document.length))
+  return candidateAt(document, from, Math.max(from, to))
+}
+
+function candidateAt(document: string, start: number, end: number): QuoteCandidate {
+  return {
+    line: lineAt(document, start),
+    before: contextBefore(document, start),
+    quote: document.slice(start, end),
+    after: contextAfter(document, end),
+  }
+}
+
+/** The lines sharing the most words with the quote, as candidates without context. */
+function closestLines(document: string, quote: string): QuoteCandidate[] {
   const queryWords = new Set(quote.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? [])
   return document.split(/\r?\n/)
     .map((line, index) => {
@@ -153,10 +240,118 @@ export function closestAnnotationMatches(
       const includes = line.toLowerCase().includes(quote.toLowerCase()) ? 2 : 0
       return { line, index, score: overlap + includes }
     })
-    .filter((candidate) => candidate.line.length > 0)
+    .filter((candidate) => candidate.line.length > 0 && candidate.score > 0)
     .sort((left, right) => right.score - left.score || left.index - right.index)
     .slice(0, 3)
-    .map((candidate) => candidate.line.slice(0, 256))
+    .map((candidate) => ({ line: candidate.index + 1, before: '', quote: candidate.line.slice(0, 256), after: '' }))
+}
+
+interface NormalizedText {
+  text: string
+  /** Original offset of each normalized character, plus one entry for the end. */
+  offsets: number[]
+}
+
+/** CRLF to LF, then every whitespace run to one space, remembering where each kept character came from. */
+function normalizeWhitespace(source: string): NormalizedText {
+  let text = ''
+  const offsets: number[] = []
+  let inRun = false
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index]!
+    if (/\s/.test(character)) {
+      if (!inRun) {
+        text += ' '
+        offsets.push(index)
+        inRun = true
+      }
+      continue
+    }
+    inRun = false
+    text += character
+    offsets.push(index)
+  }
+  offsets.push(source.length)
+  return { text, offsets }
+}
+
+export interface WhitespaceMatch {
+  start: number
+  end: number
+  exact: string
+}
+
+/**
+ * Where the quote occurs once the buffer and the quote are both whitespace
+ * normalized, mapped back to exact buffer offsets. Reporting only: exact
+ * matching stays the rule that annotate and edit apply.
+ */
+export function whitespaceMatches(document: string, quote: string): WhitespaceMatch[] {
+  const normalizedQuote = normalizeWhitespace(quote).text.trim()
+  if (normalizedQuote.length === 0) return []
+  const normalized = normalizeWhitespace(document)
+  return allOccurrences(normalized.text, normalizedQuote).map((position) => {
+    const start = normalized.offsets[position]!
+    const last = position + normalizedQuote.length - 1
+    const end = normalized.offsets[last]! + 1
+    return { start, end, exact: document.slice(start, end) }
+  })
+}
+
+/**
+ * Turns an anchor failure into the one detail shape every quote or match
+ * failure reports: why it failed, how many places it could mean, each place
+ * with usable context, and what to do next. A missing quote is retried with
+ * whitespace normalization so a quote copied with different line breaks is
+ * reported as `whitespace` with the exact buffer text.
+ */
+export function describeQuoteFailure(
+  document: string,
+  quote: string,
+  error: AnnotationAnchorError,
+  noun: 'quote' | 'match' = 'quote',
+): QuoteFailure {
+  if (error.code === 'invalid_suggestion') {
+    const start = error.matches[0] ?? 0
+    return {
+      reason: 'multi_block',
+      message: error.message,
+      total: 1,
+      candidates: [candidateAt(document, start, start + quote.length)],
+      hint: QUOTE_FAILURE_HINTS.multi_block,
+    }
+  }
+  if (error.code === 'quote_ambiguous') {
+    return {
+      reason: 'ambiguous',
+      message: error.message,
+      total: error.matches.length,
+      candidates: error.matches.slice(0, MAX_CANDIDATES).map((start) => candidateAt(document, start, start + quote.length)),
+      hint: QUOTE_FAILURE_HINTS.ambiguous,
+    }
+  }
+  const relaxed = quote.length > 0 ? whitespaceMatches(document, quote) : []
+  if (relaxed.length === 1) {
+    const match = relaxed[0]!
+    return {
+      reason: 'whitespace',
+      message: `The ${noun} matches the buffer only after whitespace normalization; use the exact text in detail.exact`,
+      total: 1,
+      candidates: [candidateAt(document, match.start, match.end)],
+      hint: QUOTE_FAILURE_HINTS.whitespace,
+      exact: match.exact,
+    }
+  }
+  const candidates = relaxed.length > 1
+    ? relaxed.slice(0, MAX_CANDIDATES).map((match) => candidateAt(document, match.start, match.end))
+    : closestLines(document, quote)
+  return {
+    reason: 'missing',
+    message: quote.length === 0 ? error.message : `The ${noun} does not occur in the current buffer`,
+    total: relaxed.length,
+    candidates,
+    hint: QUOTE_FAILURE_HINTS.missing,
+  }
 }
 
 function utf8Bytes(value: string): number {
@@ -225,28 +420,49 @@ function contextMatches(
   return true
 }
 
+/** An empty precededBy pins the start to the document's start; an empty followedBy pins the end to its end. */
+function boundaryMatches(document: string, start: number, end: number, precededBy?: string, followedBy?: string): boolean {
+  if (precededBy === '' && start !== 0) return false
+  if (followedBy === '' && end !== document.length) return false
+  return true
+}
+
+/**
+ * Finds the one place a quote occurs. An empty quote with --preceded-by or
+ * --followed-by is a zero-width point located by that context alone, which is
+ * how `edit` inserts without an anchor.
+ */
 export function locateQuote(
   document: string,
   quote: string,
   precededBy?: string,
   followedBy?: string,
 ): AnnotationAnchor {
-  const exact = allOccurrences(document, quote)
+  const hasContext = precededBy !== undefined || followedBy !== undefined
+  if (quote.length === 0 && !hasContext) {
+    throw new AnnotationAnchorError('quote_missing', 'An empty match needs --preceded-by, --followed-by, or --append')
+  }
+  const exact = quote.length === 0
+    ? Array.from({ length: document.length + 1 }, (_, position) => position)
+    : allOccurrences(document, quote)
   if (exact.length === 0) {
     throw new AnnotationAnchorError('quote_missing', 'The quote does not occur in the current buffer')
   }
 
   const contextual = exact.filter((start) =>
-    contextMatches(document, start, quote, precededBy, followedBy),
+    boundaryMatches(document, start, start + quote.length, precededBy, followedBy)
+    && contextMatches(document, start, quote, precededBy, followedBy),
   )
-  const candidates = precededBy === undefined && followedBy === undefined ? exact : contextual
+  const candidates = hasContext ? contextual : exact
   if (candidates.length !== 1) {
     throw new AnnotationAnchorError(
       'quote_ambiguous',
       candidates.length === 0
         ? 'The supplied context does not identify an exact quote'
-        : 'The quote is ambiguous in the current buffer',
-      candidates.length === 0 ? exact : candidates,
+        : quote.length === 0
+          ? 'The supplied context occurs more than once in the current buffer'
+          : 'The quote is ambiguous in the current buffer',
+      candidates.length === 0 ? (quote.length === 0 ? [] : exact) : candidates,
     )
   }
 
@@ -259,6 +475,31 @@ export function locateQuote(
     start,
     end,
   }
+}
+
+export interface EditMatchInput {
+  match: string
+  precededBy?: string
+  followedBy?: string
+  /** Insert at the end of the buffer; the match is empty. */
+  append?: boolean
+}
+
+/** Where an `edit` lands: an exact match, a context-located point, or the end of the buffer. */
+export function locateEdit(document: string, input: EditMatchInput): AnnotationAnchor {
+  if (input.append === true) {
+    if (input.match.length > 0) {
+      throw new AnnotationAnchorError('quote_missing', '--append takes no --match; it inserts at the end of the buffer')
+    }
+    return {
+      quote: '',
+      prefix: document.slice(Math.max(0, document.length - MAX_CONTEXT)),
+      suffix: '',
+      start: document.length,
+      end: document.length,
+    }
+  }
+  return locateQuote(document, input.match, input.precededBy, input.followedBy)
 }
 
 function anchorAt(document: string, quote: string, start: number): AnnotationAnchor {
@@ -326,6 +567,7 @@ export function createAnnotation(
   input: CreateAnnotationInput,
 ): AnnotationResult {
   if (log.annotations[input.id] !== undefined) throw new Error(`Annotation ${input.id} already exists`)
+  if (input.quote.length === 0) throw new AnnotationAnchorError('quote_missing', 'An annotation quote cannot be empty')
   assertTextLimit(input.text, 'Annotation text')
   const anchor = input.start === undefined
     ? locateQuote(document, input.quote, input.precededBy, input.followedBy)
@@ -338,6 +580,7 @@ export function createAnnotation(
     kind: input.kind,
     author: input.author,
     agent: input.author === 'agent' ? (input.agent ?? null) : null,
+    ...(input.author === 'agent' && input.name ? { name: input.name } : {}),
     status: 'open',
     quote: input.quote,
     text: input.text,
@@ -359,7 +602,7 @@ function requireAnnotation(log: AnnotationLog, id: string): Annotation {
 export function replyToAnnotation(
   log: AnnotationLog,
   annotationId: string,
-  input: { id: string; author: AnnotationAuthor; agent?: string | null; text: string; createdAt?: number },
+  input: { id: string; author: AnnotationAuthor; agent?: string | null; name?: string; text: string; createdAt?: number },
 ): AnnotationResult {
   assertTextLimit(input.text, 'Reply text')
   const annotation = requireAnnotation(log, annotationId)
@@ -372,6 +615,7 @@ export function replyToAnnotation(
     seq: log.nextSeq,
     author: input.author,
     agent,
+    ...(agent !== null && input.name ? { name: input.name } : {}),
     text: input.text,
     ...(input.createdAt === undefined ? {} : { createdAt: input.createdAt }),
   }
@@ -710,11 +954,22 @@ export interface DeliveredAnnotation {
   kind: AnnotationKind
   author: AnnotationAuthor
   agent: string | null
+  /** The authoring attachment's display name, for agent-authored annotations. */
+  name?: string
   status: AnnotationStatus
   quote: string
   text: string
+  label?: string
   line: number
   replies: readonly AnnotationReply[]
+}
+
+/** What a reply delivered on its own says about the thread it continues. */
+export interface DeliveredReplyParent {
+  kind: AnnotationKind
+  quote: string
+  line: number
+  text: string
 }
 
 export interface DeliveredReply {
@@ -723,7 +978,9 @@ export interface DeliveredReply {
   annotation: string
   author: AnnotationAuthor
   agent: string | null
+  name?: string
   text: string
+  parent: DeliveredReplyParent
 }
 
 export interface DeliveredEdit {
@@ -742,7 +999,7 @@ export interface AnnotationDeliverySlice {
   excluded: number
 }
 
-/** Removes editor-only anchor and label fields before JSON v9 serialization. */
+/** Removes the editor-only anchor before payload serialization; name and label travel with the record. */
 export function toDeliveredAnnotation(annotation: Annotation): DeliveredAnnotation {
   return {
     id: annotation.id,
@@ -750,12 +1007,25 @@ export function toDeliveredAnnotation(annotation: Annotation): DeliveredAnnotati
     kind: annotation.kind,
     author: annotation.author,
     agent: annotation.agent,
+    ...(annotation.name === undefined ? {} : { name: annotation.name }),
     status: annotation.status,
     quote: annotation.quote,
     text: annotation.text,
+    ...(annotation.label === undefined ? {} : { label: annotation.label }),
     line: annotation.line,
     replies: annotation.replies,
   }
+}
+
+/** The name an attachment had when it wrote, or the id when no name was recorded. */
+export function withAttachmentNames(
+  annotations: readonly DeliveredAnnotation[],
+  nameOf: (agent: string) => string | undefined,
+): DeliveredAnnotation[] {
+  return annotations.map((annotation) => {
+    const name = annotation.agent === null ? undefined : (annotation.name ?? nameOf(annotation.agent))
+    return name === undefined ? annotation : { ...annotation, name }
+  })
 }
 
 /**
@@ -810,7 +1080,9 @@ export function annotationDeliverySlice(
         annotation: annotation.id,
         author: reply.author,
         agent: reply.agent,
+        ...(reply.name === undefined ? {} : { name: reply.name }),
         text: reply.text,
+        parent: { kind: annotation.kind, quote: annotation.quote, line: annotation.line, text: annotation.text },
       })
     } else if (event.type === 'resolved') {
       resolved.push({ id: annotation.id, seq: event.seq, kind: annotation.kind, resolution: 'resolved' })

@@ -65,6 +65,8 @@ export interface EditorSelection {
   top: number
   /** Set on a right-click selection, which must show the menu even for a just-dismissed range. */
   explicit?: boolean
+  /** True when the selection came from the pointer (or a right-click); false for Shift+Arrow and other keyboard selections. */
+  pointer?: boolean
 }
 
 export interface EditorCommandHandlers {
@@ -113,6 +115,9 @@ export interface StrataEditorHandle {
   /** Replaces the current visual selection through the normal edit path; no-op when empty, read-only, or in source mode. */
   replaceSelection(text: string): void
   focus(): void
+  /** Inserts text as a paste would, so markdown text becomes markdown in the visual view. */
+  pasteText(text: string): void
+  selectAll(): void
   toggleSource(force?: boolean): EditorMode
   /** Runs a case-insensitive search in the current view and marks every match (PRD §6.1). */
   find(query: string): import('./find.js').FindResult

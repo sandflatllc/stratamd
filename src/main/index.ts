@@ -15,6 +15,54 @@ export interface MainApplication extends StrataApi {
   commandHandler?(): SocketCommandHandler
   recheckFocused?(): Promise<void>
   shutdown?(): Promise<void>
+  /** Open documents whose buffer differs from the file; the close prompt asks about these. */
+  dirtyDocumentPaths?(): string[]
+}
+
+export type DirtyCloseChoice = 'save' | 'discard' | 'cancel'
+
+/**
+ * One question for every unsaved document when the window is about to go
+ * (plan 2.5). Save all writes each file through the ordinary save path;
+ * Discard drops the unsaved text through the ordinary close path. Cancel
+ * (or a save that is refused, for example by a conflict) keeps the window.
+ * Returns whether the window may close.
+ */
+export async function resolveDirtyClose(
+  api: MainApplication,
+  ask: (paths: readonly string[]) => Promise<DirtyCloseChoice>,
+): Promise<boolean> {
+  const dirty = api.dirtyDocumentPaths?.() ?? []
+  if (dirty.length === 0) return true
+  const choice = await ask(dirty)
+  if (choice === 'cancel') return false
+  for (const path of dirty) {
+    try {
+      if (choice === 'save') await api.save(path)
+      else await api.closeDocument(path, 'discard')
+    } catch (error) {
+      logError('main', `${choice === 'save' ? 'Save' : 'Discard'} before closing the window failed: ${path}`, error)
+      return false
+    }
+  }
+  return true
+}
+
+async function askAboutDirtyDocuments(window: BrowserWindow, paths: readonly string[]): Promise<DirtyCloseChoice> {
+  const names = paths.map((path) => path.slice(path.lastIndexOf('/') + 1))
+  const count = paths.length
+  const { response } = await dialog.showMessageBox(window, {
+    type: 'question',
+    buttons: ['Save all', 'Discard', 'Cancel'],
+    defaultId: 0,
+    cancelId: 2,
+    noLink: true,
+    message: count === 1 ? `Save changes to ${names[0]}?` : `Save changes to ${count} documents?`,
+    detail: count === 1
+      ? 'Your unsaved changes will be lost if you discard them.'
+      : `${names.join(', ')}\n\nUnsaved changes will be lost if you discard them.`,
+  })
+  return response === 0 ? 'save' : response === 1 ? 'discard' : 'cancel'
 }
 
 export interface StartMainOptions {
@@ -96,6 +144,7 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
   }
 
   let mainWindow: BrowserWindow | null = null
+  let quitting = false
   let registeredIpc: RegisteredIpc | null = null
   let unsubscribeState: (() => void) | null = null
   let commandServer: CommandSocketServer | null = null
@@ -177,6 +226,20 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
       }
     })
     window.once('ready-to-show', () => window.show())
+    // Closing the window with unsaved documents asks once. Quitting does not
+    // pass through here: before-quit flushes every buffer and exits directly.
+    let closeApproved = false
+    window.on('close', (event) => {
+      if (closeApproved || quitting) return
+      const dirty = options.api.dirtyDocumentPaths?.() ?? []
+      if (dirty.length === 0) return
+      event.preventDefault()
+      void resolveDirtyClose(options.api, (paths) => askAboutDirtyDocuments(window, paths)).then((mayClose) => {
+        if (!mayClose || window.isDestroyed()) return
+        closeApproved = true
+        window.close()
+      })
+    })
     window.on('focus', () => {
       if ('recheckFocused' in options.api && typeof options.api.recheckFocused === 'function') {
         void options.api.recheckFocused()
@@ -245,11 +308,28 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
   app.on('activate', () => {
     void showAndFocus()
   })
-  app.on('before-quit', () => {
-    registeredIpc?.dispose()
-    unsubscribeState?.()
-    if (commandServer) void commandServer.close()
-    if (options.api.shutdown) void options.api.shutdown()
+  app.on('before-quit', (event) => {
+    // Quit once, in order: stop taking commands, flush every buffer mirror
+    // and release the locks, then leave. Electron would otherwise tear the
+    // process down while the shutdown was still writing (plan 2.5).
+    if (quitting) return
+    quitting = true
+    event.preventDefault()
+    void (async () => {
+      registeredIpc?.dispose()
+      unsubscribeState?.()
+      try {
+        await commandServer?.close()
+      } catch (error) {
+        logError('main', 'Closing the command socket failed during quit', error)
+      }
+      try {
+        await options.api.shutdown?.()
+      } catch (error) {
+        logError('main', 'Shutdown failed during quit', error)
+      }
+      app.exit()
+    })()
   })
   return mainWindow
 }

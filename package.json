@@ -50,6 +50,10 @@
         "to": "resources"
       },
       {
+        "from": "skills",
+        "to": "skills"
+      },
+      {
         "from": "native/unix-support/build/Release/unix_support.node",
         "to": "unix-support.node"
       }

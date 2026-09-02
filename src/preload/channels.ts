@@ -48,6 +48,13 @@ export const IPC = {
   openThemeSample: 'strata:open-theme-sample',
   resolveLocalImage: 'strata:resolve-local-image',
   openExternal: 'strata:open-external',
+  flashWindow: 'strata:flash-window',
+  createFile: 'strata:create-file',
+  renameFile: 'strata:rename-file',
+  trashFile: 'strata:trash-file',
+  revealFile: 'strata:reveal-file',
+  openFileDialog: 'strata:open-file-dialog',
+  pasteFromClipboard: 'strata:paste-from-clipboard',
   reportError: 'strata:report-error'
 } as const
 

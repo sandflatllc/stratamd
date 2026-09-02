@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { AnnotationKind, PanelSize, SpellingContext } from '../../shared/contracts'
 import type { EditorSelection } from '../editorAdapter'
 import { COMPOSER_LIMITS, spellingForSelection } from '../model'
-import { claimEscape } from '../escape'
+import { claimEscape, isEscapeClaimed } from '../escape'
+import { hasPrimaryModifier } from '../../shared/primary-modifier'
 
 interface AnnotationComposerProps {
   selection: EditorSelection | null
@@ -17,6 +18,21 @@ interface AnnotationComposerProps {
   onSubmit(kind: AnnotationKind, text: string): void
   onReplaceWord(suggestion: string): void
   onAddToDictionary(word: string): void
+  /** Edit actions on a right-click selection (§5.15). */
+  onCut?(): void
+  onCopy?(): void
+  onPaste?(): void
+  onSelectAll?(): void
+}
+
+/**
+ * Whether the pill's bare C, Q, and S keys apply (§5.1): the selection came
+ * from the pointer, or the pill itself has focus. A keyboard selection keeps
+ * typing-to-replace, so an S over Shift+Arrow text replaces the text.
+ */
+export function bareHotkeysApply(selection: { pointer?: boolean } | null, pillHasFocus: boolean): boolean {
+  if (!selection) return false
+  return pillHasFocus || selection.pointer !== false
 }
 
 export function isAnnotationDismissKey(key: string): boolean {
@@ -37,11 +53,12 @@ function claimedByTextField(target: EventTarget | null): boolean {
     || (target instanceof HTMLElement && target.isContentEditable)
 }
 
-export function AnnotationComposer({ selection, spelling, size, zoom, onSize, onDismiss, onSubmit, onReplaceWord, onAddToDictionary }: AnnotationComposerProps) {
+export function AnnotationComposer({ selection, spelling, size, zoom, onSize, onDismiss, onSubmit, onReplaceWord, onAddToDictionary, onCut, onCopy, onPaste, onSelectAll }: AnnotationComposerProps) {
   const [kind, setKind] = useState<AnnotationKind | null>(null)
   const [text, setText] = useState('')
   const textarea = useRef<HTMLTextAreaElement>(null)
   const form = useRef<HTMLFormElement>(null)
+  const pill = useRef<HTMLDivElement>(null)
 
   useEffect(() => { setKind(null); setText('') }, [selection])
   useEffect(() => { if (kind) textarea.current?.focus() }, [kind])
@@ -49,6 +66,9 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
     if (!selection) return
     const key = (event: KeyboardEvent) => {
       if (isAnnotationDismissKey(event.key)) {
+        // One surface per Escape (PRD §6.9): a thread panel that already took
+        // this key keeps the pill up for the next one.
+        if (isEscapeClaimed(event)) return
         claimEscape(event)
         onDismiss()
         return
@@ -58,6 +78,7 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
       // Ctrl+S the save, never the pill's hotkeys.
       if (event.ctrlKey || event.metaKey || event.altKey) return
       if (claimedByTextField(event.target)) return
+      if (!bareHotkeysApply(selection, pill.current?.contains(document.activeElement) ?? false)) return
       const next = event.key.toLowerCase()
       if (next === 'c' || next === 'q' || next === 's') {
         if (next === 's' && !selection.singleBlock) return
@@ -97,7 +118,7 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
   if (!kind) {
     const spellingColumn = spellingForSelection(spelling, selection)
     return (
-      <div className={spellingColumn ? 'selection-menu has-spelling' : 'selection-menu'} style={style} role="menu" aria-label="Annotate selection">
+      <div ref={pill} className={spellingColumn || selection.explicit ? 'selection-menu has-spelling' : 'selection-menu'} style={style} role="menu" aria-label="Annotate selection">
         {([['comment', 'Comment', 'C'], ['question', 'Question', 'Q'], ['suggestion', 'Suggest', 'S']] as const).map(([value, label, key]) => (
           <button
             type="button"
@@ -108,6 +129,16 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
             onClick={() => setKind(value)}
           >{label} <kbd>{key}</kbd></button>
         ))}
+        {selection.explicit && (onCut || onCopy || onPaste || onSelectAll) && (
+          // The right-click menu's edit row (§5.15). Mousedown keeps focus in the
+          // editor so cut and copy still see the selection.
+          <div className="edit-options" role="group" aria-label="Edit" onMouseDown={(event) => event.preventDefault()}>
+            {onCut && <button type="button" role="menuitem" onClick={onCut}>Cut</button>}
+            {onCopy && <button type="button" role="menuitem" onClick={onCopy}>Copy</button>}
+            {onPaste && <button type="button" role="menuitem" onClick={onPaste}>Paste</button>}
+            {onSelectAll && <button type="button" role="menuitem" onClick={onSelectAll}>Select all</button>}
+          </div>
+        )}
         {spellingColumn && (
           // Mousedown must not move focus: collapsing the editor selection
           // here would leave the replacement with nothing to replace.
@@ -134,7 +165,20 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
     <form ref={form} className="annotation-composer" style={formStyle} onSubmit={(event) => { event.preventDefault(); onSubmit(kind, text) }}>
       <div className="annotation-kind">{kind}</div>
       <blockquote>{selection.quote}</blockquote>
-      <textarea ref={textarea} value={text} onChange={(event) => setText(event.target.value)} placeholder={kind === 'suggestion' ? 'Replacement markdown…' : 'Your note…'} aria-label={kind === 'suggestion' ? 'Replacement markdown' : 'Annotation text'} />
+      <textarea
+        ref={textarea}
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        onKeyDown={(event) => {
+          // Ctrl+Enter adds this note; it must not open Send underneath (§5.2).
+          if (event.key !== 'Enter' || !hasPrimaryModifier(event)) return
+          event.preventDefault()
+          event.stopPropagation()
+          onSubmit(kind, text)
+        }}
+        placeholder={kind === 'suggestion' ? 'Replacement markdown…' : 'Your note…'}
+        aria-label={kind === 'suggestion' ? 'Replacement markdown' : 'Annotation text'}
+      />
       <div className="composer-actions"><button type="button" className="quiet-button" onClick={onDismiss}>Cancel</button><button type="submit" className="primary-button">Add</button></div>
       <button type="button" className="thread-panel-resize" aria-label="Resize annotation composer" onPointerDown={startResize} />
     </form>

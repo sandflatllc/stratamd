@@ -54,8 +54,8 @@ describe('send composer commitment', () => {
 
 describe('send composer drafts (PRD §6.9)', () => {
   const attachments = [
-    { agent: { id: 'agent-a', name: 'Agent A', color: 'grape' as const }, attachedAt: 0, state: 'waiting' as const, queuedDeliveries: [], queuedSendCount: 0 },
-    { agent: { id: 'agent-b', name: 'Agent B', color: 'sky' as const }, attachedAt: 0, state: 'waiting' as const, queuedDeliveries: [], queuedSendCount: 0 },
+    { agent: { id: 'agent-a', name: 'Agent A', color: 'grape' as const }, attachedAt: 0, state: 'waiting' as const, queuedDeliveries: [], queuedSendCount: 0, lastCallAt: null },
+    { agent: { id: 'agent-b', name: 'Agent B', color: 'sky' as const }, attachedAt: 0, state: 'waiting' as const, queuedDeliveries: [], queuedSendCount: 0, lastCallAt: null },
   ]
 
   it('keeps the note and item choices per document until the send goes through', () => {

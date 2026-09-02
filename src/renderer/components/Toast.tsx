@@ -36,5 +36,10 @@ export function Toast({ toast, onDone }: ToastProps) {
       </div>
     )
   }
-  return <div className="toast" role="status" key={toast.id}><i />{toast.message}</div>
+  return (
+    <div className="toast" role="status" key={toast.id}>
+      <i />{toast.message}
+      {toast.action && <button type="button" className="toast-action" onClick={() => { toast.action?.run(); onDone() }}>{toast.action.label}</button>}
+    </div>
+  )
 }

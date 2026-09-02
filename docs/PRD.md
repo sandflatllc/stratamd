@@ -166,19 +166,20 @@ It runs as a local desktop app on the owner's Linux workstation or a Mac on macO
 
 The commands and their semantics are in §7. Requirements:
 
-- `stratamd` is the app executable. `stratamd setup` links it onto PATH; on Linux it also installs the `.desktop` entry and icon and registers the MIME association, while on macOS the `.app` bundle itself declares the association. `stratamd setup --remove` undoes what setup did on that platform — on macOS that is only the link, and deleting the `.app` completes removal. Both are safe to repeat. `stratamd --agent-help` prints §7 verbatim.
+- `stratamd` is a launcher script (`bin/stratamd`) that runs the CLI as plain Node inside the app's Electron binary (`stratamd-app` beside it on Linux, `StrataMD.app/Contents/MacOS/StrataMD` on macOS); the app executable is separate. `stratamd setup` links the launcher onto PATH; on Linux it also installs the `.desktop` entry and icon and registers the MIME association, while on macOS the `.app` bundle itself declares the association. `stratamd setup --remove` undoes what setup did on that platform — on macOS that is only the link, and deleting the `.app` completes removal. Both are safe to repeat. `stratamd --agent-help` prints §7 verbatim; `--help`, `-h`, and `help` print the one-screen usage with a pointer to it; `--version` prints `{version, protocol, payload, cli, app}` (the app version from package.json, the protocol and payload versions, the CLI path, and the app executable). `stratamd doctor` runs without the app and prints the socket path, whether it answers and at which protocol, the data and config directories, the log path with its last five error records, every lock file under `docs/*/lock` with its pid and whether that process is alive, both versions, and a `problems` list; it exits 0 and changes nothing. `stratamd setup --skill <claude|codex|agents|dir>` copies the bundled skill (`skills/stratamd`) into that harness's skills directory and refreshes a stale copy; packaged builds ship `skills/` beside `resources/`.
 - The CLI runs as plain Node (`ELECTRON_RUN_AS_NODE=1`), so a command costs a process start, not a browser launch.
-- What a harness needs: the ability to run a command repeatedly, capture its stdout, and carry a short id between runs. Harnesses that cannot hold a command open use `--timeout 0`, which returns at once with a queued delivery or `{"event":"timeout"}`.
-- `attach` is the only command that blocks by design, for at most `--timeout` seconds (default 600). `open` and `attach` also block for app launch when no instance is running, returning as soon as the session exists, before the window paints. "No instance" means the socket connection failed (absent or refused); a request the instance accepted but did not answer in time exits 4 (`INSTANCE_TIMEOUT`) and never launches a second instance or falls back to an offline handler.
+- What a harness needs: the ability to run a command repeatedly, capture its stdout, and carry a short id between runs. Harnesses that cannot hold a command open use `--timeout 0`, which returns at once with a queued delivery or `{"event":"timeout"}`. Harnesses with a per-command limit pick a `--timeout` below it; a call the harness kills is safe, since the delivery is not acknowledged and repeats on the next call.
+- `attach` is the only command that blocks by design, for at most `--timeout` seconds (default 90, chosen to sit under the 120 s command limit common to agent harnesses; the socket deadline is the timeout plus 15 s). `open` and `attach` also block for app launch when no instance is running, returning as soon as the session exists, before the window paints. "No instance" means the socket connection failed (absent or refused); a request the instance accepted but did not answer in time exits 4 (`INSTANCE_TIMEOUT`) and never launches a second instance or falls back to an offline handler. `INSTANCE_UNREACHABLE` carries `detail.socket` and `detail.log` (the log path) and points at `stratamd doctor`.
+- Version handshake: every request carries the protocol version. The instance answers a well-formed request from another version with `PROTOCOL_MISMATCH` (exit 4) before validating anything else; the message names both versions and says "restart StrataMD to pick up the new build" when the app is older or "update the stratamd command" when the CLI is older. The CLI raises the same error itself when a response's version differs from its own, so an instance too old to know the code is still reported clearly.
 - When an instance is running, every command goes through it over the local socket (§10), so quotes are validated against the shadow and the instance owns the ghost store. When none is running, `annotate`, `reply`, `state`, `changes`, `changed`, and `checkpoint` operate on the file and ghost store directly, under a per-document lock file with temp-and-rename writes; the app takes the same lock on startup, so a command in flight cannot race it. Offline commands treat the document on disk as the current content unless a newer `buffer.md` exists, in which case they use the buffer.
 - `open` on a document whose shadow differs from its ghost opens it in review mode. This is how an agent shows the user what it changed.
-- `state` is read-only: no agent id required, no attachment created, no baseline or cursor moved. With no file given and no document open it exits 2. Every `state` payload carries `open` (whether the document is open in the instance) and `theme`; `attachments` only for an open document. `state --brief` omits `document`, `text`, and `annotations`. `--text-only` on `state` and `attach` omits `document`; `text` already renders the whole buffer with annotations inlined, so the payload halves for a large document and nothing is lost.
-- `docs` lists the documents open in the instance as `{file, focused, dirty, attachments}` rows from the tab registry and the sessions. It has no offline mode and never launches the app.
-- `edit` is a compare-and-swap change to one or more passages. Each match is located in the live shadow under annotate's quote rules (exact, unique, `precededBy`/`followedBy` to disambiguate; exit 3 `QUOTE_INVALID` with closest-match excerpts otherwise). The mirror is flushed first, then the replaced text is merged as an external buffer change tagged with the agent, exactly as a `changed` followed by a buffer write: a pending hunk in the agent's name, the ghost unmoved, and no conflict against the agent's own match. `--json` is all-or-nothing like `annotate --json`; edits that overlap exit 1. `edit` has no offline mode and never launches the app.
+- `state` is read-only: no agent id required, no attachment created, no baseline or cursor moved. With no file given and no document open it exits 2. Every `state` payload carries `open` (whether the document is open in the instance) and `theme`; `attachments` only for an open document. `state --brief` omits `document`, `text`, and `annotations`. `--text-only` on `state` and `attach` omits `document`; `text` already renders the whole buffer with annotations inlined, so the payload halves for a large document and nothing is lost. `state --annotations` omits `document` and reduces `text` to the open-questions list, leaving `annotations` as the content. `state --raw` prints the buffer verbatim to stdout with no JSON, so quotes can be copied from it or piped to a file. The four views are exclusive.
+- `docs` lists the documents open in the instance as `{file, buffer, focused, dirty, attachments}` rows from the tab registry and the sessions. It has no offline mode and never launches the app.
+- `edit` is a compare-and-swap change to one or more passages. Each match is located in the live shadow under annotate's quote rules (exact, unique, `precededBy`/`followedBy` to disambiguate; exit 3 `QUOTE_INVALID` with the detail shape below otherwise). An empty `match` with `precededBy` or `followedBy` is a zero-width point located by that context alone (`precededBy: ""` is the start of the document, `followedBy: ""` its end), and `append: true` is the end of the buffer with no match; both work on an empty document, which is how an agent inserts without an anchor. `--dry-run` locates every match and returns `{located: [{line, match}]}` without changing the buffer. The mirror is flushed first, then the replaced text is merged as an external buffer change tagged with the agent, exactly as a `changed` followed by a buffer write: a pending hunk in the agent's name, the ghost unmoved, and no conflict against the agent's own match. `--json` is all-or-nothing like `annotate --json`; edits that overlap exit 3 (`EDITS_OVERLAP`, detail lists both matches). The result's `line` is where the change begins in the buffer after the edit. `edit` has no offline mode and never launches the app.
 - `annotate --json` is all-or-nothing: every quote is validated first, and one failure creates nothing (exit 3, detail lists each failing entry).
-- Output: every command prints its result on stdout as one JSON object: the payload for `attach`, `state`, `changes`, and `docs`; `{created: [{id, kind, quote}]}` for `annotate`; `{replied, annotation}` for `reply`; `{applied: [{line, match, replace}]}` for `edit`; a one-key object (`sent`, `lead`, `accepted`, `rejected`, `resolved`, `saved`, `tagged`, `opened`, `checkpointed`, `detached`) for the rest. Errors on stderr as one JSON object `{error, code, detail}`; exit codes 0 success, 1 usage, 2 not found (file, annotation, attachment), 3 refused by document state (quote missing or ambiguous with closest matches listed; Lead held or required; message pending; save blocked), 4 instance unreachable or stalled. `code` is machine-readable (`QUOTE_INVALID`, `LEAD_TAKEN`, `NOT_LEAD`, `MESSAGE_PENDING`, `SAVE_BLOCKED`, `EDITS_OVERLAP`, `INSTANCE_TIMEOUT`) and `detail` carries the specifics. Every anchor failure, in `annotate`, `edit`, or a Lead `accept` of a suggestion whose text moved, lists closest-match text excerpts through one formatter and, outside `annotate`, a `hint` saying what to do next. `MESSAGE_PENDING` names every blocked recipient in `detail.recipients` and the unblocked ones in `detail.others`. All I/O is UTF-8; multi-line `--text` is accepted via stdin with `--text -`.
+- Output: every command prints its result on stdout as one JSON object: the payload for `attach`, `state`, `changes`, and `docs`; `{created: [{id, kind, quote}]}` for `annotate`; `{replied, annotation}` for `reply`; `{applied: [{line, match, replace}]}` for `edit`; a one-key object (`sent`, `lead`, `accepted`, `rejected`, `resolved`, `saved`, `tagged`, `opened`, `checkpointed`, `detached`) for the rest; `{"ok": true}` when a command has nothing else to report, so empty stdout never means success. Errors on stderr as one JSON object `{error, code, detail}`; exit codes 0 success, 1 usage (an unknown option lists the valid ones in `detail.valid`; a wrong argument count says what was expected), 2 not found (file, annotation, attachment; the message and detail name the id or path), 3 refused by document state (quote missing or ambiguous with candidates listed; Lead held or required, `NOT_LEAD` naming the holder; message pending; save blocked; edits overlapping), 4 instance unreachable, stalled, or from another build. `code` is SCREAMING_CASE and machine-readable (`QUOTE_INVALID`, `LEAD_TAKEN`, `NOT_LEAD`, `MESSAGE_PENDING`, `SAVE_BLOCKED`, `EDITS_OVERLAP`, `INSTANCE_TIMEOUT`, `INSTANCE_UNREACHABLE`, `PROTOCOL_MISMATCH`, `NOT_FOUND`, `ANNOTATION_NOT_FOUND`, `ATTACHMENT_NOT_FOUND`) and `detail` carries the specifics. Every anchor failure, in `annotate`, `edit`, or a Lead `accept` of a suggestion whose text moved, goes through one formatter: `detail` is an array with one entry per failing input, `{index, quote, reason, message, total, candidates, hint, exact}`, where `reason` is `missing`, `ambiguous`, `multi_block`, or `whitespace`; `total` counts the places the quote could mean; each candidate is `{line, before, quote, after}` with `before` and `after` about 40 characters on a word boundary, so they can be passed back as `--preceded-by` and `--followed-by`; `hint` says what to do for that reason; and `exact` (with `whitespace`) is the buffer's own text when the quote matched only after CRLF and whitespace-run normalization. Exact matching stays the applied rule. When exactly one input failed, its message is the top-level `error`. `MESSAGE_PENDING` names every blocked recipient in `detail.recipients` and the unblocked ones in `detail.others`. `NOT_LEAD` and `LEAD_TAKEN` carry `detail.holder` (`{agent, name}`, or `null` when nobody holds it and the message says to run `stratamd lead`). `ATTACHMENT_NOT_FOUND` and `ANNOTATION_NOT_FOUND` carry the id and the file in `detail`. After a delivery has been printed, a failed `ack` is a warning on stderr and exit 0: the same delivery repeats on the next attach. All I/O is UTF-8; multi-line `--text` is accepted via stdin with `--text -`.
 - `send`, `lead`, `accept`, `reject`, `resolve`, `save`, `docs`, and `edit` require the running instance: they have no offline mode and never launch the app.
-- Identity: `--as` if given, else the harness-session id; without either, only a first `attach` mints a fresh id. `annotate`, `edit`, `reply`, `send`, `lead`, `accept`, `reject`, `resolve`, `save`, `changed`, and `detach` exit 1 instead, telling the agent to pass the id its first attach returned.
+- Identity: `--as` if given, else the harness-session id; without either, only a first `attach` mints a fresh id. `annotate`, `edit`, `reply`, `send`, `lead`, `accept`, `reject`, `resolve`, `save`, `changed`, and `detach` exit 1 instead, telling the agent to pass the id its first attach returned. The session hash mixes in `CLAUDE_CODE_CHILD_SESSION` when set, so a subagent never inherits its parent's attachment; sibling subagents are not distinguishable from the environment and pass `--as`. `annotate`, `edit`, and `reply` with an `--as` the document does not know exit 2 (`ATTACHMENT_NOT_FOUND`) with "run stratamd attach first" rather than creating anything under an unknown id.
 - Documents are identified by realpath (symlinks resolved), for sessions and ghost entries alike.
 
 ### 6.9 App shell and design
@@ -299,7 +300,7 @@ Each must hold before the product is done.
 
 ## 7. Agent contract
 
-This is everything an agent needs. It ships verbatim as `stratamd --agent-help` and belongs in the user's global agent instructions (`CLAUDE.md`, `AGENTS.md`, harness system prompt) as one line: *"StrataMD is the user's markdown editor. When the user mentions a document open in Strata, asks you to review or edit a `.md` with them, or asks you to show them your edits, run `stratamd --agent-help` first."*
+This is everything an agent needs. It ships verbatim as `stratamd --agent-help` and belongs in the user's global agent instructions (`CLAUDE.md`, `AGENTS.md`, harness system prompt) as one line: *"StrataMD is the user's markdown editor. When the user mentions a document open in Strata, asks you to review or edit a `.md` with them, or asks you to show them your edits, run `stratamd --agent-help` first."* The shipped form of that pointer is the bundled skill at `skills/stratamd/SKILL.md`, installed with `stratamd setup --skill`; the one-line instruction is the fallback for a harness without skills.
 
 Written for agents: positive instructions, one concept per word (buffer, delivery, quote), the loop's stop condition stated, and a hard guardrail on document writes paired with the behavior to do instead.
 
@@ -310,8 +311,21 @@ with comments, questions, and proposed edits, then attach again to wait
 for their next round. Keep that loop going until the payload says
 "closed" or the user tells you to stop.
 
+Quick start:
+  1. stratamd attach --name "<who you are>"
+     Read "document" (the buffer with the user's comments inlined) and
+     keep "file", "buffer", and "agent" from the result.
+  2. Respond: stratamd edit changes a passage, stratamd annotate adds a
+     comment, question, or suggestion, stratamd reply answers a thread.
+  3. stratamd attach <file> --as <agent>, run in the background, waits
+     for the user's next Send. Act on what it returns.
+  4. Repeat from 2. Stop when attach returns {"event":"closed"}.
+  Copy quotes and matches from "document" or the buffer file, never
+  from "text": "text" has the comment markers inlined and will not
+  match the buffer.
+
   stratamd attach [file] [--as <agent id>] [--name "<who you are>"]
-                         [--timeout <seconds>, default 600; 0 = poll]
+                         [--timeout <seconds>, default 90; 0 = poll]
                          [--text-only]
       Attaches you to the document (the focused one if no file is given)
       and opens it if it is not open.
@@ -321,27 +335,33 @@ for their next round. Keep that loop going until the payload says
       on every later call.
       LATER calls return immediately if the user has pressed Send since
       your last call; otherwise they block until the user does. They
-      return only what the USER changed since your last call: hunks with
-      line numbers, new comments and replies, which of your suggestions
-      were accepted or rejected, annotations whose quoted span the user
-      moved (listed again with the new quote plus a "requoted" line),
-      and the user's notes. Changes made by
-      anyone else (other agents, other editors) are NOT included unless
-      the user chose to include them.
+      return only what the USER changed since your last call: hunks
+      with line numbers and one unchanged line either side, new
+      comments and replies, which of your suggestions were accepted or
+      rejected, annotations whose quoted span the user moved (listed
+      again with the new quote plus a "requoted" line), and the user's
+      notes. Changes made by anyone else (other agents, other editors)
+      are NOT included unless the user chose to include them.
       Nothing is lost while you are not waiting; sends queue until your
       next call, even across restarts. Run it in the background and act
       when it returns. Re-run it after each response to keep listening.
       It returns {"event":"timeout"} after --timeout seconds if nothing
-      happens; just run it again. It returns {"event":"closed"} when the
-      user has closed the document, after anything that was queued. It
-      returns {"event":"superseded"} when a newer attach call for your
-      id replaced this one: do nothing, the newer call is listening.
+      happens; just run it again. Pick a timeout below your tool's
+      command limit: the default 90 fits a 120 second limit. A call
+      your harness kills is safe; the delivery repeats on your next
+      call with the same deliveryId.
+      --timeout 0 never blocks: it returns a queued delivery or
+      {"event":"timeout"} at once, for a harness that cannot hold a
+      command open. It returns {"event":"closed"} when the user has
+      closed the document, after anything that was queued. It returns
+      {"event":"superseded"} when a newer attach call for your id
+      replaced this one: do nothing, the newer call is listening.
       A delivery can arrive twice if a call was cut off; the same
       deliveryId means you already handled it.
       --text-only leaves out the "document" field; "text" already holds
       the whole buffer with the comments inlined, so you miss nothing
-      and the payload is half the size on a large document. The same
-      flag works on state.
+      and the payload is half the size on a large document. Copy quotes
+      from the buffer file then. The same flag works on state.
 
   stratamd annotate <file> --kind <comment|question|suggestion>
                            --quote "<exact text from the buffer>"
@@ -351,34 +371,52 @@ for their next round. Keep that loop going until the payload says
                            [--followed-by "<text right after the quote>"]
                            [--as <agent id>]
       Comments on text or proposes a change. The quote is text copied
-      exactly from the buffer, unique within it. A suggestion's quote
-      sits inside a single paragraph, list item, heading, or cell, and
-      its --text is markdown; a comment or question may quote a long
-      span to mark what should be read with it. If the quote is missing
-      or ambiguous the command fails (exit 3) and lists the closest
-      matches; add --preceded-by or --followed-by and retry. Pass --json <file or -> with an array of
-      {kind, quote, text, label, precededBy, followedBy} to create many.
-      Suggestions are not applied until the user accepts them. Prints
-      {"created":[{id, kind, quote}]}; use the ids in reply and resolve.
+      exactly from "document" or the buffer file, unique within it. A
+      suggestion's quote sits inside one markdown block (a paragraph,
+      list item, heading, or table cell: the same block ranges edit
+      uses), and its --text is markdown; a comment or question may
+      quote a long span to mark what should be read with it.
+      If the quote is missing, ambiguous, differs only in whitespace,
+      or crosses blocks, the command fails (exit 3, code QUOTE_INVALID)
+      with detail [{reason, total, candidates: [{line, before, quote,
+      after}], hint, exact}]. Pass a candidate's before or after text
+      as --preceded-by or --followed-by and retry; for reason
+      "whitespace", use "exact" as the quote. --preceded-by "" means
+      the start of the document and --followed-by "" its end.
+      Pass --json <file or -> with an array of {kind, quote, text,
+      label, precededBy, followedBy} to create many; one bad quote
+      creates none. Suggestions are not applied until the user accepts
+      them. Prints {"created":[{id, kind, quote}]}; use the ids in
+      reply and resolve.
 
   stratamd edit <file> --match "<exact text from the buffer>"
                        --replace "<new text>" | --replace -
                        [--preceded-by "<text right before the match>"]
                        [--followed-by "<text right after the match>"]
+                       [--append] [--dry-run]
                        [--as <agent id>] [--name "<who you are>"]
       Changes one passage. The match follows the quote rules of
       annotate: copied exactly from the buffer and unique within it,
-      with the same closest-match failure (exit 3) and the same
+      with the same QUOTE_INVALID failure (exit 3) and the same
       --preceded-by / --followed-by fix. The replacement lands in the
       live buffer as YOUR change, marked for the user's review like a
       write to the buffer file. Use it instead of rewriting the buffer
       file when you want to change a passage: the match is checked
       against the buffer at the moment of the write, so it can never
       undo an edit the user made after you last read. An empty
-      --replace deletes the passage. Pass --json <file or -> with an
-      array of {match, replace, precededBy, followedBy} to make many
-      changes at once; one bad match applies none of them. Prints
-      {"applied":[{line, match, replace}]}. Needs the running app.
+      --replace deletes the passage.
+      Insert = an empty match with a context. --match "" together with
+      --preceded-by or --followed-by inserts at that point, and
+      --preceded-by "" is the start of the document. --append inserts
+      at the end of the buffer with no --match at all. Both work on an
+      empty document. --dry-run locates every match and prints
+      {"located":[{line, match}]} without changing anything.
+      Pass --json <file or -> with an array of {match, replace,
+      precededBy, followedBy, append} to make many changes at once; one
+      bad match applies none of them, and two edits that overlap fail
+      (exit 3, code EDITS_OVERLAP, detail names both). Prints
+      {"applied":[{line, match, replace}]}; line is where the change
+      begins in the buffer after the edit. Needs the running app.
 
   stratamd reply <file> --to <annotation id> --text "<reply>" [--as <id>]
       Answers a question or continues a thread. --text - reads stdin.
@@ -408,6 +446,8 @@ for their next round. Keep that loop going until the payload says
   stratamd reject <file> --annotation <id> --as <your id>
       Lead only. Accept applies a suggestion to the buffer as YOUR
       change, left pending for the user's review; reject dismisses it.
+      Accept fails with QUOTE_INVALID, in the same shape as annotate,
+      when the text the suggestion quotes has moved.
 
   stratamd resolve <file> --annotation <id> --as <your id>
       Closes a thread. Any agent may resolve annotations it created;
@@ -418,19 +458,26 @@ for their next round. Keep that loop going until the payload says
       user's save: agent edits stay pending for the user's review.
       Fails when a conflict needs the user; report that and stop.
 
-  stratamd state [file] [--brief] [--text-only]
+  stratamd state [file] [--brief | --text-only | --annotations | --raw]
       Read-only: the same content as a first attach, without attaching
       or affecting any attachment. Also reports whether the document is
       open in the app ("open"), the active theme (id, name, file path)
-      and, for an open document, the attached agents: id, name, state
-      (waiting, working, or pending), and which one leads. --brief
-      leaves out the document, text, and annotations: run it to see who
-      is attached and who leads, for example after a message.
+      and, for an open document, the attached agents: id, name, state,
+      and which one leads. An agent's state is "waiting" while its
+      attach call is blocked, "working" when it has no call open and
+      nothing queued, and "pending" when a delivery is waiting for it
+      to collect. --brief leaves out the document, text, and
+      annotations: run it to see who is attached and who leads, for
+      example after a message. --annotations leaves out the document
+      and reduces text to the open questions; the annotations are the
+      content. --raw prints the buffer itself, exactly, with no JSON:
+      copy quotes from it, or pipe it to a file to work on the text
+      with other tools.
 
   stratamd docs
-      Lists the documents open in the app: each file, whether it is
-      focused, whether it has unsaved changes, and its attached agents.
-      Needs the running app.
+      Lists the documents open in the app: each file, its buffer path,
+      whether it is focused, whether it has unsaved changes, and its
+      attached agents. Needs the running app.
 
   stratamd theme [id] [--json]
       Prints a theme: its file path, the values its authors SET, and
@@ -456,28 +503,60 @@ for their next round. Keep that loop going until the payload says
       pre-edit hook can call it automatically.
 
   stratamd open <file>
-      Shows the file to the user. If you edited it, they see your changes
-      marked for review. Use this after editing a file directly.
+      Shows the file to the user. If you edited it, they see your
+      changes marked for review. Use this after editing a file
+      directly.
 
   stratamd checkpoint <file or directory>
-      Records the user's last-reviewed version (from git HEAD if the file
-      is in a repository, otherwise the current content) so edits you
-      make afterwards show up for review. Run it before editing files the
-      user has not opened in StrataMD.
+      Records the user's last-reviewed version (from git HEAD if the
+      file is in a repository, otherwise the current content) so edits
+      you make afterwards show up for review. Run it before editing
+      files the user has not opened in StrataMD.
 
   stratamd detach <file> --as <agent id>
-      Ends your attachment. Optional; idle attachments expire on their own.
+      Ends your attachment. Optional; idle attachments expire on their
+      own.
 
-Every command prints its result to stdout as one JSON object. Errors go
-to stderr as one JSON object {error, code, detail}. Exit codes:
+  stratamd doctor
+      Works without the app. Prints the socket path and whether the app
+      answers on it, the data and config directories, the log path with
+      its last errors, every document lock with the process holding it,
+      and the app and command versions, plus a list of problems. Run it
+      whenever a command exits 4, and report what it says.
+      stratamd --version prints the versions and paths alone.
+
+Every command prints its result to stdout as one JSON object; a
+command with nothing else to report prints {"ok":true}. Errors go to
+stderr as one JSON object {error, code, detail}; a not-found error
+names the id or path it looked for, and detail says what to do next.
+Exit codes:
   0  done
-  1  usage: a bad option, or a command that needs --as without one
+  1  usage: a bad option (detail lists the valid ones), or a command
+     that needs --as without one
   2  not found: the file, annotation, or attachment
   3  refused by the document's state; detail says why and what to do
-  4  the app is not reachable (or did not answer in time)
+  4  the app is not reachable, did not answer in time, or was built
+     from a different version than this command (PROTOCOL_MISMATCH:
+     the message says whether to restart StrataMD or update the
+     command). Run stratamd doctor.
 Your id: pass --as with the id your first attach returned. Without
 --as, the id comes from your harness session when there is one;
-otherwise every command except a first attach fails with exit 1.
+otherwise every command except a first attach fails with exit 1. A
+subagent shares its parent's session, so subagents always pass --as,
+after an attach of their own. An --as the document does not know is
+refused (exit 2, ATTACHMENT_NOT_FOUND): run stratamd attach first.
+
+Payload fields, for attach, state, and changes: "event"; "file" and
+"buffer" (paths); "agent" (your id); "deliveryId" (on send, message,
+resync, closed); "notes" (the user's note); "document" (the buffer, on
+initial, resync, state); "segments" (hunks per author: oldStart,
+oldLines, newStart, newLines, removed, added, contextBefore,
+contextAfter, line); "annotations" (id, seq, kind, author, agent,
+name, label, status, quote, text, line, replies); "replies" (replies
+to earlier threads: id, annotation, author, name, text, parent {kind,
+quote, line, text}); "resolved" (id, kind, resolution); "edits" (your
+kept or reverted changes); "partial"; "attachments"; "open"; "cursor";
+and "text", a readable rendering of all of it.
 
 What you see is the user's editor buffer, which may be unsaved;
 "buffer" in the payload is its path. Edit by writing to that buffer
@@ -485,17 +564,17 @@ file, with stratamd edit for one passage, or by suggestions for small
 inline proposals. The user sees your edits marked for review and
 decides when to save. Re-read the buffer right before you write to it;
 a write based on an old copy shows up to the user as undoing their
-newer edits. The buffer is the only file you
-write while attached. Writing the document itself bypasses the user's
-unsaved edits, so every payload names the buffer path. Your own edits
-come back to you only if the user includes changes not made by them.
+newer edits. The buffer is the only file you write while attached.
+Writing the document itself bypasses the user's unsaved edits, so
+every payload names the buffer path. Your own edits come back to you
+only if the user includes changes not made by them.
 ```
 
-Agent identity: `--as` if given; otherwise a stable id derived from `$CLAUDE_CODE_SESSION_ID` or an equivalent harness session variable if present. Only a first `attach` may go without both, minting a fresh id; every other command that needs an identity (`annotate`, `edit`, `reply`, `send`, `lead`, `accept`, `reject`, `resolve`, `save`, `changed`, `detach`) exits 1 with `Pass --as <the agent id your first attach returned>` rather than minting one, since a fresh id would create a second attachment. The initial payload always returns the id. `--name` sets the display name (default `$AI_AGENT`, else the id).
+Agent identity: `--as` if given; otherwise a stable id derived from `$CLAUDE_CODE_SESSION_ID` or an equivalent harness session variable if present, mixed with `$CLAUDE_CODE_CHILD_SESSION` when set so a subagent gets an id of its own. Only a first `attach` may go without both, minting a fresh id; every other command that needs an identity (`annotate`, `edit`, `reply`, `send`, `lead`, `accept`, `reject`, `resolve`, `save`, `changed`, `detach`) exits 1 with `Pass --as <the agent id your first attach returned>` rather than minting one, since a fresh id would create a second attachment. Subagents always pass `--as`. The initial payload always returns the id. `--name` sets the display name (default `$AI_AGENT`, else the id).
 
 ## 8. Payload (StrataMD → agent)
 
-Printed to stdout as one JSON object when `attach`, `state`, `changes`, or `docs` returns. `text` is a complete human-readable rendering; an agent that reads only `text` misses nothing. Fields absent for an event are omitted. `--text-only` (on `attach` and `state`) omits `document`; `state --brief` omits `document`, `text`, and `annotations`.
+Printed to stdout as one JSON object when `attach`, `state`, `changes`, or `docs` returns. `text` is a complete human-readable rendering; an agent that reads only `text` misses nothing, but quotes and matches are copied from `document` or the buffer file, never from `text`, which has markers inlined. Fields absent for an event are omitted. `--text-only` (on `attach` and `state`) omits `document`; `state --brief` omits `document`, `text`, and `annotations`; `state --annotations` omits `document` and reduces `text` to the open-questions list.
 
 ```json
 {
@@ -514,23 +593,30 @@ Printed to stdout as one JSON object when `attach`, `state`, `changes`, or `docs
   "segments": [
     { "author": "user", "hunks": [
       { "oldStart": 42, "oldLines": 3, "newStart": 42, "newLines": 5,
-        "removed": ["..."], "added": ["..."] } ] },
+        "removed": ["..."], "added": ["..."],
+        "contextBefore": ["the unchanged line before"], "contextAfter": ["the unchanged line after"],
+        "line": 42 } ] },
     { "author": "external", "tag": { "agent": "ag_2b", "name": "GPT" }, "hunks": [ "only when included" ] }
   ],
   "annotations": [
     { "id": "a1", "seq": 112, "kind": "question", "author": "user",
       "agent": null, "status": "open",
       "quote": "the exact text", "text": "why this?", "line": 17,
-      "replies": [ { "id": "r1", "seq": 115, "author": "user", "text": "..." } ] }
+      "replies": [ { "id": "r1", "seq": 115, "author": "user", "text": "..." } ] },
+    { "id": "a2", "seq": 113, "kind": "suggestion", "author": "agent",
+      "agent": "ag_2b", "name": "GPT", "label": "Tone", "status": "open",
+      "quote": "the exact text", "text": "the replacement", "line": 17, "replies": [] }
   ],
   "replies": [
-    { "id": "r2", "seq": 116, "annotation": "a0", "author": "user", "text": "..." }
+    { "id": "r2", "seq": 116, "annotation": "a0", "author": "user", "text": "...",
+      "parent": { "kind": "comment", "quote": "what a0 quotes", "line": 9, "text": "a0's opening text" } }
   ],
   "resolved": [ { "id": "a3", "seq": 117, "kind": "suggestion", "resolution": "accepted" } ],
   "edits": [ { "seq": 118, "verdict": "kept" | "reverted", "quote": "first line of the edit" } ],
   "partial": true,
   "text": "...",
-  "documents": [ { "file": "/abs/path/doc.md", "focused": true, "dirty": false,
+  "documents": [ { "file": "/abs/path/doc.md", "buffer": "/home/u/.local/share/stratamd/docs/<12-hex key>/buffer.md",
+                   "focused": true, "dirty": false,
                    "attachments": [ { "agent": "ag_2b", "name": "GPT", "state": "waiting", "lead": false } ] } ]
 }
 ```
@@ -539,12 +625,12 @@ Printed to stdout as one JSON object when `attach`, `state`, `changes`, or `docs
 - `open` is present on `state`: true when the document is open in the instance, false for a closed one and for offline `state`. `theme` is present on every `state`.
 - `deliveryId` is present on `send`, `message`, `resync`, and `closed`. The same id is returned again if the previous return was not acknowledged.
 - `attachments` is present on `state` for an open document: every attachment as `{agent, name, state, lead}`, states per §6.6. Omitted for a closed document. `docs` carries the same rows inside each `documents` entry, with `focused` and `dirty` (unsaved changes).
-- `segments` are in order; each segment's `hunks` are against the state just before that segment, the first against the recipient's baseline. `author` is `user` or `external`; `tag` is present when the external segment was tagged; user segments never carry one, so an accepted suggestion reads as a plain user change. A segment the recipient authored is never present (§6.7). External segments appear only when the user included them, or as the whole content of a `changes` payload. Line numbers are 1-based; `oldStart`/`newStart` refer to the segment's before and after states.
+- `segments` are in order; each segment's `hunks` are against the state just before that segment, the first against the recipient's baseline. `author` is `user` or `external`; `tag` is present when the external segment was tagged; user segments never carry one, so an accepted suggestion reads as a plain user change. A segment the recipient authored is never present (§6.7). External segments appear only when the user included them, or as the whole content of a `changes` payload. Line numbers are 1-based; `oldStart`/`newStart` refer to the segment's before and after states and count only changed lines. Each hunk also carries one unchanged line on either side when there is one (`contextBefore`, `contextAfter`; the rendered `@@` header widens to include them) and `line`, the 1-based line in the delivered document (the current buffer for `changes`) where the change begins; for a pure deletion it is the line before the removed text.
 - `edits` holds, on `send` and `closed`, the verdicts on the recipient's own kept and reverted buffer edits (§6.3): `verdict` is `kept` or `reverted`, `quote` the first non-blank line of the edit, capped. `partial` is present and true when the user left changes or events out of this delivery; the buffer holds the full current text.
-- `annotations` holds, on `initial`, `resync`, and `state`, every annotation with its full thread; on `send` and `closed`, only annotations created past the cursor, each with its full thread. `replies` holds, on `send` and `closed`, replies past the cursor to annotations created at or before it; `annotation` names the thread. Neither includes events the recipient authored. `agent` identifies the authoring attachment for agent-authored ones; `status` is `open`, `resolved`, or `orphaned`; `line` refers to the current buffer. `cursor` is the latest `seq` included.
+- `annotations` holds, on `initial`, `resync`, and `state`, every annotation with its full thread; on `send` and `closed`, only annotations created past the cursor, each with its full thread. `replies` holds, on `send` and `closed`, replies past the cursor to annotations created at or before it; `annotation` names the thread and `parent` carries the thread's `kind`, `quote`, `line`, and opening `text`, so the recipient can answer without looking it up. Neither includes events the recipient authored. `agent` identifies the authoring attachment for agent-authored ones and `name` is the display name that attachment had when it wrote (on replies too); `label` is present when the author set one; `status` is `open`, `resolved`, or `orphaned`; `line` refers to the current buffer. `cursor` is the latest `seq` included.
 - `text` begins with one line. On `initial` and `resync`: `While attached, write only to the buffer file: <buffer path>. The document <document path> is the user's to save.` On every other event: `Write only to <buffer path>.` The agent named the document itself and has had the full sentence once; repeating only the path it must act on keeps the per-delivery cost low.
 - `text` then renders: on `initial`, `resync`, and `state`, the whole buffer with annotations inlined at their anchors, followed by a list of open questions; on `send` and `closed`, the notes, one unified diff per segment with its author, new annotations with their surrounding paragraph and their replies listed after the paragraph, then replies to earlier annotations as `<id> ← <author>: <text>` one per line, then resolutions, then verdicts as `Your change was kept: <quote>` / `Your change was reverted: <quote>`, then, when `partial` is set, one line: `Parts of the document changed that are not included here.`; on `changes`, the external diffs only; on `message`, `Message from <name> (<id>):`, the note, then one line pointing at `stratamd state` and `stratamd changes`.
-- Annotation markers: comment and question → `⟦id kind (author): text⟧…⟦/id⟧` around the quoted span; suggestion → the quoted span struck through followed by the replacement; replies indented under their parent; resolutions one line each. Literal `⟦` or `⟧` in the document are escaped as `\⟦` and `\⟧` inside `text`.
+- Annotation markers: comment and question → `⟦id kind (author) [label]: text⟧…⟦/id⟧` around the quoted span; suggestion → `⟦id suggestion (author)⟧~~quoted span~~ replacement⟦/id⟧`, the replacement rendered once; `author` is `user` or the agent's display name followed by its id, `(GPT ag_7f3k2a)`; `[label]` appears only when set; replies indented under their parent as `↳ author: text`; resolutions one line each; a reply delivered alone as `<id> ← <author>: <text>` followed by an indented `thread:` line naming the parent's kind, line, quote, and opening text. Annotation text inside a heading has its line breaks collapsed to spaces. Literal `⟦` or `⟧` in the document and in annotation text are escaped as `\⟦` and `\⟧` inside `text`.
 - Limits: notes and annotation texts are up to 64 KB each; a message note is up to 4 KB. Payload construction and transport handle large document content; document size alone never changes the event to `resync`.
 
 ## 9. Files on disk
@@ -592,7 +678,7 @@ Config, in `$XDG_CONFIG_HOME/stratamd` (fallback `~/.config/stratamd`) on both p
 | Serializer | StrataMD's own, per block; `mdast-util-to-markdown` for edited blocks, configured to match the file's detected conventions (bullet char, emphasis char, list indent) | Unchanged blocks emit original bytes; edited blocks should look like their neighbors. If `mdast-util-to-markdown` cannot match a file's style closely enough, the affected node types get hand-written serializers. |
 | Editor | `prosemirror-model/state/view/transform/history/keymap/inputrules/commands`, `prosemirror-tables` | The toolkit only; schema is StrataMD's. |
 | Diff | `diff` (jsdiff) `structuredPatch` | Myers, hunks in the §8 shape. |
-| File watching | `@parcel/watcher` | Native, reliable on local Linux filesystems; `fs.watch` is not. |
+| File watching | Node `fs.watch`, one non-recursive watch per directory, shared by every document and the theme folder | The reconciler only needs change notifications for two known files per document. A recursive native watcher on the document's parent watched the whole home directory or repository (inotify exhaustion, slow subscribe, event storms on `git checkout`); a flat inotify or FSEvents watch on a single local directory is reliable, and detection still re-reads by content hash rather than trusting the event. Network filesystems remain unsupported. |
 | Socket | Node `net`, newline-delimited JSON | Long-held `attach` requests are connections the server answers later. |
 | Panels UI | React + Tailwind | The ProseMirror view mounts as an uncontrolled element inside it. No component library. |
 | Tests | vitest for parser, serializer, diff, and state transitions (pure functions, no Electron); Playwright with the Electron driver for attach → Send → collect and the §6.12 scenarios | The byte-preservation invariant and the state table are testable without a window. |

@@ -19,6 +19,12 @@ export interface PayloadHunk {
   newLines: number
   removed: readonly string[]
   added: readonly string[]
+  /** One unchanged line before the change, when there is one. */
+  contextBefore?: readonly string[]
+  /** One unchanged line after the change, when there is one. */
+  contextAfter?: readonly string[]
+  /** 1-based line in the delivered document where the change begins. */
+  line?: number
 }
 
 export interface PayloadAgentTag {
@@ -37,12 +43,23 @@ export interface PayloadReply {
   seq: number
   author: 'user' | 'agent'
   agent?: string | null
+  /** The authoring attachment's display name, for agent replies. */
+  name?: string
+  text: string
+}
+
+/** What a reply delivered alone says about its thread, so the recipient need not look it up. */
+export interface PayloadReplyParent {
+  kind: 'comment' | 'question' | 'suggestion'
+  quote: string
+  line: number
   text: string
 }
 
 /** A reply to an annotation the recipient already holds, delivered without its thread. */
 export interface PayloadThreadReply extends PayloadReply {
   annotation: string
+  parent?: PayloadReplyParent
 }
 
 export interface PayloadAnnotation {
@@ -51,9 +68,12 @@ export interface PayloadAnnotation {
   kind: 'comment' | 'question' | 'suggestion'
   author: 'user' | 'agent'
   agent: string | null
+  /** The authoring attachment's display name, for agent-authored annotations. */
+  name?: string
   status: 'open' | 'resolved' | 'orphaned'
   quote: string
   text: string
+  label?: string
   line: number
   replies: readonly PayloadReply[]
 }
@@ -130,21 +150,39 @@ function escapeAnnotationBrackets(value: string): string {
   return value.replaceAll('⟦', '\\⟦').replaceAll('⟧', '\\⟧')
 }
 
+/** `user`, or the agent's display name followed by its id: `(GPT ag_7f3k2a)`. */
+function agentLabel(author: 'user' | 'agent', agent: string | null | undefined, name: string | undefined): string {
+  if (author === 'user') return 'user'
+  const id = agent ?? 'agent'
+  return name !== undefined && name.length > 0 && name !== id ? `${name} ${id}` : id
+}
+
 function authorName(annotation: PayloadAnnotation): string {
-  return annotation.author === 'user' ? 'user' : (annotation.agent ?? 'agent')
+  return agentLabel(annotation.author, annotation.agent, annotation.name)
+}
+
+/** Marker headings stay on one line: annotation text is escaped and its line breaks collapse to spaces. */
+function headingText(value: string): string {
+  return escapeAnnotationBrackets(value).replace(/\s*\r?\n\s*/g, ' ')
 }
 
 function marker(annotation: PayloadAnnotation, quote: string, withReplies = true): string {
   return openMarker(annotation) + quote + closeMarker(annotation, withReplies)
 }
 
+function markerLabel(annotation: PayloadAnnotation): string {
+  return annotation.label === undefined || annotation.label.length === 0 ? '' : ` [${headingText(annotation.label)}]`
+}
+
+/** A suggestion's heading names it only; its replacement is rendered once, after the struck quote. */
 function openMarker(annotation: PayloadAnnotation): string {
-  const heading = `${annotation.id} ${annotation.kind} (${authorName(annotation)}): ${annotation.text}`
-  return `⟦${heading}⟧${annotation.kind === 'suggestion' ? '~~' : ''}`
+  const who = `${annotation.id} ${annotation.kind} (${authorName(annotation)})${markerLabel(annotation)}`
+  if (annotation.kind === 'suggestion') return `⟦${who}⟧~~`
+  return `⟦${who}: ${headingText(annotation.text)}⟧`
 }
 
 function replyAuthor(reply: PayloadReply): string {
-  return reply.author === 'user' ? 'user' : (reply.agent ?? 'agent')
+  return agentLabel(reply.author, reply.agent, reply.name)
 }
 
 function renderReplies(annotation: PayloadAnnotation): string {
@@ -156,7 +194,7 @@ function renderReplies(annotation: PayloadAnnotation): string {
 function closeMarker(annotation: PayloadAnnotation, withReplies = true): string {
   const replies = withReplies ? renderReplies(annotation) : ''
   if (annotation.kind === 'suggestion') {
-    return `~~ ${annotation.text}⟦/${annotation.id}⟧${replies}`
+    return `~~ ${escapeAnnotationBrackets(annotation.text)}⟦/${annotation.id}⟧${replies}`
   }
   return `⟦/${annotation.id}⟧${replies}`
 }
@@ -248,20 +286,32 @@ function renderOpenQuestions(annotations: readonly PayloadAnnotation[]): string[
   return [
     'Open questions:',
     ...questions.map((annotation) =>
-      `- ${annotation.id} on line ${annotation.line}: ${annotation.text}`,
+      `- ${annotation.id} on line ${annotation.line}: ${headingText(annotation.text)}`,
     ),
   ]
 }
 
-function rangeCount(lines: number): string {
-  return lines === 1 ? '' : `,${lines}`
+/**
+ * One side of a unified hunk header, widened by the context lines the hunk
+ * carries. `start` follows jsdiff: the first line at or after the change, so
+ * a zero-length side names the line the change lands before.
+ */
+function hunkRange(start: number, lines: number, before: number, after: number): string {
+  const count = lines + before + after
+  if (count === 0) return `${start},0`
+  const first = start - before
+  return count === 1 ? `${first}` : `${first},${count}`
 }
 
 function renderHunk(hunk: PayloadHunk): string {
+  const before = hunk.contextBefore ?? []
+  const after = hunk.contextAfter ?? []
   const lines = [
-    `@@ -${hunk.oldStart}${rangeCount(hunk.oldLines)} +${hunk.newStart}${rangeCount(hunk.newLines)} @@`,
+    `@@ -${hunkRange(hunk.oldStart, hunk.oldLines, before.length, after.length)} +${hunkRange(hunk.newStart, hunk.newLines, before.length, after.length)} @@`,
+    ...before.map((line) => ` ${line}`),
     ...hunk.removed.map((line) => `-${line}`),
     ...hunk.added.map((line) => `+${line}`),
+    ...after.map((line) => ` ${line}`),
   ]
   return lines.join('\n')
 }
@@ -299,8 +349,18 @@ function renderAnnotation(annotation: PayloadAnnotation, document?: string): str
   return marker(annotation, escapeAnnotationBrackets(annotation.quote))
 }
 
+function shortQuote(quote: string): string {
+  const oneLine = quote.replace(/\s*\r?\n\s*/g, ' ')
+  return oneLine.length > 120 ? `${oneLine.slice(0, 119)}…` : oneLine
+}
+
+/** A reply on its own, then the thread it continues: kind, line, quote, and the opening text. */
 function renderThreadReply(reply: PayloadThreadReply): string {
-  return `${reply.annotation} ← ${replyAuthor(reply)}: ${escapeAnnotationBrackets(reply.text)}`
+  const line = `${reply.annotation} ← ${replyAuthor(reply)}: ${escapeAnnotationBrackets(reply.text)}`
+  if (reply.parent === undefined) return line
+  const parent = reply.parent
+  const opening = parent.text.length > 0 ? `: ${headingText(parent.text)}` : ''
+  return `${line}\n  thread: ${parent.kind} on line ${parent.line} about "${headingText(shortQuote(parent.quote))}"${opening}`
 }
 
 function renderResolution(resolution: PayloadResolution): string {
@@ -327,6 +387,12 @@ export interface PayloadTrimOptions {
   brief?: boolean
   /** Drop `document`; `text` already carries the whole buffer with annotations inlined. */
   textOnly?: boolean
+  /** Drop `document`; `text` becomes the open-questions list, so `annotations` is the content. */
+  annotationsOnly?: boolean
+}
+
+function isAnnotationList(value: unknown): value is readonly PayloadAnnotation[] {
+  return Array.isArray(value)
 }
 
 /** The same payload with the fields the caller asked to leave out removed, never mutating the input. */
@@ -334,11 +400,17 @@ export function trimPayload<T extends { document?: unknown; text?: unknown; anno
   payload: T,
   options: PayloadTrimOptions,
 ): T {
-  if (!options.brief && !options.textOnly) return payload
+  if (!options.brief && !options.textOnly && !options.annotationsOnly) return payload
   const { document: _document, ...withoutDocument } = payload
-  if (!options.brief) return withoutDocument as T
-  const { text: _text, annotations: _annotations, ...brief } = withoutDocument
-  return brief as T
+  if (options.brief) {
+    const { text: _text, annotations: _annotations, ...brief } = withoutDocument
+    return brief as T
+  }
+  if (options.annotationsOnly) {
+    const annotations = isAnnotationList(payload.annotations) ? payload.annotations : []
+    return { ...withoutDocument, annotations, text: renderOpenQuestions(annotations).join('\n') } as T
+  }
+  return withoutDocument as T
 }
 
 export function renderPayloadText(input: PayloadInput, context: RenderContext = {}): string {

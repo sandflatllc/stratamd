@@ -13,6 +13,19 @@ export interface PendingBuffer {
 
 let pending: PendingBuffer | null = null
 
+// The newest content handed to main per path, recorded when the flush starts
+// (§5.3). A view push that equals it is this editor's own echo, not news.
+const lastFlushed = new Map<string, string>()
+
+export function lastFlushedContent(path: string): string | undefined {
+  return lastFlushed.get(path)
+}
+
+/** Drop flush records for documents that are no longer open. */
+export function forgetFlushed(openPaths: ReadonlySet<string>): void {
+  for (const path of lastFlushed.keys()) if (!openPaths.has(path)) lastFlushed.delete(path)
+}
+
 export function setPendingBuffer(next: PendingBuffer): void {
   pending = next
 }
@@ -34,6 +47,7 @@ export function takePendingBuffer(): PendingBuffer | null {
 export async function flushPendingBuffer(): Promise<void> {
   const taken = takePendingBuffer()
   if (!taken) return
+  lastFlushed.set(taken.path, taken.content)
   try {
     await window.strata.updateBuffer(taken.path, taken.content, taken.origin)
   } catch (error) {

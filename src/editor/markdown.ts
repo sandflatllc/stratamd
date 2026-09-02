@@ -1,6 +1,7 @@
 import { Fragment, type Mark, type Node as ProseMirrorNode, type NodeType } from 'prosemirror-model'
 import { fromMarkdown } from 'mdast-util-from-markdown'
 import { detectMarkdownConventions, parseMarkdown, serializeMarkdown, shiftOffsets } from '../core/markdown/index.js'
+import { hasMathSyntax } from '../core/markdown/parser.js'
 import type {
   MarkdownAst,
   MarkdownBlock,
@@ -82,7 +83,8 @@ function rawKind(node: MdastNode, raw: string): string | null {
   }
   if (/\[\[[\s\S]*?\]\]/u.test(raw)) return 'wiki-link'
   if (/(?:^|[^\\])\[\^[^\]]+\](?::)?/u.test(raw)) return 'footnote'
-  if (/^\s*(?:\$\$|\\\[)/u.test(raw) || /(?:^|[^\\])\$[^\n$]+\$/u.test(raw)) return 'math'
+  // Kept in step with the core classifier: pandoc's rule, so "$5 and $10" stays editable.
+  if (hasMathSyntax(raw)) return 'math'
   return null
 }
 

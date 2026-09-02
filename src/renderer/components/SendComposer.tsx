@@ -96,6 +96,11 @@ export function clearComposerDraft(documentPath: string): void {
   composerDrafts.delete(documentPath)
 }
 
+/** Drop drafts for documents that are no longer open (§5.16). */
+export function forgetComposerDrafts(openPaths: ReadonlySet<string>): void {
+  for (const path of composerDrafts.keys()) if (!openPaths.has(path)) composerDrafts.delete(path)
+}
+
 /** The recipients a draft still applies to; everyone when it never chose. */
 export function draftRecipients(draft: ComposerDraft, attachments: readonly AttachmentView[]): string[] {
   const ids = attachments.map((item) => item.agent.id)

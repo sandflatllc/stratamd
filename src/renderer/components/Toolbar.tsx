@@ -86,39 +86,78 @@ export const toolbarMenuItems: Partial<Record<EditorCommand, ReadonlyArray<{ com
   ],
 }
 
+/** Why the formatting tools are off, in the words the tooltip and the toolbar note use (§5.13). */
+export function toolbarDisabledHint(source: boolean, readOnly: boolean): string | null {
+  if (readOnly) return 'This document is read-only'
+  if (source) return `Formatting tools work in the visual view · ${PRIMARY}+/ switches back`
+  return null
+}
+
+/** Menu keys (§5.13): arrows and Home/End move between items; the index to focus, or null. */
+export function menuItemAfter(count: number, current: number, key: string): number | null {
+  if (count === 0) return null
+  if (key === 'ArrowDown') return (current + 1) % count
+  if (key === 'ArrowUp') return current < 0 ? count - 1 : (current - 1 + count) % count
+  if (key === 'Home') return 0
+  if (key === 'End') return count - 1
+  return null
+}
+
 export function Toolbar({ source, sourceOnly, readOnly, dirty, onCommand, onToggleSource, onSave }: ToolbarProps) {
+  const disabled = readOnly || source
+  const hint = toolbarDisabledHint(source, readOnly)
   const chooseBlockStyle = (event: MouseEvent<HTMLButtonElement>, command: EditorCommand) => {
     onCommand(command)
     event.currentTarget.closest('details')?.removeAttribute('open')
   }
+  const tooltip = (tool: { label: string; shortcut?: string }) => hint ?? `${tool.label}${tool.shortcut ? ` · ${tool.shortcut}` : ''}`
   const toolButton = (tool: (typeof tools)[number]) => (
     <button
       type="button"
       key={tool.command}
       className={`tool tool-${tool.command}`}
-      title={`${tool.label}${tool.shortcut ? ` · ${tool.shortcut}` : ''}`}
+      title={tooltip(tool)}
       aria-label={tool.label}
-      disabled={readOnly || source}
+      disabled={disabled}
       onClick={() => onCommand(tool.command)}
     >{tool.icon}</button>
   )
-  const toolMenu = (tool: (typeof tools)[number], items: ReadonlyArray<{ command: EditorCommand; label: string }>) => (
-    <details className="tool-menu" key={tool.command} onKeyDown={(event) => {
-      if (event.key !== 'Escape') return
+  // Escape closes a menu; arrows walk its items; opening from the keyboard focuses the first item.
+  const menuKeys = (event: KeyboardEvent<HTMLDetailsElement>) => {
+    const details = event.currentTarget
+    if (event.key === 'Escape') {
       event.preventDefault()
-      event.currentTarget.removeAttribute('open')
-      event.currentTarget.querySelector<HTMLElement>('summary')?.focus()
-    }}>
+      details.removeAttribute('open')
+      details.querySelector<HTMLElement>('summary')?.focus()
+      return
+    }
+    const items = [...details.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])')]
+    const current = items.indexOf(document.activeElement as HTMLElement)
+    if (!details.open && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+      if (disabled) return
+      event.preventDefault()
+      details.setAttribute('open', '')
+      window.requestAnimationFrame(() => details.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus())
+      return
+    }
+    const next = menuItemAfter(items.length, current, event.key)
+    if (next === null) return
+    event.preventDefault()
+    items[next]?.focus()
+  }
+  const toolMenu = (tool: (typeof tools)[number], items: ReadonlyArray<{ command: EditorCommand; label: string }>) => (
+    <details className="tool-menu" key={tool.command} onKeyDown={menuKeys}>
       <summary
         className={`tool tool-${tool.command}`}
-        title={`${tool.label}${tool.shortcut ? ` · ${tool.shortcut}` : ''}`}
+        title={tooltip(tool)}
         aria-label={tool.label}
-        aria-disabled={readOnly || source}
-        onClick={(event) => { if (readOnly || source) event.preventDefault() }}
+        aria-haspopup="menu"
+        aria-disabled={disabled}
+        onClick={(event) => { if (disabled) event.preventDefault() }}
       >{tool.icon}</summary>
       <div role="menu" aria-label={`${tool.label} options`}>
         {items.map((item) => (
-          <button type="button" role="menuitem" key={item.command} disabled={readOnly || source} onClick={(event) => chooseBlockStyle(event, item.command)}>{item.label}</button>
+          <button type="button" role="menuitem" key={item.command} disabled={disabled} onClick={(event) => chooseBlockStyle(event, item.command)}>{item.label}</button>
         ))}
       </div>
     </details>
@@ -131,19 +170,20 @@ export function Toolbar({ source, sourceOnly, readOnly, dirty, onCommand, onTogg
     <div className="toolbar" role="toolbar" aria-label="Formatting">
       {tools.slice(0, 4).map(renderTool)}
       <span className="toolbar-divider" aria-hidden="true" />
-      <details className="heading-menu">
-        <summary aria-label="Heading level" title={`Heading level · ${PRIMARY}+1…6`}>H</summary>
+      <details className="heading-menu" onKeyDown={menuKeys}>
+        <summary aria-label="Heading level" aria-haspopup="menu" aria-disabled={disabled} title={hint ?? `Heading level · ${PRIMARY}+1…6`} onClick={(event) => { if (disabled) event.preventDefault() }}>H</summary>
         <div role="menu" aria-label="Heading levels">
-          <button type="button" role="menuitem" disabled={readOnly || source} onClick={(event) => chooseBlockStyle(event, 'paragraph')}>Paragraph</button>
-          {[1, 2, 3, 4, 5, 6].map((level) => <button type="button" role="menuitem" disabled={readOnly || source} key={level} onClick={(event) => chooseBlockStyle(event, `heading-${level}` as EditorCommand)}>Heading {level}</button>)}
+          <button type="button" role="menuitem" disabled={disabled} onClick={(event) => chooseBlockStyle(event, 'paragraph')}>Paragraph</button>
+          {[1, 2, 3, 4, 5, 6].map((level) => <button type="button" role="menuitem" disabled={disabled} key={level} onClick={(event) => chooseBlockStyle(event, `heading-${level}` as EditorCommand)}>Heading {level}</button>)}
         </div>
       </details>
       {tools.slice(4).map(renderTool)}
+      {hint && <span className="toolbar-hint" role="note">{hint}</span>}
       <div className="toolbar-spacer" />
       <button type="button" className={`source-toggle ${source ? 'active' : ''}`} disabled={sourceOnly} title={sourceOnly ? 'This document can only open in source view' : `Source view · ${PRIMARY}+/`} onClick={onToggleSource}>{'{ }'} source</button>
       <button type="button" className="save-button" data-dirty={dirty} disabled={readOnly} onClick={onSave}>{dirty ? 'Save' : 'Saved'}</button>
     </div>
   )
 }
-import type { MouseEvent } from 'react'
+import type { KeyboardEvent, MouseEvent } from 'react'
 import { primaryModifierLabel } from '../../shared/primary-modifier'

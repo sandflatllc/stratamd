@@ -6,11 +6,12 @@ import {
   createEditorKeymap,
   isLocalImageSource,
   parseMarkdownForEditor,
+  popoverPosition,
   serializeEditorDocument,
   strataSchema,
 } from '../../src/editor/index.js'
-import { toolbarMenuItems, type EditorCommand } from '../../src/renderer/components/Toolbar.js'
-import { isAnnotationDismissKey } from '../../src/renderer/components/AnnotationComposer.js'
+import { menuItemAfter, toolbarDisabledHint, toolbarMenuItems, type EditorCommand } from '../../src/renderer/components/Toolbar.js'
+import { bareHotkeysApply, isAnnotationDismissKey } from '../../src/renderer/components/AnnotationComposer.js'
 
 function run(command: Command, state: EditorState): EditorState {
   let transaction: Transaction | undefined
@@ -186,5 +187,42 @@ describe('editor commands and keymap', () => {
     expect(isLocalImageSource('//example.com/chart.png')).toBe(false)
     expect(isLocalImageSource('javascript:alert(1)')).toBe(false)
     expect(isLocalImageSource('data:image/png;base64,AA==')).toBe(false)
+  })
+})
+
+describe('link and image popover placement (usability round 2 §2.8)', () => {
+  it('sits below the selection when there is room and above it otherwise, inside the window', () => {
+    const size = { width: 340, height: 160 }
+    const viewport = { width: 1200, height: 800 }
+    expect(popoverPosition({ left: 100, top: 200, bottom: 224 }, size, viewport)).toEqual({ left: 100, top: 232 })
+    expect(popoverPosition({ left: 1100, top: 700, bottom: 724 }, size, viewport)).toEqual({ left: 852, top: 532 })
+    expect(popoverPosition({ left: -40, top: 2, bottom: 20 }, size, viewport)).toEqual({ left: 8, top: 28 })
+  })
+})
+
+describe('toolbar menus and the annotate pill (usability round 2 §5.1, §5.13)', () => {
+  it('walks menu items with the arrow keys and wraps', () => {
+    expect(menuItemAfter(3, 0, 'ArrowDown')).toBe(1)
+    expect(menuItemAfter(3, 2, 'ArrowDown')).toBe(0)
+    expect(menuItemAfter(3, 0, 'ArrowUp')).toBe(2)
+    expect(menuItemAfter(3, -1, 'ArrowUp')).toBe(2)
+    expect(menuItemAfter(3, 1, 'Home')).toBe(0)
+    expect(menuItemAfter(3, 1, 'End')).toBe(2)
+    expect(menuItemAfter(3, 1, 'Enter')).toBeNull()
+    expect(menuItemAfter(0, -1, 'ArrowDown')).toBeNull()
+  })
+
+  it('explains why formatting is off in plain words', () => {
+    expect(toolbarDisabledHint(false, false)).toBeNull()
+    expect(toolbarDisabledHint(true, false)).toMatch(/visual view/)
+    expect(toolbarDisabledHint(true, true)).toBe('This document is read-only')
+  })
+
+  it('lets bare C, Q, and S act only on pointer selections or a focused pill', () => {
+    expect(bareHotkeysApply(null, false)).toBe(false)
+    expect(bareHotkeysApply({ pointer: true }, false)).toBe(true)
+    expect(bareHotkeysApply({}, false)).toBe(true)
+    expect(bareHotkeysApply({ pointer: false }, false)).toBe(false)
+    expect(bareHotkeysApply({ pointer: false }, true)).toBe(true)
   })
 })

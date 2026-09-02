@@ -17,7 +17,7 @@ References:
 - `U` means a focused Vitest test is required for pure state, parser, serializer, storage, or protocol behavior.
 - `E` means an additional Electron test is required beyond the 15 release scenarios.
 - `S` means a static source or build-policy check is required.
-- `M` means a host-specific or visual check cannot be established completely in the headless suite (on macOS this is the manual checklist in `docs/plans/open/mac-plan.md` §8).
+- `M` means a host-specific or visual check cannot be established completely in the headless suite (on macOS this is the manual checklist in `docs/plans/open/mac-followups.md`).
 
 An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implementation.
 
@@ -113,7 +113,7 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.8-01 | Executable/setup/remove/default behavior is repeatable per platform (Linux desktop entry, icon, and MIME; macOS link-only with the bundle association) and agent help is verbatim §7. | `S` verbatim help; `U` setup idempotence per platform; `M` desktop and Finder integration |
 | 6.8-02 | CLI runs as plain Node with `ELECTRON_RUN_AS_NODE=1`, not as a browser launch. | `S` bootstrap; `M` process check |
 | 6.8-03 | A generic harness needs only repeatable commands, stdout, and an id; timeout zero polls immediately. | `A01`, `A12` |
-| 6.8-04 | Only attach blocks by design; default is 600 seconds; cold open/attach returns when session exists. | `U` timing/argument cases; `E` cold launch |
+| 6.8-04 | Only attach blocks by design; default is 90 seconds, chosen to sit under a harness command limit; cold open/attach returns when session exists. | `U` timing/argument cases; `E` cold launch |
 | 6.8-05 | Online commands use the socket/shadow; named offline commands lock atomically and prefer newer buffer; startup shares the lock. | `U` offline/online and lock races |
 | 6.8-06 | CLI open with a ghost difference enters review mode. | `A07`; `E` direct-document edit then open |
 | 6.8-07 | State is read-only and exits 2 without a path or focused document. | `U` side-effect and exit-code cases |
@@ -128,6 +128,12 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.8-16 | Identity: `--as`, else the harness id; only a first attach mints; other commands exit 1 with the pass-`--as` message. | `U` `test/unit/cli.test.ts` "requires a provable identity for every command except a first attach" |
 | 6.8-17 | Launch and offline fallback happen only on a failed connection; a timeout after the instance accepted the request exits 4 without a launch. | `U` `test/unit/cli.test.ts` "reports a stalled instance without launching a second one"; `test/integration/socket.test.ts` "distinguishes a stalled instance from an absent one" |
 | 6.8-18 | `MESSAGE_PENDING` names every blocked recipient and the unblocked ones; anchor failures on a Lead accept carry excerpts and a hint. | `U` `test/integration/main-application.test.ts` "allows one unacknowledged message per sender→recipient pair", "treats a multi-recipient send as all-or-nothing", "reports a moved suggestion on accept with excerpts and a hint" |
+| 6.8-19 | `stratamd --version` prints the app, protocol, and payload versions with the CLI and app paths; `--help`, `-h`, and `help` print the usage screen with the pointer to `--agent-help`. | `U` `test/unit/cli.test.ts` "prints the app, protocol, and payload versions with the CLI and app paths" and "%s prints the usage screen with the pointer to --agent-help" |
+| 6.8-20 | A request or response from another build fails as `PROTOCOL_MISMATCH` (exit 4) naming both versions and the restart-or-update remedy, whichever side noticed. | `U` `test/unit/cli.test.ts` "maps a response from another build to PROTOCOL_MISMATCH, whichever side noticed"; `U` `test/integration/socket.test.ts` "answers a request from another protocol version with PROTOCOL_MISMATCH, naming both sides" |
+| 6.8-21 | `stratamd doctor` reports the socket and its liveness, data and config directories, log path with recent errors, stale locks, and both versions, without the app; a protocol mismatch is listed as a problem. | `U` `test/unit/cli.test.ts` "reports the socket, directories, log errors, stale locks, and versions without the app" and "probes the socket and flags a protocol mismatch as a problem" |
+| 6.8-22 | `state --raw` prints the buffer verbatim with no JSON; `state --annotations` returns annotations and open questions without the document; the views are exclusive. | `U` `test/unit/cli.test.ts` "state --raw prints the buffer verbatim, --annotations asks for the annotations view, and views are exclusive" |
+| 6.8-23 | Anchorless insert: `edit` takes an empty `--match` with `--preceded-by` or `--followed-by` (empty context means a document boundary) and `--append` for end of buffer; `--dry-run` returns the located rows and applies nothing; an empty match without a context is refused. | `U` `test/unit/cli.test.ts` "parses anchorless inserts, --append, --dry-run, and refuses an empty match without a context"; `U` `test/unit/annotations.test.ts` "locates an empty match by context, treats empty context as a document boundary, and appends" |
+| 6.8-24 | One `QUOTE_INVALID` detail shape across annotate, edit, and Lead accept: `reason` (missing, ambiguous, multi_block, whitespace), `total`, `candidates` with `line`, `before`, `quote`, `after` sized for `--preceded-by` and `--followed-by`, a per-reason `hint`, and the single failure's message at top level; nothing is committed on failure. | `U` `test/unit/annotations.test.ts` "reports an ambiguous quote...", "reports a whitespace-only mismatch...", "reports a missing quote..."; `U` `test/integration/main-application.test.ts` "returns closest text excerpts for online annotation failures without a partial commit", "reports a moved suggestion on accept with excerpts and a hint instead of a bare refusal", "refuses a stale or overlapping edit without changing anything"; `U` `test/integration/main-offline.test.ts` "validates an annotation batch before its one metadata commit and persists replies" |
 | 6.9-01 | Handoff controls appearance and PRD controls behavior when they conflict. | `M` handoff screen/overlay comparison |
 | 6.9-02 | Renderer ports prototype markup, styling, and transitions into React/Tailwind with direct ProseMirror and main data. | `S` dependency/component boundaries; `M` prototype parity |
 | 6.9-03 | Native frame is on; drawn window controls are absent; toolbar remains in-window. | `S` BrowserWindow options; `E` shell |
@@ -148,12 +154,12 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.9-18 | Non-inline suggestion rows carry Accept/Reject; a per-author Revert all confirms with count and author and reverts one hunk at a time; relative times refresh on a clock. | `RA` rail row and Revert all; `U` bulk groups |
 | 6.9-19 | Thread replies are multi-line (Enter sends, Shift+Enter breaks); entries show a relative time when the log records one. | `RA` reply box; `U` thread time |
 | 6.9-20 | Control names say action, author, and excerpt; conflict, explorer, and composer copy is plain; the empty agents panel copies a one-line attach prompt. | `RA` control names and composer heading; `SK` explorer note and prompt; `SC` conflict dialog |
-| 6.9-15 | XDG config/fallback persists every named setting. | `U` schema/path matrix; `SC` font/color/panel restart |
-| 6.9-16 | Explorer, editor, and right rail zoom text independently by hovered pane via Ctrl/Cmd+=/−/wheel within 0.5–2.0; window zoom is disabled; one `Reset zoom` text button restores 1.0 and appears only while zoomed. | `U` factor clamp/normalize; `SC` hover-targeted shortcuts, reset, restart |
-| 6.9-17 | Rail rows are compact maps: author/kind/two-line change rows, formatted snippets never raw syntax, plain-everyday copy per the v15 vocabulary with tooltips included and no file paths in rows, click centers the target with no new jump decoration. | `AC` review board; `E` copy strings |
-| 6.9-18 | The thread panel floats, moves, resizes with persisted size and unpersisted position, opens beside the span (orphans at last session position or centered), defaults ~660px with 330px minimum, and matches editor body type size. | `AC` long-document thread and resize persistence |
-| 6.9-19 | The annotation composer resizes with persisted size at unchanged defaults and position. | `AC` composer resize |
-| 6.9-20 | Save state is always visible (Save button state, tab dot, footer sentence); changes group as Proposed/Unsaved/Saved with per-group counts and per-hunk classification; the annotations header counts open and removed-text; the top-bar total tints while anything is unsaved; Revert on a Saved hunk returns the unsaved state. | `AC` save-state flow; `U` per-hunk classification including the mixed case |
+| 6.9-21 | XDG config/fallback persists every named setting. | `U` schema/path matrix; `SC` font/color/panel restart |
+| 6.9-22 | Explorer, editor, and right rail zoom text independently by hovered pane via Ctrl/Cmd+=/−/wheel within 0.5–2.0; window zoom is disabled; one `Reset zoom` text button restores 1.0 and appears only while zoomed. | `U` factor clamp/normalize; `SC` hover-targeted shortcuts, reset, restart |
+| 6.9-23 | Rail rows are compact maps: author/kind/two-line change rows, formatted snippets never raw syntax, plain-everyday copy per the v15 vocabulary with tooltips included and no file paths in rows, click centers the target with no new jump decoration. | `AC` review board; `E` copy strings |
+| 6.9-24 | The thread panel floats, moves, resizes with persisted size and unpersisted position, opens beside the span (orphans at last session position or centered), defaults ~660px with 330px minimum, and matches editor body type size. | `AC` long-document thread and resize persistence |
+| 6.9-25 | The annotation composer resizes with persisted size at unchanged defaults and position. | `AC` composer resize |
+| 6.9-26 | Save state is always visible (Save button state, tab dot, footer sentence); changes group as Proposed/Unsaved/Saved with per-group counts and per-hunk classification; the annotations header counts open and removed-text; the top-bar total tints while anything is unsaved; Revert on a Saved hunk returns the unsaved state. | `AC` save-state flow; `U` per-hunk classification including the mixed case |
 | 6.10-01 | Deleted-open tab stays with banner; Save recreates; attachments survive. | `EC` deleted-file flow |
 | 6.10-02 | Rename/move follows §6.3. | `A08` |
 | 6.10-03 | Save permission failure preserves shadow and state and shows an error. | `U` injected write failure; `EC` read-only directory |
@@ -220,6 +226,11 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.12-17 | A queued message never blocks expiry; a queued Send delivery still does. | `U` expiry cases; `E` live timer |
 | 6.12-18 | Lead accept is never user-authored, always leaves a pending hunk, and Lead save leaves it pending. | `AC` Lead round |
 | 6.12-19 | One Lead per document; a second claim fails naming the holder; the Lead dies with its attachment. | `AC`; `U` lead lifecycle |
+| 6.12-20 | An untracked file in a git work tree seeds its ghost from itself; a tagged agent burst shows discrete named hunks, never one whole-document insert. | `U` ghost-seeding matrix and tag burst lifecycle (rows 6.3-02, 6.2-10) |
+| 6.12-21 | One tag carries one name across a multi-write burst, expires after five idle minutes, and yields to a second agent's tag from its next write. | `U` fake-clock burst lifecycle (row 6.2-10) |
+| 6.12-22 | A save's round is inspectable after the next save with its own snapshots, no unsaved work, and every active author; a no-change save adds no round. | `U` save-history matrix (row 6.7-01b); `SH` restart persistence |
+| 6.12-23 | A pre-upgrade empty ghost re-seeds from the document once, keeping unsaved buffer work pending; a checkpoint-created empty ghost survives reopening. | `U` marker lifecycle (row 6.3-02b) |
+| 6.12-24 | `edit` fails atomically with excerpts against a changed passage and lands as the agent's pending hunk against an intact one, ghost unmoved, user edits elsewhere kept. | `U` `test/integration/main-application.test.ts` edit cases (row 6.8-15) |
 | 6.13-01 | Themes carry values only; all seven stock themes declare all 40 swatches and six non-color values explicitly, and Strata's complete definition is the fallback for every missing or invalid value. | `U` schema counts, stock completeness, normalize/fallback matrix; `M` built-in visually identical |
 | 6.13-02 | User theme files are sparse with `schema-version: 2`, ids fixed at creation, unknown keys preserved, broken files listed and never applied; a stock-theme copy carries every value. | `U` store/slug/create/copy; `E` broken-file listing |
 | 6.13-03 | Every color in the app derives from theme tokens, attribution colors included. | `S` no color literal outside the token layer; `E` computed attribution colors |
@@ -297,7 +308,7 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 10.1-04 | Serializer emits original unchanged blocks and neighboring conventions for edits. | `A10`; `U` full corpus |
 | 10.1-05 | Editor dependency set is the specified ProseMirror toolkit and tables. | `S` manifest/imports |
 | 10.1-06 | Diff uses jsdiff `structuredPatch`. | `S` import; `U` hunk shape |
-| 10.1-07 | Watcher uses `@parcel/watcher`, never `fs.watch`. | `S` import scan |
+| 10.1-07 | Watcher is one non-recursive `fs.watch` per directory, shared by subscribers; nothing watches a parent directory recursively. | `U` flat-watch and name-filter assertions (`test/unit/session-watcher.test.ts`) |
 | 10.1-08 | Socket uses Node net with newline-delimited JSON and held requests. | `U` fragmented/multiple message integration |
 | 10.1-09 | Panels use React/Tailwind and mount ProseMirror uncontrolled. | `S` renderer inspection |
 | 10.1-10 | Vitest covers pure logic and Playwright Electron covers attach/Send/collect and all §6.12 cases. | `A01` through `A15`; pure suites remain required |
@@ -328,4 +339,4 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 
 ## Release use
 
-Run `pnpm exec playwright test --list` first. It must list the 15 original §6.12 tests; scenarios 16–19 run in the `AC` suite. Then run `pnpm test`, `pnpm typecheck`, `pnpm build`, and `pnpm exec playwright test`. A green build with open `U`, `E`, `S`, or `M` rows is not PRD completion.
+Run the gate in `AGENTS.md`: `tsc --noEmit`, `vitest run`, then `electron-vite build` and `playwright test` under `xvfb-run`, each from `./node_modules/.bin` (never `pnpm <script>` in the owner's checkout). `./node_modules/.bin/playwright test --list` must list the 15 original §6.12 tests (`A01` to `A15`); scenarios 16 to 19 run in the `AC` suite and 20 to 24 in the unit and integration tests cited above. A green gate with open `U`, `E`, `S`, or `M` rows is not PRD completion.

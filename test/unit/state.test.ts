@@ -4,6 +4,7 @@ import {
   acceptAgentReplacement,
   acceptUserReplacement,
   applyExternalChange,
+  applySavedContent,
   applyUserEdit,
   createDocumentState,
   discardOnClose,
@@ -17,6 +18,7 @@ import {
   revertHunk,
   restoreReviewFrame,
   reviewFrame,
+  segmentSnapshotIds,
   setExternalTag,
 } from '../../src/core/state.js'
 
@@ -491,5 +493,63 @@ describe('attribution through review actions', () => {
     const last = undone.segments.at(-1)!
     expect(last.beforeSnapshotId).toBe(last.afterSnapshotId)
     expect(last.attribution).toMatchObject(claude)
+  })
+})
+
+describe('snapshot growth and save folding', () => {
+  it('drops the superseded end of an extended user segment so typing keeps a bounded snapshot set', () => {
+    let state = createDocumentState('start\n', 'start\n')
+    let text = 'start\n'
+    for (let step = 0; step < 40; step += 1) {
+      const next = `${text}${String.fromCharCode(97 + (step % 26))}`
+      state = applyUserEdit(state, { from: text.length, to: text.length, insert: next.slice(text.length) })
+      text = next
+    }
+    expect(state.segments).toHaveLength(1)
+    const referenced = segmentSnapshotIds(state)
+    expect(Object.keys(state.snapshots).every((id) => referenced.has(id))).toBe(true)
+    expect(Object.keys(state.snapshots).length).toBeLessThanOrEqual(2)
+    expect(state.snapshots[state.segments[0]!.beforeSnapshotId]).toBe('start\n')
+    expect(state.snapshots[state.segments[0]!.afterSnapshotId]).toBe(text)
+  })
+
+  it('keeps a superseded snapshot that another segment still names', () => {
+    const base = createDocumentState('one\n', 'one\n')
+    const merged = externalBuffer(base, 'agent\n')
+    // The external segment ends at 'agent'; the user's first edit starts there
+    // and its later extension must not drop that shared boundary.
+    let state = applyUserEdit(merged, { from: 0, to: 5, insert: 'AGENT' })
+    state = applyUserEdit(state, { from: 0, to: 5, insert: 'Agent' })
+    const external = state.segments[0]!
+    expect(state.snapshots[external.afterSnapshotId]).toBe('agent\n')
+    expect(state.segments.at(-1)?.beforeSnapshotId).toBe(external.afterSnapshotId)
+  })
+
+  it('folds a save into a state that moved on, leaving the document dirty by the newer keystrokes', () => {
+    const captured = applyUserEdit(createDocumentState('a\n', 'a\n'), { from: 0, to: 1, insert: 'ab' })
+    const saved = prepareSave(captured, captured.disk)
+    expect(saved.status).toBe('saved')
+    const moved = applyUserEdit(captured, { from: 2, to: 2, insert: 'c' })
+    const folded = applySavedContent(moved, saved.state)
+    expect(folded.disk).toBe('ab\n')
+    expect(folded.shadow).toBe('abc\n')
+    expect(folded.shadow).not.toBe(folded.disk)
+    // Without movement the save lands whole.
+    const clean = applySavedContent(captured, saved.state)
+    expect(clean.disk).toBe(clean.shadow)
+  })
+
+  it('carries the saved ghost ranges onto live pending hunks by id', () => {
+    const base = createDocumentState('one\ntwo\n', 'one\ntwo\n')
+    const merged = externalBuffer(base, 'one\nTWO\n')
+    const hunk = merged.pendingHunks[0]!
+    const saved = prepareSave(merged, merged.disk)
+    expect(saved.status).toBe('saved')
+    const moved = applyUserEdit(merged, { from: 0, to: 0, insert: 'zero\n' })
+    const folded = applySavedContent(moved, saved.state)
+    const live = folded.pendingHunks.find((candidate) => candidate.id === hunk.id)!
+    expect(live.shadow.from).toBe(hunk.shadow.from + 'zero\n'.length)
+    expect(live.ghost).toEqual(saved.state.pendingHunks[0]!.ghost)
+    expect(folded.ghost).toBe(saved.state.ghost)
   })
 })

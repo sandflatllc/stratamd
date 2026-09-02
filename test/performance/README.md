@@ -2,6 +2,8 @@
 
 The performance lab generates its corpora at runtime and writes reports under Playwright's ignored `test-results/performance` directory.
 
+The lab is diagnostic and not part of the release gate in `AGENTS.md`. The `pnpm perf:*` scripts below are for a fresh clone or CI; in the owner's checkout `pnpm <script>` is off limits, so run the script bodies from `package.json` directly, for example `./node_modules/.bin/electron-vite build && STRATAMD_PERF_PROFILE=smoke node scripts/run-performance.mjs`.
+
 Run the short local profiles with:
 
 ```bash

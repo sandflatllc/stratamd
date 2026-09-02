@@ -71,6 +71,54 @@ export function computeHunks(before: string, after: string): TextHunk[] {
   })
 }
 
+/** The lines of a text; a trailing newline does not add an empty last line. */
+export function splitLines(text: string): string[] {
+  if (text.length === 0) return []
+  const lines = text.split('\n')
+  if (text.endsWith('\n')) lines.pop()
+  return lines
+}
+
+/** A payload hunk: the changed lines, one unchanged line each side, and where it starts in `after`. */
+export interface ContextHunk {
+  oldStart: number
+  oldLines: number
+  newStart: number
+  newLines: number
+  removed: string[]
+  added: string[]
+  contextBefore: string[]
+  contextAfter: string[]
+  /** 1-based line in `after` where the change begins; for a pure deletion, the line before the removed text. */
+  line: number
+}
+
+/**
+ * Hunks for a delivery: the same zero-context Myers hunks, each carrying one
+ * unchanged line on either side so an agent can place it, and `line` against
+ * the after text.
+ */
+export function contextHunks(before: string, after: string): ContextHunk[] {
+  const beforeLines = splitLines(before)
+  return computeHunks(before, after).map((hunk) => {
+    // jsdiff names the first old line at or after the change, so a pure
+    // insertion's oldStart is the line it lands before.
+    const previous = beforeLines[hunk.oldStartLine - 2]
+    const next = beforeLines[hunk.oldStartLine - 1 + hunk.removedLines]
+    return {
+      oldStart: hunk.oldStartLine,
+      oldLines: hunk.removedLines,
+      newStart: hunk.newStartLine,
+      newLines: hunk.addedLines,
+      removed: splitLines(hunk.removed),
+      added: splitLines(hunk.added),
+      contextBefore: previous === undefined ? [] : [previous],
+      contextAfter: next === undefined ? [] : [next],
+      line: Math.max(1, hunk.newStartLine),
+    }
+  })
+}
+
 export function applyTextEdit(text: string, edit: TextEdit): string {
   assertRange(edit, text.length)
   return text.slice(0, edit.from) + edit.insert + text.slice(edit.to)

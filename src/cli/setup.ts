@@ -5,8 +5,10 @@ import {
   chmod,
   lstat,
   mkdir,
+  readdir,
   readFile,
   readlink,
+  realpath,
   rename,
   rmdir,
   stat,
@@ -44,8 +46,11 @@ interface DefaultAssociationState {
 
 async function readBrandIcon(root: string): Promise<string> {
   const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
+  // A checkout keeps resources/ at the root; a packaged build keeps it beside
+  // app.asar, which is where `root` lands when the CLI runs from the archive.
   const candidates = [
     join(root, 'resources', 'stratamd-icon.svg'),
+    join(dirname(root), 'resources', 'stratamd-icon.svg'),
     ...(resourcesPath ? [join(resourcesPath, 'resources', 'stratamd-icon.svg')] : [])
   ]
   let lastError: unknown
@@ -127,11 +132,25 @@ async function installLink(link: string, target: string): Promise<void> {
   try {
     const entry = await lstat(link)
     if (!entry.isSymbolicLink()) {
-      throw new CommandFailure(`Refusing to replace ${link}`, 1, 'SETUP_CONFLICT')
+      throw new CommandFailure(
+        `Refusing to replace ${link}: it is a file, not a link StrataMD made`,
+        1,
+        'SETUP_CONFLICT',
+        { link, existing: null, hint: `Move ${link} aside, then run setup again.` }
+      )
     }
     const existing = resolve(dirname(link), await readlink(link))
     if (existing === target) return
-    throw new CommandFailure(`Refusing to replace ${link}`, 1, 'SETUP_CONFLICT')
+    throw new CommandFailure(
+      `Refusing to replace ${link}: it points at ${existing}`,
+      1,
+      'SETUP_CONFLICT',
+      {
+        link,
+        existing,
+        hint: `Run "${existing} setup --remove" to unlink the old install, then run setup again. If that build is gone, delete the link.`
+      }
+    )
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
@@ -149,22 +168,40 @@ async function removeLink(link: string, target: string): Promise<void> {
   }
 }
 
+/**
+ * Refreshes the desktop and MIME caches. A missing or failing tool is a
+ * warning, not a failure: the files are already in place, and the package
+ * name (the same on apt, dnf, and pacman) tells the user what to install.
+ */
 export function refreshDesktopDatabases(
   dataDirectory: string,
   runner: SetupCommandRunner = defaultCommandRunner
-): void {
-  runChecked(
-    runner,
-    'update-desktop-database',
-    [join(dataDirectory, 'applications')],
-    'DESKTOP_DATABASE_FAILED'
-  )
-  runChecked(
-    runner,
-    'update-mime-database',
-    [join(dataDirectory, 'mime')],
-    'MIME_DATABASE_FAILED'
-  )
+): string[] {
+  const refreshes = [
+    {
+      command: 'update-desktop-database',
+      args: [join(dataDirectory, 'applications')],
+      pkg: 'desktop-file-utils',
+      effect: 'the app menu entry may not show up'
+    },
+    {
+      command: 'update-mime-database',
+      args: [join(dataDirectory, 'mime')],
+      pkg: 'shared-mime-info',
+      effect: 'file managers may not offer StrataMD for .md files'
+    }
+  ]
+  const warnings: string[] = []
+  for (const { command, args, pkg, effect } of refreshes) {
+    const result = runner(command, args)
+    if (!result.error && result.status === 0) continue
+    const missing = (result.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT'
+    const reason = missing
+      ? `${command} is not installed`
+      : `${command} failed${commandText(result.stderr) ? `: ${commandText(result.stderr)}` : ''}`
+    warnings.push(`${reason}, so ${effect} until it runs. Install ${pkg} (package name on apt, dnf, and pacman) and run setup again.`)
+  }
+  return warnings
 }
 
 async function readDefaultState(path: string): Promise<DefaultAssociationState | undefined> {
@@ -279,15 +316,173 @@ async function restoreDefaultAssociation(
   ])
 }
 
+export type SetupPlatform = 'linux' | 'darwin'
+
+export interface SkillInstallResult {
+  /** What was asked for: claude, codex, agents, or the directory given. */
+  target: string
+  /** The skill directory the harness reads. */
+  path: string
+  /** Where `path` leads when it is a symlink; the files were written there. */
+  resolved?: string
+  status: 'installed' | 'updated' | 'unchanged'
+  files: string[]
+}
+
+export interface SetupResult {
+  ok: true
+  platform: SetupPlatform
+  action: 'install' | 'remove'
+  link: string
+  executable: string
+  skill?: SkillInstallResult
+  hint?: string
+  warnings: string[]
+}
+
 export interface SetupOptions {
   remove?: boolean
   makeDefault?: boolean
+  /** A harness name (claude, codex, agents) or a skills directory to copy the bundled skill into. */
+  skill?: string
   environment?: NodeJS.ProcessEnv
   home?: string
   executable?: string
   commandRunner?: SetupCommandRunner
   platform?: string
   report?: (text: string) => void | Promise<void>
+}
+
+const SKILL_NAME = 'stratamd'
+export const SKILL_HINT =
+  'To give your agent the StrataMD skill, run: stratamd setup --skill claude (or codex, agents, or a skills directory).'
+
+/**
+ * Where the skill goes for each harness. `codex` follows CODEX_HOME the way the
+ * Codex CLI documents it, falling back to ~/.codex; that layout is taken from
+ * documentation, not verified against a running Codex install.
+ */
+export function resolveSkillTarget(spec: string, home: string, environment: NodeJS.ProcessEnv): string {
+  switch (spec) {
+    case 'claude': return join(home, '.claude', 'skills', SKILL_NAME)
+    case 'codex': return join(environment.CODEX_HOME || join(home, '.codex'), 'skills', SKILL_NAME)
+    case 'agents': return join(home, '.agents', 'skills', SKILL_NAME)
+    default: {
+      const directory = spec === '~' || spec.startsWith('~/') ? join(home, spec.slice(1)) : resolve(spec)
+      return join(directory, SKILL_NAME)
+    }
+  }
+}
+
+/** The bundled skill: `skills/` in a checkout, or beside `resources/` in a packaged build. */
+async function findSkillSource(root: string): Promise<string> {
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
+  const candidates = [
+    join(root, 'skills', SKILL_NAME),
+    join(dirname(root), 'skills', SKILL_NAME),
+    ...(resourcesPath ? [join(resourcesPath, 'skills', SKILL_NAME)] : [])
+  ]
+  for (const candidate of candidates) {
+    try {
+      if ((await stat(join(candidate, 'SKILL.md'))).isFile()) return candidate
+    } catch {
+      // Try the next layout.
+    }
+  }
+  throw new CommandFailure(
+    'The bundled skill is missing from this install',
+    1,
+    'SKILL_SOURCE_MISSING',
+    { searched: candidates }
+  )
+}
+
+async function listFiles(directory: string, prefix = ''): Promise<string[]> {
+  const entries = await readdir(directory, { withFileTypes: true })
+  entries.sort((left, right) => left.name.localeCompare(right.name))
+  const files: string[] = []
+  for (const entry of entries) {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name
+    if (entry.isDirectory()) files.push(...(await listFiles(join(directory, entry.name), relative)))
+    else if (entry.isFile()) files.push(relative)
+  }
+  return files
+}
+
+/**
+ * Copies the skill directory file by file. A symlinked target keeps its link
+ * and gets the files written through it, so a harness directory that points
+ * at a canonical copy refreshes that copy. Files the target has and the
+ * source lacks are left alone.
+ */
+async function installSkill(
+  root: string,
+  spec: string,
+  home: string,
+  environment: NodeJS.ProcessEnv
+): Promise<SkillInstallResult> {
+  const source = await findSkillSource(root)
+  const path = resolveSkillTarget(spec, home, environment)
+  let resolved: string | undefined
+  try {
+    const entry = await lstat(path)
+    if (entry.isSymbolicLink()) {
+      try {
+        resolved = await realpath(path)
+      } catch {
+        throw new CommandFailure(`${path} is a link to a missing directory`, 1, 'SETUP_CONFLICT', {
+          path,
+          hint: 'Remove the link or point it at a directory, then run setup --skill again.'
+        })
+      }
+    }
+    if (!(await stat(resolved ?? path)).isDirectory()) {
+      throw new CommandFailure(`${path} exists and is not a directory`, 1, 'SETUP_CONFLICT', {
+        path,
+        hint: 'Move it aside, then run setup --skill again.'
+      })
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
+
+  const destination = resolved ?? path
+  let existed = true
+  try {
+    await stat(join(destination, 'SKILL.md'))
+  } catch {
+    existed = false
+  }
+  await mkdir(destination, { recursive: true })
+  const files = await listFiles(source)
+  let changed = 0
+  for (const file of files) {
+    const content = await readFile(join(source, file))
+    const target = join(destination, file)
+    try {
+      if (Buffer.compare(await readFile(target), content) === 0) continue
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+    await mkdir(dirname(target), { recursive: true })
+    const temporary = `${target}.tmp-${process.pid}`
+    await writeFile(temporary, content)
+    await rename(temporary, target)
+    changed += 1
+  }
+  return {
+    target: spec,
+    path,
+    ...(resolved ? { resolved } : {}),
+    status: existed ? (changed > 0 ? 'updated' : 'unchanged') : 'installed',
+    files
+  }
+}
+
+function pathWarning(environment: NodeJS.ProcessEnv, link: string): string | undefined {
+  const directory = dirname(link)
+  if ((environment.PATH ?? '').split(':').includes(directory)) return undefined
+  return `${directory} is not on your PATH. Add it to your shell profile to run stratamd by name.`
 }
 
 /**
@@ -299,23 +494,21 @@ export interface SetupOptions {
 async function setupDarwin(
   options: SetupOptions,
   environment: NodeJS.ProcessEnv,
-  home: string,
   executable: string,
+  result: SetupResult,
+  warn: (text: string) => Promise<void>
 ): Promise<void> {
   const report = options.report ?? (() => undefined)
-  const link = getCliLinkPath(home)
 
   if (options.remove) {
-    await removeLink(link, executable)
+    await removeLink(result.link, executable)
     return
   }
 
   await access(executable, constants.X_OK)
-  await installLink(link, executable)
-  const onPath = (environment.PATH ?? '').split(':').includes(dirname(link))
-  if (!onPath) {
-    await report(`${dirname(link)} is not on your PATH. Add it to your shell profile to run stratamd by name.\n`)
-  }
+  await installLink(result.link, executable)
+  const warning = pathWarning(environment, result.link)
+  if (warning) await warn(warning)
   if (options.makeDefault) {
     await report(
       'StrataMD cannot change the default app for Markdown files on macOS. To finish:\n'
@@ -326,21 +519,18 @@ async function setupDarwin(
   }
 }
 
-export async function setup(options: SetupOptions = {}): Promise<void> {
-  const environment = options.environment ?? process.env
-  const home = options.home ?? homedir()
-  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
-  const executable = resolve(
-    options.executable
-      ?? environment.STRATAMD_CLI_EXECUTABLE
-      ?? join(root, 'bin', 'stratamd')
-  )
-  if (options.platform ? options.platform === 'darwin' : isDarwin()) {
-    return setupDarwin(options, environment, home, executable)
-  }
+async function setupLinux(
+  options: SetupOptions,
+  environment: NodeJS.ProcessEnv,
+  home: string,
+  root: string,
+  executable: string,
+  result: SetupResult,
+  warn: (text: string) => Promise<void>
+): Promise<void> {
   const userData = dataHome(environment, home)
   const runner = options.commandRunner ?? defaultCommandRunner
-  const link = getCliLinkPath(home)
+  const link = result.link
   const desktop = join(userData, 'applications', 'stratamd.desktop')
   const icon = join(userData, 'icons', 'hicolor', 'scalable', 'apps', 'stratamd-icon.svg')
   const mime = join(userData, 'mime', 'packages', 'stratamd.xml')
@@ -353,7 +543,7 @@ export async function setup(options: SetupOptions = {}): Promise<void> {
     await removeManagedFile(desktop)
     await removeManagedFile(icon)
     await removeManagedFile(mime)
-    refreshDesktopDatabases(userData, runner)
+    for (const warning of refreshDesktopDatabases(userData, runner)) await warn(warning)
     await removeManagedFile(defaultState)
     await rmdir(setupConfigDirectory).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== 'ENOENT' && error.code !== 'ENOTEMPTY') throw error
@@ -375,7 +565,9 @@ export async function setup(options: SetupOptions = {}): Promise<void> {
     mime,
     `<?xml version="1.0" encoding="UTF-8"?>\n<!-- ${MANAGED_MARKER} -->\n<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">\n  <mime-type type="text/markdown">\n    <comment>Markdown document</comment>\n    <glob pattern="*.md"/>\n    <glob pattern="*.markdown"/>\n  </mime-type>\n</mime-info>\n`
   )
-  refreshDesktopDatabases(userData, runner)
+  for (const warning of refreshDesktopDatabases(userData, runner)) await warn(warning)
+  const warning = pathWarning(environment, link)
+  if (warning) await warn(warning)
 
   if (options.makeDefault) {
     const existingState = await readDefaultState(defaultState)
@@ -392,4 +584,39 @@ export async function setup(options: SetupOptions = {}): Promise<void> {
       'SET_DEFAULT_FAILED'
     )
   }
+}
+
+export async function setup(options: SetupOptions = {}): Promise<SetupResult> {
+  const environment = options.environment ?? process.env
+  const home = options.home ?? homedir()
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+  const executable = resolve(
+    options.executable
+      ?? environment.STRATAMD_CLI_EXECUTABLE
+      ?? join(root, 'bin', 'stratamd')
+  )
+  const platform: SetupPlatform =
+    (options.platform ? options.platform === 'darwin' : isDarwin()) ? 'darwin' : 'linux'
+  const result: SetupResult = {
+    ok: true,
+    platform,
+    action: options.remove ? 'remove' : 'install',
+    link: getCliLinkPath(home),
+    executable,
+    warnings: []
+  }
+  const report = options.report ?? (() => undefined)
+  const warn = async (text: string): Promise<void> => {
+    result.warnings.push(text)
+    await report(`${text}\n`)
+  }
+
+  if (platform === 'darwin') await setupDarwin(options, environment, executable, result, warn)
+  else await setupLinux(options, environment, home, root, executable, result, warn)
+
+  if (!options.remove) {
+    if (options.skill !== undefined) result.skill = await installSkill(root, options.skill, home, environment)
+    else result.hint = SKILL_HINT
+  }
+  return result
 }

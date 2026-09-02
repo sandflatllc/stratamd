@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { AppView, SpellingContext, StrataApi, BufferOrigin } from '../shared/contracts'
 import { encodeViewUpdate, type SyncedView } from '../shared/view-sync'
 import { IPC, type InvokeChannel } from '../preload/channels'
+import { electronFileOps, type FileOps } from './file-ops'
 import { logRendererReport } from './log'
 
 type StrataIpcApi = Omit<StrataApi, 'subscribe'>
@@ -116,7 +117,14 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.openThemeSample]: z.tuple([]),
   [IPC.resolveLocalImage]: z.tuple([pathSchema, z.string().min(1).max(16_384)]),
   [IPC.openExternal]: z.tuple([z.string().url().max(16_384)]),
-  [IPC.addDictionaryWord]: z.tuple([z.string().min(1).max(512)])
+  [IPC.addDictionaryWord]: z.tuple([z.string().min(1).max(512)]),
+  [IPC.flashWindow]: z.tuple([]),
+  [IPC.createFile]: z.tuple([pathSchema, z.string().min(1).max(255).optional()]),
+  [IPC.renameFile]: z.tuple([pathSchema, z.string().min(1).max(255)]),
+  [IPC.trashFile]: z.tuple([pathSchema]),
+  [IPC.revealFile]: z.tuple([pathSchema]),
+  [IPC.openFileDialog]: z.tuple([]),
+  [IPC.pasteFromClipboard]: z.tuple([])
 }
 
 /**
@@ -146,6 +154,10 @@ export interface RegisterIpcOptions {
   renderer: WebContents
   allowedRendererUrls?: readonly string[]
   openExternal?: (url: string) => Promise<void>
+  /** Explorer file operations; the default wires Electron's shell and dialog lazily. */
+  fileOps?: () => Promise<FileOps>
+  /** Attention request for the unfocused window; the default flashes the renderer's BrowserWindow. */
+  flashWindow?: () => Promise<void>
 }
 
 export interface RegisteredIpc {
@@ -156,6 +168,17 @@ export interface RegisteredIpc {
 export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
   const allowedRendererUrls = options.allowedRendererUrls ?? ['app://stratamd/']
   const openExternal = options.openExternal ?? openExternalUrl
+  const openTabPaths = async (): Promise<readonly string[]> => (await options.api.getState()).tabs.map((tab) => tab.path)
+  let fileOps: Promise<FileOps> | null = null
+  const files = (): Promise<FileOps> => {
+    fileOps ??= options.fileOps ? options.fileOps() : electronFileOps(openTabPaths)
+    return fileOps
+  }
+  const flashWindow = options.flashWindow ?? (async () => {
+    const { BrowserWindow } = await import('electron')
+    const window = BrowserWindow.fromWebContents(options.renderer)
+    if (window && !window.isDestroyed() && !window.isFocused()) window.flashFrame(true)
+  })
   const verify = process.env.STRATAMD_VIEW_VERIFY === '1'
   let lastSent: SyncedView | null = null
   let nextSeq = 0
@@ -217,7 +240,32 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.openThemeSample]: () => options.api.openThemeSample(),
     [IPC.resolveLocalImage]: (documentPath: string, source: string) => options.api.resolveLocalImage(documentPath, source),
     [IPC.openExternal]: (url: string) => openExternal(url),
-    [IPC.addDictionaryWord]: (word: string) => { options.renderer.session.addWordToSpellCheckerDictionary(word) }
+    [IPC.addDictionaryWord]: (word: string) => { options.renderer.session.addWordToSpellCheckerDictionary(word) },
+    [IPC.flashWindow]: () => flashWindow(),
+    [IPC.createFile]: async (directory: string, name?: string) => {
+      const path = await (await files()).createFile(directory, name)
+      await options.api.refreshExplorer()
+      await options.api.openDocument(path)
+      return path
+    },
+    [IPC.renameFile]: async (path: string, name: string) => {
+      const renamed = await (await files()).renameFile(path, name)
+      await options.api.refreshExplorer()
+      return renamed
+    },
+    [IPC.trashFile]: async (path: string) => {
+      await (await files()).trashFile(path)
+      await options.api.refreshExplorer()
+    },
+    [IPC.revealFile]: async (path: string) => (await files()).revealFile(path),
+    [IPC.openFileDialog]: async () => {
+      const chosen = await (await files()).chooseFile()
+      if (chosen) await options.api.openDocument(chosen)
+    },
+    // A native paste, not a clipboard read: reading the clipboard from main can
+    // block while this process owns the selection, and the paste event lets the
+    // editor's own handling (markdown parsing) run.
+    [IPC.pasteFromClipboard]: () => { options.renderer.paste() }
   }
 
   for (const channel of Object.keys(handlers) as InvokeChannel[]) {

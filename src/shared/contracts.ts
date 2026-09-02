@@ -23,6 +23,8 @@ export interface HunkView {
   inline: boolean
   /** True when this hunk's region already matches the saved file (PRD §6.9 save-state groups). */
   saved: boolean
+  /** When the change was recorded (ms epoch); the rail shows it as relative time. */
+  changedAt: number
 }
 
 export interface ReplyView {
@@ -60,6 +62,8 @@ export interface AttachmentView {
   queuedDeliveries: string[]
   /** Queued non-message deliveries: what a disconnect would discard (PRD §6.6). */
   queuedSendCount: number
+  /** When the agent last called in (ms epoch); null when no call has been recorded. */
+  lastCallAt: number | null
 }
 
 export interface ExplorerFileView {
@@ -330,6 +334,20 @@ export interface StrataApi {
   onSpelling?(listener: (spelling: SpellingContext) => void): () => void
   /** Renderer-only bridge: teaches the spellchecker one word; its underline clears everywhere. */
   addDictionaryWord?(word: string): Promise<void>
+  /** Renderer-only bridge: asks the window manager for attention while the window is unfocused. */
+  flashWindow?(): void
+  /** Renderer-only bridge: creates an empty markdown file in `directory` and returns its path. */
+  createFile?(directory: string, name?: string): Promise<string>
+  /** Renderer-only bridge: renames a file in place; refuses while the document is open. */
+  renameFile?(path: string, name: string): Promise<string>
+  /** Renderer-only bridge: moves a file to the system trash; refuses while the document is open. */
+  trashFile?(path: string): Promise<void>
+  /** Renderer-only bridge: shows the file in the system file manager. */
+  revealFile?(path: string): Promise<void>
+  /** Renderer-only bridge: an open-file dialog; the chosen file opens as a tab. */
+  openFileDialog?(): Promise<void>
+  /** Renderer-only bridge: a native paste into the focused element, so the editor's own paste handling runs (§5.15). */
+  pasteFromClipboard?(): Promise<void>
   closeDocument(path: string, decision?: CloseDecision): Promise<'closed' | 'needs-decision' | 'cancelled'>
   updateBuffer(path: string, content: string, origin: BufferOrigin): Promise<void>
   undo(path: string): Promise<UndoResult>

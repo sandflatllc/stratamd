@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import type { DocumentView, HunkView } from '../../src/shared/contracts'
-import { activeAnnotations, AGENT_PROMPT, annotationCounts, bannerFor, bulkRevertGroups, changeGroups, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, explorerTree, hasResolvedAnnotations, hasUnsavedCounted, hunkAction, hunkAuthor, hunkSnippet, nextReviewTarget, pendingCount, previewTabIndex, rendererThemeStyle, reviewTargets, saveStateSentence, spellingForSelection, threadTime } from '../../src/renderer/model'
-import { nextToast, toastLifetime } from '../../src/renderer/toasts'
+import { activeAnnotations, activitySnapshot, agentActivity, agentActivityMessage, AGENT_PROMPT, annotationCounts, attachmentStatusLine, bannerFor, bulkRevertGroups, changeGroups, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, explorerTree, hasResolvedAnnotations, hasUnsavedCounted, hunkAction, hunkAuthor, hunkSnippet, nextReviewTarget, NOT_LISTENING_AFTER_MS, pendingCount, previewTabIndex, pushRecent, rendererThemeStyle, reviewTargets, saveStateSentence, shouldAdoptPushed, spellingForSelection, tabsToClose, threadTargets, threadTime, timeAgoShort } from '../../src/renderer/model'
+import { INFO_TOAST_MS, nextToast, toastLifetime } from '../../src/renderer/toasts'
+import { formatKeys, shortcutGroups } from '../../src/renderer/shortcuts'
+import { ancestorFolders } from '../../src/renderer/components/Explorer'
+import { menuKeyTarget } from '../../src/renderer/components/PathContextMenu'
 import { THEME_KEYS } from '../../src/shared/theme-keys'
 import { renderAmbient } from '../../src/renderer/components/AmbientDecor'
 
 const hunk: HunkView = {
   id: 'h1', oldStart: 1, oldLines: 1, newStart: 1, newLines: 1,
   removed: ['before'], added: ['after'], status: 'pending', author: null,
-  source: 'buffer', inline: true, saved: false
+  source: 'buffer', inline: true, saved: false, changedAt: 0
 }
 
 function document(overrides: Partial<DocumentView> = {}): DocumentView {
@@ -272,5 +275,140 @@ describe('toast policy (PRD §6.9)', () => {
     expect(second.id).not.toBe(first.id)
     expect(nextToast(second, { message: '', tone: 'error' })).toBe(second)
     expect(nextToast(first, { message: 'Oops', tone: 'error' })?.tone).toBe('error')
+  })
+})
+
+describe('usability round 2 renderer helpers', () => {
+  const claude = { id: 'ag_1', name: 'Claude', color: 'grape' as const }
+  const agentHunk = { ...hunk, id: 'h-agent', author: claude, newStart: 12 }
+  const agentSuggestion = { id: 's1', seq: 3, kind: 'suggestion' as const, status: 'open' as const, author: claude, quote: 'old', text: 'new', line: 4, from: 0, to: 3, replies: [] }
+
+  it('notices new agent changes and suggestions since the last push, never the user\'s own', () => {
+    const before = document({ pendingHunks: [hunk] })
+    const after = document({ pendingHunks: [hunk, agentHunk], annotations: [agentSuggestion, { ...agentSuggestion, id: 's-user', author: 'user' as const }] })
+    expect(agentActivity(null, after)).toBeNull()
+    expect(agentActivity(activitySnapshot(before), before)).toBeNull()
+    const activity = agentActivity(activitySnapshot(before), after)
+    expect(activity).toEqual({ authors: ['Claude'], changes: 1, suggestions: 1, target: { kind: 'suggestion', id: 's1', line: 4 } })
+    expect(agentActivityMessage(activity!)).toBe('Claude changed 1 passage and suggested 1 change')
+    expect(agentActivityMessage({ authors: ['Claude', 'GPT'], changes: 3, suggestions: 0, target: activity!.target })).toBe('Claude and GPT changed 3 passages')
+    // An external hunk with no author is not agent activity.
+    expect(agentActivity(activitySnapshot(before), document({ pendingHunks: [hunk, { ...hunk, id: 'h-ext' }] }))).toBeNull()
+  })
+
+  it('steps through open comments and questions in document order', () => {
+    const view = document({ annotations: [
+      { ...agentSuggestion, id: 'q', kind: 'question', line: 9 },
+      { ...agentSuggestion, id: 'c', kind: 'comment', line: 2 },
+      { ...agentSuggestion, id: 'resolved', kind: 'comment', status: 'resolved', line: 1 },
+      agentSuggestion,
+    ] })
+    expect(threadTargets(view).map((target) => target.id)).toEqual(['c', 'q'])
+    expect(nextReviewTarget(threadTargets(view), 'q', 1)?.id).toBe('c')
+  })
+
+  it('adopts a pushed panel size or zoom only when it differs from the last commit', () => {
+    const sizes = EMPTY_VIEW.settings.panelSizes
+    expect(shouldAdoptPushed(sizes, null)).toBe(true)
+    expect(shouldAdoptPushed(sizes, { ...sizes })).toBe(false)
+    expect(shouldAdoptPushed({ ...sizes, explorerWidth: 300 }, sizes)).toBe(true)
+  })
+
+  it('keeps a short list of recent documents with the newest first', () => {
+    expect(pushRecent(['/a', '/b'], '/b')).toEqual(['/b', '/a'])
+    expect(pushRecent(['/a', '/b'], '/c', 2)).toEqual(['/c', '/a'])
+  })
+
+  it('closes saved tabs in bulk and counts the dirty ones it leaves open', () => {
+    const tabs = [
+      { path: '/one', name: 'one', pendingCount: 0, active: true, dirty: false },
+      { path: '/two', name: 'two', pendingCount: 0, active: false, dirty: true },
+      { path: '/three', name: 'three', pendingCount: 0, active: false, dirty: false },
+    ]
+    expect(tabsToClose(tabs, 'others', '/one')).toEqual({ close: [tabs[2]], keptDirty: 1 })
+    expect(tabsToClose(tabs, 'all', '/one')).toEqual({ close: [tabs[0], tabs[2]], keptDirty: 1 })
+    expect(tabsToClose(tabs, 'saved', '/one')).toEqual({ close: [tabs[0], tabs[2]], keptDirty: 0 })
+  })
+
+  it('gives a toast with a button more time and carries the button through', () => {
+    const run = () => undefined
+    const toast = nextToast(null, { message: 'Claude changed 3 passages', tone: 'info', action: { label: 'Show', run } })
+    expect(toast?.action?.label).toBe('Show')
+    expect(toastLifetime(toast!)).toBe(INFO_TOAST_MS * 3)
+    expect(toastLifetime(nextToast(null, { message: 'Saved.', tone: 'info' })!)).toBe(INFO_TOAST_MS)
+  })
+
+  it('describes the editor keymap in plain words with platform key names', () => {
+    expect(formatKeys('Shift-Mod-c', false)).toBe('Ctrl+Shift+C')
+    expect(formatKeys('Mod-Enter', true)).toBe('Cmd+Enter')
+    const groups = shortcutGroups(undefined, false)
+    const writing = groups.find((group) => group.title === 'Writing')!
+    expect(writing.entries).toEqual(expect.arrayContaining([
+      { keys: 'Ctrl+B', action: 'Bold' },
+      { keys: 'Ctrl+K', action: 'Add or edit a link' },
+      { keys: 'Ctrl+Shift+8', action: 'Bullet list' },
+      { keys: 'Ctrl+/', action: 'Switch between visual and source view' },
+    ]))
+    // Base bindings without a description (Backspace, Delete…) stay out of the sheet.
+    expect(writing.entries.some((entry) => entry.keys === 'Backspace')).toBe(false)
+    expect(groups.flatMap((group) => group.entries).some((entry) => entry.keys.startsWith('F8'))).toBe(true)
+    expect(shortcutGroups(['Mod-b'], false).find((group) => group.title === 'Writing')!.entries).toEqual([{ keys: 'Ctrl+B', action: 'Bold' }])
+  })
+
+  it('finds the folders to open so the active document shows, and walks menus with the arrow keys', () => {
+    const folder = { path: '/root', name: 'root', files: [
+      { path: '/root/a/b/deep.md', name: 'deep.md', relativePath: 'a/b/deep.md', folder: '/root', missing: false, pendingCount: 0 },
+      { path: '/root/top.md', name: 'top.md', relativePath: 'top.md', folder: '/root', missing: false, pendingCount: 0 },
+    ] }
+    expect(ancestorFolders(folder, '/root/a/b/deep.md')).toEqual(['/root/a', '/root/a/b'])
+    expect(ancestorFolders(folder, '/root/top.md')).toEqual([])
+    expect(ancestorFolders(folder, '/elsewhere.md')).toEqual([])
+    const items = [{}, {}, {}] as unknown as HTMLElement[]
+    expect(menuKeyTarget(items, 0, 'ArrowDown')).toBe(1)
+    expect(menuKeyTarget(items, 0, 'ArrowUp')).toBe(2)
+    expect(menuKeyTarget(items, 1, 'End')).toBe(2)
+    expect(menuKeyTarget(items, 1, 'Tab')).toBeNull()
+  })
+})
+
+describe('rail relative time and attachment status (plan 5.5, 5.6)', () => {
+  const MINUTE = 60_000
+
+  it('renders the compact relative time the rail rows use', () => {
+    expect(timeAgoShort(0)).toBe('just now')
+    expect(timeAgoShort(59_000)).toBe('just now')
+    expect(timeAgoShort(3 * MINUTE)).toBe('3 min ago')
+    expect(timeAgoShort(2 * 60 * MINUTE)).toBe('2 h ago')
+    expect(timeAgoShort(30 * 60 * MINUTE)).toBe('yesterday')
+    expect(timeAgoShort(3 * 24 * 60 * MINUTE)).toBe('3 days ago')
+    // A clock that runs ahead of the stamp never reads as the future.
+    expect(timeAgoShort(-5_000)).toBe('just now')
+  })
+
+  it('says when the agent was last heard beside its state', () => {
+    const now = 100 * MINUTE
+    expect(attachmentStatusLine({ state: 'working', lastCallAt: now - 2 * MINUTE, queuedSendCount: 0 }, now))
+      .toBe('working · last heard 2 min ago')
+    expect(attachmentStatusLine({ state: 'waiting', lastCallAt: now - 30_000, queuedSendCount: 0 }, now))
+      .toBe('waiting for changes · last heard just now')
+    expect(attachmentStatusLine({ state: 'pending', lastCallAt: now - MINUTE, queuedSendCount: 2 }, now))
+      .toBe('has an update waiting · last heard 1 min ago · 2 updates waiting for it')
+    // No recorded call: the state alone, as before.
+    expect(attachmentStatusLine({ state: 'working', lastCallAt: null, queuedSendCount: 1 }, now))
+      .toBe('working · 1 update waiting for it')
+  })
+
+  it('reads "not listening" once a working agent has been quiet past the threshold', () => {
+    const now = 100 * MINUTE
+    expect(NOT_LISTENING_AFTER_MS).toBe(10 * MINUTE)
+    expect(attachmentStatusLine({ state: 'working', lastCallAt: now - 10 * MINUTE, queuedSendCount: 0 }, now))
+      .toBe('working · last heard 10 min ago')
+    expect(attachmentStatusLine({ state: 'working', lastCallAt: now - 12 * MINUTE, queuedSendCount: 0 }, now))
+      .toBe('not listening · last heard 12 min ago')
+    // A waiting agent is listening by definition; a pending one is judged by its queue.
+    expect(attachmentStatusLine({ state: 'waiting', lastCallAt: now - 12 * MINUTE, queuedSendCount: 0 }, now))
+      .toBe('waiting for changes · last heard 12 min ago')
+    expect(attachmentStatusLine({ state: 'pending', lastCallAt: now - 12 * MINUTE, queuedSendCount: 0 }, now))
+      .toBe('has an update waiting · last heard 12 min ago')
   })
 })

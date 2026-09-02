@@ -133,4 +133,29 @@ describe('themes in the application', () => {
     expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({ 'schema-version': 2, name: 'Dusk', document: { bold: '#abcdef', italic: '#000001' } })
     expect(states.at(-1)!.settings.theme.active.problems).toEqual([])
   })
+
+  it('reports a failed theme write beside the theme and clears it when a write lands', async () => {
+    const { app, themeStore } = await fixture()
+    await app.createTheme('Fragile', 'strata')
+    const original = themeStore.write.bind(themeStore)
+    let failing = true
+    themeStore.write = async (id, sparse) => {
+      if (failing) throw new Error('EACCES: permission denied')
+      return original(id, sparse)
+    }
+
+    await app.setThemeValue('document.bold', '#123456')
+    await app.flushThemeWrites()
+    let { theme } = (await app.getState()).settings
+    // The edit stays live in memory; the panel says the file did not take it.
+    expect(theme.active.values['document.bold']).toBe('#123456')
+    expect(theme.active.problems).toEqual([expect.objectContaining({ key: 'write', reason: expect.stringContaining('permission denied') })])
+
+    failing = false
+    await app.setThemeValue('document.bold', '#654321')
+    await app.flushThemeWrites()
+    theme = (await app.getState()).settings.theme
+    expect(theme.active.problems).toEqual([])
+    expect((await themeStore.load('fragile')).values['document.bold']).toBe('#654321')
+  })
 })

@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import type { AgentIdentity, AnnotationView, PanelSize } from '../../shared/contracts'
 import { absoluteTime, AGENT_COLORS, THREAD_PANEL_LIMITS, threadTime, USER_ANNOTATION_COLOR } from '../model'
 import { InlineMarkdown } from '../inlineMarkdown'
 import { useClock } from '../useClock'
 import { claimEscape, isEscapeClaimed } from '../escape'
+import { hasPrimaryModifier } from '../../shared/primary-modifier'
 
 // The one thread surface (PRD §6.9): a floating, movable, user-resizable panel
 // on the theme-panel pattern, opened beside the annotated span by rail rows and
@@ -35,6 +36,8 @@ interface ThreadPanelProps {
   onAccept(): void
   onReject(): void
   onClose(): void
+  /** What opened the thread (a rail row, a key), captured before the jump moved focus into the editor (§5.11). */
+  opener?: RefObject<HTMLElement | null>
 }
 
 /** The panel's most recent position this session; runtime state, never persisted. */
@@ -45,6 +48,11 @@ const replyDrafts = new Map<string, string>()
 
 export function replyDraftKey(documentPath: string, annotationId: string): string {
   return `${documentPath}\n${annotationId}`
+}
+
+/** Drop reply drafts for documents that are no longer open (§5.16). */
+export function forgetReplyDrafts(openPaths: ReadonlySet<string>): void {
+  for (const key of replyDrafts.keys()) if (!openPaths.has(key.split('\n')[0]!)) replyDrafts.delete(key)
 }
 
 function clampToViewport(x: number, y: number, width: number, height: number): { x: number; y: number } {
@@ -84,12 +92,23 @@ function ThreadTime({ time, now }: { time: number | undefined; now: number }) {
   return <time className="thread-time" dateTime={new Date(time!).toISOString()} title={absoluteTime(time!)}>{relative}</time>
 }
 
-export function ThreadPanel({ annotation, documentPath, anchor, fallbackCenter, size, zoom, onSize, onReply, onResolve, onAccept, onReject, onClose }: ThreadPanelProps) {
+export function ThreadPanel({ annotation, documentPath, anchor, fallbackCenter, size, zoom, onSize, onReply, onResolve, onAccept, onReject, onClose, opener }: ThreadPanelProps) {
   const draftKey = replyDraftKey(documentPath, annotation.id)
   const [reply, setReply] = useState(() => replyDrafts.get(draftKey) ?? '')
   const [position, setPosition] = useState(() => initialPosition(anchor, size.width, fallbackCenter))
   const root = useRef<HTMLElement>(null)
+  const replyBox = useRef<HTMLTextAreaElement>(null)
   const now = useClock()
+
+  // The reply box takes focus on open; whatever opened the panel gets it back on close (§5.11).
+  useEffect(() => {
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const restoreTo = opener?.current ?? active
+    replyBox.current?.focus({ preventScroll: true })
+    return () => { if (restoreTo?.isConnected) restoreTo.focus({ preventScroll: true }) }
+    // Captured once per thread; the opener is fixed at open time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     lastSessionPosition = position
@@ -204,11 +223,19 @@ export function ThreadPanel({ annotation, documentPath, anchor, fallbackCenter, 
       </div>
       <div className="reply-box">
         <textarea
+          ref={replyBox}
           rows={1}
           value={reply}
           onChange={(event) => setReply(event.target.value)}
           onKeyDown={(event) => {
-            // Enter sends; Shift+Enter makes a new line.
+            // Enter and Ctrl+Enter send; Shift+Enter makes a new line. Ctrl+Enter
+            // stops here so the window's Send shortcut never fires underneath (§5.2).
+            if (event.key === 'Enter' && hasPrimaryModifier(event)) {
+              event.preventDefault()
+              event.stopPropagation()
+              submit()
+              return
+            }
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault()
               submit()

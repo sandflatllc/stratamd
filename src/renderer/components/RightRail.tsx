@@ -7,7 +7,8 @@ import {
   AGENT_COLORS,
   annotationCounts,
   attachedAgo,
-  attachmentStateLabel,
+  attachmentStatusLine,
+  timeAgoShort,
   bulkRevertGroups,
   changeGroups,
   EXTERNAL_COLOR,
@@ -42,6 +43,8 @@ interface RightRailProps {
   onRejectSuggestion(id: string): void
   /** Reverts every pending change by one author, after confirmation (PRD §6.9). */
   onRevertAll(group: { name: string; hunks: HunkView[] }): void
+  /** Keeps every pending change by one author (§5.5). */
+  onKeepAll?(group: { name: string; hunks: HunkView[] }): void
   /** Puts a one-line instruction for a new agent on the clipboard. */
   onCopyAgentPrompt(): void
   onJumpAnnotation(annotation: AnnotationView): void
@@ -68,13 +71,14 @@ function annotationChipColor(annotation: AnnotationView): string {
   return AGENT_COLORS[annotation.author.color]
 }
 
-function ChangeRow(props: Pick<RightRailProps, 'onJumpHunk' | 'onKeepHunk' | 'onRevertHunk'> & { hunk: HunkView }) {
-  const { hunk } = props
+function ChangeRow(props: Pick<RightRailProps, 'onJumpHunk' | 'onKeepHunk' | 'onRevertHunk'> & { hunk: HunkView; now: number }) {
+  const { hunk, now } = props
   const meta = (
     <span className="change-meta" title={hunkSourceTooltip(hunk)}>
       <i style={{ background: colorOf(hunk.author) }} />
       <strong style={{ color: colorOf(hunk.author) }}>{hunkAuthor(hunk)}</strong>
       <small>{hunkAction(hunk)}</small>
+      <small className="change-time" title={absoluteTime(hunk.changedAt)}>{timeAgoShort(now - hunk.changedAt)}</small>
     </span>
   )
   const snippet = (
@@ -150,9 +154,12 @@ function SuggestionRow(props: Pick<RightRailProps, 'onJumpAnnotation' | 'onAccep
  * collapsed by default because a round's diff legitimately overlaps the pending
  * groups above; hunks load on demand and render read-only.
  */
+export const SAVE_HISTORY_PAGE = 10
+
 function SaveHistory({ document, onSaveRound }: Pick<RightRailProps, 'document' | 'onSaveRound'>) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
   const [rounds, setRounds] = useState<Record<string, RoundHunkView[]>>({})
+  const [shown, setShown] = useState(SAVE_HISTORY_PAGE)
   if (document.saves.length === 0) return null
   const keyOf = (index: number) => `${index}:${document.saves[index]?.time ?? 0}`
   const toggle = (index: number) => {
@@ -167,10 +174,12 @@ function SaveHistory({ document, onSaveRound }: Pick<RightRailProps, 'document' 
     }
   }
   const rows = document.saves.map((save, index) => ({ save, index })).reverse()
+  const visible = rows.slice(0, shown)
+  const older = rows.length - visible.length
   return (
     <div className="save-history">
       <h3 className="save-history-heading">Saves · {document.saves.length}</h3>
-      {rows.map(({ save, index }) => {
+      {visible.map(({ save, index }) => {
         const expanded = expandedIndex === index
         const hunks = rounds[keyOf(index)]
         const authors = saveRoundAuthors(save.authors)
@@ -199,6 +208,7 @@ function SaveHistory({ document, onSaveRound }: Pick<RightRailProps, 'document' 
           </div>
         )
       })}
+      {older > 0 && <button type="button" className="text-action show-older" onClick={() => setShown((count) => count + SAVE_HISTORY_PAGE)}>Show older · {older} more</button>}
     </div>
   )
 }
@@ -213,7 +223,7 @@ function ChangeGroup({ label, count, children }: { label: string; count: number;
   )
 }
 
-function ChangesPanel(props: RightRailProps) {
+function ChangesPanel(props: RightRailProps & { now: number }) {
   const groups = changeGroups(props.document)
   const agentSuggestions = groups.proposed.flatMap((annotation) =>
     annotation.author === 'user' ? [] : [annotation.author],
@@ -243,6 +253,7 @@ function ChangesPanel(props: RightRailProps) {
           <div className="suggestion-bulk-row" key={`revert:${group.key}`}>
             <span style={{ color: colorOf(group.author) }}>{group.name} · {group.hunks.length} changes</span>
             <span>
+              {props.onKeepAll && <button type="button" className="keep-button" onClick={() => props.onKeepAll!({ name: group.name, hunks: group.hunks })}>Keep all</button>}
               <button type="button" className="revert-button" onClick={() => props.onRevertAll({ name: group.name, hunks: group.hunks })}>Revert all</button>
             </span>
           </div>
@@ -251,10 +262,10 @@ function ChangesPanel(props: RightRailProps) {
           {groups.proposed.map((annotation) => <SuggestionRow key={annotation.id} annotation={annotation} onJumpAnnotation={props.onJumpAnnotation} onAcceptSuggestion={props.onAcceptSuggestion} onRejectSuggestion={props.onRejectSuggestion} />)}
         </ChangeGroup>
         <ChangeGroup label="Unsaved" count={groups.unsaved.length}>
-          {groups.unsaved.map((hunk) => <ChangeRow key={hunk.id} hunk={hunk} onJumpHunk={props.onJumpHunk} onKeepHunk={props.onKeepHunk} onRevertHunk={props.onRevertHunk} />)}
+          {groups.unsaved.map((hunk) => <ChangeRow key={hunk.id} hunk={hunk} now={props.now} onJumpHunk={props.onJumpHunk} onKeepHunk={props.onKeepHunk} onRevertHunk={props.onRevertHunk} />)}
         </ChangeGroup>
         <ChangeGroup label="Saved" count={groups.saved.length}>
-          {groups.saved.map((hunk) => <ChangeRow key={hunk.id} hunk={hunk} onJumpHunk={props.onJumpHunk} onKeepHunk={props.onKeepHunk} onRevertHunk={props.onRevertHunk} />)}
+          {groups.saved.map((hunk) => <ChangeRow key={hunk.id} hunk={hunk} now={props.now} onJumpHunk={props.onJumpHunk} onKeepHunk={props.onKeepHunk} onRevertHunk={props.onRevertHunk} />)}
         </ChangeGroup>
         {empty && <div className="empty-state">All caught up. <small>Everything reviewed.</small></div>}
         <SaveHistory key={props.document.path} document={props.document} onSaveRound={props.onSaveRound} />
@@ -310,7 +321,7 @@ function AttachmentsPanel({ document, now, onNudge, onSetLead, onDisconnect, onC
             <span className="agent-avatar" style={{ background: color, color: textColorFor(color) }}>{initials(attachment.agent.name)}</span>
             <span className="agent-detail">
               <strong>{attachment.agent.name} <small title={absoluteTime(attachment.attachedAt)}>{attachedAgo(attachment.attachedAt, now)}</small></strong>
-              <span><i className={`state-dot state-${attachment.state}`} style={attachment.state === 'waiting' ? { background: color } : undefined} />{attachmentStateLabel(attachment.state)}</span>
+              <span><i className={`state-dot state-${attachment.state}`} style={attachment.state === 'waiting' ? { background: color } : undefined} />{attachmentStatusLine(attachment, now)}</span>
             </span>
             <span className="agent-actions">
               <button
@@ -327,7 +338,7 @@ function AttachmentsPanel({ document, now, onNudge, onSetLead, onDisconnect, onC
                 aria-label={`Disconnect ${attachment.agent.name}`}
                 onClick={() => onDisconnect(attachment)}
               >⏻</button>
-              <button type="button" className="nudge" onClick={() => onNudge(attachment.agent.id)}>nudge</button>
+              <button type="button" className="nudge" title={`Copies a short reminder that asks ${attachment.agent.name} to check in with this document. Paste it to the agent.`} onClick={() => onNudge(attachment.agent.id)}>nudge</button>
             </span>
           </div>
         )
@@ -347,7 +358,7 @@ export function RightRail(props: RightRailProps) {
   const now = useClock()
   return (
     <aside className="right-rail">
-      <ChangesPanel {...props} />
+      <ChangesPanel {...props} now={now} />
       <Resizer axis="horizontal" label="Resize changes panel" value={props.changesHeight} min={120} max={520} onChange={(value) => props.onHeight('changesHeight', value, false)} onCommit={(value) => props.onHeight('changesHeight', value, true)} />
       <AnnotationsPanel {...props} />
       <Resizer axis="horizontal" label="Resize annotations panel" value={props.annotationsHeight} min={90} max={420} onChange={(value) => props.onHeight('annotationsHeight', value, false)} onCommit={(value) => props.onHeight('annotationsHeight', value, true)} />

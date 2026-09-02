@@ -1,10 +1,13 @@
 import { expect, test } from '@playwright/test'
-import { Scenario, primaryKey, selectTextInVisualEditor } from './harness'
+import { Scenario, lineStartKey, primaryKey, selectToLineEndKey, selectTextInVisualEditor } from './harness'
 
 // The annotate pill's C/Q/S hotkeys listen on the window. Two reported
 // regressions from that scope: Ctrl+C over a selection opened the comment
 // composer instead of copying, and letters typed into the thread-panel reply
 // were stolen to open a second composer whenever a selection pill was still up.
+// Round 2 (§5.1, §5.2): the bare letters act only on a pointer selection or a
+// focused pill, so a keyboard selection keeps typing-to-replace, and Ctrl+Enter
+// inside the composer or a thread reply submits that form, not Send.
 const document = '# Hotkeys\n\nReply to this thread sentence.\n\nSelect this other sentence.\n'
 
 test('Ctrl+C over a selection copies instead of opening the composer', async ({}, testInfo) => {
@@ -52,12 +55,17 @@ test('letters typed into a thread reply stay there while a selection pill is up'
 
     await expect(reply).toHaveValue('quick check success')
     await expect(page.locator('.annotation-composer')).toHaveCount(0)
+
+    // Ctrl+Enter sends the reply; it never opens Send underneath (§5.2).
+    await page.keyboard.press(primaryKey('Enter'))
+    await expect(thread.locator('.reply')).toContainText('quick check success')
+    await expect(page.getByRole('dialog', { name: /Send changes/i })).toHaveCount(0)
   } finally {
     await scenario.dispose()
   }
 })
 
-test('a bare C with focus in the editor still opens the comment composer', async ({}, testInfo) => {
+test('a bare C on a pointer selection with focus in the editor opens the comment composer', async ({}, testInfo) => {
   const scenario = await Scenario.create(testInfo, document, 'hotkeys.md')
   try {
     const page = await scenario.launch()
@@ -70,6 +78,34 @@ test('a bare C with focus in the editor still opens the comment composer', async
     await expect(composer).toBeVisible()
     await expect(composer.locator('.annotation-kind')).toHaveText('comment')
     await expect(composer.locator('textarea')).toBeFocused()
+
+    // Ctrl+Enter inside the composer adds the note instead of opening Send (§5.2).
+    await page.keyboard.type('Needs a citation.')
+    await page.keyboard.press(primaryKey('Enter'))
+    await expect(composer).toHaveCount(0)
+    await expect(page.getByRole('dialog', { name: /Send changes/i })).toHaveCount(0)
+    await expect(page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'Select this other sentence.' })).toBeVisible()
+  } finally {
+    await scenario.dispose()
+  }
+})
+
+test('typing over a keyboard selection replaces the text instead of opening the pill composer', async ({}, testInfo) => {
+  const scenario = await Scenario.create(testInfo, document, 'hotkeys.md')
+  try {
+    const page = await scenario.launch()
+    const editor = page.getByRole('textbox', { name: /document editor/i })
+    await page.getByText('Select this other sentence.').click()
+    await page.keyboard.press(lineStartKey)
+    await page.keyboard.press(selectToLineEndKey)
+    // The pill still shows for a keyboard selection; its letters just do not fire.
+    await expect(page.getByRole('menu', { name: /annotate selection/i })).toBeVisible()
+
+    await page.keyboard.press('s')
+
+    await expect(page.locator('.annotation-composer')).toHaveCount(0)
+    await expect(editor).not.toContainText('Select this other sentence.')
+    await expect(editor.locator('p').last()).toHaveText('s')
   } finally {
     await scenario.dispose()
   }

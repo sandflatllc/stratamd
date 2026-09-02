@@ -31,15 +31,37 @@ function containsNodeType(node: NodeWithChildren, types: ReadonlySet<string>): b
   return node.children?.some((child) => containsNodeType(child, types)) ?? false
 }
 
-function hasMathSyntax(source: string): boolean {
-  let dollars = 0
+function isEscaped(source: string, index: number): boolean {
+  let slashes = 0
+  for (let cursor = index - 1; cursor >= 0 && source[cursor] === '\\'; cursor -= 1) slashes += 1
+  return slashes % 2 === 1
+}
+
+/**
+ * Whether a block reads as math, by pandoc's rule: an opening `$` is followed
+ * by a non-space, a closing `$` is preceded by a non-space and not followed by
+ * a digit. "$5 and $10" is prose; "$x$" and any `$$` block are math, as are
+ * `\(…\)` and `\[…\]`.
+ */
+export function hasMathSyntax(source: string): boolean {
+  if (/(^|[^\\])\\(?:\([\s\S]*?\\\)|\[[\s\S]*?\\\])/.test(source)) return true
+  const unescaped: number[] = []
   for (let index = 0; index < source.length; index += 1) {
-    if (source[index] !== '$') continue
-    let slashes = 0
-    for (let cursor = index - 1; cursor >= 0 && source[cursor] === '\\'; cursor -= 1) slashes += 1
-    if (slashes % 2 === 0) dollars += 1
+    if (source[index] === '$' && !isEscaped(source, index)) unescaped.push(index)
   }
-  return dollars >= 2 || /(^|[^\\])\\(?:\([\s\S]*?\\\)|\[[\s\S]*?\\\])/.test(source)
+  for (let cursor = 0; cursor < unescaped.length; cursor += 1) {
+    const open = unescaped[cursor]!
+    if (source[open + 1] === '$') return true
+    const after = source[open + 1]
+    if (after === undefined || /\s/u.test(after)) continue
+    for (let next = cursor + 1; next < unescaped.length; next += 1) {
+      const close = unescaped[next]!
+      const before = source[close - 1]
+      const following = source[close + 1]
+      if (before !== undefined && !/\s/u.test(before) && (following === undefined || !/\d/u.test(following))) return true
+    }
+  }
+  return false
 }
 
 function classifyRaw(node: MarkdownNode, source: string): RawConstructKind | undefined {

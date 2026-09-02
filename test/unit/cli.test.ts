@@ -5,6 +5,7 @@ import { Readable, Writable } from 'node:stream'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AGENT_HELP } from '../../src/cli/agent-help.js'
 import { deriveAgentId, runCli, sessionAgentId, type CliRuntime } from '../../src/cli/commands.js'
+import { PAYLOAD_VERSION } from '../../src/core/payload.js'
 import { PROTOCOL_VERSION, type CommandRequest, type CommandResponse } from '../../src/cli/protocol.js'
 import { SocketTimeoutError, SocketUnavailableError, socketPathForEnvironment } from '../../src/cli/socket-client.js'
 import { setup, type SetupCommandRunner } from '../../src/cli/setup.js'
@@ -213,7 +214,7 @@ describe('command parsing and output', () => {
       })
     ).toBe(0)
     expect(sent?.args).toMatchObject({ annotation: 'a1', text: 'first line\nsecond line\n' })
-    expect(io.stdout()).toBe('')
+    expect(io.stdout()).toBe('{"ok":true}\n')
     expect(io.stderr()).toBe('')
   })
 
@@ -233,7 +234,7 @@ describe('command parsing and output', () => {
     expect(sent?.args).toMatchObject({
       annotations: [{ kind: 'comment', quote: 'Test', text: 'first line\n\nthird line\n' }]
     })
-    expect(io.stdout()).toBe('')
+    expect(io.stdout()).toBe('{"ok":true}\n')
     expect(io.stderr()).toBe('')
   })
 
@@ -380,7 +381,7 @@ describe('command parsing and output', () => {
 
     for (const [argv, message] of [
       [['edit', file, '--as', 'ag_a', '--match', 'a'], 'Missing --replace'],
-      [['edit', file, '--as', 'ag_a', '--replace', 'a'], 'Missing --match'],
+      [['edit', file, '--as', 'ag_a', '--replace', 'a'], 'Missing --match (or --append to insert at the end)'],
       [['edit', file, '--as', 'ag_a', '--json', '-', '--match', 'a'], '--json cannot be combined with individual edit options'],
     ] as const) {
       const io = captureIo('[]')
@@ -389,7 +390,7 @@ describe('command parsing and output', () => {
     }
     const badBatch = captureIo(JSON.stringify([{ match: '', replace: 'x' }]))
     expect(await runCli(['edit', file, '--as', 'ag_a', '--json', '-'], runtime(badBatch))).toBe(1)
-    expect(JSON.parse(badBatch.stderr())).toMatchObject({ code: 'USAGE', error: 'Edit 1 needs a non-empty match' })
+    expect(JSON.parse(badBatch.stderr())).toMatchObject({ code: 'USAGE', error: expect.stringContaining('Edit 1 needs a non-empty match') })
 
     const brief = captureIo()
     expect(await runCli(['state', file, '--brief'], runtime(brief))).toBe(0)
@@ -604,6 +605,309 @@ describe('command parsing and output', () => {
   })
 })
 
+describe('versions, help, and the build handshake', () => {
+  it('prints the app, protocol, and payload versions with the CLI and app paths', async () => {
+    const io = captureIo()
+    expect(await runCli(['--version'], { ...io.runtime, environment: { STRATAMD_CLI_EXECUTABLE: '/opt/strata/stratamd', STRATAMD_APP_EXECUTABLE: '/bin/sh' } })).toBe(0)
+    const packageJson = JSON.parse(await readFile(join(process.cwd(), 'package.json'), 'utf8')) as { version: string }
+    expect(JSON.parse(io.stdout())).toEqual({
+      version: packageJson.version,
+      protocol: PROTOCOL_VERSION,
+      payload: PAYLOAD_VERSION,
+      cli: '/opt/strata/stratamd',
+      app: '/bin/sh',
+    })
+    expect(io.stderr()).toBe('')
+
+    const missingApp = captureIo()
+    expect(await runCli(['--version'], { ...missingApp.runtime, environment: { STRATAMD_APP_EXECUTABLE: '/definitely/missing' } })).toBe(0)
+    expect(JSON.parse(missingApp.stdout())).toMatchObject({ app: null, cli: expect.any(String) })
+  })
+
+  it.each([['--help'], ['-h'], ['help']])('%s prints the usage screen with the pointer to --agent-help', async (flag) => {
+    const io = captureIo()
+    expect(await runCli([flag], io.runtime)).toBe(0)
+    expect(io.stdout()).toContain('Usage: stratamd')
+    expect(io.stdout()).toContain('--agent-help')
+    expect(io.stdout()).toContain('doctor')
+    expect(io.stdout()).toContain('setup [--skill')
+    expect(io.stderr()).toBe('')
+  })
+
+  it('gives a subagent an id of its own and tells siblings apart only through --as', () => {
+    const parent = sessionAgentId({ CLAUDE_CODE_SESSION_ID: 'shared' })!
+    const child = sessionAgentId({ CLAUDE_CODE_SESSION_ID: 'shared', CLAUDE_CODE_CHILD_SESSION: '1' })!
+    expect(child).toMatch(/^ag_[a-f0-9]{12}$/)
+    expect(child).not.toBe(parent)
+    expect(child).toBe(sessionAgentId({ CLAUDE_CODE_SESSION_ID: 'shared', CLAUDE_CODE_CHILD_SESSION: '1' }))
+    expect(sessionAgentId({ CLAUDE_CODE_CHILD_SESSION: '1' })).toBeUndefined()
+  })
+
+  it('maps a response from another build to PROTOCOL_MISMATCH, whichever side noticed', async () => {
+    const file = await document()
+    const respond = (version: number, body: Partial<CommandResponse> = {}) => async (request: CommandRequest): Promise<CommandResponse> =>
+      ({ version, id: request.id, ok: true, result: { done: true }, ...body } as CommandResponse)
+
+    // The app is older: it answered INVALID_REQUEST with its own version, as builds before the handshake do.
+    const olderApp = captureIo()
+    expect(await runCli(['state', file], {
+      ...olderApp.runtime,
+      request: respond(PROTOCOL_VERSION - 1, { ok: false, exitCode: 1, error: { error: 'Invalid socket request', code: 'INVALID_REQUEST' } } as Partial<CommandResponse>),
+    })).toBe(4)
+    expect(olderApp.stdout()).toBe('')
+    expect(JSON.parse(olderApp.stderr())).toMatchObject({
+      code: 'PROTOCOL_MISMATCH',
+      error: expect.stringContaining('restart StrataMD to pick up the new build'),
+      detail: { app: PROTOCOL_VERSION - 1, cli: PROTOCOL_VERSION },
+    })
+
+    // The app is newer and answered normally: the command must be updated.
+    const newerApp = captureIo()
+    expect(await runCli(['state', file], { ...newerApp.runtime, request: respond(PROTOCOL_VERSION + 1) })).toBe(4)
+    expect(JSON.parse(newerApp.stderr())).toMatchObject({
+      code: 'PROTOCOL_MISMATCH',
+      error: expect.stringContaining('update the stratamd command'),
+    })
+
+    // The app said it itself: printed as is.
+    const appSaid = captureIo()
+    expect(await runCli(['state', file], {
+      ...appSaid.runtime,
+      request: async (request) => ({
+        version: PROTOCOL_VERSION + 1, id: request.id, ok: false, exitCode: 4,
+        error: { error: 'The running StrataMD speaks protocol 11 and this stratamd command speaks protocol 10: update it', code: 'PROTOCOL_MISMATCH', detail: { app: 11, cli: 10 } },
+      }),
+    })).toBe(4)
+    expect(JSON.parse(appSaid.stderr())).toMatchObject({ code: 'PROTOCOL_MISMATCH', detail: { app: 11, cli: 10 } })
+  })
+
+  it('names the socket and log path when the app is unreachable', async () => {
+    const file = await document()
+    const io = captureIo()
+    const home = await mkdtemp(join(tmpdir(), 'stratamd-cli-home-'))
+    temporaryDirectories.push(home)
+    expect(await runCli(['send', file, '--as', 'ag_a', '--text', 'ping'], {
+      ...io.runtime,
+      environment: { HOME: home, XDG_DATA_HOME: join(home, 'data') },
+      socketPath: join(home, 'run', 'stratamd.sock'),
+      request: async () => { throw new SocketUnavailableError('absent', 'ENOENT') },
+    })).toBe(4)
+    expect(JSON.parse(io.stderr())).toMatchObject({
+      code: 'INSTANCE_UNREACHABLE',
+      detail: {
+        socket: join(home, 'run', 'stratamd.sock'),
+        log: join(home, 'data', 'stratamd', 'logs', 'stratamd.log'),
+        hint: expect.stringContaining('doctor'),
+      },
+    })
+  })
+})
+
+describe('doctor', () => {
+  async function fixture(): Promise<{ home: string; environment: NodeJS.ProcessEnv; socketPath: string; lock: string; log: string }> {
+    const home = await mkdtemp(join(tmpdir(), 'stratamd-doctor-'))
+    temporaryDirectories.push(home)
+    const data = join(home, 'data', 'stratamd')
+    const log = join(data, 'logs', 'stratamd.log')
+    await mkdir(join(data, 'logs'), { recursive: true })
+    await writeFile(log, [
+      JSON.stringify({ time: '2026-09-01T01:00:00.000Z', level: 'warn', scope: 'watcher', message: 'ignored' }),
+      ...Array.from({ length: 6 }, (_, index) => JSON.stringify({ time: `2026-09-01T02:0${index}:00.000Z`, level: 'error', scope: 'save', message: `failure ${index}` })),
+      'not json at all',
+    ].join('\n') + '\n')
+    const entry = join(data, 'docs', 'abc123def456')
+    await mkdir(entry, { recursive: true })
+    const lock = join(entry, 'lock')
+    await writeFile(lock, JSON.stringify({ pid: 4194303, token: 'x' }) + '\n')
+    await writeFile(join(entry, 'meta.json'), JSON.stringify({ realpath: '/home/u/notes.md' }))
+    return {
+      home,
+      environment: { HOME: home, XDG_DATA_HOME: join(home, 'data'), XDG_CONFIG_HOME: join(home, 'config'), STRATAMD_APP_EXECUTABLE: '/bin/sh' },
+      socketPath: join(home, 'run', 'stratamd.sock'),
+      lock,
+      log,
+    }
+  }
+
+  it('reports the socket, directories, log errors, stale locks, and versions without the app', async () => {
+    const { home, environment, socketPath, lock, log } = await fixture()
+    const io = captureIo()
+    expect(await runCli(['doctor'], {
+      ...io.runtime,
+      environment,
+      socketPath,
+      request: async () => { throw new SocketUnavailableError('absent', 'ENOENT') },
+    })).toBe(0)
+    const report = JSON.parse(io.stdout())
+    expect(report).toMatchObject({
+      ok: false,
+      version: { protocol: PROTOCOL_VERSION, payload: PAYLOAD_VERSION, app: '/bin/sh' },
+      socket: { path: socketPath, exists: false, answers: false, protocol: null, error: 'absent' },
+      directories: { data: join(home, 'data', 'stratamd'), config: join(home, 'config', 'stratamd') },
+      log: { path: log },
+      locks: [{ path: lock, document: '/home/u/notes.md', pid: 4194303, alive: false }],
+    })
+    expect(report.log.errors).toEqual([
+      '2026-09-01T02:02:00.000Z save: failure 2',
+      '2026-09-01T02:03:00.000Z save: failure 3',
+      '2026-09-01T02:04:00.000Z save: failure 4',
+      '2026-09-01T02:05:00.000Z save: failure 5',
+      'not json at all',
+    ])
+    expect(report.problems).toEqual([
+      expect.stringContaining('not running'),
+      expect.stringContaining(log),
+      expect.stringContaining(`Stale lock ${lock}`),
+    ])
+    expect(io.stderr()).toBe('')
+  })
+
+  it('probes the socket and flags a protocol mismatch as a problem', async () => {
+    const { environment, socketPath } = await fixture()
+    const probes: CommandRequest[] = []
+    const io = captureIo()
+    expect(await runCli(['doctor'], {
+      ...io.runtime,
+      environment,
+      socketPath,
+      request: async (request) => {
+        probes.push(request)
+        return { version: PROTOCOL_VERSION - 1, id: 'invalid', ok: false, exitCode: 1, error: { error: 'Invalid socket request', code: 'INVALID_REQUEST' } }
+      },
+    })).toBe(0)
+    expect(probes.map((probe) => probe.command)).toEqual(['docs'])
+    const report = JSON.parse(io.stdout())
+    expect(report.socket).toEqual({ path: socketPath, exists: false, answers: true, protocol: PROTOCOL_VERSION - 1 })
+    expect(report.problems[0]).toContain('restart StrataMD to pick up the new build')
+
+    const healthy = captureIo()
+    expect(await runCli(['doctor', 'extra'], healthy.runtime)).toBe(1)
+    expect(JSON.parse(healthy.stderr())).toMatchObject({ code: 'USAGE', error: expect.stringContaining('doctor takes no arguments') })
+  })
+})
+
+describe('agent loop ergonomics', () => {
+  it('defaults attach to a 90 second timeout with the socket deadline 15 seconds later', async () => {
+    const file = await document()
+    let sent: CommandRequest | undefined
+    let timeoutMs: number | undefined
+    const io = captureIo()
+    expect(await runCli(['attach', file, '--as', 'ag_test'], {
+      ...io.runtime,
+      request: async (request, options): Promise<CommandResponse> => {
+        sent = request
+        timeoutMs = options?.timeoutMs
+        return { version: PROTOCOL_VERSION, id: request.id, ok: true, result: { version: PAYLOAD_VERSION, event: 'timeout' } }
+      },
+    })).toBe(0)
+    expect(sent?.args).toMatchObject({ timeout: 90 })
+    expect(timeoutMs).toBe(105_000)
+  })
+
+  it('prints a warning and exits 0 when the ack fails after the delivery was printed', async () => {
+    const file = await document()
+    for (const failAck of ['error', 'throw'] as const) {
+      const io = captureIo()
+      expect(await runCli(['attach', file, '--as', 'ag_test', '--timeout', '0'], {
+        ...io.runtime,
+        request: async (request) => {
+          if (request.command === 'ack') {
+            if (failAck === 'throw') throw new SocketTimeoutError()
+            return { version: PROTOCOL_VERSION, id: request.id, ok: false, exitCode: 2, error: { error: 'Delivery d_1 was not found', code: 'NOT_FOUND' } }
+          }
+          return {
+            version: PROTOCOL_VERSION, id: request.id, ok: true,
+            result: { version: PAYLOAD_VERSION, event: 'send', file, agent: 'ag_test', deliveryId: 'd_1', text: 'payload' },
+          }
+        },
+      }), failAck).toBe(0)
+      expect(JSON.parse(io.stdout())).toMatchObject({ deliveryId: 'd_1' })
+      expect(JSON.parse(io.stderr())).toMatchObject({ warning: expect.stringContaining('not acknowledged') })
+    }
+  })
+
+  it('state --raw prints the buffer verbatim, --annotations asks for the annotations view, and views are exclusive', async () => {
+    const file = await document()
+    const sent: CommandRequest[] = []
+    const runtime = (io: ReturnType<typeof captureIo>): CliRuntime => ({
+      ...io.runtime,
+      request: async (request): Promise<CommandResponse> => {
+        sent.push(request)
+        return { version: PROTOCOL_VERSION, id: request.id, ok: true, result: { version: PAYLOAD_VERSION, event: 'state', document: '# Raw\n\nno newline at end', text: 'rendered' } }
+      },
+    })
+
+    const raw = captureIo()
+    expect(await runCli(['state', file, '--raw'], runtime(raw))).toBe(0)
+    expect(sent.at(-1)?.args).toEqual({ file })
+    expect(raw.stdout()).toBe('# Raw\n\nno newline at end')
+    expect(raw.stderr()).toBe('')
+
+    const annotations = captureIo()
+    expect(await runCli(['state', file, '--annotations'], runtime(annotations))).toBe(0)
+    expect(sent.at(-1)?.args).toEqual({ file, annotationsOnly: true })
+    expect(JSON.parse(annotations.stdout())).toMatchObject({ event: 'state' })
+
+    const both = captureIo()
+    expect(await runCli(['state', file, '--raw', '--brief'], runtime(both))).toBe(1)
+    expect(JSON.parse(both.stderr())).toMatchObject({ code: 'USAGE', error: expect.stringContaining('one view') })
+  })
+
+  it('parses anchorless inserts, --append, --dry-run, and refuses an empty match without a context', async () => {
+    const file = await document()
+    const sent: CommandRequest[] = []
+    const runtime = (io: ReturnType<typeof captureIo>): CliRuntime => ({
+      ...io.runtime,
+      request: async (request): Promise<CommandResponse> => {
+        sent.push(request)
+        return { version: PROTOCOL_VERSION, id: request.id, ok: true, result: { applied: [] } }
+      },
+    })
+
+    expect(await runCli(['edit', file, '--as', 'ag_a', '--match', '', '--preceded-by', '# Test\n', '--replace', 'Intro.\n'], runtime(captureIo()))).toBe(0)
+    expect(sent.at(-1)?.args).toMatchObject({ edits: [{ match: '', precededBy: '# Test\n', replace: 'Intro.\n' }] })
+
+    expect(await runCli(['edit', file, '--as', 'ag_a', '--match', '', '--preceded-by', '', '--replace', 'Top\n'], runtime(captureIo()))).toBe(0)
+    expect(sent.at(-1)?.args).toMatchObject({ edits: [{ match: '', precededBy: '', replace: 'Top\n' }] })
+
+    expect(await runCli(['edit', file, '--as', 'ag_a', '--append', '--replace', '\nEnd.\n', '--dry-run'], runtime(captureIo()))).toBe(0)
+    expect(sent.at(-1)?.args).toMatchObject({ edits: [{ match: '', replace: '\nEnd.\n', append: true }], dryRun: true })
+
+    const batch = captureIo(JSON.stringify([{ append: true, replace: 'x' }, { match: '', followedBy: 'Test', replace: 'y' }]))
+    expect(await runCli(['edit', file, '--as', 'ag_a', '--json', '-'], runtime(batch))).toBe(0)
+    expect(sent.at(-1)?.args).toMatchObject({ edits: [{ match: '', replace: 'x', append: true }, { match: '', followedBy: 'Test', replace: 'y' }] })
+
+    for (const [argv, message] of [
+      [['edit', file, '--as', 'ag_a', '--match', '', '--replace', 'x'], 'empty match'],
+      [['edit', file, '--as', 'ag_a', '--append', '--match', 'x', '--replace', 'y'], '--append takes no --match'],
+      [['edit', file, '--as', 'ag_a', '--replace', 'x'], 'Missing --match'],
+    ] as const) {
+      const io = captureIo()
+      expect(await runCli([...argv], runtime(io))).toBe(1)
+      expect(JSON.parse(io.stderr())).toMatchObject({ code: 'USAGE', error: expect.stringContaining(message) })
+    }
+  })
+
+  it('lists the valid options for an unknown one and says what a positional error expected', async () => {
+    const badOption = captureIo()
+    expect(await runCli(['state', '--wat'], badOption.runtime)).toBe(1)
+    expect(JSON.parse(badOption.stderr())).toMatchObject({
+      code: 'USAGE',
+      error: 'Unknown option --wat',
+      detail: { valid: ['--brief', '--text-only', '--annotations', '--raw'] },
+    })
+
+    const positional = captureIo()
+    expect(await runCli(['docs', 'extra'], positional.runtime)).toBe(1)
+    expect(JSON.parse(positional.stderr())).toMatchObject({ error: 'docs takes no arguments; got 1', detail: { positionals: ['extra'] } })
+
+    const file = await document()
+    const tooMany = captureIo()
+    expect(await runCli(['changes', file, file], tooMany.runtime)).toBe(1)
+    expect(JSON.parse(tooMany.stderr())).toMatchObject({ error: 'changes takes exactly <file>; got 2' })
+  })
+})
+
 describe('XDG paths', () => {
   it('uses XDG_RUNTIME_DIR when absolute and the private cache fallback otherwise', () => {
     // socketPathForEnvironment answers for the host platform; the full
@@ -660,28 +964,6 @@ describe('local setup', () => {
     await setup({ ...options, remove: true })
     await setup({ ...options, remove: true })
     await expect(stat(join(home, '.local', 'bin', 'stratamd'))).rejects.toMatchObject({ code: 'ENOENT' })
-  })
-
-  it.each([
-    ['update-desktop-database', 'DESKTOP_DATABASE_FAILED'],
-    ['update-mime-database', 'MIME_DATABASE_FAILED']
-  ] as const)('fails when %s fails', async (failedCommand, expectedCode) => {
-    const home = await mkdtemp(join(tmpdir(), 'stratamd-setup-failure-'))
-    temporaryDirectories.push(home)
-    const runner: SetupCommandRunner = (command) => command === failedCommand
-      ? { status: 1, stderr: `${command} is unavailable` }
-      : { status: 0, stdout: '', stderr: '' }
-
-    await expect(setup({
-      platform: 'linux',
-      home,
-      executable: join(process.cwd(), 'bin', 'stratamd'),
-      environment: { HOME: home, XDG_DATA_HOME: join(home, 'data') },
-      commandRunner: runner
-    })).rejects.toMatchObject({
-      code: expectedCode,
-      detail: `${failedCommand} is unavailable`
-    })
   })
 
   it('restores the previous default on removal without replacing a later user choice', async () => {

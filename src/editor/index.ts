@@ -1,4 +1,4 @@
-import { baseKeymap } from 'prosemirror-commands'
+import { baseKeymap, selectAll } from 'prosemirror-commands'
 import { closeHistory, history, isHistoryTransaction, redo, redoDepth, undo, undoDepth } from 'prosemirror-history'
 import {
   InputRule,
@@ -7,8 +7,8 @@ import {
   wrappingInputRule,
 } from 'prosemirror-inputrules'
 import { keymap } from 'prosemirror-keymap'
-import { Fragment, type Node as ProseMirrorNode } from 'prosemirror-model'
-import { EditorState, NodeSelection, TextSelection, type Command, type Transaction } from 'prosemirror-state'
+import { Fragment, type Mark, type Node as ProseMirrorNode } from 'prosemirror-model'
+import { EditorState, NodeSelection, TextSelection, type Command, type Selection, type Transaction } from 'prosemirror-state'
 import { tableEditing } from 'prosemirror-tables'
 import { EditorView } from 'prosemirror-view'
 import type { AnnotationView, BufferOrigin, HunkView, RedoResult, UndoResult } from '../shared/contracts.js'
@@ -31,6 +31,8 @@ import {
   serializeEditorDocument,
   updateParsedMarkdown,
 } from './markdown.js'
+import { markdownClipboardTextParser } from './paste.js'
+import { openEditorPopover, type PopoverHandle } from './popover.js'
 import {
   createReviewPlugin,
   getReviewRanges,
@@ -57,6 +59,8 @@ export * from './find.js'
 export * from './images.js'
 export * from './local-history.js'
 export * from './markdown.js'
+export * from './paste.js'
+export * from './popover.js'
 export * from './review.js'
 export * from './schema.js'
 export * from './selection.js'
@@ -253,12 +257,41 @@ function synchronizeDomSelection(view: EditorView): void {
     const head = view.posAtDOM(focusNode, domSelection.focusOffset)
     if (anchor === view.state.selection.anchor && head === view.state.selection.head) return
     view.dispatch(view.state.tr
-      .setSelection(TextSelection.create(view.state.doc, anchor, head))
+      .setSelection(TextSelection.between(view.state.doc.resolve(anchor), view.state.doc.resolve(head)))
       .setMeta('addToHistory', false))
   } catch {
     // A DOM reconciliation can invalidate a node between selection read and
     // position lookup. ProseMirror's normal selection polling handles it.
   }
+}
+
+/** A text selection between two document positions, each nudged to the nearest inline position. */
+function textSelectionBetween(doc: ProseMirrorNode, from: number, to = from): Selection {
+  const size = doc.content.size
+  const $from = doc.resolve(Math.max(0, Math.min(from, size)))
+  const $to = doc.resolve(Math.max(0, Math.min(to, size)))
+  return TextSelection.between($from, $to)
+}
+
+/** The extent of the link mark touching `pos` inside its textblock, or null. */
+function linkRangeAt(doc: ProseMirrorNode, pos: number, linkType: Mark['type']): { from: number; to: number; mark: Mark } | null {
+  const $pos = doc.resolve(pos)
+  const parent = $pos.parent
+  if (!parent.isTextblock) return null
+  const start = $pos.start()
+  const runs: Array<{ from: number; to: number; mark: Mark }> = []
+  let offset = 0
+  parent.forEach((child) => {
+    const from = start + offset
+    const to = from + child.nodeSize
+    offset += child.nodeSize
+    const mark = child.marks.find((candidate) => candidate.type === linkType)
+    if (!mark) return
+    const last = runs.at(-1)
+    if (last && last.to === from && last.mark.eq(mark)) last.to = to
+    else runs.push({ from, to, mark })
+  })
+  return runs.find((run) => run.from <= pos && pos <= run.to) ?? null
 }
 
 /** Mount the toolkit-only ProseMirror editor into an uncontrolled DOM host. */
@@ -340,9 +373,92 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     options.onToggleSource?.(next)
     dispatchEditorEvent(element, 'stratamd:toggle-source')
   }
+  // The link and image forms (§2.8). One at a time; closing returns focus to the editor.
+  let popover: PopoverHandle | null = null
+  const closePopover = (): void => {
+    popover?.close()
+    popover = null
+  }
+  const finishPopover = (): void => {
+    closePopover()
+    view.focus()
+  }
+  const selectionAnchor = () => {
+    const { from, to } = view.state.selection
+    const start = view.coordsAtPos(from)
+    const end = view.coordsAtPos(to)
+    return { left: Math.min(start.left, end.left), top: Math.min(start.top, end.top), bottom: Math.max(start.bottom, end.bottom) }
+  }
   const editLink = (): void => {
-    const href = window.prompt('Link URL')
-    if (href !== null) run(commands.setLink(href))
+    if (mode === 'source' || readOnly) return
+    closePopover()
+    const linkType = strataSchema.marks.link
+    const { from, to, empty } = view.state.selection
+    // A caret inside a link edits the whole link; a selection edits its own range.
+    const existing = empty
+      ? linkRangeAt(view.state.doc, from, linkType)
+      : (() => {
+          let mark: Mark | null = null
+          view.state.doc.nodesBetween(from, to, (node) => {
+            if (mark) return false
+            mark = node.marks.find((candidate) => candidate.type === linkType) ?? null
+            return true
+          })
+          return mark ? { from, to, mark } : null
+        })()
+    if (existing && empty) {
+      view.dispatch(view.state.tr.setSelection(textSelectionBetween(view.state.doc, existing.from, existing.to)).setMeta('addToHistory', false))
+    }
+    popover = openEditorPopover(element, {
+      title: existing ? 'Edit link' : 'Add link',
+      fields: [
+        { name: 'href', label: 'Address', value: existing ? String(existing.mark.attrs.href ?? '') : '', placeholder: 'https://…' },
+        { name: 'title', label: 'Title (optional)', value: existing ? String(existing.mark.attrs.title ?? '') : '' },
+      ],
+      submitLabel: existing ? 'Update link' : 'Add link',
+      ...(existing ? { secondary: { label: 'Remove link', onClick: () => { run(commands.removeLink); finishPopover() } } } : {}),
+      anchor: selectionAnchor(),
+      onSubmit: ({ href, title }) => {
+        const target = (href ?? '').trim()
+        const caption = (title ?? '').trim() || null
+        if (!target) {
+          if (existing) run(commands.removeLink)
+        } else if (view.state.selection.empty) {
+          // Nothing selected: the address becomes the link text.
+          const mark = linkType.create({ href: target, title: caption, autolink: false, reference: null })
+          view.dispatch(view.state.tr.replaceSelectionWith(strataSchema.text(target, [mark]), false).scrollIntoView())
+        } else {
+          run(commands.setLink(target, caption))
+        }
+        finishPopover()
+      },
+      onCancel: finishPopover,
+    })
+  }
+  const editImage = (): void => {
+    if (mode === 'source' || readOnly) return
+    closePopover()
+    const selection = view.state.selection
+    const image = selection instanceof NodeSelection && selection.node.type === strataSchema.nodes.image ? selection.node : null
+    popover = openEditorPopover(element, {
+      title: image ? 'Edit image' : 'Add image',
+      fields: [
+        { name: 'src', label: 'Path or address', value: image ? String(image.attrs.src ?? '') : '', placeholder: 'images/figure.png' },
+        { name: 'alt', label: 'Alt text', value: image ? String(image.attrs.alt ?? '') : '' },
+        { name: 'title', label: 'Title (optional)', value: image ? String(image.attrs.title ?? '') : '' },
+      ],
+      submitLabel: image ? 'Update image' : 'Add image',
+      anchor: selectionAnchor(),
+      onSubmit: ({ src, alt, title }) => {
+        const source = (src ?? '').trim()
+        if (source) {
+          const attrs = { src: source, alt: (alt ?? '').trim() || null, title: (title ?? '').trim() || null }
+          run(image ? commands.updateSelectedImage(attrs) : commands.insertImage(attrs))
+        }
+        finishPopover()
+      },
+      onCancel: finishPopover,
+    })
   }
   /** Move the source caret to the first byte that changed. */
   const placeSourceCaret = (before: string, after: string): void => {
@@ -384,7 +500,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       const mapped = editorRangeForSource(nextParsed, view.state.doc, at, Math.min(at + 1, result.text.length))
       if (mapped) {
         view.dispatch(view.state.tr
-          .setSelection(TextSelection.create(view.state.doc, mapped.from))
+          .setSelection(textSelectionBetween(view.state.doc, mapped.from))
           .scrollIntoView()
           .setMeta('addToHistory', false))
       }
@@ -393,6 +509,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     return true
   }
   const runHistory = (direction: 'undo' | 'redo'): boolean => {
+    flushSourceReparse()
     const entry = direction === 'undo' ? undoCoordinator.takeUndo() : undoCoordinator.takeRedo()
     if (entry === undefined) return false
     if (entry === 'local') {
@@ -455,6 +572,11 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     ],
   })
 
+  // Whether the latest selection came from the pointer or the keyboard (§5.1):
+  // the annotate pill's bare C/Q/S keys act only on pointer selections, so a
+  // Shift+Arrow selection keeps typing-to-replace. A programmatic selection
+  // with no input before it counts as pointer.
+  let keyboardSelection = false
   const reportSelection = (explicit = false): void => {
     if (!options.onSelection) return
     const { from, to, empty } = view.state.selection
@@ -478,6 +600,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       ...selection,
       left: (start.left + end.right) / 2,
       top: Math.min(start.top, end.top),
+      pointer: explicit || !keyboardSelection,
       ...(explicit ? { explicit } : {}),
     })
   }
@@ -508,7 +631,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       const doc = editorView.state.doc
       const from = Math.min(start + range.from, doc.content.size)
       const to = Math.min(start + range.to, doc.content.size)
-      editorView.dispatch(editorView.state.tr.setSelection(TextSelection.create(doc, from, to)))
+      editorView.dispatch(editorView.state.tr.setSelection(textSelectionBetween(doc, from, to)))
       editorView.focus()
       reportSelection(true)
     }, 0)
@@ -547,6 +670,8 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     },
     editable: () => !readOnly,
     nodeViews,
+    // Plain text that reads as markdown is inserted as markdown (§5.9).
+    clipboardTextParser: (text, $context, plain) => markdownClipboardTextParser(text, $context, plain) ?? undefined as never,
     handleKeyDown(editorView) {
       synchronizeDomSelection(editorView)
       return false
@@ -582,13 +707,17 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       options.onChange?.(currentMarkdown, fromHistory ? 'history' : 'edit')
     },
     handleDOMEvents: {
-      mouseup: () => { queueMicrotask(reportSelection); return false },
+      mousedown: () => { keyboardSelection = false; return false },
+      mouseup: () => { keyboardSelection = false; queueMicrotask(reportSelection); return false },
       keyup: () => { queueMicrotask(reportSelection); return false },
       // No preventDefault: the un-prevented default is what makes the main
       // process emit its context-menu event, whose params carry the spelling
       // suggestions (docs/plans/completed/spellcheck-plan.md). Electron shows no menu of its own.
       contextmenu: (editorView, event) => selectWordForContextMenu(editorView, event),
       keydown: (_editorView, event) => {
+        if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End' || event.key === 'PageUp' || event.key === 'PageDown' || (event.key.toLowerCase() === 'a' && hasPrimaryModifier(event))) {
+          keyboardSelection = true
+        }
         if (!isReviewControlActivationKey(event.key)) return false
         const button = event.target instanceof Element
           ? event.target.closest<HTMLButtonElement>(
@@ -794,6 +923,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     sourceActions.hidden = mode !== 'source' || sourceActions.childElementCount === 0
   }
 
+  let sourceKeyboardSelection = false
   const reportSourceSelection = (explicit = false): void => {
     if (!options.onSelection) return
     const from = source.selectionStart
@@ -807,21 +937,20 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       quote: source.value.slice(from, to),
       from,
       to,
-      singleBlock: sourceRangeIsSingleBlock(parseMarkdownForEditor(source.value), from, to),
+      singleBlock: sourceRangeIsSingleBlock(parsedForSource(), from, to),
       left: bounds.left + bounds.width / 2,
       top: bounds.top,
+      pointer: explicit || !sourceKeyboardSelection,
       ...(explicit ? { explicit } : {}),
     })
   }
 
-  source.addEventListener('input', () => {
-    currentMarkdown = source.value
-    renderSourceMirror()
-    if (findQuery) {
-      const matches = findInText(currentMarkdown, findQuery)
-      findIndex = firstMatchFrom(matches, source.selectionStart)
-      renderSourceFind(matches)
-    }
+  // Source typing reparses on a short trailing timer instead of per keystroke
+  // (§5.8); anything that reads the visual document first flushes it.
+  const SOURCE_REPARSE_MS = 150
+  let sourceReparseTimer: number | null = null
+  const reparseSource = (): void => {
+    if (currentParse.markdown === currentMarkdown && parsed === currentParse.parsed) return
     const nextParsed = updateParsedMarkdown(currentParse.parsed, currentMarkdown)
     const reviews = reviewInputs(getReviewRanges(view.state), nextParsed.doc).map((range) => {
       const exact = range.replacementText ? locateText(nextParsed.doc, range.replacementText) : null
@@ -839,9 +968,32 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     // A text-only change (trailing newline, swallowed whitespace) produces no
     // document transaction, so the chain hears about it here.
     chain.syncSourceText(currentMarkdown)
+  }
+  const flushSourceReparse = (): void => {
+    if (sourceReparseTimer === null) return
+    window.clearTimeout(sourceReparseTimer)
+    sourceReparseTimer = null
+    reparseSource()
+  }
+  const parsedForSource = (): ParsedEditorMarkdown => {
+    flushSourceReparse()
+    return parseCurrentMarkdown()
+  }
+  source.addEventListener('input', () => {
+    currentMarkdown = source.value
+    renderSourceMirror()
+    if (findQuery) {
+      const matches = findInText(currentMarkdown, findQuery)
+      findIndex = firstMatchFrom(matches, source.selectionStart)
+      renderSourceFind(matches)
+    }
+    if (sourceReparseTimer !== null) window.clearTimeout(sourceReparseTimer)
+    sourceReparseTimer = window.setTimeout(() => { sourceReparseTimer = null; reparseSource() }, SOURCE_REPARSE_MS)
     options.onChange?.(currentMarkdown, 'edit')
   })
+  source.addEventListener('mousedown', () => { sourceKeyboardSelection = false })
   source.addEventListener('keydown', (event) => {
+    if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End' || (event.key.toLowerCase() === 'a' && hasPrimaryModifier(event))) sourceKeyboardSelection = true
     if (!hasPrimaryModifier(event)) return
     const key = event.key.toLowerCase()
     if (key === 's') { event.preventDefault(); save() }
@@ -850,7 +1002,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     else if (key === 'z' && !event.shiftKey) { event.preventDefault(); undoStep() }
     else if (key === 'z' || key === 'y') { event.preventDefault(); redoStep() }
   })
-  source.addEventListener('mouseup', () => reportSourceSelection())
+  source.addEventListener('mouseup', () => { sourceKeyboardSelection = false; reportSourceSelection() })
   source.addEventListener('keyup', () => reportSourceSelection())
   // The browser has already moved the caret to the click point (or kept the selection).
   source.addEventListener('contextmenu', (event) => {
@@ -893,10 +1045,11 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
   }
 
   const jump = (from: number, to = from): void => {
-    const boundedFrom = Math.max(0, Math.min(from, view.state.doc.content.size))
-    const boundedTo = Math.max(boundedFrom, Math.min(to, view.state.doc.content.size))
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, boundedFrom, boundedTo)))
-    centerInScrollParent(boundedFrom)
+    // A clamp to the document size can land on the doc node itself; `between`
+    // nudges each end to the nearest inline position.
+    const selection = textSelectionBetween(view.state.doc, from, Math.max(from, to))
+    view.dispatch(view.state.tr.setSelection(selection))
+    centerInScrollParent(selection.from)
     view.focus()
   }
 
@@ -946,6 +1099,24 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
   const currentFindMatches = (): readonly FindMatch[] =>
     mode === 'source' ? findInText(currentMarkdown, findQuery) : getFindState(view.state).matches
 
+  /** The markdown offset for a visual caret: the start of the next character, or the end of the previous one. */
+  const sourceCaretFor = (pos: number): number | null => {
+    const parsedNow = parseCurrentMarkdown()
+    const size = view.state.doc.content.size
+    const forward = pos < size ? sourceSelectionForEditor(parsedNow, view.state.doc, pos, pos + 1) : null
+    if (forward) return forward.from
+    const backward = pos > 0 ? sourceSelectionForEditor(parsedNow, view.state.doc, pos - 1, pos) : null
+    return backward ? backward.to : null
+  }
+  /** The visual position for a markdown caret offset, by the same rule. */
+  const editorCaretFor = (offset: number): number | null => {
+    const parsedNow = parseCurrentMarkdown()
+    const forward = offset < currentMarkdown.length ? editorRangeForSource(parsedNow, view.state.doc, offset, offset + 1) : null
+    if (forward) return forward.from
+    const backward = offset > 0 ? editorRangeForSource(parsedNow, view.state.doc, offset - 1, offset) : null
+    return backward ? backward.to : null
+  }
+
   const handle: StrataEditorHandle = {
     find(query) {
       if (query !== findQuery) {
@@ -978,22 +1149,26 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       }
       let transaction = setFind(view.state.tr, '', -1)
       // The caret lands on the match; a collapsed selection never opens the annotate menu.
-      if (landing) transaction = transaction.setSelection(TextSelection.create(view.state.doc, Math.min(landing.from, view.state.doc.content.size)))
+      if (landing) transaction = transaction.setSelection(textSelectionBetween(view.state.doc, landing.from))
       view.dispatch(transaction)
       view.focus()
     },
     setHistoryStep(step) {
       if (undoCoordinator.syncApplicationStep(step)) view.dispatch(closeHistory(view.state.tr))
     },
-    exportState: () => ({
+    exportState: () => {
+      flushSourceReparse()
+      return {
       state: view.state,
       markdown: currentMarkdown,
       parsed,
       coordinator: undoCoordinator,
       chain,
       sourceCaret: source.selectionStart,
-    }),
+      }
+    },
     setContent(markdown) {
+      flushSourceReparse()
       if (markdown === currentMarkdown) return
       const nextParsed = updateParsedMarkdown(currentParse.parsed, markdown)
       const reviews = reviewInputs(getReviewRanges(view.state), nextParsed.doc)
@@ -1014,12 +1189,14 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       renderSourceMirror()
     },
     setReviewState(ranges) {
+      flushSourceReparse()
       sourceReviewInputs = [...ranges]
       view.dispatch(setReviewRanges(view.state.tr, reviewInputs(ranges, view.state.doc)))
       renderSourceMirror()
       renderSourceActions()
     },
     setAnnotations(ranges) {
+      flushSourceReparse()
       sourceAnnotationInputs = [...ranges]
       view.dispatch(setAnnotationRanges(view.state.tr, annotationInputs(ranges, view.state.doc, parseCurrentMarkdown())))
       renderSourceMirror()
@@ -1032,7 +1209,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       renderSourceActions()
     },
     getMarkdown: () => mode === 'source' ? source.value : serializeEditorDocument(parsed, view.state.doc),
-    getState: () => view.state,
+    getState: () => { flushSourceReparse(); return view.state },
     command(command: string) {
       const headingLevel = (): 1 | 2 | 3 | 4 | 5 | 6 => {
         const parent = view.state.selection.$from.parent
@@ -1069,21 +1246,8 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
         'table-toggle-header-column': () => run(commands.table.toggleHeaderColumn),
         'code-block': () => run(commands.setCodeBlock),
         'indented-code-block': () => run(commands.setIndentedCodeBlock),
-        image: () => {
-          const src = window.prompt('Image path')
-          if (src !== null) run(commands.insertImage({ src }))
-        },
-        'image-update': () => {
-          const selection = view.state.selection
-          if (!(selection instanceof NodeSelection) || selection.node.type !== strataSchema.nodes.image) return
-          const src = window.prompt('Image path', String(selection.node.attrs.src ?? ''))
-          if (src === null) return
-          const alt = window.prompt('Alternative text', String(selection.node.attrs.alt ?? ''))
-          if (alt === null) return
-          const title = window.prompt('Image title', String(selection.node.attrs.title ?? ''))
-          if (title === null) return
-          run(commands.updateSelectedImage({ src, alt: alt || null, title: title || null }))
-        },
+        image: editImage,
+        'image-update': editImage,
         'horizontal-rule': () => run(commands.insertHorizontalRule),
         'hard-break': () => run(commands.insertHardBreak),
         'soft-break': () => run(commands.insertSoftBreak),
@@ -1136,11 +1300,61 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       view.focus()
     },
     focus: () => mode === 'source' ? source.focus() : view.focus(),
+    pasteText(text) {
+      if (readOnly) return
+      if (mode === 'source') {
+        source.setRangeText(text, source.selectionStart, source.selectionEnd, 'end')
+        source.dispatchEvent(new Event('input', { bubbles: true }))
+        source.focus()
+        return
+      }
+      // The same path as a paste event, so markdown text is parsed as markdown (§5.9).
+      view.pasteText(text)
+      view.focus()
+    },
+    selectAll() {
+      if (mode === 'source') {
+        source.focus()
+        source.select()
+        reportSourceSelection(true)
+        return
+      }
+      keyboardSelection = false
+      run(selectAll)
+      view.focus()
+      reportSelection(true)
+    },
     toggleSource(force) {
       const previous = mode
       mode = force === undefined ? mode === 'source' ? 'visual' : 'source' : force ? 'source' : 'visual'
-      if (mode === 'source' && sourceMirrorDirty) renderSourceMirror()
-      showMode()
+      if (previous === mode) return mode
+      closePopover()
+      // The selection follows the view change (§5.8): visual → source maps
+      // through the byte-exact selection, source → visual maps back.
+      if (mode === 'source') {
+        const { from, to, empty } = view.state.selection
+        const range = empty ? null : sourceSelectionForEditor(parseCurrentMarkdown(), view.state.doc, from, to)
+        const caret = empty ? sourceCaretFor(from) : null
+        if (sourceMirrorDirty) renderSourceMirror()
+        showMode()
+        if (range) source.setSelectionRange(range.from, range.to)
+        else if (caret !== null) source.setSelectionRange(caret, caret)
+      } else {
+        flushSourceReparse()
+        const from = source.selectionStart
+        const to = source.selectionEnd
+        const range = from === to ? null : editorRangeForSource(parseCurrentMarkdown(), view.state.doc, from, to)
+        const caret = from === to ? editorCaretFor(from) : null
+        showMode()
+        const target = range ?? (caret === null ? null : { from: caret, to: caret })
+        if (target) {
+          view.dispatch(view.state.tr
+            .setSelection(textSelectionBetween(view.state.doc, target.from, target.to))
+            .scrollIntoView()
+            .setMeta('addToHistory', false))
+        }
+        view.focus()
+      }
       if (findQuery && previous !== mode) {
         // The search carries across views; the visual plugin idles while source view owns it.
         if (mode === 'source') view.dispatch(setFind(view.state.tr, '', -1))
@@ -1149,6 +1363,8 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       return mode
     },
     destroy() {
+      closePopover()
+      flushSourceReparse()
       if (flashTimer !== null) window.clearTimeout(flashTimer)
       view.dom.ownerDocument.removeEventListener('selectionchange', handleDocumentSelection)
       view.dom.ownerDocument.removeEventListener('keydown', handleSelectedEditorShortcut, true)
@@ -1167,7 +1383,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       const mapped = editorRangeForSource(parsed, view.state.doc, cold.selection.from, cold.selection.to)
       if (mapped) {
         view.dispatch(view.state.tr
-          .setSelection(TextSelection.create(view.state.doc, mapped.from, mapped.to))
+          .setSelection(textSelectionBetween(view.state.doc, mapped.from, mapped.to))
           .setMeta('addToHistory', false))
       }
     }

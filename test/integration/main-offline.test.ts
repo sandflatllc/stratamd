@@ -159,13 +159,18 @@ describe('offline main-process commands', () => {
       detail: [
         expect.objectContaining({
           index: 1,
-          code: 'quote_missing',
-          matches: expect.arrayContaining([expect.stringContaining('First same phrase.')]),
+          reason: 'missing',
+          candidates: expect.arrayContaining([expect.objectContaining({ quote: expect.stringContaining('First same phrase.') })]),
+          hint: expect.stringContaining('buffer file'),
         }),
         expect.objectContaining({
           index: 2,
-          code: 'quote_ambiguous',
-          matches: expect.arrayContaining([expect.stringContaining('same phrase')]),
+          reason: 'ambiguous',
+          total: 2,
+          candidates: [
+            { line: 1, before: 'First ', quote: 'same phrase', after: '.' },
+            { line: 3, before: 'Second ', quote: 'same phrase', after: '.' },
+          ],
         }),
       ],
     })

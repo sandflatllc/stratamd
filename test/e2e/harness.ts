@@ -1,8 +1,6 @@
-// Canonicalizes TMPDIR before any scenario path derives from it (macOS /var symlink).
-import '../setup-tmpdir'
 import { _electron as electron, expect, type ElectronApplication, type Page, type TestInfo } from '@playwright/test'
 import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { constants } from 'node:fs'
+import { constants, realpathSync } from 'node:fs'
 import { access, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -59,6 +57,11 @@ export interface CliResult {
   payload: Payload | undefined
   error: unknown
 }
+
+// Canonicalizes TMPDIR before any scenario path derives from it (macOS /var
+// symlink). The vitest setup file does the same for unit tests; it registers
+// vitest hooks, so Playwright cannot import it.
+process.env.TMPDIR = realpathSync(tmpdir())
 
 const here = dirname(fileURLToPath(import.meta.url))
 export const projectRoot = resolve(here, '../..')

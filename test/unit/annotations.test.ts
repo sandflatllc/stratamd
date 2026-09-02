@@ -223,7 +223,10 @@ describe('annotation log', () => {
     const slice = annotationDeliverySlice(followed.log, 1, 'ag_1')
     expect(slice.annotations).toEqual([])
     expect(slice.replies).toEqual([
-      { id: 'r2', seq: 3, annotation: 'a1', author: 'user', agent: null, text: 'user follow-up' },
+      {
+        id: 'r2', seq: 3, annotation: 'a1', author: 'user', agent: null, text: 'user follow-up',
+        parent: { kind: 'comment', quote: 'hello', line: 1, text: 'first comment' },
+      },
     ])
     expect(slice.cursor).toBe(3)
   })
@@ -455,7 +458,10 @@ describe('hunk verdicts', () => {
     const slice = annotationDeliverySlice(replied.log, 0, 'ag_1', new Set([created.event.seq]))
     expect(slice.annotations).toEqual([])
     expect(slice.replies).toEqual([
-      { id: 'r1', seq: 2, annotation: 'a1', author: 'user', agent: null, text: 'follow-up' },
+      {
+        id: 'r1', seq: 2, annotation: 'a1', author: 'user', agent: null, text: 'follow-up',
+        parent: { kind: 'comment', quote: 'hello', line: 1, text: 'first comment' },
+      },
     ])
     expect(slice.excluded).toBe(1)
     expect(slice.cursor).toBe(2)
@@ -476,5 +482,135 @@ describe('hunk verdicts', () => {
     const quote = verdictQuote('', long)
     expect([...quote]).toHaveLength(120)
     expect(quote.endsWith('💡')).toBe(true)
+  })
+})
+
+describe('quote failure detail', () => {
+  const document = 'Intro line here.\n\nThe quick brown fox jumps over the lazy dog near the river bank today.\n\nAnother quick brown fox appears later in the text of this paragraph.\n'
+
+  it('reports an ambiguous quote with word-boundary context usable as --preceded-by and --followed-by', async () => {
+    const { describeQuoteFailure } = await import('../../src/core/annotations')
+    let error: unknown
+    try {
+      locateQuote(document, 'quick brown fox')
+    } catch (caught) {
+      error = caught
+    }
+    const detail = describeQuoteFailure(document, 'quick brown fox', error as AnnotationAnchorError)
+    expect(detail.reason).toBe('ambiguous')
+    expect(detail.total).toBe(2)
+    expect(detail.candidates).toEqual([
+      { line: 3, before: 'The ', quote: 'quick brown fox', after: ' jumps over the lazy dog near the river ' },
+      { line: 5, before: 'Another ', quote: 'quick brown fox', after: ' appears later in the text of this ' },
+    ])
+    expect(detail.hint).toContain('--preceded-by')
+    for (const candidate of detail.candidates) {
+      expect(locateQuote(document, candidate.quote, candidate.before, candidate.after).start).toBe(
+        document.indexOf(candidate.before + candidate.quote) + candidate.before.length,
+      )
+    }
+  })
+
+  it('reports a whitespace-only mismatch with the exact buffer text', async () => {
+    const { describeQuoteFailure } = await import('../../src/core/annotations')
+    const quote = 'lazy dog  near\nthe river'
+    let error: unknown
+    try {
+      locateQuote(document, quote)
+    } catch (caught) {
+      error = caught
+    }
+    const detail = describeQuoteFailure(document, quote, error as AnnotationAnchorError)
+    expect(detail).toMatchObject({ reason: 'whitespace', total: 1, exact: 'lazy dog near the river' })
+    expect(detail.candidates[0]).toMatchObject({ line: 3, quote: 'lazy dog near the river' })
+    expect(locateQuote(document, detail.exact!).start).toBe(document.indexOf('lazy dog near'))
+  })
+
+  it('reports a missing quote with the closest lines and a multi-block suggestion with its block', async () => {
+    const { describeQuoteFailure } = await import('../../src/core/annotations')
+    let missing: unknown
+    try {
+      locateQuote(document, 'purple fox')
+    } catch (caught) {
+      missing = caught
+    }
+    const detail = describeQuoteFailure(document, 'purple fox', missing as AnnotationAnchorError, 'match')
+    expect(detail.reason).toBe('missing')
+    expect(detail.message).toBe('The match does not occur in the current buffer')
+    expect(detail.candidates.map((candidate) => candidate.line)).toEqual([3, 5])
+    expect(detail.candidates[0]?.quote).toContain('quick brown fox')
+
+    let block: unknown
+    try {
+      createAnnotation(createAnnotationLog(), document, {
+        id: 's1', kind: 'suggestion', author: 'agent', quote: 'today.\n\nAnother', text: 'x',
+      })
+    } catch (caught) {
+      block = caught
+    }
+    const blockDetail = describeQuoteFailure(document, 'today.\n\nAnother', block as AnnotationAnchorError)
+    expect(blockDetail).toMatchObject({ reason: 'multi_block', total: 1 })
+    expect(blockDetail.candidates[0]).toMatchObject({ line: 3, quote: 'today.\n\nAnother' })
+  })
+})
+
+describe('anchorless edits', () => {
+  it('locates an empty match by context, treats empty context as a document boundary, and appends', async () => {
+    const { locateEdit } = await import('../../src/core/annotations')
+    const document = 'alpha\n\nbeta\n'
+    expect(locateEdit(document, { match: '', precededBy: 'alpha\n' })).toMatchObject({ start: 6, end: 6, quote: '' })
+    expect(locateEdit(document, { match: '', followedBy: 'beta' })).toMatchObject({ start: 7, end: 7 })
+    expect(locateEdit(document, { match: '', precededBy: '' })).toMatchObject({ start: 0, end: 0 })
+    expect(locateEdit(document, { match: '', followedBy: '' })).toMatchObject({ start: document.length })
+    expect(locateEdit('', { match: '', precededBy: '' })).toMatchObject({ start: 0, end: 0 })
+    expect(locateEdit(document, { match: '', append: true })).toMatchObject({ start: document.length, end: document.length })
+    expect(locateEdit('', { match: '', append: true })).toMatchObject({ start: 0 })
+    expect(() => locateEdit(document, { match: '' })).toThrow('--append')
+    expect(() => locateEdit(document, { match: 'x', append: true })).toThrow('--append takes no --match')
+    expect(() => locateEdit('a a a', { match: '', precededBy: 'a' })).toThrow('more than once')
+  })
+
+  it('pins a non-empty quote to the document start with an empty precededBy', () => {
+    const document = 'same\nsame\n'
+    expect(locateQuote(document, 'same', '').start).toBe(0)
+    expect(locateQuote(document, 'same\n', undefined, '').start).toBe(5)
+    expect(() => locateQuote(document, 'same')).toThrow('ambiguous')
+    expect(() => createAnnotation(createAnnotationLog(), document, {
+      id: 'a1', kind: 'comment', author: 'agent', quote: '', text: 'x', precededBy: '',
+    })).toThrow('cannot be empty')
+  })
+})
+
+describe('names and reply context in deliveries', () => {
+  it('keeps the attachment name and label on the record and delivers them', async () => {
+    const { toDeliveredAnnotation, withAttachmentNames } = await import('../../src/core/annotations')
+    const created = createAnnotation(createAnnotationLog(), 'hello world', {
+      id: 'a1', kind: 'comment', author: 'agent', agent: 'ag_1', name: 'GPT', label: 'Tone', quote: 'hello', text: 'hi',
+    })
+    expect(toDeliveredAnnotation(created.annotation)).toMatchObject({ name: 'GPT', label: 'Tone' })
+    expect(toDeliveredAnnotation(created.annotation)).not.toHaveProperty('anchor')
+
+    const unnamed = createAnnotation(created.log, 'hello world', {
+      id: 'a2', kind: 'comment', author: 'agent', agent: 'ag_2', quote: 'world', text: 'w',
+    })
+    const named = withAttachmentNames(
+      [toDeliveredAnnotation(created.annotation), toDeliveredAnnotation(unnamed.annotation)],
+      (agent) => (agent === 'ag_2' ? 'Claude' : undefined),
+    )
+    expect(named.map((annotation) => annotation.name)).toEqual(['GPT', 'Claude'])
+    const user = createAnnotation(createAnnotationLog(), 'hello', { id: 'u', kind: 'comment', author: 'user', name: 'nope', quote: 'hello', text: '' })
+    expect(user.annotation).not.toHaveProperty('name')
+  })
+
+  it('delivers a lone reply with its parent thread and the replier name', () => {
+    const created = createAnnotation(createAnnotationLog(), 'hello world', {
+      id: 'a1', kind: 'question', author: 'user', quote: 'hello', text: 'Why hello?',
+    })
+    const replied = replyToAnnotation(created.log, 'a1', { id: 'r1', author: 'agent', agent: 'ag_2', name: 'GPT', text: 'Because.' })
+    const slice = annotationDeliverySlice(replied.log, 1, 'ag_9')
+    expect(slice.replies).toEqual([{
+      id: 'r1', seq: 2, annotation: 'a1', author: 'agent', agent: 'ag_2', name: 'GPT', text: 'Because.',
+      parent: { kind: 'question', quote: 'hello', line: 1, text: 'Why hello?' },
+    }])
   })
 })

@@ -17,8 +17,9 @@ import {
   getDataDirectory as getPlatformDataDirectory,
   getSocketLocation,
 } from '../platform/paths.js'
+import { currentProcessIdentity, identityMatches } from '../platform/process-identity.js'
 
-export const CURRENT_META_VERSION = 2
+export const CURRENT_META_VERSION = 3
 export const PRIVATE_DIRECTORY_MODE = 0o700
 export const PRIVATE_FILE_MODE = 0o600
 export const DEFAULT_SEGMENT_LIMIT = 200
@@ -35,6 +36,8 @@ export interface PendingHunkMeta {
   readonly id: string
   readonly status: 'pending' | 'mixed'
   readonly author: unknown
+  /** When the hunk was first recorded; metadata written before this field has none. */
+  readonly changedAt?: number
 }
 
 export interface SegmentMeta {
@@ -51,6 +54,11 @@ export interface SegmentMeta {
 export interface DeliveryMeta {
   readonly id: string
   readonly snapshotBlob: string
+  /**
+   * The frozen payload as an object, by content hash (format 3). Older
+   * entries carry the payload inline under `payload`; readers accept both.
+   */
+  readonly payloadBlob?: string
 }
 
 export interface SaveAuthorMeta {
@@ -140,6 +148,12 @@ export class AtomicWriteConflictError extends Error {
     this.name = 'AtomicWriteConflictError'
   }
 }
+
+/** absent: no entry; present: readable and owned by this path; broken: an entry exists but cannot be read. */
+export type DocumentEntryStatus = 'absent' | 'present' | 'broken'
+
+/** How long the app waits for a lock that another process may be releasing. */
+export const DEFAULT_LOCK_TIMEOUT_MS = 2_000
 
 export interface DocumentLock {
   readonly path: string
@@ -303,6 +317,14 @@ function normalizeMeta(value: unknown, expectedRealpath?: string): DocumentMeta 
     version = 2
   }
 
+  if (version === 2) {
+    // Format 3 stores queued delivery payloads as objects (`payloadBlob`).
+    // Version-2 deliveries keep their inline payload and stay readable; the
+    // next persist of the entry rewrites them by hash.
+    migrated = { ...migrated, formatVersion: 3 }
+    version = 3
+  }
+
   if (version !== CURRENT_META_VERSION) throw new Error('No metadata migration is available')
   const saves = migrated.saves ?? []
   if (!Array.isArray(saves)) {
@@ -349,7 +371,10 @@ function referencedBlobs(meta: DocumentMeta): Set<string> {
   }
   for (const attachment of Object.values(meta.attachments)) {
     result.add(attachment.baselineBlob)
-    for (const delivery of attachment.deliveries) result.add(delivery.snapshotBlob)
+    for (const delivery of attachment.deliveries) {
+      result.add(delivery.snapshotBlob)
+      if (typeof delivery.payloadBlob === 'string') result.add(delivery.payloadBlob)
+    }
   }
   const clipboard = meta.clipboardRecipient
   if (isRecord(clipboard)) {
@@ -487,17 +512,29 @@ export class GhostStore {
     }
   }
 
-  async hasDocument(documentRealpath: string): Promise<boolean> {
+  /**
+   * A broken entry counts as present: the document's ghost store exists and
+   * must not be silently recreated over it. loadMeta then fails with the
+   * entry path, and forgetDocument removes it.
+   */
+  async documentStatus(documentRealpath: string): Promise<DocumentEntryStatus> {
     await this.initialize()
+    let text: string
     try {
-      const parsed: unknown = JSON.parse(
-        await readFile(this.pathsForDocument(documentRealpath).meta, 'utf8'),
-      )
-      return normalizeMeta(parsed).realpath === documentRealpath
+      text = await readFile(this.pathsForDocument(documentRealpath).meta, 'utf8')
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 'absent'
       throw error
     }
+    try {
+      return normalizeMeta(JSON.parse(text)).realpath === documentRealpath ? 'present' : 'absent'
+    } catch {
+      return 'broken'
+    }
+  }
+
+  async hasDocument(documentRealpath: string): Promise<boolean> {
+    return (await this.documentStatus(documentRealpath)) !== 'absent'
   }
 
   async putObject(content: string | Uint8Array): Promise<string> {
@@ -587,8 +624,15 @@ export class GhostStore {
       throw error
     })
     const paths = this.pathsForDocument(canonical)
-    const parsed: unknown = JSON.parse(await readFile(paths.meta, 'utf8'))
-    const meta = normalizeMeta(parsed, canonical)
+    const text = await readFile(paths.meta, 'utf8')
+    let parsed: unknown
+    let meta: DocumentMeta
+    try {
+      parsed = JSON.parse(text)
+      meta = normalizeMeta(parsed, canonical)
+    } catch (error) {
+      throw brokenMetaError(paths.meta, error)
+    }
     if (
       isRecord(parsed)
       && (parsed.formatVersion !== CURRENT_META_VERSION || parsed.segmentOffset === undefined)
@@ -690,7 +734,7 @@ export class GhostStore {
       try {
         await stat(oldPaths.lock)
         if (!await this.removeStaleLock(oldPaths.lock)) {
-          throw Object.assign(new Error('Document is locked; pass its lease when moving it'), { code: 'ELOCKED' })
+          throw lockedError(oldPaths.lock, 'pass its lease when moving it')
         }
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
@@ -718,12 +762,17 @@ export class GhostStore {
   async forgetDocument(documentRealpath: string): Promise<boolean> {
     await this.initialize()
     const paths = this.pathsForDocument(documentRealpath)
+    let text: string
     try {
-      const parsed: unknown = JSON.parse(await readFile(paths.meta, 'utf8'))
-      if (normalizeMeta(parsed).realpath !== documentRealpath) return false
+      text = await readFile(paths.meta, 'utf8')
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
       throw error
+    }
+    try {
+      if (normalizeMeta(JSON.parse(text)).realpath !== documentRealpath) return false
+    } catch {
+      // A broken entry is exactly what forget is for: the directory goes regardless.
     }
     try {
       await rm(paths.directory, { recursive: true })
@@ -788,6 +837,7 @@ export class GhostStore {
     await ensurePrivateDirectory(paths.directory)
     const deadline = Date.now() + timeoutMs
     const token = randomBytes(16).toString('hex')
+    const identity = await currentProcessIdentity()
 
     for (;;) {
       try {
@@ -796,7 +846,12 @@ export class GhostStore {
           fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY,
           PRIVATE_FILE_MODE,
         )
-        await handle.writeFile(`${JSON.stringify({ pid: process.pid, token })}\n`)
+        await handle.writeFile(`${JSON.stringify({
+          pid: process.pid,
+          token,
+          ...(identity.bootId === null ? {} : { bootId: identity.bootId }),
+          ...(identity.startTime === null ? {} : { startTime: identity.startTime }),
+        })}\n`)
         await handle.sync()
         let released = false
         let currentPath = paths.lock
@@ -825,7 +880,7 @@ export class GhostStore {
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
         if (await this.removeStaleLock(paths.lock)) continue
-        if (Date.now() >= deadline) throw Object.assign(new Error('Document is locked'), { code: 'ELOCKED' })
+        if (Date.now() >= deadline) throw lockedError(paths.lock)
         await new Promise((resolveWait) => setTimeout(resolveWait, Math.min(25, deadline - Date.now())))
       }
     }
@@ -844,19 +899,41 @@ export class GhostStore {
     try {
       const value: unknown = JSON.parse(await readFile(lockPath, 'utf8'))
       if (!isRecord(value) || !Number.isInteger(value.pid)) return false
+      const pid = value.pid as number
+      let alive = true
       try {
-        process.kill(value.pid as number, 0)
+        process.kill(pid, 0)
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
-          await unlink(lockPath).catch(() => undefined)
-          return true
-        }
+        if ((error as NodeJS.ErrnoException).code === 'ESRCH') alive = false
       }
-      return false
+      // A live pid may be a different process than the one that wrote the
+      // lock: after a reboot, or once the pid counter wrapped. The recorded
+      // boot id and start time settle it; a lock without them trusts the pid.
+      if (alive && await identityMatches(pid, {
+        ...(typeof value.bootId === 'string' ? { bootId: value.bootId } : {}),
+        ...(typeof value.startTime === 'string' ? { startTime: value.startTime } : {}),
+      })) {
+        return false
+      }
+      await unlink(lockPath).catch(() => undefined)
+      return true
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true
       // An unparseable lock might still belong to a live writer. Do not steal it.
       return false
     }
   }
+}
+
+function lockedError(lockPath: string, hint?: string): NodeJS.ErrnoException & { path: string } {
+  const message = `Document is locked (${lockPath})${hint ? `; ${hint}` : ''}`
+  return Object.assign(new Error(message), { code: 'ELOCKED', path: lockPath })
+}
+
+function brokenMetaError(metaPath: string, cause: unknown): NodeJS.ErrnoException & { path: string } {
+  const reason = cause instanceof Error ? cause.message : String(cause)
+  return Object.assign(
+    new Error(`Document metadata at ${metaPath} could not be read: ${reason}`),
+    { code: 'EMETABROKEN', path: metaPath, cause },
+  )
 }

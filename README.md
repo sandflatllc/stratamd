@@ -59,7 +59,7 @@ Themes are plain JSON files. Copy an included theme, change a few values in the 
 
 StrataMD is not another AI chat client and does not have a model picker. It is a tool you use alongside your current workflow to improve it. Keep using Codex, Claude, or whichever agent already fits your workflow. If it can run a command on your machine, it can work with StrataMD.
 
-Give the agent the bundled StrataMD skill once. After that, this is enough:
+Give the agent the bundled StrataMD skill once (`stratamd setup --skill claude`, or [another harness](#giving-your-agent-the-skill)). After that, this is enough:
 
 > Attach to the document I have open in Strata.
 
@@ -181,15 +181,55 @@ Markdown that the visual editor cannot safely represent, such as frontmatter, HT
 
 `stratamd --agent-help` is the complete and current reference. The table above is the human-readable map, not a replacement for the instructions agents receive.
 
+Commands for you rather than the agent:
+
+| Command | What it does |
+|---|---|
+| `stratamd` | With no arguments, launches the app |
+| `stratamd forget <file>` | Deletes StrataMD's stored ghost, buffer, and history for a file |
+| `stratamd setup` | Puts `stratamd` on PATH and, on Linux, installs the desktop entry and MIME association |
+| `stratamd setup --default` | Makes StrataMD the default Markdown app on Linux; on macOS it prints the Finder steps |
+| `stratamd setup --skill <where>` | Copies the agent skill into a harness ([details](#giving-your-agent-the-skill)) |
+| `stratamd setup --remove` | Undoes setup on that platform; skill copies stay |
+| `stratamd doctor` | Reports the socket, data and log paths, lock files, and versions |
+| `stratamd --version` | Prints the app, protocol, and CLI versions |
+
 </details>
 
 <img src="resources/readme/divider.svg" width="100%" alt="">
 
 ## Trying StrataMD
 
-StrataMD is primarily a Linux app and builds from source. A macOS 13 or newer build is available as a `.zip` download. StrataMD also runs on Windows through WSL, but no native Windows port is planned.
+StrataMD is primarily a Linux app and builds from source. A macOS 13 or newer build is available as a `.zip` download. Windows through WSL is untested, and no native Windows port is planned.
 
-If you want to try it on Linux, give your agent a link to this repository and ask it to install StrataMD and add the bundled skill. That is probably easier than walking through the setup yourself.
+### Linux
+
+One script checks the prerequisites, builds the app, puts `stratamd` on your PATH with a desktop entry, and gives your agent the skill:
+
+```bash
+git clone https://github.com/sandflatllc/stratamd.git
+cd stratamd
+scripts/install.sh
+```
+
+Or hand it to an agent: give it this repository's URL and say "install StrataMD with scripts/install.sh". The script needs git, Node.js 22 or newer, pnpm, python3, make, g++, desktop-file-utils, and shared-mime-info. When one is missing it prints the package names for apt, dnf, or pacman and stops. Running it again is safe; it reuses the checkout and only rewrites what changed. Set `STRATAMD_SKILL=codex` (or `agents`, or a directory) to put the skill somewhere other than Claude Code.
+
+### Giving your agent the skill
+
+`stratamd setup --skill <where>` copies `skills/stratamd` into a harness's skills directory and refreshes it when the copy has drifted. It prints where the skill went and whether it was installed, updated, or already current.
+
+| Value | Where the skill goes |
+|---|---|
+| `claude` | `~/.claude/skills/stratamd` (Claude Code) |
+| `codex` | `$CODEX_HOME/skills/stratamd`, default `~/.codex/skills/stratamd` (Codex CLI; taken from its docs, not yet checked on a real install) |
+| `agents` | `~/.agents/skills/stratamd` (the shared directory some harnesses read) |
+| a directory | `<directory>/stratamd` |
+
+If the target is a symlink, setup writes through it and leaves the link alone. A harness with no skills directory can use one line in its instructions instead: "StrataMD is the user's markdown editor. When the user mentions a document open in Strata, run `stratamd --agent-help` first."
+
+### Updating
+
+Pull, rebuild, and run setup again; `scripts/install.sh` does all three. The app that is already running keeps the old build until you quit it and open it again, and until then the new `stratamd` command refuses to talk to it with a version mismatch error. `stratamd --version` tells you whether the command and the running app agree.
 
 <details>
 <summary>Mac setup</summary>
@@ -201,7 +241,7 @@ The first time you open it, macOS will say it can't check the app for malicious 
 To get the `stratamd` command in your terminal:
 
 ```bash
-/Applications/StrataMD.app/Contents/Resources/bin/stratamd setup
+/Applications/StrataMD.app/Contents/Resources/bin/stratamd setup --skill claude
 ```
 
 The setup command is safe to repeat. If you move the app, run it again. `stratamd setup --remove` removes the command; deleting the app removes everything else.
@@ -211,12 +251,13 @@ The setup command is safe to repeat. If you move the app, run it again. `stratam
 <details>
 <summary>Manual Linux setup</summary>
 
-StrataMD requires Node.js 22 or newer and pnpm.
+The same steps the script runs. You need git, Node.js 22 or newer, pnpm, python3, make, and g++ for the native module, and desktop-file-utils and shared-mime-info for the desktop entry (without those two, setup still works and prints what to install).
 
 ```bash
 pnpm install
+node node_modules/electron/install.js
 pnpm build:linux
-./dist/linux-unpacked/stratamd setup
+./dist/linux-unpacked/stratamd setup --skill claude
 stratamd open README.md
 ```
 
