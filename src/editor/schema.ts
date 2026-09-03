@@ -4,6 +4,7 @@ import {
   type MarkSpec,
   type NodeSpec,
 } from 'prosemirror-model'
+import { componentGlyph, componentLabel } from './component-labels.js'
 
 export const sourceAttrs = {
   sourceId: { default: null },
@@ -297,7 +298,10 @@ const nodes = {
           role: 'region',
           'aria-label': `${name}: ${semantic}`,
         },
-        ['div', { class: 'strata-component__eyebrow', contenteditable: 'false' }, `${name} · ${semantic}`],
+        ['div', { class: 'strata-component__eyebrow', contenteditable: 'false' },
+          ['span', { class: 'strata-component__icon', 'aria-hidden': 'true' }, componentGlyph(name, semantic)],
+          ['span', { class: 'strata-component__label' }, componentLabel(name, semantic)],
+        ],
         ['div', { class: 'strata-component__body' }, 0],
       ]
     },

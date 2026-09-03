@@ -198,8 +198,8 @@ test('a blank header cell accepts table state and survives reopen', async ({}, t
   await page.evaluate(async ({ path, tableView }) => {
     await window.strata.updateTableView(path, { ...tableView, focusedRow: 99, focusedColumn: 1, selectedRows: [0, 99] })
   }, { path: value.file, tableView })
-  await expect(block.getByRole('button', { name: 'Discuss row' })).toBeDisabled()
-  await expect(block.getByRole('button', { name: 'Discuss cell' })).toBeDisabled()
+  await expect(block.getByRole('button', { name: 'Discuss row' })).toHaveCount(0)
+  await expect(block.getByRole('button', { name: 'Discuss cell' })).toHaveCount(0)
   await value.stop()
   page = await value.launch()
   block = page.locator('.strata-table-block')

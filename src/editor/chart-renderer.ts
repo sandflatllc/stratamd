@@ -31,9 +31,11 @@ export interface RenderedChart {
 /** Render already-validated table data; document text never becomes code or callbacks. */
 export function renderDeclarativeChart(canvas: HTMLCanvasElement, model: DeclarativeChartModel): RenderedChart {
   const started = performance.now()
-  const datasets: ChartDataset<'line' | 'bar', number[]>[] = model.series.map((series, index) => ({
+  // Parsing is off, so every point is already in Chart.js's internal shape: the
+  // category index on x and the finite value on y (bars draw nothing from bare numbers).
+  const datasets: ChartDataset<'line' | 'bar', Array<{ x: number; y: number }>>[] = model.series.map((series, index) => ({
     label: series.label,
-    data: series.values,
+    data: series.values.map((value, position) => ({ x: position, y: value })),
     borderColor: model.colors[index],
     backgroundColor: model.kind === 'bar' ? model.colors[index] : `${model.colors[index]}33`,
     borderWidth: 2,

@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Strata Vivid widget concepts</title>
+  <style>
+    @font-face { font-family: Baloo; src: url('/node_modules/@fontsource/baloo-2/files/baloo-2-latin-500-normal.woff2'); font-weight: 500; }
+    @font-face { font-family: Baloo; src: url('/node_modules/@fontsource/baloo-2/files/baloo-2-latin-700-normal.woff2'); font-weight: 700; }
+    @font-face { font-family: Baloo; src: url('/node_modules/@fontsource/baloo-2/files/baloo-2-latin-800-normal.woff2'); font-weight: 800; }
+    @font-face { font-family: JetBrains; src: url('/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2'); font-weight: 500; }
+    :root {
+      --window:#0a0810; --panel:#15141a; --inset:#312a50; --field:#1d1731; --border:#463c6e;
+      --white:#fff; --soft:#d8ddfd; --muted:#80fdff; --pink:#f7b8ff; --cyan:#8fe3ff;
+      --amber:#ffbe5c; --coral:#ff7070; --green:#54ff52; --mint:#5ee0b4; --lav:#9aa8ff;
+      --purple:#9b5cff; --blue:#4f8dff; --hot:#ff5c8a; --positive:#3dc97c;
+    }
+    * { box-sizing:border-box; }
+    html, body { width:100%; min-height:100%; margin:0; background:var(--window); }
+    body { font-family:Baloo, sans-serif; color:var(--white); overflow:hidden; }
+    .page { display:none; width:1920px; height:1080px; position:relative; overflow:hidden; padding:38px 46px 44px; background:
+      radial-gradient(700px 500px at 15% 0%, rgba(155,92,255,.20), transparent 70%),
+      radial-gradient(600px 480px at 100% 100%, rgba(255,92,138,.14), transparent 72%),
+      linear-gradient(145deg,#160d20 0%,#0a0810 48%,#160b19 100%); }
+    body[data-page="1"] #page1, body[data-page="2"] #page2 { display:block; }
+    .mote { position:absolute; width:5px; height:5px; border-radius:50%; box-shadow:0 0 18px currentColor; opacity:.65; }
+    .m1{left:5%;top:24%;color:var(--amber)} .m2{left:94%;top:18%;color:var(--hot)} .m3{left:88%;top:76%;color:var(--mint)}
+    .m4{left:32%;top:93%;color:var(--purple)} .m5{left:58%;top:7%;color:var(--blue)}
+    header { height:72px; display:flex; align-items:center; gap:20px; position:relative; z-index:2; }
+    .brand { display:flex; align-items:center; gap:11px; padding:9px 18px 9px 11px; border:1px solid #6f4eb2; border-radius:999px; color:var(--white); background:linear-gradient(145deg,#312a50,#171321); font-weight:800; font-size:19px; box-shadow:0 12px 28px rgba(0,0,0,.35),0 0 24px rgba(155,92,255,.12); }
+    .brand-mark { width:36px; height:36px; border-radius:10px; position:relative; background:linear-gradient(145deg,#22183d,#0d0a13); box-shadow:inset 0 0 0 2px #5b3f91; }
+    .brand-mark:before,.brand-mark:after { content:""; position:absolute; left:8px; right:8px; height:7px; border-radius:6px; transform:skewY(-21deg); }
+    .brand-mark:before{top:8px;background:linear-gradient(90deg,var(--hot),var(--amber))}.brand-mark:after{top:20px;background:linear-gradient(90deg,var(--blue),var(--purple))}
+    .doc-tab { border:1px solid var(--border); border-radius:999px; padding:10px 18px; background:rgba(36,30,59,.78); color:var(--soft); font-size:16px; font-weight:700; text-decoration:none; }
+    .doc-tab.active { background:linear-gradient(145deg,#3a2f61,#241d3b); color:var(--pink); border-color:#7652bf; box-shadow:inset 0 1px rgba(255,255,255,.05); }
+    .page-title { margin-left:auto; text-align:right; }
+    .page-title b { display:block; color:var(--pink); font-size:28px; line-height:1; }
+    .page-title span { color:var(--muted); font-family:JetBrains,monospace; font-size:11px; letter-spacing:.12em; text-transform:uppercase; }
+    .editor { position:relative; height:910px; padding:28px; border:1px solid var(--border); border-radius:28px; background:rgba(21,20,26,.94); box-shadow:0 34px 90px -35px #000, inset 0 1px rgba(255,255,255,.025); overflow:hidden; }
+    .toolbar { height:46px; margin:-28px -28px 26px; padding:0 26px; display:flex; align-items:center; gap:18px; border-bottom:1px solid rgba(70,60,110,.75); color:var(--soft); font-weight:800; }
+    .toolbar .tool { opacity:.82; font-size:15px; }
+    .toolbar .source { margin-left:auto; color:var(--muted); font-family:JetBrains,monospace; font-size:12px; }
+    .toolbar .save { padding:6px 18px; border-radius:999px; background:var(--positive); color:#11151a; }
+    .grid1 { display:grid; height:810px; grid-template-columns:1.08fr .92fr; grid-template-rows:168px 300px 300px; gap:20px; }
+    .grid2 { display:grid; height:810px; grid-template-columns:1.18fr .82fr; grid-template-rows:375px 415px; gap:20px; }
+    .row-bottom { display:grid; grid-template-columns:.78fr 1.22fr; gap:20px; }
+    .widget { position:relative; min-width:0; overflow:hidden; border:1px solid rgba(70,60,110,.95); border-radius:24px; background:linear-gradient(145deg,rgba(36,30,59,.88),rgba(22,19,32,.96)); box-shadow:0 18px 40px -28px #000; }
+    .widget:after { content:""; position:absolute; inset:0; pointer-events:none; background:linear-gradient(130deg,rgba(255,255,255,.035),transparent 36%); }
+    .widget-head { display:flex; align-items:center; gap:12px; padding:18px 20px 10px; }
+    .widget-head h2 { margin:0; color:var(--pink); font-size:20px; line-height:1; }
+    .widget-head p { margin:1px 0 0; color:var(--soft); font-size:13px; }
+    .kind { margin-left:auto; padding:5px 10px; border-radius:999px; background:rgba(155,92,255,.17); color:#cdb7ff; font:500 10px JetBrains,monospace; letter-spacing:.08em; text-transform:uppercase; }
+    .icon { width:34px; height:34px; display:grid; place-items:center; flex:0 0 auto; border-radius:11px; background:linear-gradient(145deg,var(--hot),var(--purple)); color:white; box-shadow:0 9px 22px rgba(155,92,255,.30); font-size:18px; }
+    .callout { grid-column:1 / -1; display:flex; align-items:center; padding:23px 30px; border-color:rgba(255,190,92,.44); background:
+      radial-gradient(450px 180px at 5% 50%,rgba(255,190,92,.14),transparent 75%),
+      linear-gradient(100deg,rgba(49,42,80,.9),rgba(24,20,34,.96)); }
+    .callout .flare { width:68px; height:68px; display:grid; place-items:center; flex:0 0 auto; margin-right:22px; border-radius:21px; color:#211507; background:linear-gradient(145deg,#ffd98f,var(--amber)); box-shadow:0 14px 36px rgba(255,176,58,.22); font-size:30px; }
+    .callout h2 { margin:0 0 4px; color:var(--amber); font-size:24px; }
+    .callout p { margin:0; color:var(--white); font-size:18px; }
+    .callout .when { margin-left:auto; width:380px; padding:13px 16px; border-radius:16px; background:rgba(10,8,16,.52); color:var(--soft); font-size:14px; }
+    .callout .when b { color:var(--mint); }
+    .flow { grid-row:2 / 4; }
+    .flow-stage { position:relative; height:640px; margin:0 18px 18px; border-radius:19px; background:radial-gradient(circle at 48% 42%,rgba(155,92,255,.16),transparent 43%),rgba(10,8,16,.35); overflow:hidden; }
+    .flow-stage svg { position:absolute; inset:0; width:100%; height:100%; }
+    .flow-node { position:absolute; width:168px; padding:14px 14px 13px; border:1px solid var(--border); border-radius:17px; background:#211b35; box-shadow:0 14px 28px rgba(0,0,0,.28); }
+    .flow-node b { display:block; font-size:16px; color:var(--white); }
+    .flow-node small { color:var(--soft); font-size:11px; }
+    .flow-node .dot { float:right; width:8px;height:8px;margin-top:7px;border-radius:50%;box-shadow:0 0 14px currentColor; }
+    .n1{left:38px;top:48px}.n2{left:272px;top:48px}.n3{left:505px;top:48px}.n4{left:505px;top:238px}.n5{left:272px;top:398px}.n6{left:38px;top:398px}
+    .decision-body { padding:0 18px 18px; }
+    table { width:100%; border-collapse:separate; border-spacing:0 7px; font-size:13px; }
+    th { padding:0 10px 5px; color:var(--muted); font:500 10px JetBrains,monospace; text-align:right; text-transform:uppercase; }
+    th:first-child, td:first-child { text-align:left; }
+    td { padding:10px; background:rgba(10,8,16,.45); color:var(--soft); text-align:right; }
+    tr td:first-child { border-radius:12px 0 0 12px; color:white; font-weight:700; }
+    tr td:last-child { border-radius:0 12px 12px 0; }
+    tr.winner td { background:linear-gradient(90deg,rgba(155,92,255,.32),rgba(79,141,255,.15)); border-top:1px solid rgba(155,92,255,.55); border-bottom:1px solid rgba(155,92,255,.4); }
+    .winner-tag { display:inline-block; margin-left:8px; padding:3px 7px; border-radius:999px; color:#171125; background:var(--mint); font-size:9px; }
+    .score { color:var(--amber); font-size:18px; font-weight:800; }
+    .decision-foot { display:flex; align-items:center; gap:10px; margin-top:6px; color:var(--soft); font-size:12px; }
+    .decision-foot .line { flex:1; height:6px; border-radius:99px; background:#171321; overflow:hidden; }
+    .decision-foot .line i { display:block; width:77%; height:100%; border-radius:99px; background:linear-gradient(90deg,var(--purple),var(--blue),var(--mint)); }
+    .chart-body { display:grid; grid-template-columns:128px 1fr 40px; gap:10px 12px; align-items:center; padding:8px 22px 16px; font-size:13px; color:var(--soft); }
+    .bar { height:17px; border-radius:99px; background:#171321; overflow:hidden; }
+    .bar i { display:block; height:100%; border-radius:99px; box-shadow:0 0 18px rgba(155,92,255,.28); }
+    .bar:nth-of-type(1) i{width:24%;background:linear-gradient(90deg,var(--blue),var(--cyan))}
+    .bar:nth-of-type(2) i{width:56%;background:linear-gradient(90deg,var(--purple),#c079ff)}
+    .bar:nth-of-type(3) i{width:38%;background:linear-gradient(90deg,var(--hot),#ff8bba)}
+    .bar:nth-of-type(4) i{width:92%;background:linear-gradient(90deg,var(--amber),var(--hot))}
+    .chart-body strong { color:var(--white); text-align:right; }
+    .sequence-body { position:relative; height:286px; margin:0 22px 20px; }
+    .actor { position:absolute; top:4px; width:148px; text-align:center; }
+    .actor i { display:grid; place-items:center; width:48px; height:48px; margin:auto; border-radius:16px; font-style:normal; font-size:20px; background:linear-gradient(145deg,#332856,#1a1726); border:1px solid var(--border); }
+    .actor b { display:block; margin-top:6px; color:var(--white); }
+    .actor:after { content:""; display:block; width:1px; height:205px; margin:6px auto 0; background:linear-gradient(var(--border),rgba(70,60,110,.12)); }
+    .a1{left:36px}.a2{left:50%;transform:translateX(-50%)}.a3{right:36px}
+    .message { position:absolute; height:28px; color:var(--soft); font-size:12px; }
+    .message:after { content:""; position:absolute; left:0; right:0; bottom:0; height:1px; background:linear-gradient(90deg,var(--purple),var(--blue)); box-shadow:0 0 10px var(--purple); }
+    .message:before { content:""; position:absolute; right:0; bottom:-4px; width:8px; height:8px; border-right:2px solid var(--blue); border-top:2px solid var(--blue); transform:rotate(45deg); }
+    .msg1{left:147px;top:94px;width:330px}.msg2{left:455px;top:143px;width:330px}.msg3{left:147px;top:192px;width:330px}.msg3:before{left:0;right:auto;transform:rotate(-135deg)}.msg3:after{background:linear-gradient(90deg,var(--mint),var(--purple))}
+    .msg4{left:455px;top:241px;width:330px}
+    .timeline-body { padding:2px 24px 8px 42px; }
+    .event { position:relative; padding:0 0 12px 30px; border-left:1px solid rgba(70,60,110,.8); }
+    .event:last-child { border-left-color:transparent; }
+    .event:before { content:""; position:absolute; left:-7px; top:3px; width:13px; height:13px; border-radius:50%; background:#241e3b; border:3px solid var(--purple); box-shadow:0 0 15px rgba(155,92,255,.55); }
+    .event.done:before{border-color:var(--positive);box-shadow:0 0 15px rgba(61,201,124,.45)} .event.now:before{background:var(--amber);border-color:#ffe0a1;box-shadow:0 0 20px rgba(255,190,92,.65)}
+    .event time { display:block; color:var(--muted); font:500 10px/14px JetBrains,monospace; }
+    .event b { display:block; margin-top:2px; color:var(--white); font-size:14px; line-height:18px; }
+    .event small { display:block; color:var(--soft); font-size:12px; line-height:16px; }
+    .filetree-body { padding:2px 21px 18px; font:500 12px/1.72 JetBrains,monospace; color:var(--soft); }
+    .fileline { display:flex; gap:8px; white-space:nowrap; }
+    .indent1{padding-left:18px}.indent2{padding-left:40px}.indent3{padding-left:62px}
+    .folder{color:var(--lav)} .ts{color:var(--cyan)} .comment{margin-left:auto;color:#a89fc5;font-family:Baloo,sans-serif}.focus-file{margin:2px -7px;padding:1px 7px;border-radius:8px;background:rgba(155,92,255,.19)}
+    .beforeafter { display:grid; grid-template-columns:1fr 1fr; gap:1px; margin:0 18px 18px; border-radius:17px; overflow:hidden; background:var(--border); }
+    .ba-side { padding:15px 17px; background:rgba(10,8,16,.48); }
+    .ba-side h3 { margin:0 0 10px; font-size:13px; text-transform:uppercase; letter-spacing:.08em; }
+    .ba-side.before h3{color:var(--coral)} .ba-side.after h3{color:var(--mint)}
+    .ba-side p { position:relative; margin:6px 0; padding-left:18px; color:var(--soft); font-size:12px; }
+    .ba-side p:before { position:absolute; left:0; }
+    .before p:before{content:"×";color:var(--coral)} .after p:before{content:"✓";color:var(--mint)}
+    .diff-body { margin:0 18px 18px; border:1px solid rgba(70,60,110,.75); border-radius:16px; overflow:hidden; background:#0d0b14; font:500 11px/1.63 JetBrains,monospace; }
+    .diff-line { display:grid; grid-template-columns:34px 20px 1fr; padding:3px 10px 3px 0; color:#c9c6d6; }
+    .diff-line span:first-child { color:#655d79; text-align:right; padding-right:8px; user-select:none; }
+    .diff-line.add { background:rgba(61,201,124,.13); color:#b9ffd5; }.diff-line.add span:nth-child(2){color:var(--positive)}
+    .diff-line.del { background:rgba(255,92,138,.12); color:#ffc0d3; }.diff-line.del span:nth-child(2){color:var(--hot)}
+    .diff-line code { white-space:pre; }
+  </style>
+</head>
+<body>
+  <section class="page" id="page1">
+    <i class="mote m1"></i><i class="mote m2"></i><i class="mote m3"></i><i class="mote m4"></i><i class="mote m5"></i>
+    <header><div class="brand"><i class="brand-mark"></i>StrataMD</div><a class="doc-tab active" href="?page=1">visual-language.md</a><a class="doc-tab" href="?page=2">widget-registry.md</a><div class="page-title"><span>Strata Vivid · concept sheet 01</span><b>Visual explanations, inside the document</b></div></header>
+    <main class="editor">
+      <div class="toolbar"><span class="tool">B</span><span class="tool">∕</span><span class="tool">&lt;/&gt;</span><span class="tool">H</span><span class="tool">≔</span><span class="tool">☑</span><span class="tool">❝</span><span class="tool">⊞</span><span class="tool">▤</span><span class="source">{ } source</span><span class="save">Save</span></div>
+      <div class="grid1">
+        <article class="widget callout"><div class="flare">✦</div><div><h2>Current decision</h2><p>Ship registered document components before considering executable MDX.</p></div><div class="when"><b>Revisit when</b><br>an approved widget cannot express a real document need.</div></article>
+        <article class="widget flow">
+          <div class="widget-head"><span class="icon">⌁</span><div><h2>Document save path</h2><p>The whole decision reads in one glance.</p></div><span class="kind">Flow diagram</span></div>
+          <div class="flow-stage">
+            <svg viewBox="0 0 730 640" fill="none"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#9b5cff"/><stop offset="1" stop-color="#4f8dff"/></linearGradient><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0l10 5-10 5z" fill="#7b74ff"/></marker></defs><path d="M206 87H272M440 87H505M589 124V238M505 276C425 276 405 437 440 437M272 437H206M122 398V160C122 130 138 124 160 124" stroke="url(#g)" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" opacity=".9"/><path d="M589 314v75c0 32-24 48-56 48h-93" stroke="#ff5c8a" stroke-width="2" stroke-dasharray="7 8" marker-end="url(#arrow)"/></svg>
+            <div class="flow-node n1"><span class="dot" style="color:#8fe3ff;background:#8fe3ff"></span><b>Edit</b><small>Rendered Markdown</small></div><div class="flow-node n2"><span class="dot" style="color:#9b5cff;background:#9b5cff"></span><b>Serialize</b><small>Smallest safe span</small></div><div class="flow-node n3"><span class="dot" style="color:#ffbe5c;background:#ffbe5c"></span><b>Validate</b><small>Disk changed?</small></div><div class="flow-node n4"><span class="dot" style="color:#ff5c8a;background:#ff5c8a"></span><b>Resolve</b><small>Choose incoming or mine</small></div><div class="flow-node n5"><span class="dot" style="color:#3dc97c;background:#3dc97c"></span><b>Atomic save</b><small>Replace in place</small></div><div class="flow-node n6"><span class="dot" style="color:#5ee0b4;background:#5ee0b4"></span><b>History</b><small>Record the round</small></div>
+          </div>
+        </article>
+        <article class="widget decision"><div class="widget-head"><span class="icon">◆</span><div><h2>Storage choice</h2><p>Weighted evidence, without spreadsheet sludge.</p></div><span class="kind">Decision matrix</span></div><div class="decision-body"><table><thead><tr><th>Option</th><th>Setup ×2</th><th>Portability</th><th>Concurrency ×3</th><th>Score</th></tr></thead><tbody><tr><td>SQLite</td><td>9</td><td>8</td><td>4</td><td class="score">38</td></tr><tr class="winner"><td>Postgres <span class="winner-tag">BEST FIT</span></td><td>5</td><td>9</td><td>9</td><td class="score">46</td></tr><tr><td>DuckDB</td><td>7</td><td>6</td><td>3</td><td class="score">29</td></tr></tbody></table><div class="decision-foot"><b style="color:#5ee0b4">Postgres</b><span>leads on the criterion that matters most</span><span class="line"><i></i></span><b>77%</b></div></div></article>
+        <article class="widget chart"><div class="widget-head"><span class="icon">▥</span><div><h2>Build duration</h2><p>Where the feedback loop actually waits.</p></div><span class="kind">Bar chart</span></div><div class="chart-body"><span>Typecheck</span><span class="bar"><i></i></span><strong>8s</strong><span>Unit tests</span><span class="bar"><i></i></span><strong>19s</strong><span>Build</span><span class="bar"><i></i></span><strong>13s</strong><span>End-to-end</span><span class="bar"><i></i></span><strong>34s</strong></div></article>
+      </div>
+    </main>
+  </section>
+  <section class="page" id="page2">
+    <i class="mote m1"></i><i class="mote m2"></i><i class="mote m3"></i><i class="mote m4"></i><i class="mote m5"></i>
+    <header><div class="brand"><i class="brand-mark"></i>StrataMD</div><a class="doc-tab" href="?page=1">visual-language.md</a><a class="doc-tab active" href="?page=2">widget-registry.md</a><div class="page-title"><span>Strata Vivid · concept sheet 02</span><b>Structure that rewards the reader</b></div></header>
+    <main class="editor">
+      <div class="toolbar"><span class="tool">B</span><span class="tool">∕</span><span class="tool">&lt;/&gt;</span><span class="tool">H</span><span class="tool">≔</span><span class="tool">☑</span><span class="tool">❝</span><span class="tool">⊞</span><span class="tool">▤</span><span class="source">{ } source</span><span class="save">Save</span></div>
+      <div class="grid2">
+        <article class="widget sequence"><div class="widget-head"><span class="icon">⇄</span><div><h2>Agent collaboration round</h2><p>Order and ownership stay visible.</p></div><span class="kind">Sequence</span></div><div class="sequence-body"><div class="actor a1"><i>U</i><b>You</b></div><div class="actor a2"><i style="color:#f7b8ff">S</i><b>Strata</b></div><div class="actor a3"><i style="color:#8fe3ff">A</i><b>Agent</b></div><div class="message msg1">Press Send</div><div class="message msg2">Deliver changed ranges</div><div class="message msg3">Return a suggestion</div><div class="message msg4">Show tracked change</div></div></article>
+        <article class="widget timeline"><div class="widget-head"><span class="icon">◷</span><div><h2>Widget rollout</h2><p>A plan you can scan in seconds.</p></div><span class="kind">Timeline</span></div><div class="timeline-body"><div class="event done"><time>SEP 03 · COMPLETE</time><b>Parser recognizes components</b><small>Source spans retained</small></div><div class="event done"><time>SEP 06 · COMPLETE</time><b>Widget node views render</b><small>Theme tokens applied</small></div><div class="event now"><time>SEP 10 · IN PROGRESS</time><b>Agent validator ships</b><small>Schemas and examples</small></div><div class="event"><time>SEP 14 · PLANNED</time><b>Visual property editing</b><small>Source remains available</small></div></div></article>
+        <div class="row-bottom">
+          <article class="widget filetree"><div class="widget-head"><span class="icon">⌘</span><div><h2>Implementation map</h2><p>Paths with purpose.</p></div><span class="kind">File tree</span></div><div class="filetree-body"><div class="fileline"><span class="folder">▾ src</span></div><div class="fileline indent1"><span class="folder">▾ core / markdown</span></div><div class="fileline indent2"><span class="ts">◇ parser.ts</span><span class="comment">component syntax</span></div><div class="fileline indent1"><span class="folder">▾ editor</span></div><div class="fileline indent2 focus-file"><span class="ts">◇ schema.ts</span><span class="comment">widget_block</span></div><div class="fileline indent2"><span class="ts">◇ widgets.ts</span><span class="comment">node views</span></div><div class="fileline indent1"><span class="folder">▾ shared / widgets</span></div><div class="fileline indent2"><span class="ts">◇ registry.ts</span><span class="comment">schemas</span></div></div></article>
+          <article class="widget before-after"><div class="widget-head"><span class="icon">◐</span><div><h2>Agent editing workflow</h2><p>The improvement is the comparison.</p></div><span class="kind">Before / after</span></div><div class="beforeafter"><div class="ba-side before"><h3>Before</h3><p>Copy the document into chat</p><p>Wait for a full rewrite</p><p>Compare versions manually</p><p>Paste the result back</p></div><div class="ba-side after"><h3>With Strata</h3><p>Attach to the open document</p><p>Discuss changes in place</p><p>Review tracked edits</p><p>Keep or revert each change</p></div></div></article>
+        </div>
+        <article class="widget diff"><div class="widget-head"><span class="icon">±</span><div><h2>Validation change</h2><p>A code example that still feels native to the document.</p></div><span class="kind">Diff · TypeScript</span></div><div class="diff-body"><div class="diff-line del"><span>1</span><span>−</span><code>const valid = input.length &gt; 0</code></div><div class="diff-line add"><span>1</span><span>+</span><code>const result = schema.safeParse(input)</code></div><div class="diff-line"><span>2</span><span> </span><code></code></div><div class="diff-line del"><span>3</span><span>−</span><code>if (!valid) throw new Error('Invalid')</code></div><div class="diff-line add"><span>3</span><span>+</span><code>if (!result.success) {</code></div><div class="diff-line add"><span>4</span><span>+</span><code>  return { valid: false, errors: result.error.issues }</code></div><div class="diff-line add"><span>5</span><span>+</span><code>}</code></div><div class="diff-line"><span>6</span><span> </span><code>return { valid: true, value: result.data }</code></div></div></article>
+      </div>
+    </main>
+  </section>
+  <script>document.body.dataset.page = new URLSearchParams(location.search).get('page') === '2' ? '2' : '1'</script>
+</body>
+</html>

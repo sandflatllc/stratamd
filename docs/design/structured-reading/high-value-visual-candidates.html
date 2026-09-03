@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Strata Vivid | high-value visual candidates</title>
+  <style>
+    @font-face { font-family: Baloo; src: url('/node_modules/@fontsource/baloo-2/files/baloo-2-latin-500-normal.woff2'); font-weight:500; }
+    @font-face { font-family: Baloo; src: url('/node_modules/@fontsource/baloo-2/files/baloo-2-latin-700-normal.woff2'); font-weight:700; }
+    @font-face { font-family: Baloo; src: url('/node_modules/@fontsource/baloo-2/files/baloo-2-latin-800-normal.woff2'); font-weight:800; }
+    @font-face { font-family: JetBrains; src: url('/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2'); font-weight:500; }
+    :root {
+      --window:#0a0810; --panel:#15141a; --raised:#1b1727; --inset:#312a50; --field:#1d1731; --border:#463c6e;
+      --white:#fff; --soft:#d8ddfd; --quiet:#8b86a0; --pink:#f7b8ff; --cyan:#8fe3ff; --amber:#ffbe5c;
+      --coral:#ff7070; --green:#54ff52; --mint:#5ee0b4; --lav:#9aa8ff; --purple:#9b5cff; --blue:#4f8dff;
+      --hot:#ff5c8a; --positive:#3dc97c;
+    }
+    * { box-sizing:border-box; }
+    html,body { width:100%; min-height:100%; margin:0; overflow:hidden; background:var(--window); color:white; font-family:Baloo,system-ui,sans-serif; }
+    button { color:inherit; font:inherit; cursor:pointer; }
+    .page { position:relative; display:none; width:1920px; height:1080px; overflow:hidden; padding:34px 46px 42px; background:radial-gradient(780px 520px at 10% -5%,rgba(155,92,255,.24),transparent 70%),radial-gradient(680px 500px at 100% 100%,rgba(255,92,138,.15),transparent 72%),linear-gradient(145deg,#160d20,#0a0810 48%,#160b19); }
+    body[data-page="1"] #page1,body[data-page="2"] #page2 { display:block; }
+    .page:before { position:absolute; inset:0; pointer-events:none; opacity:.14; content:""; background-image:linear-gradient(rgba(143,227,255,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(143,227,255,.09) 1px,transparent 1px); background-size:56px 56px; mask-image:radial-gradient(circle at 82% 12%,black,transparent 49%); }
+    header { position:relative; z-index:2; display:flex; height:72px; align-items:center; gap:18px; }
+    .brand { display:flex; align-items:center; gap:11px; border:1px solid #6f4eb2; border-radius:999px; padding:8px 17px 8px 10px; background:linear-gradient(145deg,#312a50,#171321); font-size:18px; font-weight:800; box-shadow:0 12px 28px rgba(0,0,0,.34); }
+    .brand-mark { position:relative; width:36px; height:36px; border-radius:11px; background:#0f0b17; box-shadow:inset 0 0 0 2px #5b3f91; }
+    .brand-mark:before,.brand-mark:after { position:absolute; right:8px; left:8px; height:7px; border-radius:6px; transform:skewY(-21deg); content:""; }
+    .brand-mark:before { top:8px; background:linear-gradient(90deg,var(--hot),var(--amber)); }
+    .brand-mark:after { top:20px; background:linear-gradient(90deg,var(--blue),var(--purple)); }
+    .doc-tab { border:1px solid var(--border); border-radius:999px; padding:10px 18px; background:rgba(36,30,59,.78); color:var(--soft); font-size:15px; font-weight:700; text-decoration:none; }
+    .doc-tab.active { border-color:#7652bf; background:linear-gradient(145deg,#3a2f61,#241d3b); color:var(--pink); }
+    .page-title { margin-left:auto; text-align:right; }
+    .page-title b { display:block; color:var(--pink); font-size:28px; line-height:1; }
+    .page-title span { color:var(--cyan); font:500 10px JetBrains,monospace; letter-spacing:.13em; text-transform:uppercase; }
+    .editor { position:relative; z-index:1; height:918px; overflow:hidden; border:1px solid var(--border); border-radius:28px; padding:25px 28px 28px; background:rgba(21,20,26,.95); box-shadow:0 34px 90px -35px #000; }
+    .toolbar { display:flex; height:45px; align-items:center; gap:16px; margin:-25px -28px 24px; border-bottom:1px solid rgba(70,60,110,.75); padding:0 26px; color:var(--soft); font-weight:800; }
+    .toolbar .source { margin-left:auto; color:var(--cyan); font:500 11px JetBrains,monospace; }
+    .toolbar .badge { border-radius:999px; padding:5px 10px; background:rgba(94,224,180,.12); color:var(--mint); font:500 9px JetBrains,monospace; }
+    .grid { display:grid; height:820px; gap:20px; }
+    .grid.page-one { grid-template-columns:1.05fr .95fr; grid-template-rows:1fr; }
+    .grid.page-two { grid-template-columns:1.05fr .95fr; grid-template-rows:470px 330px; }
+    .wide { grid-column:1/-1; }
+    .widget { position:relative; min-width:0; min-height:0; overflow:hidden; border:1px solid rgba(70,60,110,.96); border-radius:24px; background:linear-gradient(145deg,rgba(36,30,59,.88),rgba(22,19,32,.97)); box-shadow:0 18px 40px -28px #000; }
+    .widget:after { position:absolute; inset:0; pointer-events:none; background:linear-gradient(130deg,rgba(255,255,255,.035),transparent 36%); content:""; }
+    .widget-head { position:relative; z-index:2; display:flex; align-items:center; gap:12px; padding:17px 20px 12px; }
+    .icon { display:grid; width:35px; height:35px; flex:0 0 auto; place-items:center; border-radius:11px; background:linear-gradient(145deg,var(--hot),var(--purple)); box-shadow:0 9px 22px rgba(155,92,255,.3); font-size:17px; }
+    .widget-head h2 { margin:0; color:var(--pink); font-size:20px; line-height:1; }
+    .widget-head p { margin:2px 0 0; color:var(--soft); font-size:12px; }
+    .kind { margin-left:auto; border-radius:999px; padding:5px 10px; background:rgba(155,92,255,.17); color:#cdb7ff; font:500 9px JetBrains,monospace; letter-spacing:.08em; text-transform:uppercase; }
+    .component { color:var(--amber); }
+    .native { color:var(--mint); }
+
+    .evidence-body { position:relative; z-index:2; display:grid; grid-template-rows:auto 1fr auto; height:728px; padding:0 20px 20px; }
+    .claim { display:flex; align-items:center; gap:14px; border:1px solid rgba(247,184,255,.28); border-radius:18px; padding:16px 18px; background:radial-gradient(360px 140px at 0 50%,rgba(155,92,255,.18),transparent 78%),rgba(10,8,16,.36); }
+    .claim-mark { display:grid; width:42px; height:42px; flex:0 0 auto; place-items:center; border-radius:13px; background:linear-gradient(145deg,var(--hot),var(--purple)); font-size:18px; }
+    .claim b { display:block; color:var(--pink); font-size:12px; letter-spacing:.08em; text-transform:uppercase; }
+    .claim p { margin:2px 0 0; font-size:18px; line-height:1.35; }
+    .evidence-list { position:relative; display:grid; gap:10px; margin:20px 0; padding-left:58px; }
+    .evidence-list:before { position:absolute; top:-20px; bottom:-20px; left:22px; width:2px; background:linear-gradient(var(--purple),var(--blue),var(--mint)); content:""; }
+    .evidence-item { position:relative; display:grid; grid-template-columns:112px 1fr auto; align-items:center; gap:12px; width:100%; border:1px solid var(--border); border-radius:15px; padding:12px 13px; background:#15111f; text-align:left; }
+    .evidence-item:before { position:absolute; left:-43px; width:16px; height:16px; border:3px solid var(--purple); border-radius:50%; background:var(--panel); box-shadow:0 0 14px rgba(155,92,255,.5); content:""; }
+    .evidence-item:hover,.evidence-item.active { border-color:var(--blue); background:#211a34; transform:translateX(3px); }
+    .evidence-item code { color:var(--cyan); font:500 10px JetBrains,monospace; }
+    .evidence-item span { color:white; font-size:13px; line-height:1.35; }
+    .evidence-item em { border-radius:999px; padding:4px 8px; background:rgba(94,224,180,.1); color:var(--mint); font:500 8px JetBrains,monospace; font-style:normal; }
+    .conclusion { display:flex; align-items:center; gap:12px; border:1px solid rgba(94,224,180,.36); border-radius:18px; padding:14px 17px; background:rgba(94,224,180,.06); }
+    .conclusion b { color:var(--mint); font-size:13px; }
+    .conclusion span { color:var(--soft); font-size:14px; }
+    .conclusion button { margin-left:auto; border:1px solid var(--border); border-radius:999px; padding:6px 11px; background:var(--field); color:var(--pink); font-size:10px; font-weight:800; }
+
+    .shot-body { position:relative; z-index:2; display:grid; grid-template-rows:475px 1fr; gap:14px; height:728px; padding:0 20px 20px; }
+    .fake-shot { position:relative; overflow:hidden; border:1px solid #5e4b85; border-radius:18px; background:#111017; box-shadow:inset 0 0 60px rgba(155,92,255,.08); }
+    .shot-top { display:flex; height:44px; align-items:center; gap:7px; border-bottom:1px solid var(--border); padding:0 13px; background:#1b1727; }
+    .shot-top i { width:8px; height:8px; border-radius:50%; background:var(--hot); }
+    .shot-top i:nth-child(2){background:var(--amber)} .shot-top i:nth-child(3){background:var(--mint)}
+    .shot-top b { margin-left:8px; color:var(--pink); font-size:12px; }
+    .shot-copy { padding:18px 21px; }
+    .shot-copy h3 { margin:0 0 13px; color:var(--pink); font-size:22px; }
+    .shot-copy p { margin:8px 0; color:white; font-size:12px; line-height:1.55; }
+    .shot-table { margin-top:14px; overflow:hidden; border:1px solid var(--border); border-radius:12px; }
+    .shot-row { display:grid; grid-template-columns:135px 1fr; border-top:1px solid var(--border); }
+    .shot-row:first-child { border-top:0; background:var(--inset); color:var(--coral); font-weight:800; }
+    .shot-row span { padding:9px; font-size:10px; line-height:1.35; }
+    .shot-row span+span { border-left:1px solid var(--border); }
+    .pin { position:absolute; z-index:4; display:grid; width:30px; height:30px; place-items:center; border:2px solid white; border-radius:50%; background:linear-gradient(145deg,var(--hot),var(--purple)); box-shadow:0 5px 20px rgba(255,92,138,.55); color:white; font:500 10px JetBrains,monospace; }
+    .pin:hover,.pin.active { transform:scale(1.16); box-shadow:0 0 0 6px rgba(155,92,255,.18),0 8px 26px rgba(255,92,138,.65); }
+    .p1 { top:74px; right:38px; } .p2 { top:218px; left:176px; } .p3 { right:74px; bottom:35px; }
+    .shot-notes { display:grid; grid-template-columns:repeat(3,1fr); gap:9px; }
+    .shot-note { border:1px solid var(--border); border-radius:14px; padding:11px; background:rgba(10,8,16,.43); }
+    .shot-note.active { border-color:var(--hot); background:rgba(255,92,138,.08); }
+    .shot-note b { display:flex; align-items:center; gap:6px; color:var(--cyan); font:500 9px JetBrains,monospace; }
+    .shot-note b i { display:grid; width:18px; height:18px; place-items:center; border-radius:50%; background:var(--purple); color:white; font-style:normal; }
+    .shot-note p { margin:6px 0 0; color:var(--soft); font-size:10px; line-height:1.35; }
+
+    .matrix-body { position:relative; z-index:2; padding:0 20px 20px; }
+    .matrix-tools { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+    .matrix-tools span { color:var(--soft); font-size:11px; }
+    .matrix-tools button { border:1px solid var(--border); border-radius:999px; padding:5px 10px; background:transparent; color:var(--quiet); font-size:9px; font-weight:800; }
+    .matrix-tools button.active { border-color:var(--hot); background:rgba(255,92,138,.1); color:#ffb0c7; }
+    .matrix-tools .summary { margin-left:auto; color:var(--coral); font:500 9px JetBrains,monospace; }
+    .matrix { width:100%; border-collapse:separate; border-spacing:0 7px; }
+    .matrix th { padding:0 10px 4px; color:var(--cyan); font:500 9px JetBrains,monospace; text-align:left; text-transform:uppercase; }
+    .matrix td { padding:10px; background:rgba(10,8,16,.46); color:var(--soft); font-size:11px; }
+    .matrix td:first-child { border-radius:12px 0 0 12px; color:white; font-weight:700; }
+    .matrix td:last-child { border-radius:0 12px 12px 0; }
+    .state { display:inline-grid; min-width:74px; place-items:center; border-radius:999px; padding:4px 7px; font:500 8px JetBrains,monospace; }
+    .state.good { background:rgba(94,224,180,.11); color:var(--mint); }
+    .state.partial { background:rgba(255,190,92,.11); color:var(--amber); }
+    .state.missing { background:rgba(255,92,138,.12); color:#ff9bbb; }
+    .matrix tr.hidden { display:none; }
+
+    .impact-body { position:relative; z-index:2; height:242px; margin:0 18px 18px; overflow:hidden; border-radius:17px; background:rgba(10,8,16,.34); }
+    .impact-body svg { position:absolute; inset:0; width:100%; height:100%; }
+    .impact-node { position:absolute; min-width:130px; border:1px solid var(--border); border-radius:13px; padding:9px 11px; background:#211b35; box-shadow:0 10px 25px rgba(0,0,0,.28); }
+    .impact-node:hover,.impact-node.active { border-color:var(--cyan); transform:translateY(-2px); }
+    .impact-node b { display:block; color:white; font-size:12px; }
+    .impact-node small { color:var(--soft); font-size:9px; }
+    .impact-node.root { top:82px; left:32px; border-color:var(--hot); background:linear-gradient(145deg,#402143,#24182e); }
+    .impact-node.n1{top:25px;left:270px}.impact-node.n2{top:91px;left:270px}.impact-node.n3{top:157px;left:270px}.impact-node.n4{top:25px;right:26px}.impact-node.n5{top:117px;right:26px}
+    .impact-badge { position:absolute; right:14px; bottom:12px; color:var(--cyan); font:500 8px JetBrains,monospace; }
+
+    .peek-body { position:relative; z-index:2; display:grid; grid-template-columns:1fr 1.2fr; gap:13px; padding:2px 18px 18px; }
+    .doc-lines { padding:13px; border-radius:15px; background:rgba(10,8,16,.42); color:var(--soft); font-size:12px; line-height:1.65; }
+    .doc-lines a { border-bottom:1px dotted var(--mint); color:var(--mint); text-decoration:none; }
+    .peek-card { border:1px solid rgba(94,224,180,.35); border-radius:15px; padding:13px; background:#171522; }
+    .peek-card code { color:var(--cyan); font:500 9px JetBrains,monospace; }
+    .peek-card b { display:block; margin:6px 0; color:var(--pink); font-size:13px; }
+    .peek-card p { margin:0; color:var(--soft); font-size:10px; line-height:1.45; }
+    .peek-card .open { display:inline-block; margin-top:9px; color:var(--mint); font-size:9px; font-weight:800; }
+  </style>
+</head>
+<body>
+  <section class="page" id="page1">
+    <header><div class="brand"><span class="brand-mark"></span>StrataMD</div><a class="doc-tab active" href="?page=1">evidence-and-images.md</a><a class="doc-tab" href="?page=2">gaps-and-impact.md</a><div class="page-title"><span>High-threshold candidates · 01</span><b>Show why. Point at what.</b></div></header>
+    <main class="editor"><div class="toolbar"><span>B</span><span>∕</span><span>&lt;/&gt;</span><span>H</span><span>≔</span><span>☑</span><span>❝</span><span>⊞</span><span class="source">{ } source</span><span class="badge">Strata Vivid</span></div>
+      <div class="grid page-one">
+        <article class="widget evidence"><div class="widget-head"><span class="icon">⌁</span><div><h2>Why the review reaches this verdict</h2><p>A claim stays connected to the evidence that earns it.</p></div><span class="kind component">Evidence chain</span></div>
+          <div class="evidence-body"><div class="claim"><span class="claim-mark">◆</span><div><b>Claim</b><p>Mesa's written process is upside down.</p></div></div>
+            <div class="evidence-list">
+              <button class="evidence-item"><code>08 §2.3</code><span>Canon caught none of the major August defects.</span><em>verified</em></button>
+              <button class="evidence-item"><code>01 §2</code><span>The mandated read path costs about 43,000 tokens.</span><em>verified</em></button>
+              <button class="evidence-item"><code>03 §0</code><span>CI stayed red while every push still deployed.</span><em>verified</em></button>
+              <button class="evidence-item"><code>06 §3</code><span>Rules enforced in database code held.</span><em>verified</em></button>
+            </div>
+            <div class="conclusion"><b>Therefore</b><span>Move invariants into database guards, launchers, and CI.</span><button>Discuss conclusion</button></div>
+          </div>
+        </article>
+
+        <article class="widget screenshot"><div class="widget-head"><span class="icon">⊙</span><div><h2>Review the screenshot, not a detached caption</h2><p>Numbered anchors turn an image into a shared inspection space.</p></div><span class="kind component">Annotated screenshot</span></div>
+          <div class="shot-body">
+            <div class="fake-shot"><div class="shot-top"><i></i><i></i><i></i><b>Mesa practices review</b></div><div class="shot-copy"><h3>2. What Mesa is, in one page per island</h3><p>This section exists so the rest of the document can be judged against the product, not the code.</p><div class="shot-table"><div class="shot-row"><span>Island</span><span>The invariant that makes it Mesa</span></div><div class="shot-row"><span>Address and job</span><span>Address is the record. One job, one address. Warranty follows the address.</span></div><div class="shot-row"><span>Sales</span><span>Stages move only by work being done. One accountable owner, never a pool.</span></div><div class="shot-row"><span>Measurement</span><span>Provider originals are immutable. Corrections fork.</span></div><div class="shot-row"><span>Production</span><span>Claims land on a real section of a real roof.</span></div></div></div><button class="pin p1" data-note="0">1</button><button class="pin p2" data-note="1">2</button><button class="pin p3" data-note="2">3</button></div>
+            <div class="shot-notes"><div class="shot-note"><b><i>1</i>Reading problem</b><p>The heading and setup need a clearer visual break.</p></div><div class="shot-note"><b><i>2</i>Table problem</b><p>Long rows blend together and hide each island.</p></div><div class="shot-note"><b><i>3</i>Agent question</b><p>Which invariant should be challenged first?</p></div></div>
+          </div>
+        </article>
+      </div>
+    </main>
+  </section>
+
+  <section class="page" id="page2">
+    <header><div class="brand"><span class="brand-mark"></span>StrataMD</div><a class="doc-tab" href="?page=1">evidence-and-images.md</a><a class="doc-tab active" href="?page=2">gaps-and-impact.md</a><div class="page-title"><span>High-threshold candidates · 02</span><b>Find the hole. Follow the consequence.</b></div></header>
+    <main class="editor"><div class="toolbar"><span>B</span><span>∕</span><span>&lt;/&gt;</span><span>H</span><span>≔</span><span>☑</span><span>❝</span><span>⊞</span><span class="source">{ } source</span><span class="badge">Strata Vivid</span></div>
+      <div class="grid page-two">
+        <article class="widget wide"><div class="widget-head"><span class="icon">▦</span><div><h2>Which product rules are actually protected?</h2><p>A prose-heavy table becomes a gap finder without changing its Markdown.</p></div><span class="kind native">Traceability matrix · table view</span></div>
+          <div class="matrix-body"><div class="matrix-tools"><span>Show</span><button class="active" id="allRows">All rules</button><button id="gapRows">Gaps only</button><span class="summary">2 unprotected · 2 partial · 1 protected</span></div>
+            <table class="matrix"><thead><tr><th>Product rule</th><th>Code owner</th><th>Database gate</th><th>Real test</th><th>Evidence</th><th>Verdict</th></tr></thead><tbody>
+              <tr data-gap="yes"><td>One job has one address</td><td><span class="state partial">6 doors</span></td><td><span class="state missing">missing</span></td><td><span class="state partial">partial</span></td><td>06 A9</td><td><span class="state missing">unprotected</span></td></tr>
+              <tr data-gap="no"><td>Signed price never mutates</td><td><span class="state good">proposal</span></td><td><span class="state good">guarded</span></td><td><span class="state good">real API</span></td><td>06 P12</td><td><span class="state good">protected</span></td></tr>
+              <tr data-gap="yes"><td>Locked shift cannot change</td><td><span class="state partial">17 doors</span></td><td><span class="state missing">missing</span></td><td><span class="state partial">RPC only</span></td><td>06 P6</td><td><span class="state missing">unprotected</span></td></tr>
+              <tr data-gap="yes"><td>Payment submits before clear</td><td><span class="state good">billing</span></td><td><span class="state partial">insert gap</span></td><td><span class="state good">DB test</span></td><td>06 M4</td><td><span class="state partial">partial</span></td></tr>
+              <tr data-gap="yes"><td>Manual weather correction holds</td><td><span class="state good">weather</span></td><td><span class="state partial">API only</span></td><td><span class="state missing">missing</span></td><td>06 A4</td><td><span class="state partial">partial</span></td></tr>
+            </tbody></table>
+          </div>
+        </article>
+
+        <article class="widget"><div class="widget-head"><span class="icon">⌘</span><div><h2>If we guard addresses, what moves?</h2><p>Generated from the repo map, not maintained in prose.</p></div><span class="kind native">Repo-aware impact map</span></div>
+          <div class="impact-body"><svg viewBox="0 0 900 242" fill="none"><defs><linearGradient id="impact" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#9b5cff"/><stop offset="1" stop-color="#4f8dff"/></linearGradient></defs><path d="M180 121C225 121 220 53 270 53M180 121H270M180 121C225 121 220 185 270 185M400 53H710M400 119C560 119 550 53 710 53M400 185C560 185 550 145 710 145" stroke="url(#impact)" stroke-width="3" opacity=".82"/></svg><button class="impact-node root"><b>Guard addresses</b><small>proposed change</small></button><button class="impact-node n1"><b>Address island</b><small>owner</small></button><button class="impact-node n2"><b>4 write paths</b><small>must route through door</small></button><button class="impact-node n3"><b>6 files</b><small>implementation reach</small></button><button class="impact-node n4"><b>3 real tests</b><small>selected proof</small></button><button class="impact-node n5"><b>1 owner Decision</b><small>historical import</small></button><span class="impact-badge">SYSTEM MAP · current commit</span></div>
+        </article>
+
+        <article class="widget"><div class="widget-head"><span class="icon">↗</span><div><h2>Read evidence without losing your place</h2><p>The citation opens as a temporary peek, then one click opens the file.</p></div><span class="kind native">Cross-reference preview</span></div>
+          <div class="peek-body"><div class="doc-lines">The mandated read path loads about 43,000 tokens before touching code. The useful rules fit in about 5,000. <a href="#">01 §2</a></div><div class="peek-card"><code>evidence/01-canon-skills-audit.md · §2</code><b>What the router makes an agent read</b><p>The router and page list expand into 44 files. The page list alone contributes 68 percent of the required context.</p><span class="open">Open beside this document →</span></div></div>
+        </article>
+      </div>
+    </main>
+  </section>
+  <script>
+    document.body.dataset.page = new URLSearchParams(location.search).get('page') === '2' ? '2' : '1'
+    document.querySelectorAll('.evidence-item').forEach(item => item.addEventListener('click', () => { document.querySelectorAll('.evidence-item').forEach(other => other.classList.toggle('active',other===item)) }))
+    document.querySelectorAll('.pin').forEach(pin => pin.addEventListener('click', () => { document.querySelectorAll('.pin').forEach(other => other.classList.toggle('active',other===pin)); document.querySelectorAll('.shot-note').forEach((note,index) => note.classList.toggle('active',index===Number(pin.dataset.note))) }))
+    const rows=[...document.querySelectorAll('.matrix tbody tr')]
+    const all=document.getElementById('allRows'),gaps=document.getElementById('gapRows')
+    all?.addEventListener('click',()=>{ rows.forEach(row=>row.classList.remove('hidden')); all.classList.add('active'); gaps.classList.remove('active') })
+    gaps?.addEventListener('click',()=>{ rows.forEach(row=>row.classList.toggle('hidden',row.dataset.gap!=='yes')); gaps.classList.add('active'); all.classList.remove('active') })
+    document.querySelectorAll('.impact-node').forEach(node => node.addEventListener('click', () => node.classList.toggle('active')))
+  </script>
+</body>
+</html>

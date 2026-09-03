@@ -4,12 +4,12 @@ import { dirname, join } from 'node:path'
 import { Scenario, primaryKey } from './harness'
 
 // Explorer file operations (usability round 2 §5.10): New file, Rename,
-// Move to trash, the recents list, and revealing the active document by
+// Move to trash and revealing the active document by
 // opening its ancestor folders.
 
 const exists = (path: string) => access(path).then(() => true, () => false)
 
-test('New file, Ctrl+N, Rename, trash, and recents work from the explorer', async ({}, testInfo) => {
+test('New file, Ctrl+N, Rename, and trash work from the explorer', async ({}, testInfo) => {
   const scenario = await Scenario.create(testInfo, '# Files\n\nFirst document.\n', 'files.md')
   const folder = dirname(scenario.file)
   await writeFile(join(folder, 'other.md'), '# Other\n\nSecond document.\n')
@@ -36,10 +36,6 @@ test('New file, Ctrl+N, Rename, trash, and recents work from the explorer', asyn
     expect(await exists(join(folder, 'untitled.md'))).toBe(true)
     await page.keyboard.press(primaryKey('n'))
     await expect(page.getByRole('tab', { name: /untitled-2\.md/i })).toHaveAttribute('aria-selected', 'true')
-
-    // The recents list names what was opened, newest first.
-    const recents = explorer.getByRole('region', { name: 'Recent documents' })
-    await expect(recents.getByRole('button').first()).toHaveText('untitled-2.md')
 
     // Rename a document that is not open.
     await explorer.getByRole('button', { name: /^other\.md$/i }).click({ button: 'right' })

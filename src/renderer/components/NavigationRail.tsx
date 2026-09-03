@@ -11,6 +11,8 @@ interface NavigationRailProps {
   headings: readonly EditorHeading[]
   activeHeadingId: string | null
   walkthrough: WalkthroughState
+  /** The live Markdown, for the walkthrough card's section preview. */
+  content: string
   onSelect(tab: NavigationTab): void
   onJumpHeading(id: string): void
   onWalkthrough(action: WalkthroughAction): void
@@ -28,7 +30,7 @@ export function NavigationRail(props: NavigationRailProps) {
         {props.files}
       </section>
       <section role="tabpanel" id="navigation-panel-contents" aria-labelledby="navigation-tab-contents" hidden={props.selected !== 'contents'}>
-        <Contents headings={props.headings} activeId={props.activeHeadingId} walkthrough={props.walkthrough} onJump={props.onJumpHeading} onWalkthrough={props.onWalkthrough} />
+        <Contents headings={props.headings} activeId={props.activeHeadingId} walkthrough={props.walkthrough} content={props.content} onJump={props.onJumpHeading} onWalkthrough={props.onWalkthrough} />
       </section>
     </aside>
   )

@@ -84,12 +84,16 @@ class TableNodeView implements NodeView {
   readonly dom: HTMLDivElement
   readonly contentDOM: HTMLTableSectionElement
   readonly #toolbar: HTMLDivElement
+  readonly #head: HTMLDivElement
+  readonly #utilities: HTMLDivElement
   readonly #source: HTMLTableElement
   readonly #derived: HTMLDivElement
   readonly #style: HTMLStyleElement
   #node: ProseMirrorNode
   #revealed = false
   #toolbarKey = ''
+  /** Session-only: the owner opened the utility row on a table that is not active. */
+  #toolsOpen = false
 
   constructor(node: ProseMirrorNode, readonly view: EditorView, readonly getPos: () => number | undefined, readonly manager: TableNodeViewManager) {
     this.#node = node
@@ -101,6 +105,11 @@ class TableNodeView implements NodeView {
     this.#toolbar.contentEditable = 'false'
     this.#toolbar.setAttribute('role', 'toolbar')
     this.#toolbar.setAttribute('aria-label', 'Table view controls')
+    this.#head = document.createElement('div')
+    this.#head.className = 'strata-table-head'
+    this.#utilities = document.createElement('div')
+    this.#utilities.className = 'strata-table-utilities'
+    this.#toolbar.append(this.#head, this.#utilities)
     const scroller = document.createElement('div')
     scroller.className = 'strata-table-scroll'
     this.#source = document.createElement('table')
@@ -340,6 +349,7 @@ class TableNodeView implements NodeView {
       for (const column of projection.visibleColumns) {
         const cell = document.createElement('td')
         cell.textContent = projected.cells[column] ?? ''
+        cell.dataset.label = headers[column] ?? `Column ${column + 1}`
         cell.addEventListener('click', () => this.#commit({ focusedRow: projected.sourceIndex, focusedColumn: column }))
         row.append(cell)
       }
@@ -374,35 +384,83 @@ class TableNodeView implements NodeView {
     this.#style.textContent = `${state.columnWidths.map((width, index) => width ? `.strata-source-table tr > *:nth-child(${index + 1}), .strata-table-derived tr > *:nth-child(${index + 1}) { width:${width}px; min-width:${width}px; }` : '').join('\n')}\n${currentCell}`
     if (transformed) this.#renderDerived(state)
 
-    const toolbarKey = JSON.stringify([state, hiddenReviewCount, this.#revealed, this.manager.focusedTable === key])
+    const bodyRows = Math.max(0, this.#node.childCount - 1)
+    const shownRows = transformed ? this.#projectedRowCount(state, bodyRows) : bodyRows
+    const selected = state.focusedRow !== null && state.focusedRow < bodyRows
+    const utilitiesOpen = selected || transformed || this.#toolsOpen
+    const toolbarKey = JSON.stringify([state, hiddenReviewCount, this.#revealed, this.manager.focusedTable === key, utilitiesOpen, shownRows])
     if (toolbarKey !== this.#toolbarKey) {
       this.#toolbarKey = toolbarKey
-      this.#toolbar.replaceChildren()
-      this.#toolbar.append(this.#modeControls(state))
-      const status = document.createElement('span')
-      status.className = 'strata-table-status'
-      status.textContent = transformed && !this.#revealed ? 'Read-only view' : 'Editable source order'
-      this.#toolbar.append(status)
-      if (transformed) this.#toolbar.append(button(this.#revealed ? 'Return to table view' : 'Edit', () => this.#revealed ? this.manager.restoreReveals() : this.#focusSelectedCell()))
-      this.#toolbar.append(button(this.manager.focusedTable === key ? 'Exit focus' : 'Focus', () => this.manager.focus(key)))
+      this.#head.replaceChildren()
+      this.#utilities.replaceChildren()
+      const focused = this.manager.focusedTable === key
+      const title = document.createElement('span')
+      title.className = 'strata-table-title'
+      title.textContent = state.table.headingText ?? 'Table'
+      title.title = title.textContent
+      const count = document.createElement('span')
+      count.className = 'strata-table-count'
+      count.textContent = transformed && shownRows !== bodyRows ? `${shownRows} of ${bodyRows} shown` : `${bodyRows} ${bodyRows === 1 ? 'row' : 'rows'}`
+      if (focused) count.textContent += ' · Focused table view'
+      this.#head.append(title, count)
+      if (transformed) {
+        const status = document.createElement('span')
+        status.className = 'strata-table-status'
+        status.textContent = this.#revealed ? 'Editing the source table' : 'Read-only view'
+        this.#head.append(status)
+      }
       const hidden = transformed && !this.#revealed ? hiddenReviewCount : 0
       if (hidden > 0) {
-        const count = document.createElement('span')
-        count.className = 'strata-table-hidden-review'
-        count.textContent = `${hidden} review item${hidden === 1 ? '' : 's'} hidden`
-        this.#toolbar.append(count)
+        const chip = document.createElement('span')
+        chip.className = 'strata-table-hidden-review'
+        chip.textContent = `${hidden} review item${hidden === 1 ? '' : 's'} hidden`
+        this.#head.append(chip)
       }
-      this.#toolbar.append(this.#discussionControls(state))
-      this.#toolbar.append(this.#secondaryControls(state, 'strata-table-secondary'))
+      this.#head.append(this.#modeControls(state))
+      const actions = document.createElement('span')
+      actions.className = 'strata-table-actions'
+      if (transformed) actions.append(this.#action(this.#revealed ? 'Return to table view' : 'Edit', () => this.#revealed ? this.manager.restoreReveals() : this.#focusSelectedCell()))
+      const tools = this.#action('Tools', () => { this.#toolsOpen = !this.#toolsOpen; this.render() }, utilitiesOpen)
+      tools.setAttribute('aria-label', 'Table tools')
+      tools.setAttribute('aria-expanded', String(utilitiesOpen))
+      actions.append(tools, this.#action(focused ? 'Exit focus' : 'Focus', () => this.manager.focus(key), focused))
+      this.#head.append(actions)
+      // Below 620px the utility row collapses into a menu; row discussion stays one click away in the header.
+      if (selected) {
+        const narrowDiscussion = this.#discussionControls(state)
+        narrowDiscussion.classList.add('strata-table-discussion-narrow')
+        this.#head.append(narrowDiscussion)
+      }
       const collapsed = document.createElement('details')
       collapsed.className = 'strata-table-options'
       const summary = document.createElement('summary')
       summary.textContent = 'Table options'
-      collapsed.append(summary, this.#secondaryControls(state, 'strata-table-secondary-collapsed'))
+      const collapsedGroup = this.#secondaryControls(state, 'strata-table-secondary-collapsed')
+      collapsed.append(summary, collapsedGroup)
       collapsed.open = optionsWereOpen
-      this.#toolbar.append(collapsed)
+      this.#head.append(collapsed)
+      this.#utilities.hidden = !utilitiesOpen
+      if (utilitiesOpen) {
+        this.#utilities.append(this.#secondaryControls(state, 'strata-table-secondary'))
+        if (selected) this.#utilities.append(this.#discussionControls(state))
+      }
     }
+  }
 
+  #action(label: string, action: () => void, pressed?: boolean): HTMLButtonElement {
+    const control = button(label, action, pressed)
+    control.classList.add('strata-table-action')
+    return control
+  }
+
+  #projectedRowCount(state: TableViewState, bodyRows: number): number {
+    if (state.presentation === 'compare') return state.selectedRows.filter((row) => row < bodyRows).length
+    if (state.presentation === 'focus-row') return state.focusedRow !== null && state.focusedRow < bodyRows ? 1 : 0
+    const rows = [...Array(bodyRows)].map((_, rowIndex) => {
+      const row = this.#node.child(rowIndex + 1)
+      return [...Array(row.childCount)].map((__, column) => row.child(column).textContent)
+    })
+    return projectTable(state.table.headers, rows, state).rows.length
   }
 }
 

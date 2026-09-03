@@ -22,6 +22,7 @@ Unit and integration tests load `native/unix-support/build/Release/unix_support.
 - Ubuntu 24.04 and other kernels that restrict unprivileged user namespaces kill any Electron started outside Playwright with the SUID sandbox error. Fix once: `sudo chown root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 node_modules/electron/dist/chrome-sandbox`.
 - The spellcheck spec expects an en-US Hunspell dictionary in the profile. A fresh machine has none: `xvfb-run -a npx electron scripts/fetch-spell-dictionary.mjs`.
 - Each spec gets its own `XDG_*` directories in a temp dir, so the suite never touches the owner's StrataMD store or running app. Keep it that way.
+- `test/e2e/visual-recovery.spec.ts` compares pixel baselines under `test/e2e/visual-recovery.spec.ts-snapshots/` for the shell, Contents, the table header, and the component sampler. After an intended visual change, rerun it with `--update-snapshots` and look at the new images against `docs/design/structured-reading/captures/prototype/` before committing them. `docs/design/structured-reading/README.md` has the capture commands.
 
 ## Rules that tests enforce
 

@@ -35,7 +35,7 @@ describe('registered component tags', () => {
   it('does not activate component examples inside fences or lists', () => {
     const skill = readFileSync(resolve('skills/stratamd/SKILL.md'), 'utf8')
     const skillNodes = parseMarkdown(skill).ast.children
-    expect(skillNodes.filter((node) => node.type === 'code')).toHaveLength(12)
+    expect(skillNodes.filter((node) => node.type === 'code')).toHaveLength(15)
     expect(skillNodes.filter((node) => (node as { type: string }).type === 'mdxJsxFlowElement')).toHaveLength(0)
 
     const list = '- first\n  <Callout>\n  Kept as text.\n  </Callout>\n- second\n'

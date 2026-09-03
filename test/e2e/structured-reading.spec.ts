@@ -75,6 +75,10 @@ test('Contents follows the live document, centers jumps, and restores each docum
   await page.keyboard.press('ArrowRight')
   await expect(navigation.getByRole('tab', { name: 'Contents' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('button', { name: /Reading guide/ })).toBeVisible()
+  // H2 rows are the primary route; deeper headings appear beneath the active or explicitly expanded section.
+  await expect(page.getByRole('treeitem')).toHaveCount(2)
+  await expect(page.getByRole('treeitem').nth(0)).toHaveAttribute('aria-level', '2')
+  await page.getByRole('button', { name: 'Show subsections of Alpha' }).click()
   await expect(page.getByRole('treeitem')).toHaveCount(4)
   await expect(page.getByRole('treeitem').nth(1)).toHaveAttribute('aria-level', '3')
   await expect(page.getByRole('treeitem').nth(2)).toHaveAttribute('aria-level', '4')
@@ -85,7 +89,7 @@ test('Contents follows the live document, centers jumps, and restores each docum
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
   expect(await page.locator('html').getAttribute('data-editor-transaction-ms')).toBe(transactionTime)
   await expect(page.getByRole('heading', { name: 'Alpha detail', exact: true })).toBeHidden()
-  await page.getByRole('button', { name: /Alpha detail/ }).click()
+  await page.getByRole('button', { name: /^Alpha detail/ }).click()
   await expect(page.getByRole('heading', { name: 'Alpha detail', exact: true })).toBeVisible()
   await expect(alphaFold).toContainText('Temporarily open')
 

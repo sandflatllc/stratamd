@@ -285,6 +285,12 @@ export interface ApplicationOptions {
   watch?: boolean
 }
 
+interface OpenDocumentsRecord {
+  formatVersion: 1
+  documents: string[]
+  focused: string | null
+}
+
 export class StrataApplication implements StrataApi {
   readonly #store: GhostStore
   readonly #settingsStore: SettingsStore
@@ -330,8 +336,60 @@ export class StrataApplication implements StrataApi {
     this.#tabs = new SessionRegistry({
       canonicalize: resolveDocumentPath,
       now: this.#now,
-      onChange: () => this.#publish()
+      onChange: () => { this.#publish(); this.#scheduleOpenDocumentsPersist() }
     })
+  }
+
+  /** Where the open tab set lives between runs: a private file beside the ghost store. */
+  get #openDocumentsPath(): string {
+    return join(this.#store.dataDirectory, 'open-documents.json')
+  }
+
+  #openDocumentsWrite: Promise<void> = Promise.resolve()
+
+  /**
+   * Remember the open tabs and the focused one so a restart brings them back
+   * (the tab pills are the only record of what is open). Writes are queued and
+   * atomic; a failure is logged, never thrown into a tab operation.
+   */
+  #scheduleOpenDocumentsPersist(): void {
+    if (this.#shutdown) return
+    const snapshot: OpenDocumentsRecord = {
+      formatVersion: 1,
+      documents: this.#tabs.list().map((tab) => tab.path),
+      focused: this.#tabs.focusedPath,
+    }
+    this.#openDocumentsWrite = this.#openDocumentsWrite
+      .then(() => atomicWriteFile(this.#openDocumentsPath, `${JSON.stringify(snapshot, null, 2)}\n`))
+      .catch((error: unknown) => logError('main', 'Open documents could not be remembered', error))
+  }
+
+  /**
+   * Reopen the tabs a previous run left open, in their old order, and focus the
+   * one that was focused. Files that no longer exist or cannot open are skipped
+   * quietly; a document opened from the command line afterwards takes focus.
+   */
+  async restoreOpenDocuments(): Promise<string[]> {
+    let record: OpenDocumentsRecord | null = null
+    try {
+      const parsed: unknown = JSON.parse(await readFile(this.#openDocumentsPath, 'utf8'))
+      if (parsed && typeof parsed === 'object' && Array.isArray((parsed as OpenDocumentsRecord).documents)) record = parsed as OpenDocumentsRecord
+    } catch {
+      return []
+    }
+    if (!record) return []
+    const reopened: string[] = []
+    for (const path of record.documents) {
+      if (typeof path !== 'string') continue
+      try {
+        await this.openDocument(path)
+        reopened.push(path)
+      } catch (error) {
+        logError('main', `A previously open document could not be reopened: ${path}`, error)
+      }
+    }
+    if (typeof record.focused === 'string' && reopened.includes(record.focused)) await this.openDocument(record.focused)
+    return reopened
   }
 
   async initialize(): Promise<this> {

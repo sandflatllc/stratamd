@@ -15,6 +15,8 @@ export interface MainApplication extends StrataApi {
   commandHandler?(): SocketCommandHandler
   recheckFocused?(): Promise<void>
   shutdown?(): Promise<void>
+  /** Reopen the tabs the previous run left open; returns what came back. */
+  restoreOpenDocuments?(): Promise<string[]>
   /** Open documents whose buffer differs from the file; the close prompt asks about these. */
   dirtyDocumentPaths?(): string[]
 }
@@ -300,6 +302,8 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
   }
 
   mainWindow = await ensureWindow()
+  // Last run's tabs come back first; anything named on the command line opens after them and takes focus.
+  await options.api.restoreOpenDocuments?.()
   await openLaunchDocuments(options.argv ?? process.argv.slice(1))
   adoptOpenFileHandler((path) => {
     void options.api.openDocument(path).then(showAndFocus)

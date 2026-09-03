@@ -199,7 +199,7 @@ test('populated renderer preserves the handoff tokens, controls, and motion poli
     await expect(page.locator('.strata-suggestion-replacement')).toHaveText('each construct')
     await expect(page.locator('.strata-suggestion-author')).toHaveText('Claude · suggestion')
     await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(2)
-    await expect(page.locator('.file-row:not(.recent-row)')).toHaveCount(4)
+    await expect(page.locator('.file-row')).toHaveCount(4)
     await expect(page.locator('.agent-row')).toHaveCount(2)
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
     await page.screenshot({ path: testInfo.outputPath('handoff-populated.png'), fullPage: true })

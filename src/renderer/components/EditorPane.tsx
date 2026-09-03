@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import type { AnnotationContext, AnnotationKind, AnnotationView, BufferOrigin, DocumentView, HunkView, PanelSize, RedoResult, SpellingContext, TableViewState, UndoResult } from '../../shared/contracts'
+import type { AnnotationContext, AnnotationKind, AnnotationView, BufferOrigin, DocumentView, HunkView, PanelSize, RedoResult, SpellingContext, TableViewState, UndoResult, WalkthroughAction, WalkthroughState } from '../../shared/contracts'
 import type { EditorSelection, RendererEditorFactory, RendererEditorHandle } from '../editorAdapter'
 import { bannerFor, currentAnnotation } from '../model'
 import { NO_MATCHES, type FindResult } from '../../editor/find'
@@ -13,10 +13,16 @@ import { ResolveSuggestionDialog } from './Overlays'
 import { Resizer } from './Resizer'
 import { ThreadPanel, type SpanAnchor } from './ThreadPanel'
 import { Toolbar, type EditorCommand } from './Toolbar'
+import { WalkthroughBar } from './WalkthroughBar'
+import { walkthroughView } from '../walkthrough'
 import type { EditorHeading } from '../../editor/headings'
 
 interface EditorPaneProps {
   document: DocumentView
+  walkthrough: WalkthroughState
+  headings: readonly EditorHeading[]
+  onWalkthrough(action: WalkthroughAction): void
+  onJumpHeading(id: string): void
   documentMeasure: number
   zoom: number
   threadPanelSize: PanelSize
@@ -72,6 +78,7 @@ export function EditorPane(props: EditorPaneProps) {
   const dismissedSelection = useRef<string | null>(null)
   const banner = bannerDismissed ? null : bannerFor(document)
   const selectedAnnotation = currentAnnotation(document, props.selectedAnnotation)
+  const walkthrough = walkthroughView(props.headings, props.walkthrough)
   const [confirmResolve, setConfirmResolve] = useState(false)
   // Find (PRD §6.1): the bar is pane state; the marks live in the editor.
   const [find, setFind] = useState<{ open: boolean; query: string; focusToken: number }>({ open: false, query: '', focusToken: 0 })
@@ -207,7 +214,7 @@ export function EditorPane(props: EditorPaneProps) {
           <button type="button" aria-label="Dismiss banner" onClick={() => setBannerDismissed(true)}>×</button>
         </div>
       )}
-      <div className="editor-scroll" ref={scroll}>
+      <div className="editor-scroll" ref={scroll} data-walkthrough={walkthrough ? 'true' : undefined}>
         <div className="document-column" style={{ width: `min(${props.documentMeasure}px, 100%)` }}>
           <Resizer axis="vertical" label="Resize document measure" value={props.documentMeasure} min={620} max={1600} onChange={(value) => props.onDocumentMeasure(value, false)} onCommit={(value) => props.onDocumentMeasure(value, true)} />
           <EditorMount
@@ -297,6 +304,7 @@ export function EditorPane(props: EditorPaneProps) {
           onSelectAll={() => editor.current?.selectAll?.()}
         />
       </div>
+      {walkthrough && <WalkthroughBar view={walkthrough} onJump={props.onJumpHeading} onAction={props.onWalkthrough} />}
       {selectedAnnotation && thread && thread.id === selectedAnnotation.id && createPortal(
         <>
           <ThreadPanel

@@ -8,8 +8,6 @@ interface ExplorerProps {
   embedded?: boolean
   folders: ExplorerFolderView[]
   activePath?: string
-  /** Recently opened documents, newest first (§5.10). */
-  recents?: readonly string[]
   scanning: boolean
   onOpen(path: string): void
   onScan(path: string): void
@@ -136,7 +134,7 @@ function Subtree({ node, depth, activePath, toggled, onToggle, onOpen, onForget,
   )
 }
 
-export function Explorer({ embedded = false, folders, activePath, recents = [], scanning, onOpen, onScan, onRefresh, onAddFolder, onOpenFile, onForget, onCopyPath, onRemoveFolder, onNewFile, onRename, onTrash, onReveal }: ExplorerProps) {
+export function Explorer({ embedded = false, folders, activePath, scanning, onOpen, onScan, onRefresh, onAddFolder, onOpenFile, onForget, onCopyPath, onRemoveFolder, onNewFile, onRename, onTrash, onReveal }: ExplorerProps) {
   const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set())
   const [menu, setMenu] = useState<PathContextMenuState | null>(null)
   const tree = useRef<HTMLDivElement>(null)
@@ -237,16 +235,6 @@ export function Explorer({ embedded = false, folders, activePath, recents = [], 
         </div>
       </div>
       <div className={`tree ${scanning ? 'scanning' : ''}`} ref={tree} role="tree" aria-label="Documents" onKeyDown={treeKeys}>
-        {recents.length > 0 && (
-          <section className="recents" aria-label="Recent documents">
-            <h3>Recent</h3>
-            {recents.map((path) => (
-              <div className={`file-row recent-row ${path === activePath ? 'active' : ''}`} role="treeitem" aria-level={1} aria-selected={path === activePath} data-tree-path={path} key={path} onContextMenu={(event) => openMenu(event, path)}>
-                <button type="button" tabIndex={-1} aria-label={`Open recent ${path.split('/').pop() ?? path}`} onClick={() => onOpen(path)} title={path}><span>{path.split('/').pop()}</span></button>
-              </div>
-            ))}
-          </section>
-        )}
         {folders.map((folder) => (
           <section key={folder.path} role="group">
             <FolderRow label={folder.name} path={folder.path} depth={0} collapsed={toggled.has(folder.path)} onToggle={toggle} onContextMenu={openRootMenu} />

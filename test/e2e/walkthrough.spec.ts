@@ -46,7 +46,10 @@ test('walkthrough progress, inclusion, markers, exact restoration, and restart s
   await expect(controls).toContainText('Section 2 of 2')
   await expect(page.getByRole('button', { name: /Two/ })).toHaveAttribute('aria-current', 'location')
 
-  await controls.getByRole('button', { name: 'Reviewed' }).click()
+  // Reviewed and Revisit live in the center-bottom walkthrough bar; Contents shows the resulting state.
+  const bar = page.getByRole('group', { name: 'Walkthrough progress' })
+  await expect(bar).toContainText('02 / 02')
+  await bar.getByRole('button', { name: 'Reviewed' }).click()
   await expect(page.getByRole('button', { name: /Two Reviewed/ })).toBeVisible()
   const changed = DOCUMENT.replace('End.', 'Changed end.')
   await setSource(page, changed)
@@ -56,7 +59,7 @@ test('walkthrough progress, inclusion, markers, exact restoration, and restart s
   await value.waitForBuffer(DOCUMENT)
   await expect(page.getByRole('button', { name: /Two Reviewed/ })).toBeVisible()
 
-  await controls.getByRole('button', { name: 'Revisit' }).click()
+  await bar.getByRole('button', { name: 'Revisit' }).click()
   await expect(page.getByRole('button', { name: /Two Revisit/ })).toBeVisible()
   await value.stop()
 
@@ -67,6 +70,7 @@ test('walkthrough progress, inclusion, markers, exact restoration, and restart s
   await expect(restarted.getByRole('button', { name: /Two Revisit/ })).toBeVisible()
   await restoredControls.getByRole('button', { name: 'Leave walkthrough' }).click()
   await expect(restoredControls).toBeHidden()
+  await expect(restarted.getByRole('group', { name: 'Walkthrough progress' })).toHaveCount(0)
   await expect(restarted.getByRole('button', { name: 'Start walkthrough' })).toBeVisible()
   expect(await readFile(value.file, 'utf8')).toBe(DOCUMENT)
 })

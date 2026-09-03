@@ -513,8 +513,9 @@ export function structureComponentDocument(source: string): ComponentDocumentStr
       if (closer && closer[1]![0] === fence.marker && closer[1]!.length >= fence.length) fence = null
       continue
     }
-    const opener = content.match(/^ {0,3}(`{3,}|~{3,})(?:[\t ].*)?$/u)
-    if (opener) {
+    // CommonMark: the info string may follow the marker directly (```mermaid); a backtick fence's info string cannot contain a backtick.
+    const opener = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u)
+    if (opener && !(opener[1]![0] === '`' && opener[2]!.includes('`'))) {
       fence = { marker: opener[1]![0] as '`' | '~', length: opener[1]!.length }
       continue
     }

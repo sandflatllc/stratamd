@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DocumentView, HunkView } from '../../src/shared/contracts'
-import { activeAnnotations, activitySnapshot, agentActivity, agentActivityMessage, AGENT_PROMPT, annotationCounts, attachmentStatusLine, bannerFor, bulkRevertGroups, changeGroups, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, explorerTree, filteredAnnotations, hasResolvedAnnotations, hasUnsavedCounted, hunkAction, hunkAuthor, hunkSnippet, nextReviewTarget, NOT_LISTENING_AFTER_MS, pendingCount, previewTabIndex, pushRecent, rendererThemeStyle, reviewTargets, saveStateSentence, shouldAdoptPushed, spellingForSelection, tabsToClose, threadTargets, threadTime, timeAgoShort } from '../../src/renderer/model'
+import { activeAnnotations, activitySnapshot, agentActivity, agentActivityMessage, AGENT_PROMPT, annotationCounts, attachmentStatusLine, bannerFor, bulkRevertGroups, changeGroups, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, explorerTree, filteredAnnotations, hasResolvedAnnotations, hasUnsavedCounted, hunkAction, hunkAuthor, hunkSnippet, nextReviewTarget, NOT_LISTENING_AFTER_MS, pendingCount, previewTabIndex, rendererThemeStyle, reviewTargets, saveStateSentence, shouldAdoptPushed, spellingForSelection, tabsToClose, threadTargets, threadTime, timeAgoShort } from '../../src/renderer/model'
 import { INFO_TOAST_MS, nextToast, toastLifetime } from '../../src/renderer/toasts'
 import { formatKeys, shortcutGroups } from '../../src/renderer/shortcuts'
 import { ancestorFolders } from '../../src/renderer/components/Explorer'
@@ -329,10 +329,6 @@ describe('usability round 2 renderer helpers', () => {
     expect(shouldAdoptPushed({ ...sizes, explorerWidth: 300 }, sizes)).toBe(true)
   })
 
-  it('keeps a short list of recent documents with the newest first', () => {
-    expect(pushRecent(['/a', '/b'], '/b')).toEqual(['/b', '/a'])
-    expect(pushRecent(['/a', '/b'], '/c', 2)).toEqual(['/c', '/a'])
-  })
 
   it('closes saved tabs in bulk and counts the dirty ones it leaves open', () => {
     const tabs = [

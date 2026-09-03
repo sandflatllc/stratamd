@@ -3,6 +3,7 @@ import type { EditorView, NodeView, NodeViewConstructor } from 'prosemirror-view
 import type { LocalImageResolver } from './images.js'
 import { strataSchema } from './schema.js'
 import { COMPONENT_REGISTRY } from '../core/markdown/components.js'
+import { componentGlyph, componentLabel, componentQualifier } from './component-labels.js'
 
 interface TableData {
   node: ProseMirrorNode
@@ -130,11 +131,16 @@ class ComponentNodeView implements NodeView {
     this.eyebrow = document.createElement('div')
     this.eyebrow.className = 'strata-component__eyebrow'
     this.eyebrow.contentEditable = 'false'
+    const icon = document.createElement('span')
+    icon.className = 'strata-component__icon'
+    icon.setAttribute('aria-hidden', 'true')
     const label = document.createElement('span')
     label.className = 'strata-component__label'
+    const qualifier = document.createElement('span')
+    qualifier.className = 'strata-component__qualifier'
     this.tooling = document.createElement('span')
     this.tooling.className = 'strata-component-tooling'
-    this.eyebrow.append(label, this.tooling)
+    this.eyebrow.append(icon, label, qualifier, this.tooling)
     this.contentDOM = document.createElement('div')
     this.contentDOM.className = 'strata-component__body'
     this.dom.append(this.eyebrow, this.contentDOM)
@@ -197,8 +203,17 @@ class ComponentNodeView implements NodeView {
     this.dom.dataset.strataComponent = name
     this.dom.dataset.strataComponentState = semantic
     this.dom.setAttribute('aria-label', `${name}: ${semantic}`)
-    this.eyebrow.querySelector('.strata-component__label')!.textContent = `${name} · ${semantic}`
+    this.eyebrow.querySelector('.strata-component__icon')!.textContent = componentGlyph(name, semantic)
+    this.eyebrow.querySelector('.strata-component__label')!.textContent = componentLabel(name, semantic)
+    const qualifier = this.eyebrow.querySelector<HTMLElement>('.strata-component__qualifier')!
+    qualifier.textContent = componentQualifier(name, semantic)
+    qualifier.hidden = qualifier.textContent.length === 0
     this.contentDOM.dataset.componentBody = name.toLowerCase()
+    if (name === 'PhaseBoard') {
+      let phases = 0
+      this.node.forEach((child) => { if (child.type.name === 'heading' && Number(child.attrs.level) === 3) phases += 1 })
+      this.dom.style.setProperty('--phase-count', String(Math.max(1, phases)))
+    } else this.dom.style.removeProperty('--phase-count')
     this.dom.toggleAttribute('data-screenshot-focused', name === 'AnnotatedScreenshot' && this.screenshotFocused)
     this.dom.toggleAttribute('data-evidence-active', name === 'EvidenceChain' && this.evidenceActive)
     if (name === 'AnnotatedScreenshot' && this.activePin !== null) this.dom.dataset.activePin = String(this.activePin)

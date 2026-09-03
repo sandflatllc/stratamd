@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Strata Vivid · dense review walkthrough</title>
+  <style>
+    @font-face { font-family: Baloo; src: url('/node_modules/@fontsource/baloo-2/files/baloo-2-latin-500-normal.woff2'); font-weight: 500; }
+    @font-face { font-family: Baloo; src: url('/node_modules/@fontsource/baloo-2/files/baloo-2-latin-700-normal.woff2'); font-weight: 700; }
+    @font-face { font-family: Baloo; src: url('/node_modules/@fontsource/baloo-2/files/baloo-2-latin-800-normal.woff2'); font-weight: 800; }
+    @font-face { font-family: JetBrains; src: url('/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2'); font-weight: 500; }
+
+    :root {
+      --window:#0a0810; --panel:#15141a; --panel-2:#1b1727; --inset:#312a50; --field:#1d1731;
+      --border:#463c6e; --border-soft:rgba(70,60,110,.55); --white:#fff; --body:#f4f3ff;
+      --soft:#d8ddfd; --muted:#8d89a5; --pink:#f7b8ff; --cyan:#8fe3ff; --amber:#ffbe5c;
+      --coral:#ff7070; --green:#54ff52; --mint:#5ee0b4; --lav:#9aa8ff; --purple:#9b5cff;
+      --blue:#4f8dff; --hot:#ff5c8a; --positive:#3dc97c; --danger:#fe769d;
+    }
+    * { box-sizing:border-box; }
+    html, body { width:100%; height:100%; margin:0; overflow:hidden; background:var(--window); color:var(--white); }
+    body { font-family:Baloo, sans-serif; font-weight:500; }
+    button, textarea { font:inherit; }
+    button { color:inherit; }
+
+    .app {
+      display:grid;
+      grid-template-rows:62px 46px minmax(0,1fr);
+      width:100vw;
+      height:100vh;
+      background:
+        radial-gradient(780px 520px at 6% 4%,rgba(155,92,255,.17),transparent 68%),
+        radial-gradient(620px 520px at 98% 95%,rgba(255,92,138,.10),transparent 70%),
+        var(--window);
+    }
+    .topbar { display:flex; align-items:center; gap:14px; padding:0 18px; border-bottom:1px solid var(--border-soft); background:rgba(12,9,17,.82); backdrop-filter:blur(18px); }
+    .brand { display:flex; align-items:center; gap:9px; padding:7px 13px 7px 8px; border:1px solid #704caf; border-radius:999px; background:linear-gradient(145deg,#312a50,#171321); font-size:14px; font-weight:800; }
+    .mark { position:relative; width:28px; height:28px; border-radius:9px; background:#100c18; box-shadow:inset 0 0 0 1px #62438e; }
+    .mark:before,.mark:after { position:absolute; left:6px; width:16px; height:5px; border-radius:5px; transform:skewY(-20deg); content:""; }
+    .mark:before{top:7px;background:linear-gradient(90deg,var(--hot),var(--amber))}.mark:after{top:16px;background:linear-gradient(90deg,var(--blue),var(--purple))}
+    .file-title { display:flex; min-width:0; align-items:center; gap:10px; }
+    .file-title strong { overflow:hidden; color:var(--soft); font-size:15px; text-overflow:ellipsis; white-space:nowrap; }
+    .draft { padding:3px 8px; border-radius:999px; background:rgba(255,190,92,.11); color:var(--amber); font:500 9px JetBrains,monospace; text-transform:uppercase; }
+    .top-actions { display:flex; align-items:center; gap:8px; margin-left:auto; }
+    .top-actions button,.icon-button { border:1px solid transparent; border-radius:10px; padding:7px 11px; background:transparent; color:var(--soft); cursor:pointer; }
+    .top-actions button:hover,.icon-button:hover { border-color:var(--border); background:var(--field); color:white; }
+    .top-actions .send { border:0; border-radius:999px; padding:7px 18px; background:linear-gradient(120deg,var(--purple),var(--hot)); color:white; font-weight:800; box-shadow:0 8px 24px rgba(155,92,255,.22); }
+
+    .toolbar { display:flex; align-items:center; gap:16px; padding:0 20px; border-bottom:1px solid var(--border-soft); background:rgba(21,20,26,.92); color:var(--muted); }
+    .tool { font-size:13px; font-weight:800; }
+    .tool.active,.tool:hover { color:var(--pink); }
+    .toolbar-divider { width:1px; height:20px; background:var(--border); }
+    .mode-pill { display:flex; gap:2px; margin-left:5px; border:1px solid var(--border); border-radius:999px; padding:3px; background:#100d18; }
+    .mode-pill button { border:0; border-radius:999px; padding:4px 11px; background:transparent; color:var(--muted); font-size:11px; cursor:pointer; }
+    .mode-pill button.active { background:var(--inset); color:var(--pink); }
+    .toolbar-note { margin-left:auto; color:var(--cyan); font:500 10px JetBrains,monospace; letter-spacing:.06em; text-transform:uppercase; }
+
+    .workspace { display:grid; grid-template-columns:260px minmax(620px,1fr) 350px; min-height:0; transition:grid-template-columns .22s ease; }
+    .workspace.hide-outline { grid-template-columns:0 minmax(620px,1fr) 350px; }
+    .workspace.hide-aside { grid-template-columns:260px minmax(620px,1fr) 0; }
+    .workspace.hide-outline.hide-aside { grid-template-columns:0 minmax(620px,1fr) 0; }
+    .outline,.aside { min-width:0; overflow:hidden; background:rgba(21,20,26,.86); }
+    .outline { border-right:1px solid var(--border-soft); }
+    .aside { border-left:1px solid var(--border-soft); }
+    .panel-scroll { height:100%; overflow:auto; padding:18px 14px 28px; }
+    .panel-title { display:flex; align-items:center; justify-content:space-between; margin:0 4px 10px; color:var(--soft); font-size:12px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
+    .progress { height:6px; margin:0 4px 18px; overflow:hidden; border-radius:99px; background:#211b31; }
+    .progress i { display:block; width:8%; height:100%; border-radius:inherit; background:linear-gradient(90deg,var(--purple),var(--hot),var(--amber)); transition:width .3s; }
+    .outline-row { display:grid; grid-template-columns:28px minmax(0,1fr) 18px; align-items:center; gap:7px; width:100%; margin:2px 0; border:1px solid transparent; border-radius:12px; padding:8px 8px; background:transparent; color:var(--muted); text-align:left; cursor:pointer; }
+    .outline-row:hover { background:var(--field); color:var(--soft); }
+    .outline-row.active { border-color:rgba(155,92,255,.42); background:linear-gradient(100deg,rgba(155,92,255,.20),rgba(29,23,49,.55)); color:white; }
+    .outline-row .num { color:var(--cyan); font:500 10px JetBrains,monospace; }
+    .outline-row .label { overflow:hidden; font-size:13px; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+    .outline-row .state { display:grid; width:16px; height:16px; place-items:center; border:1px solid var(--border); border-radius:50%; color:transparent; font-size:9px; }
+    .outline-row.reviewed .state { border-color:var(--mint); background:rgba(94,224,180,.15); color:var(--mint); }
+    .outline-row.revisit .state { border-color:var(--amber); background:rgba(255,190,92,.15); color:var(--amber); }
+    .outline-sub { margin-left:35px; border-left:1px solid var(--border-soft); padding-left:10px; color:#746f88; font-size:11px; line-height:1.9; }
+    .outline-legend { display:flex; flex-wrap:wrap; gap:6px; margin:18px 4px 0; }
+    .legend-chip { border:1px solid var(--border-soft); border-radius:999px; padding:3px 8px; color:var(--muted); font-size:9px; }
+
+    .editor-shell { position:relative; min-width:0; overflow:hidden; background:
+      radial-gradient(500px 380px at 10% 15%,rgba(155,92,255,.05),transparent 72%),
+      var(--panel); }
+    .editor-scroll { height:100%; overflow:auto; scroll-behavior:smooth; padding:32px 38px 110px; }
+    .document { width:100%; min-width:0; }
+    .document-meta { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:15px; }
+    .meta-chip { border:1px solid var(--border-soft); border-radius:999px; padding:5px 10px; background:rgba(29,23,49,.58); color:var(--soft); font-size:11px; }
+    .meta-chip b { color:var(--cyan); }
+    .document h1 { margin:0 0 6px; color:var(--pink); font-size:36px; line-height:1.05; }
+    .document h2 { margin:0; color:var(--pink); font-size:25px; }
+    .document h3 { margin:0; color:var(--cyan); font-size:16px; }
+    .document p { margin:0; color:var(--body); font-size:17px; line-height:1.68; }
+    .section-kicker { color:var(--cyan); font:500 10px JetBrains,monospace; letter-spacing:.12em; text-transform:uppercase; }
+    .section-page { display:none; animation:rise .24s ease-out; }
+    .section-page.active { display:block; }
+    @keyframes rise { from { opacity:.2; transform:translateY(8px) } }
+    .section-head { display:flex; align-items:flex-start; gap:15px; margin:26px 0 16px; border-bottom:1px solid var(--border-soft); padding-bottom:14px; }
+    .section-number { display:grid; width:42px; height:42px; flex:0 0 auto; place-items:center; border:1px solid #63458f; border-radius:14px; background:linear-gradient(145deg,#382a59,#1c1729); color:var(--pink); font:500 12px JetBrains,monospace; }
+    .section-tools { display:flex; align-items:center; gap:7px; margin-left:auto; }
+    .section-tools button { border:1px solid var(--border); border-radius:999px; padding:6px 11px; background:transparent; color:var(--soft); font-size:11px; cursor:pointer; }
+    .section-tools button:hover { background:var(--field); color:white; }
+    .section-tools .mark-reviewed.on { border-color:var(--mint); background:rgba(94,224,180,.12); color:var(--mint); }
+
+    .verdict { position:relative; margin:16px 0; overflow:hidden; border:1px solid rgba(247,184,255,.28); border-radius:20px; padding:20px 22px 20px 70px; background:
+      radial-gradient(380px 180px at 0 50%,rgba(155,92,255,.18),transparent 75%),
+      linear-gradient(110deg,rgba(49,42,80,.72),rgba(23,19,32,.92)); }
+    .verdict:before { position:absolute; top:21px; left:21px; display:grid; width:34px; height:34px; place-items:center; border-radius:12px; background:linear-gradient(145deg,var(--hot),var(--purple)); color:white; content:"◆"; box-shadow:0 10px 24px rgba(155,92,255,.26); }
+    .verdict b { display:block; margin-bottom:4px; color:var(--pink); font-size:14px; text-transform:uppercase; letter-spacing:.05em; }
+    .verdict p { font-size:19px; line-height:1.55; }
+    .metric-strip { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:16px 0; }
+    .metric { position:relative; overflow:hidden; border:1px solid var(--border-soft); border-radius:16px; padding:14px 15px; background:linear-gradient(145deg,rgba(36,30,59,.78),rgba(19,17,27,.88)); }
+    .metric strong { display:block; color:var(--amber); font-size:23px; line-height:1; }
+    .metric span { color:var(--soft); font-size:11px; }
+    .metric:after { position:absolute; right:-14px; bottom:-24px; width:70px; height:70px; border-radius:50%; background:var(--purple); opacity:.08; content:""; }
+    .metric.good strong { color:var(--mint); }
+    .metric.bad strong { color:var(--coral); }
+
+    .table-block { margin:18px 0; border:1px solid var(--border); border-radius:20px; background:linear-gradient(145deg,rgba(35,29,54,.74),rgba(19,17,27,.92)); box-shadow:0 18px 42px -34px #000; }
+    .table-top { display:flex; align-items:center; gap:12px; padding:13px 15px; border-bottom:1px solid var(--border-soft); }
+    .table-top h3 { color:var(--pink); }
+    .table-top .count { color:var(--muted); font:500 9px JetBrains,monospace; }
+    .table-modes { display:flex; gap:2px; margin-left:auto; border:1px solid var(--border); border-radius:999px; padding:3px; background:#110e19; }
+    .table-modes button { border:0; border-radius:999px; padding:5px 10px; background:transparent; color:var(--muted); font-size:10px; cursor:pointer; }
+    .table-modes button.active { background:var(--inset); color:var(--cyan); }
+    .table-action { border:1px solid var(--border); border-radius:9px; padding:6px 9px; background:transparent; color:var(--soft); font-size:10px; cursor:pointer; }
+    .table-wrap { overflow:auto; border-radius:0 0 20px 20px; }
+    table { width:100%; border-collapse:separate; border-spacing:0; }
+    th { position:sticky; top:0; z-index:2; padding:11px 13px; background:#312a50; color:var(--coral); font-size:12px; text-align:left; }
+    td { position:relative; border-top:1px solid var(--border-soft); padding:13px; color:var(--body); font-size:14px; line-height:1.48; vertical-align:top; }
+    tbody tr:hover td { background:rgba(155,92,255,.07); }
+    td:first-child,th:first-child { position:sticky; left:0; z-index:1; }
+    td:first-child { background:#1b1727; color:white; font-weight:700; }
+    th:first-child { z-index:3; }
+    .evidence { color:var(--cyan); font:500 11px JetBrains,monospace; white-space:nowrap; }
+    .row-discuss { position:absolute; top:8px; right:8px; border:1px solid #685098; border-radius:999px; padding:3px 7px; background:#211a34; color:var(--pink); font-size:9px; opacity:0; cursor:pointer; transition:opacity .15s; }
+    tr:hover .row-discuss { opacity:1; }
+    .table-block.rows table,.table-block.cards table { display:block; padding:10px; }
+    .table-block.rows thead,.table-block.cards thead { display:none; }
+    .table-block.rows tbody,.table-block.cards tbody { display:grid; gap:8px; }
+    .table-block.rows tr,.table-block.cards tr { position:relative; display:grid; border:1px solid var(--border-soft); border-radius:14px; overflow:hidden; background:rgba(13,11,20,.42); }
+    .table-block.rows tr { grid-template-columns:minmax(150px,.7fr) minmax(280px,2.7fr) minmax(90px,.5fr); }
+    .table-block.rows td,.table-block.cards td { position:relative; left:auto; border:0; border-left:1px solid var(--border-soft); background:transparent; padding:12px 14px; }
+    .table-block.rows td:first-child,.table-block.cards td:first-child { border-left:0; background:rgba(155,92,255,.10); color:var(--pink); }
+    .table-block.rows td:before,.table-block.cards td:before { display:block; margin-bottom:3px; color:var(--muted); font:500 8px JetBrains,monospace; letter-spacing:.08em; text-transform:uppercase; content:attr(data-label); }
+    .table-block.cards tbody { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .table-block.cards tr { display:block; padding:5px; }
+    .table-block.cards td { display:block; border:0; border-top:1px solid var(--border-soft); border-radius:9px; }
+    .table-block.cards td:first-child { border-top:0; }
+
+    .diagram { display:grid; grid-template-columns:1fr 72px 1fr; align-items:stretch; gap:10px; margin:18px 0; }
+    .diagram-side { border:1px solid var(--border-soft); border-radius:18px; padding:15px; background:rgba(29,23,49,.66); }
+    .diagram-side h3 { margin-bottom:11px; }
+    .diagram-node { margin:7px 0; border:1px solid var(--border-soft); border-radius:11px; padding:8px 10px; background:#15111f; color:var(--soft); font-size:12px; }
+    .diagram-node.hot { border-color:rgba(255,112,112,.42); color:var(--coral); }
+    .diagram-node.good { border-color:rgba(94,224,180,.38); color:var(--mint); }
+    .diagram-arrow { display:grid; place-items:center; color:var(--purple); font-size:34px; text-shadow:0 0 18px var(--purple); }
+
+    .intro { margin:8px 0 16px; }
+    .island-card-note { margin:0 0 12px; border-left:3px solid var(--cyan); padding:4px 0 4px 13px; color:var(--soft); font-size:14px; }
+    .phase-board { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:16px 0; }
+    .phase { border:1px solid var(--border-soft); border-radius:18px; padding:14px; background:linear-gradient(145deg,rgba(36,30,59,.75),rgba(18,16,25,.90)); }
+    .phase-head { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+    .phase-head b { color:var(--pink); font-size:15px; }
+    .phase-head span { margin-left:auto; color:var(--cyan); font:500 9px JetBrains,monospace; }
+    .action-card { position:relative; margin:7px 0; border:1px solid var(--border-soft); border-radius:12px; padding:10px 10px 10px 34px; background:rgba(12,10,18,.48); color:var(--soft); font-size:12px; line-height:1.4; cursor:pointer; }
+    .action-card:before { position:absolute; top:11px; left:10px; display:grid; width:16px; height:16px; place-items:center; border:1px solid var(--border); border-radius:6px; color:transparent; content:"✓"; font-size:9px; }
+    .action-card.done:before { border-color:var(--mint); background:rgba(94,224,180,.15); color:var(--mint); }
+    .action-card em { display:block; margin-top:4px; color:var(--amber); font-style:normal; font-size:10px; }
+
+    .aside-section { margin-bottom:19px; }
+    .aside-heading { display:flex; align-items:center; gap:8px; margin:0 3px 9px; color:var(--soft); font-size:12px; font-weight:800; }
+    .aside-heading .badge { margin-left:auto; border-radius:999px; padding:2px 7px; background:rgba(255,190,92,.12); color:var(--amber); font:500 9px JetBrains,monospace; }
+    .decision-card { margin:7px 0; border:1px solid var(--border-soft); border-radius:14px; padding:11px; background:rgba(29,23,49,.58); }
+    .decision-card.resolved { border-color:rgba(94,224,180,.4); background:rgba(94,224,180,.055); }
+    .decision-card p { margin:0 0 9px; color:var(--body); font-size:12px; line-height:1.35; }
+    .decision-options { display:flex; flex-wrap:wrap; gap:5px; }
+    .decision-options button { border:1px solid var(--border); border-radius:999px; padding:4px 8px; background:#15111f; color:var(--muted); font-size:9px; cursor:pointer; }
+    .decision-options button:hover { color:white; }
+    .decision-options button.selected { border-color:var(--mint); background:rgba(94,224,180,.12); color:var(--mint); }
+    .agent-card { border:1px solid var(--border-soft); border-radius:16px; padding:12px; background:linear-gradient(145deg,rgba(155,92,255,.11),rgba(19,16,28,.74)); }
+    .agent-row { display:flex; align-items:center; gap:9px; }
+    .avatar { display:grid; width:28px; height:28px; place-items:center; border-radius:9px; background:linear-gradient(145deg,var(--purple),var(--blue)); font-size:11px; font-weight:800; }
+    .agent-row b { font-size:12px; }
+    .agent-row small { display:block; color:var(--mint); font-size:9px; }
+    .agent-card p { margin:10px 0 0; color:var(--soft); font-size:11px; line-height:1.4; }
+    .activity { display:flex; gap:7px; margin:8px 2px; color:var(--muted); font-size:10px; }
+    .activity i { width:7px; height:7px; margin-top:4px; border-radius:50%; background:var(--purple); box-shadow:0 0 10px var(--purple); }
+
+    .thread { position:absolute; z-index:20; right:22px; bottom:22px; display:none; width:min(510px,calc(100% - 44px)); overflow:hidden; border:1px solid #704daf; border-radius:20px; background:#171321; box-shadow:0 26px 80px rgba(0,0,0,.58),0 0 42px rgba(155,92,255,.12); animation:thread-in .22s ease-out; }
+    .thread.open { display:block; }
+    @keyframes thread-in { from { opacity:0; transform:translateY(12px) scale(.98) } }
+    .thread-head { display:flex; align-items:center; gap:9px; padding:12px 14px; border-bottom:1px solid var(--border-soft); }
+    .thread-head b { color:var(--pink); font-size:13px; }
+    .thread-head span { color:var(--muted); font-size:10px; }
+    .thread-head button { margin-left:auto; border:0; background:transparent; color:var(--muted); cursor:pointer; }
+    .quote { margin:12px; border-left:3px solid var(--cyan); border-radius:0 10px 10px 0; padding:9px 11px; background:#211b34; color:var(--soft); font-size:11px; line-height:1.4; }
+    .thread textarea { width:calc(100% - 24px); height:68px; margin:0 12px 10px; resize:none; border:1px solid var(--border); border-radius:12px; outline:0; padding:9px 11px; background:#0f0c16; color:white; font-size:12px; }
+    .thread textarea:focus { border-color:var(--purple); }
+    .thread-actions { display:flex; align-items:center; padding:0 12px 12px; }
+    .thread-actions span { color:var(--muted); font-size:9px; }
+    .thread-actions button { margin-left:auto; border:0; border-radius:999px; padding:6px 13px; background:linear-gradient(120deg,var(--purple),var(--hot)); color:white; font-size:10px; font-weight:800; cursor:pointer; }
+
+    .focus-overlay { position:fixed; z-index:60; inset:18px; display:none; overflow:auto; border:1px solid #6d4aa9; border-radius:24px; padding:20px; background:rgba(10,8,16,.97); box-shadow:0 30px 120px #000; }
+    .focus-overlay.open { display:block; }
+    .focus-top { display:flex; align-items:center; margin-bottom:15px; }
+    .focus-top h2 { margin:0; color:var(--pink); }
+    .focus-top button { margin-left:auto; border:1px solid var(--border); border-radius:999px; padding:7px 13px; background:var(--field); color:var(--soft); cursor:pointer; }
+    .focus-copy { min-width:1180px; }
+
+    @media (max-width:1350px) {
+      .workspace { grid-template-columns:220px minmax(560px,1fr) 300px; }
+      .workspace.hide-outline { grid-template-columns:0 minmax(560px,1fr) 300px; }
+      .metric-strip { grid-template-columns:repeat(2,1fr); }
+      .phase-board { grid-template-columns:1fr; }
+      .document p { font-size:16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><i class="mark"></i>StrataMD</div>
+      <div class="file-title"><strong>Mesa practices review.md</strong><span class="draft">walkthrough draft</span></div>
+      <div class="top-actions">
+        <button id="outlineToggle">Outline</button>
+        <button id="asideToggle">Decisions</button>
+        <button>Theme</button>
+        <button class="send">Send to agent</button>
+      </div>
+    </header>
+    <div class="toolbar">
+      <span class="tool active">B</span><span class="tool">∕</span><span class="tool">&lt;/&gt;</span><span class="tool">H</span><span class="tool">≔</span><span class="tool">☑</span><span class="tool">❝</span><span class="toolbar-divider"></span>
+      <div class="mode-pill"><button>Edit</button><button class="active">Walkthrough</button></div>
+      <span class="toolbar-note">wide document · structured reading</span>
+    </div>
+
+    <div class="workspace" id="workspace">
+      <nav class="outline">
+        <div class="panel-scroll">
+          <div class="panel-title"><span>Walkthrough</span><span id="progressLabel">1 / 12</span></div>
+          <div class="progress"><i id="progressBar"></i></div>
+          <button class="outline-row active" data-section="verdict"><span class="num">01</span><span class="label">Verdict</span><span class="state">✓</span></button>
+          <div class="outline-sub">Four facts<br>Today and after</div>
+          <button class="outline-row" data-section="islands"><span class="num">02</span><span class="label">What Mesa is</span><span class="state">✓</span></button>
+          <div class="outline-sub">Seventeen islands<br>Product invariants</div>
+          <button class="outline-row" data-section="islands"><span class="num">03</span><span class="label">Ownership model</span><span class="state">✓</span></button>
+          <button class="outline-row reviewed" data-section="verdict"><span class="num">04</span><span class="label">Instruction system</span><span class="state">✓</span></button>
+          <button class="outline-row reviewed" data-section="verdict"><span class="num">05</span><span class="label">Dev cycle</span><span class="state">✓</span></button>
+          <button class="outline-row revisit" data-section="islands"><span class="num">06</span><span class="label">Tests</span><span class="state">!</span></button>
+          <button class="outline-row" data-section="verdict"><span class="num">07</span><span class="label">Gates and scripts</span><span class="state">✓</span></button>
+          <button class="outline-row" data-section="islands"><span class="num">08</span><span class="label">System map</span><span class="state">✓</span></button>
+          <button class="outline-row" data-section="verdict"><span class="num">09</span><span class="label">Product map</span><span class="state">✓</span></button>
+          <button class="outline-row" data-section="islands"><span class="num">10</span><span class="label">Drift</span><span class="state">✓</span></button>
+          <button class="outline-row" data-section="verdict"><span class="num">11</span><span class="label">August lessons</span><span class="state">✓</span></button>
+          <button class="outline-row" data-section="changes"><span class="num">12</span><span class="label">Ordered changes</span><span class="state">✓</span></button>
+          <div class="outline-legend"><span class="legend-chip">✓ reviewed</span><span class="legend-chip">! revisit</span><span class="legend-chip">4 decisions</span></div>
+        </div>
+      </nav>
+
+      <main class="editor-shell">
+        <div class="editor-scroll">
+          <article class="document">
+            <div class="document-meta"><span class="meta-chip"><b>Date</b> Sep 1, 2026</span><span class="meta-chip"><b>Author</b> Claude</span><span class="meta-chip"><b>Owner</b> Dillon</span><span class="meta-chip"><b>Status</b> Draft for walkthrough</span></div>
+            <h1>Mesa practices review</h1>
+
+            <section class="section-page active" id="page-verdict">
+              <div class="section-head">
+                <span class="section-number">01</span>
+                <div><span class="section-kicker">Section 1 of 12</span><h2>Verdict</h2></div>
+                <div class="section-tools"><button class="mark-reviewed">Mark reviewed</button><button class="mark-revisit">Revisit</button></div>
+              </div>
+              <div class="verdict"><b>Verdict</b><p>Mesa's product is strong and its written process is upside down. The rules that protect Mesa live in the database and launcher scripts. The rules agents keep breaking live in prose.</p></div>
+              <div class="metric-strip">
+                <div class="metric bad"><strong>160k</strong><span>tokens across process canon</span></div>
+                <div class="metric bad"><strong>43k</strong><span>loaded before a small task</span></div>
+                <div class="metric good"><strong>5k</strong><span>target small-task ceiling</span></div>
+                <div class="metric bad"><strong>10 weeks</strong><span>CI red while deploys continued</span></div>
+              </div>
+              <p class="intro">Four facts carry the whole review. The table remains wide, but each fact has a clear reading boundary and a direct path into a discussion with the attached agent.</p>
+
+              <div class="table-block rows" id="factsTable">
+                <div class="table-top"><h3>Four facts</h3><span class="count">4 rows · 2 columns</span><div class="table-modes"><button data-table="factsTable" data-mode="">Grid</button><button class="active" data-table="factsTable" data-mode="rows">Rows</button></div><button class="table-action focus-table" data-table="factsTable">Focus</button></div>
+                <div class="table-wrap"><table>
+                  <thead><tr><th>Fact</th><th>What it means</th><th>Evidence</th></tr></thead>
+                  <tbody>
+                    <tr><td data-label="Fact">Canon did not catch the defects</td><td data-label="What it means">Not one defect in either major August postmortem was caught by a canon rule. The owner personally caught more invented facts than any process stage.<button class="row-discuss" data-quote="Not one defect in either major August postmortem was caught by a canon rule.">Discuss</button></td><td data-label="Evidence" class="evidence">08 §2.3, §7.5</td></tr>
+                    <tr><td data-label="Fact">The read chain is eight times too large</td><td data-label="What it means">An agent following the router's own chain loads about 43,000 tokens before touching code. The rules it needs fit in about 5,000.<button class="row-discuss" data-quote="The router loads about 43,000 tokens before code. The needed rules fit in about 5,000.">Discuss</button></td><td data-label="Evidence" class="evidence">01 §2, §7d</td></tr>
+                    <tr><td data-label="Fact">CI does not gate deploys</td><td data-label="What it means">CI has been red since June 19 and every push to main deployed anyway. Playwright has never run in CI.<button class="row-discuss" data-quote="CI has been red since June 19 and every push to main deployed anyway.">Discuss</button></td><td data-label="Evidence" class="evidence">03 §0, 04 §1</td></tr>
+                    <tr><td data-label="Fact">Database enforcement works</td><td data-label="What it means">Money and piece-rate rules enforced in the database hold. Address, job, shift, and measurement records still expose many write paths.<button class="row-discuss" data-quote="Money and piece-rate rules enforced in the database hold. Other records expose many write paths.">Discuss</button></td><td data-label="Evidence" class="evidence">02 §4, 06 §3</td></tr>
+                  </tbody>
+                </table></div>
+              </div>
+
+              <div class="diagram">
+                <div class="diagram-side"><h3>Today</h3><div class="diagram-node hot">160k tokens of prose</div><div class="diagram-node hot">Agent must remember</div><div class="diagram-node hot">Owner catches failures</div></div>
+                <div class="diagram-arrow">→</div>
+                <div class="diagram-side"><h3>After</h3><div class="diagram-node good">Database guards writes</div><div class="diagram-node good">CI blocks broken deploys</div><div class="diagram-node good">Agent asks product questions only</div></div>
+              </div>
+            </section>
+
+            <section class="section-page" id="page-islands">
+              <div class="section-head">
+                <span class="section-number">02</span>
+                <div><span class="section-kicker">Narrative table test</span><h2>What Mesa is, one island at a time</h2></div>
+                <div class="section-tools"><button class="mark-reviewed">Mark reviewed</button><button class="mark-revisit">Revisit</button></div>
+              </div>
+              <p class="intro">This section exists so the rest of the review can be judged against the product rather than the code. The prose stays wide. The table can switch between its original grid and a reading view that treats each island as a distinct argument.</p>
+              <div class="island-card-note">Try Grid and Cards. Neither changes the Markdown. Your choice is local viewing state.</div>
+              <div class="table-block cards" id="islandTable">
+                <div class="table-top"><h3>Product islands</h3><span class="count">6 of 17 shown</span><div class="table-modes"><button data-table="islandTable" data-mode="">Grid</button><button class="active" data-table="islandTable" data-mode="cards">Cards</button></div><button class="table-action focus-table" data-table="islandTable">Focus</button></div>
+                <div class="table-wrap"><table>
+                  <thead><tr><th>Island</th><th>Owns</th><th>The invariant that makes it Mesa</th></tr></thead>
+                  <tbody>
+                    <tr><td data-label="Island">Address and job</td><td data-label="Owns">Address, job identity, warranty history</td><td data-label="Invariant">Address is the record. One job, one address. Warranty follows the address, not the customer.<button class="row-discuss" data-quote="Address is the record. One job, one address. Warranty follows the address, not the customer.">Discuss</button></td></tr>
+                    <tr><td data-label="Island">Sales</td><td data-label="Owns">Stage, owner, source, appointments, commitments, outcomes</td><td data-label="Invariant">Stages move only by work being done. One accountable owner, never a pool. Junk leaves no record.<button class="row-discuss" data-quote="Stages move only by work being done. One accountable owner, never a pool.">Discuss</button></td></tr>
+                    <tr><td data-label="Island">Measurement</td><td data-label="Owns">Measurement versions, adopted roof map</td><td data-label="Invariant">Provider originals are immutable. Corrections fork. Nothing about money crosses the bridge.<button class="row-discuss" data-quote="Provider originals are immutable. Corrections fork. Nothing about money crosses the bridge.">Discuss</button></td></tr>
+                    <tr><td data-label="Island">Production</td><td data-label="Owns">Production status, crew, schedule, claims, evidence packets</td><td data-label="Invariant">Claims land on a real section of a real roof. Quantity conservation. Found work is a named item.<button class="row-discuss" data-quote="Claims land on a real section of a real roof. Quantity conservation.">Discuss</button></td></tr>
+                    <tr><td data-label="Island">Payroll and costing</td><td data-label="Owns">Pay periods, paychecks, costing layers</td><td data-label="Invariant">Piece rate times physical percent. FLSA per workweek. Seal locks the same transaction. Dash, never zero.<button class="row-discuss" data-quote="Piece rate times physical percent. FLSA per workweek. Seal locks the same transaction.">Discuss</button></td></tr>
+                    <tr><td data-label="Island">Customer portal</td><td data-label="Owns">Grants, sessions, milestones</td><td data-label="Invariant">A projection, never a second database. Omit rather than fabricate. Never simulate a signature.<button class="row-discuss" data-quote="A projection, never a second database. Omit rather than fabricate.">Discuss</button></td></tr>
+                  </tbody>
+                </table></div>
+              </div>
+            </section>
+
+            <section class="section-page" id="page-changes">
+              <div class="section-head">
+                <span class="section-number">12</span>
+                <div><span class="section-kicker">Action table test</span><h2>Change list, ordered</h2></div>
+                <div class="section-tools"><button class="mark-reviewed">Mark reviewed</button><button class="mark-revisit">Revisit</button></div>
+              </div>
+              <p class="intro">The source contains three separate tables. The walkthrough view can read them as one phase board while leaving the Markdown untouched. Click any action to mark it complete locally.</p>
+              <div class="phase-board">
+                <div class="phase"><div class="phase-head"><b>Now</b><span>THIS WEEK</span></div>
+                  <div class="action-card">Fix integration migration ordering and get one green run.<em>1 day · Tests</em></div>
+                  <div class="action-card">Wire deploys to green CI.<em>0.5 day · Owner decision</em></div>
+                  <div class="action-card">Delete retired process documents and dead validators.<em>1 day · Instructions</em></div>
+                  <div class="action-card">Cut pre-commit to four jobs and CI to five lanes.<em>0.5 day · Gates</em></div>
+                </div>
+                <div class="phase"><div class="phase-head"><b>Next</b><span>WEEKS 2–3</span></div>
+                  <div class="action-card">Add guard triggers to ten core tables.<em>3 days · Ownership</em></div>
+                  <div class="action-card">Build the islands manifest and check script.<em>3 days · Ownership</em></div>
+                  <div class="action-card">Fix system map extraction and add the island layer.<em>3.5 days · System map</em></div>
+                  <div class="action-card">Convert mocked proposal tests to real API flows.<em>2 days · Tests</em></div>
+                </div>
+                <div class="phase"><div class="phase-head"><b>As touched</b><span>ONGOING</span></div>
+                  <div class="action-card">Consolidate write modules one island at a time.<em>30 days · Architecture</em></div>
+                  <div class="action-card">Run the test deletion sweep with cross-family review.<em>2 days · Tests</em></div>
+                  <div class="action-card">Add symbol-level usage, then delete six catalogs.<em>3 days · System map</em></div>
+                  <div class="action-card">Walk the product map by island.<em>Your interview time</em></div>
+                </div>
+              </div>
+            </section>
+          </article>
+        </div>
+
+        <div class="thread" id="thread">
+          <div class="thread-head"><div class="avatar">C</div><div><b>Discuss with Claude</b><span>Question anchored to this table row</span></div><button id="closeThread">×</button></div>
+          <div class="quote" id="threadQuote"></div>
+          <textarea placeholder="What do you want the agent to explain, challenge, or change?"></textarea>
+          <div class="thread-actions"><span>Added to the next Send</span><button id="queueQuestion">Add question</button></div>
+        </div>
+      </main>
+
+      <aside class="aside">
+        <div class="panel-scroll">
+          <section class="aside-section">
+            <div class="aside-heading"><span>Owner decisions</span><span class="badge" id="decisionCount">4 open</span></div>
+            <div class="decision-card"><p>Should deploys wait for green CI?</p><div class="decision-options"><button>Gate deploys</button><button>Informational</button></div></div>
+            <div class="decision-card"><p>Does the blocks-only composition rule still stand?</p><div class="decision-options"><button>Keep it</button><button>Drop it</button><button>Revisit</button></div></div>
+            <div class="decision-card"><p>Which islands should the product-map walk cover first?</p><div class="decision-options"><button>Current canon</button><button>Missing PRDs</button></div></div>
+            <div class="decision-card"><p>Which model sits in each program seat?</p><div class="decision-options"><button>Configure later</button><button>Discuss now</button></div></div>
+          </section>
+          <section class="aside-section">
+            <div class="aside-heading"><span>Attached agent</span><span class="badge" style="color:var(--mint);background:rgba(94,224,180,.1)">working</span></div>
+            <div class="agent-card"><div class="agent-row"><div class="avatar">C</div><div><b>Claude · review author</b><small>Reading this section</small></div></div><p>Ask about a section, a table row, or one of the decisions. Questions stay attached to the exact text.</p></div>
+            <div class="activity"><i></i><span>Section 1 sent 3 minutes ago</span></div>
+            <div class="activity"><i style="background:var(--mint);box-shadow:0 0 10px var(--mint)"></i><span>Two replies ready for review</span></div>
+          </section>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <div class="focus-overlay" id="focusOverlay"><div class="focus-top"><h2 id="focusTitle">Focused table</h2><button id="closeFocus">Close focus view</button></div><div class="focus-copy" id="focusCopy"></div></div>
+
+  <script>
+    const workspace = document.getElementById('workspace')
+    const sectionRows = [...document.querySelectorAll('.outline-row')]
+    const pages = [...document.querySelectorAll('.section-page')]
+    const progressBar = document.getElementById('progressBar')
+    const progressLabel = document.getElementById('progressLabel')
+    const thread = document.getElementById('thread')
+    const threadQuote = document.getElementById('threadQuote')
+    const focusOverlay = document.getElementById('focusOverlay')
+    const focusCopy = document.getElementById('focusCopy')
+
+    document.getElementById('outlineToggle').onclick = () => workspace.classList.toggle('hide-outline')
+    document.getElementById('asideToggle').onclick = () => workspace.classList.toggle('hide-aside')
+
+    sectionRows.forEach((row) => row.addEventListener('click', () => {
+      sectionRows.forEach((item) => item.classList.remove('active'))
+      row.classList.add('active')
+      const section = row.dataset.section
+      pages.forEach((page) => page.classList.toggle('active', page.id === 'page-' + section))
+      const number = Number(row.querySelector('.num').textContent)
+      progressLabel.textContent = number + ' / 12'
+      progressBar.style.width = (number / 12 * 100) + '%'
+    }))
+
+    document.querySelectorAll('.mark-reviewed').forEach((button) => button.addEventListener('click', () => {
+      button.classList.toggle('on')
+      button.textContent = button.classList.contains('on') ? 'Reviewed ✓' : 'Mark reviewed'
+      const active = document.querySelector('.outline-row.active')
+      if (active) active.classList.toggle('reviewed', button.classList.contains('on'))
+    }))
+    document.querySelectorAll('.mark-revisit').forEach((button) => button.addEventListener('click', () => {
+      const active = document.querySelector('.outline-row.active')
+      if (active) active.classList.toggle('revisit')
+      button.textContent = button.textContent === 'Revisit' ? 'Revisit marked' : 'Revisit'
+    }))
+
+    document.querySelectorAll('.table-modes button').forEach((button) => button.addEventListener('click', () => {
+      const block = document.getElementById(button.dataset.table)
+      block.classList.remove('rows','cards')
+      if (button.dataset.mode) block.classList.add(button.dataset.mode)
+      button.parentElement.querySelectorAll('button').forEach((item) => item.classList.toggle('active', item === button))
+    }))
+
+    document.querySelectorAll('.row-discuss').forEach((button) => button.addEventListener('click', (event) => {
+      event.stopPropagation()
+      threadQuote.textContent = button.dataset.quote
+      thread.classList.add('open')
+      thread.querySelector('textarea').focus()
+    }))
+    document.getElementById('closeThread').onclick = () => thread.classList.remove('open')
+    document.getElementById('queueQuestion').onclick = () => {
+      const button = document.getElementById('queueQuestion')
+      button.textContent = 'Queued ✓'
+      setTimeout(() => { button.textContent = 'Add question'; thread.classList.remove('open') }, 900)
+    }
+
+    document.querySelectorAll('.focus-table').forEach((button) => button.addEventListener('click', () => {
+      const source = document.getElementById(button.dataset.table)
+      const clone = source.cloneNode(true)
+      clone.id = ''
+      clone.classList.remove('rows','cards')
+      clone.querySelector('.focus-table')?.remove()
+      clone.querySelector('.table-modes')?.remove()
+      clone.querySelectorAll('.row-discuss').forEach((item) => item.remove())
+      document.getElementById('focusTitle').textContent = source.querySelector('h3').textContent
+      focusCopy.replaceChildren(clone)
+      focusOverlay.classList.add('open')
+    }))
+    document.getElementById('closeFocus').onclick = () => focusOverlay.classList.remove('open')
+
+    document.querySelectorAll('.decision-options button').forEach((button) => button.addEventListener('click', () => {
+      const card = button.closest('.decision-card')
+      card.querySelectorAll('button').forEach((item) => item.classList.toggle('selected', item === button))
+      card.classList.add('resolved')
+      const open = document.querySelectorAll('.decision-card:not(.resolved)').length
+      document.getElementById('decisionCount').textContent = open ? open + ' open' : 'All answered'
+    }))
+    document.querySelectorAll('.action-card').forEach((card) => card.addEventListener('click', () => card.classList.toggle('done')))
+  </script>
+</body>
+</html>

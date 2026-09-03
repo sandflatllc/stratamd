@@ -541,11 +541,7 @@ export function shouldAdoptPushed(pushed: unknown, lastCommitted: unknown): bool
 
 // ---- Recent documents (§5.10), kept in this window's local storage.
 
-export const RECENTS_LIMIT = 8
 
-export function pushRecent(recents: readonly string[], path: string, limit = RECENTS_LIMIT): string[] {
-  return [path, ...recents.filter((entry) => entry !== path)].slice(0, limit)
-}
 
 /** Tab-menu bulk close (§5.16): clean tabs close; tabs with unsaved edits stay and are counted. */
 export function tabsToClose(tabs: readonly DocumentTabView[], mode: 'others' | 'all' | 'saved', keepPath: string): { close: DocumentTabView[]; keptDirty: number } {

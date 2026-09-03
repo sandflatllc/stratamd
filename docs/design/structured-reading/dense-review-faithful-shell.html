@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Strata Vivid | faithful walkthrough shell</title>
+  <style>
+    @font-face { font-family: Baloo; src: url('/node_modules/@fontsource/baloo-2/files/baloo-2-latin-500-normal.woff2'); font-weight: 500; }
+    @font-face { font-family: Baloo; src: url('/node_modules/@fontsource/baloo-2/files/baloo-2-latin-700-normal.woff2'); font-weight: 700; }
+    @font-face { font-family: Baloo; src: url('/node_modules/@fontsource/baloo-2/files/baloo-2-latin-800-normal.woff2'); font-weight: 800; }
+    @font-face { font-family: JetBrains; src: url('/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2'); font-weight: 500; }
+
+    :root {
+      --window:#0a0810; --panel:#15141a; --panel-raised:#1b1727; --inset:#312a50;
+      --field:#1d1731; --border:#463c6e; --border-soft:rgba(70,60,110,.54);
+      --white:#fff; --body:#fff; --soft:#d8ddfd; --muted:#80fdff; --quiet:#8b86a0;
+      --pink:#f7b8ff; --cyan:#8fe3ff; --amber:#ffbe5c; --coral:#ff7070;
+      --green:#54ff52; --mint:#5ee0b4; --lav:#9aa8ff; --purple:#9b5cff;
+      --blue:#4f8dff; --hot:#ff5c8a; --positive:#3dc97c; --danger:#fe769d;
+      --shadow:rgba(0,0,0,.48);
+    }
+
+    * { box-sizing:border-box; }
+    html, body { width:100%; height:100%; margin:0; overflow:hidden; background:var(--window); }
+    body { min-width:1080px; color:var(--white); font-family:Baloo, system-ui, sans-serif; font-weight:500; }
+    button, input, select, textarea { color:inherit; font:inherit; }
+    button { cursor:pointer; }
+    button:focus-visible, [tabindex]:focus-visible, select:focus-visible { outline:3px solid var(--blue); outline-offset:2px; }
+    ::selection { color:white; background:#6540a7; }
+    ::-webkit-scrollbar { width:9px; height:9px; }
+    ::-webkit-scrollbar-thumb { border-radius:999px; background:var(--border); }
+    ::-webkit-scrollbar-track { background:transparent; }
+
+    .app-shell {
+      position:relative; display:grid; grid-template-rows:62px minmax(0,1fr); gap:14px;
+      width:100vw; height:100vh; padding:16px 22px 18px; overflow:hidden;
+      background:
+        radial-gradient(900px 620px at 13% -12%,rgba(155,92,255,.24),transparent 68%),
+        radial-gradient(680px 500px at 102% 96%,rgba(255,92,138,.15),transparent 72%),
+        var(--window);
+    }
+    .app-shell:before { position:absolute; inset:0; pointer-events:none; opacity:.18; content:""; background-image:linear-gradient(rgba(143,227,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(143,227,255,.07) 1px,transparent 1px); background-size:56px 56px; mask-image:radial-gradient(circle at 80% 15%,black,transparent 52%); }
+
+    .topbar { position:relative; z-index:4; display:flex; min-width:0; align-items:center; gap:14px; }
+    .logo-pill { display:flex; flex:0 0 auto; align-items:center; gap:9px; border:1px solid #7651b3; border-radius:999px; padding:6px 13px 6px 8px; background:linear-gradient(145deg,#312a50,#171321); color:white; box-shadow:0 12px 34px -18px var(--purple); font-weight:800; }
+    .logo-mark { position:relative; width:28px; height:28px; border-radius:10px; background:#0f0b17; box-shadow:inset 0 0 0 1px #62438e; }
+    .logo-mark:before,.logo-mark:after { position:absolute; left:6px; width:16px; height:5px; border-radius:5px; transform:skewY(-20deg); content:""; }
+    .logo-mark:before { top:7px; background:linear-gradient(90deg,var(--hot),var(--amber)); }
+    .logo-mark:after { top:16px; background:linear-gradient(90deg,var(--blue),var(--purple)); }
+    .logo-pill span:last-child { margin-top:1px; font-size:15px; letter-spacing:-.02em; }
+    .file-tabs { display:flex; min-width:0; flex:1; gap:8px; overflow:hidden; padding:4px; }
+    .file-tab { display:flex; min-width:0; max-width:235px; flex:0 1 235px; align-items:center; gap:8px; border:1px solid var(--border); border-radius:999px; padding:8px 12px 8px 17px; background:rgba(21,20,26,.88); color:var(--soft); font-size:13px; font-weight:800; box-shadow:0 12px 30px -20px #000; }
+    .file-tab.active { border-color:#9b5cff; background:linear-gradient(120deg,#3a285b,#241b38); color:white; box-shadow:0 10px 28px -14px var(--purple); }
+    .file-tab .name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .dirty { width:7px; height:7px; flex:0 0 auto; border-radius:50%; background:var(--amber); }
+    .file-tab .close { margin-left:auto; opacity:.6; }
+    .top-status { flex:0 0 auto; color:var(--cyan); font:500 10px JetBrains,monospace; letter-spacing:.04em; }
+    .top-icon, .prototype-button { flex:0 0 auto; border:1px solid var(--border); border-radius:999px; padding:7px 11px; background:rgba(21,20,26,.8); color:var(--soft); font-size:12px; font-weight:800; }
+    .top-icon:hover,.prototype-button:hover { border-color:var(--purple); background:var(--field); color:white; }
+    .send { flex:0 0 auto; border:0; border-radius:999px; padding:9px 24px; background:linear-gradient(135deg,var(--hot),var(--purple)); color:white; font-weight:800; box-shadow:0 12px 30px -12px rgba(255,92,138,.68); }
+    .send:hover { transform:translateY(-1px) scale(1.03); }
+
+    .workspace { position:relative; z-index:2; display:grid; grid-template-columns:274px 8px minmax(0,1fr) 8px 365px; min-height:0; }
+    .island { min-width:0; min-height:0; overflow:hidden; border:1px solid var(--border); border-radius:22px; background:rgba(21,20,26,.94); box-shadow:0 20px 52px -28px #000; }
+    .resizer { position:relative; }
+    .resizer:after { position:absolute; top:45%; left:3px; width:2px; height:40px; border-radius:9px; background:var(--border); content:""; }
+    .right-column { display:grid; grid-template-rows:minmax(0,1fr) 8px 178px; min-width:0; min-height:0; }
+    .row-resizer { position:relative; }
+    .row-resizer:after { position:absolute; top:3px; left:calc(50% - 20px); width:40px; height:2px; border-radius:9px; background:var(--border); content:""; }
+
+    .rail-tabs { display:grid; height:46px; border-bottom:1px solid var(--border-soft); background:rgba(10,8,16,.26); }
+    .rail-tabs.two { grid-template-columns:1fr 1fr; }
+    .rail-tabs.three { grid-template-columns:repeat(3,1fr); }
+    .rail-tab { position:relative; border:0; background:transparent; color:var(--quiet); font-size:12px; font-weight:800; }
+    .rail-tab:hover { color:var(--soft); }
+    .rail-tab.active { color:var(--pink); }
+    .rail-tab.active:after { position:absolute; right:16px; bottom:-1px; left:16px; height:3px; border-radius:3px 3px 0 0; background:linear-gradient(90deg,var(--purple),var(--hot)); content:""; }
+    .rail-tab .count { display:inline-grid; min-width:18px; height:18px; margin-left:4px; place-items:center; border-radius:999px; background:var(--inset); color:var(--cyan); font:500 9px JetBrains,monospace; }
+    .rail-pane { display:none; height:calc(100% - 46px); overflow:auto; }
+    .rail-pane.active { display:block; }
+    .rail-content { padding:14px 13px 24px; }
+
+    .panel-heading { display:flex; align-items:center; gap:8px; margin:0 3px 12px; }
+    .panel-heading h2 { margin:0; color:white; font-size:15px; }
+    .panel-heading .spacer { flex:1; }
+    .icon-button { display:grid; width:29px; height:29px; place-items:center; border:1px solid var(--border); border-radius:9px; background:transparent; color:var(--quiet); font-size:12px; }
+    .icon-button:hover,.icon-button.on { border-color:var(--purple); background:var(--field); color:var(--pink); }
+    .tiny-action { border:0; border-radius:999px; padding:4px 8px; background:transparent; color:var(--cyan); font-size:10px; font-weight:800; }
+    .tiny-action:hover { background:var(--field); }
+
+    .walk-card { margin-bottom:13px; border:1px solid rgba(155,92,255,.45); border-radius:17px; padding:13px; background:linear-gradient(145deg,rgba(49,42,80,.72),rgba(20,17,29,.82)); box-shadow:inset 0 1px rgba(255,255,255,.035); }
+    .walk-kicker { display:flex; align-items:center; gap:8px; color:var(--cyan); font:500 9px JetBrains,monospace; letter-spacing:.08em; text-transform:uppercase; }
+    .walk-kicker b { margin-left:auto; color:var(--pink); font-size:11px; }
+    .walk-card h3 { margin:8px 0 2px; color:white; font-size:17px; line-height:1.12; }
+    .walk-card p { margin:0; color:var(--soft); font-size:11px; line-height:1.4; }
+    .progress-track { height:7px; margin:12px 0 9px; overflow:hidden; border-radius:999px; background:#110e19; }
+    .progress-fill { width:8.333%; height:100%; border-radius:inherit; background:linear-gradient(90deg,var(--purple),var(--hot),var(--amber)); transition:width .26s ease; }
+    .walk-actions { display:flex; align-items:center; gap:6px; }
+    .walk-actions button { border:1px solid var(--border); border-radius:999px; padding:5px 8px; background:rgba(10,8,16,.52); color:var(--soft); font-size:10px; font-weight:800; }
+    .walk-actions button:hover { border-color:var(--purple); color:white; }
+    .walk-actions .leave { margin-left:auto; color:var(--quiet); }
+
+    .outline-label { display:flex; align-items:center; gap:8px; margin:13px 6px 5px; color:var(--quiet); font:500 9px JetBrains,monospace; letter-spacing:.1em; text-transform:uppercase; }
+    .outline-label select { margin-left:auto; border:1px solid var(--border); border-radius:8px; padding:2px 6px; background:var(--field); color:var(--cyan); font-size:9px; }
+    .outline-row { display:grid; grid-template-columns:25px minmax(0,1fr) 18px; align-items:center; gap:7px; width:100%; margin:2px 0; border:1px solid transparent; border-radius:11px; padding:7px 8px; background:transparent; color:var(--quiet); text-align:left; }
+    .outline-row:hover { background:var(--field); color:var(--soft); }
+    .outline-row.active { border-color:rgba(155,92,255,.43); background:linear-gradient(100deg,rgba(155,92,255,.20),rgba(29,23,49,.42)); color:white; }
+    .outline-row .num { color:var(--cyan); font:500 9px JetBrains,monospace; }
+    .outline-row .label { min-width:0; overflow:hidden; font-size:12px; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+    .outline-row .state { display:grid; width:16px; height:16px; place-items:center; border:1px solid var(--border); border-radius:6px; color:transparent; font-size:8px; }
+    .outline-row.reviewed .state { border-color:var(--mint); background:rgba(94,224,180,.13); color:var(--mint); }
+    .outline-row.revisit .state { border-color:var(--amber); background:rgba(255,190,92,.13); color:var(--amber); }
+    .outline-sub { margin:0 8px 3px 39px; border-left:1px solid var(--border-soft); padding:1px 0 2px 9px; color:#716c88; font-size:10px; line-height:1.75; }
+
+    .file-search { width:100%; margin:2px 0 12px; border:1px solid var(--border); border-radius:11px; padding:8px 10px; outline:0; background:var(--field); color:white; font-size:11px; }
+    .folder { margin:4px 0; }
+    .folder-name { display:flex; gap:7px; border-radius:9px; padding:5px 6px; color:var(--cyan); font-size:11px; font-weight:800; }
+    .tree-file { display:flex; align-items:center; gap:8px; width:100%; margin:1px 0; border:0; border-radius:10px; padding:7px 8px 7px 22px; background:transparent; color:var(--soft); font-size:11px; text-align:left; }
+    .tree-file:hover { background:var(--field); color:white; }
+    .tree-file.active { background:rgba(155,92,255,.18); color:var(--pink); font-weight:800; }
+    .file-dot { width:6px; height:6px; border-radius:50%; background:var(--purple); }
+
+    .editor-island { position:relative; display:grid; grid-template-rows:46px minmax(0,1fr); }
+    .editor-toolbar { display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--border-soft); padding:0 14px; background:rgba(10,8,16,.24); }
+    .toolbar-button { border:0; border-radius:8px; padding:5px 8px; background:transparent; color:var(--quiet); font-size:11px; font-weight:800; }
+    .toolbar-button:hover,.toolbar-button.active { background:var(--field); color:var(--pink); }
+    .toolbar-divider { width:1px; height:18px; margin:0 3px; background:var(--border); }
+    .editor-mode { display:flex; margin-left:auto; border:1px solid var(--border); border-radius:999px; padding:2px; background:#100d17; }
+    .editor-mode button { border:0; border-radius:999px; padding:4px 9px; background:transparent; color:var(--quiet); font-size:9px; font-weight:800; }
+    .editor-mode button.active { background:var(--inset); color:var(--pink); }
+    .editor-scroll { position:relative; height:100%; overflow:auto; scroll-behavior:smooth; padding:34px 38px 118px; background:radial-gradient(580px 420px at 12% 12%,rgba(155,92,255,.055),transparent 70%); }
+    .document { width:100%; min-width:0; }
+    .document-head { margin-bottom:26px; }
+    .document-head h1 { margin:0 0 7px; color:var(--pink); font-size:38px; line-height:1.05; letter-spacing:-.02em; }
+    .document-head .lede { max-width:none; margin:0; color:var(--soft); font-size:15px; line-height:1.55; }
+    .document-meta { display:flex; flex-wrap:wrap; gap:7px; margin-top:14px; }
+    .meta-chip { border:1px solid var(--border-soft); border-radius:999px; padding:4px 9px; background:rgba(29,23,49,.54); color:var(--soft); font-size:10px; }
+    .meta-chip b { color:var(--cyan); }
+    .section-page { display:none; animation:page-in .22s ease-out; }
+    .section-page.active { display:block; }
+    @keyframes page-in { from { opacity:.25; transform:translateY(7px); } }
+    .section-head { display:flex; align-items:flex-start; gap:13px; margin:0 0 15px; border-bottom:1px solid var(--border-soft); padding-bottom:14px; }
+    .section-number { display:grid; width:42px; height:42px; flex:0 0 auto; place-items:center; border:1px solid #654798; border-radius:14px; background:linear-gradient(145deg,#382a59,#1c1729); color:var(--pink); font:500 12px JetBrains,monospace; }
+    .section-kicker { color:var(--cyan); font:500 9px JetBrains,monospace; letter-spacing:.12em; text-transform:uppercase; }
+    .section-head h2 { margin:2px 0 0; color:var(--pink); font-size:25px; line-height:1.15; }
+    .section-note { margin:0 0 14px; color:white; font-size:16px; line-height:1.62; }
+
+    .verdict { position:relative; margin:15px 0 17px; overflow:hidden; border:1px solid rgba(247,184,255,.28); border-radius:20px; padding:19px 21px 19px 68px; background:radial-gradient(380px 170px at 0 50%,rgba(155,92,255,.20),transparent 74%),linear-gradient(110deg,rgba(49,42,80,.76),rgba(23,19,32,.92)); }
+    .verdict:before { position:absolute; top:20px; left:20px; display:grid; width:33px; height:33px; place-items:center; border-radius:11px; background:linear-gradient(145deg,var(--hot),var(--purple)); color:white; content:"◆"; box-shadow:0 10px 24px rgba(155,92,255,.26); }
+    .verdict b { display:block; margin-bottom:3px; color:var(--pink); font-size:12px; letter-spacing:.08em; text-transform:uppercase; }
+    .verdict p { margin:0; color:white; font-size:18px; line-height:1.48; }
+    .fact-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:16px 0; }
+    .fact-card { position:relative; min-height:138px; overflow:hidden; border:1px solid var(--border-soft); border-radius:17px; padding:15px; background:linear-gradient(145deg,rgba(36,30,59,.82),rgba(18,16,25,.92)); }
+    .fact-card:after { position:absolute; right:-24px; bottom:-33px; width:100px; height:100px; border-radius:50%; background:var(--purple); opacity:.08; content:""; }
+    .fact-top { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+    .fact-index { display:grid; width:25px; height:25px; place-items:center; border-radius:8px; background:rgba(143,227,255,.12); color:var(--cyan); font:500 9px JetBrains,monospace; }
+    .fact-type { color:var(--amber); font:500 9px JetBrains,monospace; letter-spacing:.08em; text-transform:uppercase; }
+    .evidence-tag { margin-left:auto; border:1px solid rgba(94,224,180,.28); border-radius:999px; padding:2px 6px; color:var(--mint); font:500 8px JetBrains,monospace; }
+    .fact-card p { position:relative; z-index:1; margin:0; color:white; font-size:13px; line-height:1.45; }
+    .fact-card strong { color:var(--coral); }
+
+    .diagram { display:grid; grid-template-columns:1fr 64px 1fr; gap:10px; align-items:stretch; margin:18px 0; }
+    .diagram-side { border:1px solid var(--border-soft); border-radius:18px; padding:14px; background:rgba(29,23,49,.62); }
+    .diagram-side h3 { margin:0 0 9px; color:var(--cyan); font-size:14px; }
+    .diagram-node { margin:6px 0; border:1px solid var(--border-soft); border-radius:10px; padding:7px 9px; background:#110e19; color:var(--soft); font-size:11px; }
+    .diagram-node.bad { border-color:rgba(255,112,112,.38); color:var(--coral); }
+    .diagram-node.good { border-color:rgba(94,224,180,.38); color:var(--mint); }
+    .diagram-arrow { display:grid; place-items:center; color:var(--purple); font-size:30px; text-shadow:0 0 16px var(--purple); }
+
+    .table-block { margin:16px 0; overflow:hidden; border:1px solid var(--border); border-radius:19px; background:linear-gradient(145deg,rgba(35,29,54,.76),rgba(19,17,27,.94)); }
+    .table-top { display:flex; align-items:center; gap:10px; min-height:50px; border-bottom:1px solid var(--border-soft); padding:10px 13px; }
+    .table-top h3 { margin:0; color:var(--pink); font-size:15px; }
+    .table-count { color:var(--quiet); font:500 8px JetBrains,monospace; }
+    .table-modes { display:flex; gap:2px; margin-left:auto; border:1px solid var(--border); border-radius:999px; padding:3px; background:#100d17; }
+    .table-modes button { border:0; border-radius:999px; padding:5px 9px; background:transparent; color:var(--quiet); font-size:9px; font-weight:800; }
+    .table-modes button.active { background:var(--inset); color:var(--cyan); }
+    .table-action { border:1px solid var(--border); border-radius:9px; padding:6px 8px; background:transparent; color:var(--soft); font-size:9px; font-weight:800; }
+    .table-action:hover { border-color:var(--purple); color:white; }
+    .table-wrap { max-height:540px; overflow:auto; }
+    table { width:100%; border-collapse:separate; border-spacing:0; }
+    th { position:sticky; top:0; z-index:3; padding:11px 12px; background:var(--inset); color:var(--coral); font-size:11px; text-align:left; }
+    td { position:relative; border-top:1px solid var(--border-soft); padding:12px; color:white; font-size:12px; line-height:1.48; vertical-align:top; }
+    td:first-child,th:first-child { position:sticky; left:0; z-index:2; }
+    td:first-child { background:#1b1727; color:var(--pink); font-weight:800; }
+    th:first-child { z-index:4; }
+    tbody tr:hover td { background-color:rgba(155,92,255,.075); }
+    .row-discuss { position:absolute; right:7px; bottom:7px; border:1px solid #685098; border-radius:999px; padding:3px 7px; background:#211a34; color:var(--pink); font-size:8px; font-weight:800; opacity:0; }
+    tr:hover .row-discuss { opacity:1; }
+    .table-block.rows table,.table-block.cards table { display:block; padding:10px; }
+    .table-block.rows thead,.table-block.cards thead { display:none; }
+    .table-block.rows tbody,.table-block.cards tbody { display:grid; gap:8px; }
+    .table-block.rows tr,.table-block.cards tr { position:relative; display:grid; overflow:hidden; border:1px solid var(--border-soft); border-radius:13px; background:rgba(10,8,16,.38); }
+    .table-block.rows tr { grid-template-columns:minmax(140px,.7fr) minmax(200px,1.4fr) minmax(320px,2fr); }
+    .table-block.rows td,.table-block.cards td { position:relative; left:auto; border:0; border-left:1px solid var(--border-soft); background:transparent; }
+    .table-block.rows td:first-child,.table-block.cards td:first-child { border-left:0; background:rgba(155,92,255,.10); }
+    .table-block.rows td:before,.table-block.cards td:before { display:block; margin-bottom:3px; color:var(--quiet); font:500 7px JetBrains,monospace; letter-spacing:.08em; text-transform:uppercase; content:attr(data-label); }
+    .table-block.cards tbody { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .table-block.cards tr { display:block; padding:5px; }
+    .table-block.cards td { display:block; border:0; border-top:1px solid var(--border-soft); border-radius:8px; }
+    .table-block.cards td:first-child { border-top:0; }
+    .table-block.menu-controls .table-modes { display:none; }
+    .table-block.menu-controls .view-menu { display:inline-block; }
+    .view-menu { display:none; }
+
+    .phase-board { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:11px; margin:16px 0; }
+    .phase { border:1px solid var(--border-soft); border-radius:17px; padding:13px; background:linear-gradient(145deg,rgba(36,30,59,.76),rgba(18,16,25,.92)); }
+    .phase-head { display:flex; align-items:center; gap:7px; margin-bottom:10px; }
+    .phase-head b { color:var(--pink); font-size:14px; }
+    .phase-head span { margin-left:auto; color:var(--cyan); font:500 8px JetBrains,monospace; }
+    .action-card { position:relative; margin:7px 0; border:1px solid var(--border-soft); border-radius:11px; padding:9px 9px 9px 31px; background:rgba(10,8,16,.42); color:var(--soft); font-size:10px; line-height:1.4; }
+    .action-card:before { position:absolute; top:10px; left:9px; display:grid; width:15px; height:15px; place-items:center; border:1px solid var(--border); border-radius:5px; color:transparent; content:"✓"; font-size:8px; }
+    .action-card.done:before { border-color:var(--mint); background:rgba(94,224,180,.14); color:var(--mint); }
+    .action-card em { display:block; margin-top:3px; color:var(--amber); font-style:normal; font-size:8px; }
+
+    .walkbar { position:absolute; z-index:12; right:24px; bottom:22px; left:24px; display:grid; grid-template-columns:auto minmax(180px,1fr) auto; align-items:center; gap:12px; border:1px solid rgba(155,92,255,.52); border-radius:18px; padding:10px 12px; background:rgba(20,17,29,.94); box-shadow:0 20px 52px rgba(0,0,0,.52); backdrop-filter:blur(18px); }
+    .walkbar-nav { display:flex; gap:6px; }
+    .walkbar button { border:1px solid var(--border); border-radius:999px; padding:6px 10px; background:var(--field); color:var(--soft); font-size:10px; font-weight:800; }
+    .walkbar button:hover { border-color:var(--purple); color:white; }
+    .walkbar-center { min-width:0; }
+    .walkbar-title { display:flex; gap:8px; color:white; font-size:11px; font-weight:800; }
+    .walkbar-title span:first-child { color:var(--cyan); font:500 9px JetBrains,monospace; }
+    .walkbar .progress-track { height:5px; margin:5px 0 0; }
+    .state-actions { display:flex; gap:6px; }
+    .state-actions button.reviewed.on { border-color:var(--mint); background:rgba(94,224,180,.12); color:var(--mint); }
+    .state-actions button.revisit.on { border-color:var(--amber); background:rgba(255,190,92,.12); color:var(--amber); }
+
+    .right-rail { display:grid; grid-template-rows:46px minmax(0,1fr); transition:grid-template-rows .2s; }
+    .right-rail .rail-pane { height:100%; }
+    .right-body { min-height:0; overflow:hidden; }
+    .right-rail.split .right-body { display:grid; grid-template-rows:minmax(0,1fr) 155px; }
+    .right-rail.split .rail-pane.active { min-height:0; }
+    .pinned-changes { display:none; min-height:0; overflow:auto; border-top:1px solid var(--border); background:rgba(10,8,16,.28); }
+    .right-rail.split .pinned-changes { display:block; }
+    .pinned-head { position:sticky; top:0; z-index:2; display:flex; align-items:center; gap:8px; padding:8px 12px; background:#17141e; color:var(--pink); font-size:11px; font-weight:800; }
+    .pinned-head span { margin-left:auto; color:var(--cyan); font:500 8px JetBrains,monospace; }
+    .pinned-row { margin:7px 10px; border-left:3px solid var(--purple); padding:5px 8px; color:var(--soft); font-size:9px; line-height:1.35; }
+
+    .filter-row { display:flex; gap:4px; margin:0 2px 12px; }
+    .filter-row button { border:1px solid var(--border); border-radius:999px; padding:4px 8px; background:transparent; color:var(--quiet); font-size:9px; font-weight:800; }
+    .filter-row button.active { border-color:var(--purple); background:rgba(155,92,255,.13); color:var(--pink); }
+    .annotation-card,.change-card,.agent-card { margin:8px 0; border:1px solid var(--border-soft); border-radius:15px; padding:11px; background:rgba(29,23,49,.56); }
+    .annotation-card.decision { border-left:4px solid var(--amber); }
+    .annotation-card.thread { border-left:4px solid var(--cyan); }
+    .annotation-card.resolved { border-color:rgba(94,224,180,.38); border-left-color:var(--mint); background:rgba(94,224,180,.045); }
+    .annotation-meta { display:flex; align-items:center; gap:7px; color:var(--quiet); font:500 8px JetBrains,monospace; letter-spacing:.05em; text-transform:uppercase; }
+    .annotation-meta b { color:var(--amber); font-weight:500; }
+    .annotation-card.thread .annotation-meta b { color:var(--cyan); }
+    .annotation-card p { margin:8px 0 9px; color:white; font-size:12px; line-height:1.42; }
+    .quote-mini { margin:7px 0; border-left:2px solid var(--lav); padding:4px 0 4px 8px; color:var(--soft); font-size:10px; font-style:italic; line-height:1.4; }
+    .decision-options { display:flex; flex-wrap:wrap; gap:5px; }
+    .decision-options button { border:1px solid var(--border); border-radius:999px; padding:4px 7px; background:#110e19; color:var(--quiet); font-size:8px; font-weight:800; }
+    .decision-options button:hover { color:white; }
+    .decision-options button.selected { border-color:var(--mint); background:rgba(94,224,180,.12); color:var(--mint); }
+    .reply-count { margin-left:auto; color:var(--pink); }
+    .new-thread { animation:thread-flash 1.1s ease; }
+    @keyframes thread-flash { 0%,100% { box-shadow:none; } 30% { box-shadow:0 0 0 3px rgba(143,227,255,.36),0 0 32px rgba(143,227,255,.18); } }
+
+    .change-card { border-left:4px solid var(--purple); }
+    .change-author { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+    .avatar { display:grid; width:27px; height:27px; flex:0 0 auto; place-items:center; border-radius:9px; background:linear-gradient(145deg,var(--purple),var(--blue)); color:white; font-size:10px; font-weight:800; }
+    .change-author b,.agent-name b { display:block; color:white; font-size:11px; }
+    .change-author small,.agent-name small { display:block; color:var(--mint); font-size:8px; }
+    .diff { overflow:hidden; border-radius:9px; background:#100d17; font:500 8px/1.6 JetBrains,monospace; }
+    .diff div { padding:4px 7px; }
+    .diff .removed { color:#ffb3c5; background:rgba(254,118,157,.09); }
+    .diff .added { color:#cdb6ff; background:rgba(156,102,255,.12); }
+    .change-actions { display:flex; gap:5px; margin-top:8px; }
+    .change-actions button { border:1px solid var(--border); border-radius:999px; padding:4px 8px; background:transparent; color:var(--soft); font-size:8px; font-weight:800; }
+    .change-actions .keep { color:var(--mint); }
+    .change-actions .revert { color:var(--danger); }
+
+    .agent-card { background:linear-gradient(145deg,rgba(155,92,255,.12),rgba(19,16,28,.76)); }
+    .agent-line { display:flex; align-items:center; gap:9px; }
+    .agent-line .status { margin-left:auto; border-radius:999px; padding:3px 7px; background:rgba(94,224,180,.11); color:var(--mint); font:500 8px JetBrains,monospace; }
+    .agent-card p { margin:9px 0 0; color:var(--soft); font-size:10px; line-height:1.45; }
+    .agent-event { display:flex; gap:7px; margin:9px 3px; color:var(--quiet); font-size:9px; }
+    .agent-event i { width:7px; height:7px; margin-top:3px; border-radius:50%; background:var(--purple); box-shadow:0 0 10px var(--purple); }
+    .agent-window { display:flex; flex-direction:column; }
+    .agent-window .rail-content { padding:12px 13px; }
+    .agent-window .panel-heading { margin-bottom:7px; }
+    .agent-count { display:inline-grid; min-width:18px; height:18px; margin-left:4px; place-items:center; border-radius:999px; background:var(--inset); color:var(--cyan); font:500 9px JetBrains,monospace; vertical-align:middle; }
+    .agent-window .agent-card { margin:0; padding:9px 10px; }
+    .agent-window .agent-card p { margin-top:6px; }
+    .agent-window .agent-events { display:flex; gap:13px; overflow:hidden; }
+    .agent-window .agent-event { min-width:0; flex:1; margin:7px 2px 0; white-space:nowrap; }
+    .agent-window .agent-event span { overflow:hidden; text-overflow:ellipsis; }
+
+    .focus-view { position:absolute; z-index:30; inset:46px 0 0; display:none; overflow:auto; padding:22px; background:var(--window); }
+    .focus-view.open { display:block; }
+    .focus-view.full-window { position:fixed; inset:16px 22px 18px; z-index:80; border:1px solid var(--border); border-radius:22px; box-shadow:0 30px 110px #000; }
+    .focus-head { display:flex; align-items:center; gap:9px; margin-bottom:14px; }
+    .focus-head h2 { margin:0; color:var(--pink); font-size:20px; }
+    .focus-head span { color:var(--cyan); font:500 9px JetBrains,monospace; }
+    .focus-head button { margin-left:auto; border:1px solid var(--border); border-radius:999px; padding:6px 11px; background:var(--field); color:white; font-size:10px; font-weight:800; }
+    .focus-copy .table-block { margin:0; }
+    .focus-copy .table-wrap { max-height:none; }
+
+    .prototype-drawer { position:fixed; z-index:100; top:78px; right:24px; display:none; width:420px; max-height:calc(100vh - 102px); overflow:auto; border:1px solid #7651b3; border-radius:21px; padding:17px; background:rgba(21,17,31,.98); box-shadow:0 30px 100px #000; backdrop-filter:blur(22px); }
+    .prototype-drawer.open { display:block; animation:drawer-in .2s ease-out; }
+    @keyframes drawer-in { from { opacity:0; transform:translateY(-8px) scale(.98); } }
+    .prototype-head { display:flex; align-items:flex-start; gap:10px; margin-bottom:13px; }
+    .prototype-head h2 { margin:0; color:var(--pink); font-size:19px; }
+    .prototype-head p { margin:2px 0 0; color:var(--soft); font-size:10px; line-height:1.4; }
+    .prototype-head button { margin-left:auto; border:0; background:transparent; color:var(--quiet); font-size:20px; }
+    .choice { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:10px; border-top:1px solid var(--border-soft); padding:11px 2px; }
+    .choice b { display:block; color:white; font-size:11px; }
+    .choice small { display:block; color:var(--quiet); font-size:9px; line-height:1.35; }
+    .choice select { max-width:150px; border:1px solid var(--border); border-radius:9px; padding:5px 7px; background:var(--field); color:var(--cyan); font-size:9px; }
+    .switch { position:relative; width:38px; height:22px; border:1px solid var(--border); border-radius:999px; background:#100d17; }
+    .switch:after { position:absolute; top:3px; left:3px; width:14px; height:14px; border-radius:50%; background:var(--quiet); transition:.18s; content:""; }
+    .switch.on { border-color:var(--purple); background:rgba(155,92,255,.24); }
+    .switch.on:after { left:19px; background:var(--pink); box-shadow:0 0 12px rgba(247,184,255,.5); }
+    .prototype-note { margin-top:10px; border-left:3px solid var(--cyan); padding:5px 0 5px 9px; color:var(--soft); font-size:9px; line-height:1.4; }
+
+    .toast { position:fixed; z-index:130; left:50%; bottom:28px; display:none; transform:translateX(-50%); border:1px solid var(--border); border-radius:999px; padding:9px 15px; background:#211a34; color:white; box-shadow:0 14px 50px #000; font-size:10px; font-weight:800; }
+    .toast.show { display:block; animation:toast .22s ease-out; }
+    @keyframes toast { from { opacity:0; transform:translate(-50%,10px); } }
+
+    @media (max-width:1320px) {
+      .workspace { grid-template-columns:245px 7px minmax(0,1fr) 7px 330px; }
+      .editor-scroll { padding-right:26px; padding-left:26px; }
+      .phase-board { grid-template-columns:1fr; }
+      .fact-grid { grid-template-columns:1fr; }
+      .top-status { display:none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="logo-pill" aria-label="StrataMD"><span class="logo-mark"></span><span>StrataMD</span></div>
+      <div class="file-tabs" aria-label="Open documents">
+        <button class="file-tab active"><span class="name">Mesa practices review</span><span class="dirty"></span><span class="close">×</span></button>
+        <button class="file-tab"><span class="name">evidence-01-instruction-routing.md</span><span class="close">×</span></button>
+      </div>
+      <span class="top-status">7 pending · unsaved</span>
+      <button class="prototype-button" id="prototypeButton">Prototype choices</button>
+      <button class="top-icon" title="Theme">Vivid</button>
+      <button class="send">Send</button>
+    </header>
+
+    <div class="workspace">
+      <nav class="island left-rail" aria-label="Navigation">
+        <div class="rail-tabs two">
+          <button class="rail-tab left-tab" data-pane="filesPane">Files</button>
+          <button class="rail-tab left-tab active" data-pane="contentsPane">Contents</button>
+        </div>
+
+        <section class="rail-pane" id="filesPane">
+          <div class="rail-content">
+            <div class="panel-heading"><h2>Files</h2><span class="spacer"></span><button class="icon-button" title="Refresh">↻</button></div>
+            <input class="file-search" placeholder="Find a document">
+            <div class="folder">
+              <div class="folder-name"><span>⌄</span><span>mesa-practices-review</span></div>
+              <button class="tree-file active"><span class="file-dot"></span>REVIEW.md</button>
+              <button class="tree-file"><span class="file-dot" style="background:var(--blue)"></span>evidence-01-routing.md</button>
+              <button class="tree-file"><span class="file-dot" style="background:var(--mint)"></span>evidence-02-database.md</button>
+              <button class="tree-file"><span class="file-dot" style="background:var(--amber)"></span>evidence-03-ci.md</button>
+              <button class="tree-file"><span class="file-dot" style="background:var(--hot)"></span>evidence-04-tests.md</button>
+            </div>
+            <div class="folder">
+              <div class="folder-name"><span>›</span><span>StrataMD</span></div>
+            </div>
+            <div class="folder">
+              <div class="folder-name"><span>›</span><span>Mesa</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="rail-pane active" id="contentsPane">
+          <div class="rail-content">
+            <div class="panel-heading"><h2>Document contents</h2><span class="spacer"></span><button class="icon-button" title="Contents options">···</button></div>
+            <div class="walk-card">
+              <div class="walk-kicker"><span>Walkthrough</span><b id="sideProgressLabel">1 of 12</b></div>
+              <h3 id="sideSectionTitle">Verdict</h3>
+              <p>Headings create the route. The file contains no walkthrough markup.</p>
+              <div class="progress-track"><div class="progress-fill shared-progress"></div></div>
+              <div class="walk-actions"><button class="prev-section">‹ Previous</button><button class="next-section">Next ›</button><button class="leave">Leave</button></div>
+            </div>
+            <div class="outline-label"><span>Sections</span><select id="headingLevel"><option value="h2">H2 sections</option><option value="h3">H2 + H3</option></select></div>
+            <div id="outline">
+              <button class="outline-row active" data-index="0"><span class="num">01</span><span class="label">Verdict</span><span class="state">✓</span></button>
+              <div class="outline-sub h3-row">Four facts<br>The change</div>
+              <button class="outline-row" data-index="1"><span class="num">02</span><span class="label">What Mesa is</span><span class="state">✓</span></button>
+              <div class="outline-sub h3-row">Product islands<br>Invariants</div>
+              <button class="outline-row" data-index="2"><span class="num">03</span><span class="label">Instruction system</span><span class="state">✓</span></button>
+              <button class="outline-row" data-index="3"><span class="num">04</span><span class="label">Program and model seats</span><span class="state">✓</span></button>
+              <button class="outline-row" data-index="4"><span class="num">05</span><span class="label">Ownership and writes</span><span class="state">✓</span></button>
+              <button class="outline-row" data-index="5"><span class="num">06</span><span class="label">Testing system</span><span class="state">✓</span></button>
+              <button class="outline-row" data-index="6"><span class="num">07</span><span class="label">CI and release gates</span><span class="state">✓</span></button>
+              <button class="outline-row" data-index="7"><span class="num">08</span><span class="label">System map</span><span class="state">✓</span></button>
+              <button class="outline-row" data-index="8"><span class="num">09</span><span class="label">Product map</span><span class="state">✓</span></button>
+              <button class="outline-row" data-index="9"><span class="num">10</span><span class="label">Rules to keep</span><span class="state">✓</span></button>
+              <button class="outline-row" data-index="10"><span class="num">11</span><span class="label">Rules to remove</span><span class="state">✓</span></button>
+              <button class="outline-row" data-index="11"><span class="num">12</span><span class="label">Change list, ordered</span><span class="state">✓</span></button>
+            </div>
+          </div>
+        </section>
+      </nav>
+
+      <div class="resizer" aria-hidden="true"></div>
+
+      <main class="island editor-island">
+        <div class="editor-toolbar">
+          <button class="toolbar-button">Undo</button><button class="toolbar-button">Redo</button><span class="toolbar-divider"></span>
+          <button class="toolbar-button active">B</button><button class="toolbar-button">I</button><button class="toolbar-button">Link</button><button class="toolbar-button">Table</button>
+          <span class="toolbar-divider"></span><button class="toolbar-button">Find</button>
+          <div class="editor-mode"><button class="active">Reading</button><button>Source</button></div>
+        </div>
+
+        <div class="editor-scroll" id="editorScroll">
+          <article class="document">
+            <header class="document-head">
+              <h1>Mesa practices review</h1>
+              <p class="lede">A walkthrough-ready review of the written process, the rules that carry real weight, and the changes that should happen first.</p>
+              <div class="document-meta"><span class="meta-chip"><b>Date</b> 2026-09-01</span><span class="meta-chip"><b>Owner</b> Dillon</span><span class="meta-chip"><b>Status</b> Draft for walkthrough</span><span class="meta-chip"><b>Evidence</b> 8 files</span></div>
+            </header>
+
+            <section class="section-page active" id="page-1">
+              <div class="section-head"><span class="section-number">01</span><div><span class="section-kicker">Controlling judgment</span><h2>Verdict</h2></div></div>
+              <div class="verdict"><b>Verdict</b><p>Mesa's product is strong and its written process is upside down. The rules that protect Mesa live in the database and launcher scripts. The rules agents keep breaking live in prose.</p></div>
+              <p class="section-note">Four facts carry the whole review. The cards make each claim distinct while keeping its evidence one action away.</p>
+              <div class="fact-grid">
+                <article class="fact-card"><div class="fact-top"><span class="fact-index">01</span><span class="fact-type">Process miss</span><span class="evidence-tag">08 §2.3, §7.5</span></div><p><strong>Not one defect</strong> in either major August postmortem was caught by a canon rule. The owner caught more invented facts than any process stage.</p></article>
+                <article class="fact-card"><div class="fact-top"><span class="fact-index">02</span><span class="fact-type">Instruction load</span><span class="evidence-tag">01 §2, §7d</span></div><p>An agent following the router's own read chain loads about <strong>43,000 tokens</strong> before touching code. The useful rules fit in about 5,000.</p></article>
+                <article class="fact-card"><div class="fact-top"><span class="fact-index">03</span><span class="fact-type">Gate failure</span><span class="evidence-tag">03 §0, 04 §1</span></div><p>CI has been red since 2026-06-19 and every push to main deployed anyway. <strong>Playwright has never run in CI.</strong></p></article>
+                <article class="fact-card"><div class="fact-top"><span class="fact-index">04</span><span class="fact-type">Rules that hold</span><span class="evidence-tag">02 §4, 06 §3</span></div><p>Money and piece-rate rules hold at the database. Core records still have <strong>6 to 47 write paths</strong> each with no equivalent guard.</p></article>
+              </div>
+              <div class="diagram">
+                <div class="diagram-side"><h3>Today</h3><div class="diagram-node bad">160k tokens across 44 files</div><div class="diagram-node bad">Agent must remember the rules</div><div class="diagram-node bad">Owner catches the break</div></div>
+                <div class="diagram-arrow">→</div>
+                <div class="diagram-side"><h3>After</h3><div class="diagram-node good">Database guards enforce invariants</div><div class="diagram-node good">Launcher and CI stop regressions</div><div class="diagram-node good">Product map records owner intent</div></div>
+              </div>
+            </section>
+
+            <section class="section-page" id="page-2">
+              <div class="section-head"><span class="section-number">02</span><div><span class="section-kicker">Product reference</span><h2>What Mesa is, in one page per island</h2></div></div>
+              <p class="section-note">The source is an ordinary Markdown table. Switch the local reading view. Nothing below rewrites the file.</p>
+              <div class="table-block" id="islandTable">
+                <div class="table-top"><h3>Product islands</h3><span class="table-count">8 of 17 shown</span><div class="table-modes"><button class="active" data-mode="grid">Grid</button><button data-mode="rows">Rows</button><button data-mode="cards">Cards</button></div><select class="view-menu table-action"><option>Grid</option><option>Rows</option><option>Cards</option></select><button class="table-action focus-table">Focus</button></div>
+                <div class="table-wrap"><table>
+                  <thead><tr><th>Island</th><th>Owns</th><th>The invariant that makes it Mesa</th></tr></thead>
+                  <tbody>
+                    <tr><td data-label="Island">Address and job</td><td data-label="Owns">Address, job identity, warranty history</td><td data-label="Invariant">Address is the record. One job, one address. Warranty follows the address, not the customer.<button class="row-discuss" data-quote="Address is the record. One job, one address. Warranty follows the address, not the customer.">Discuss</button></td></tr>
+                    <tr><td data-label="Island">Sales</td><td data-label="Owns">Stage, owner, source, appointments, commitments, outcomes</td><td data-label="Invariant">Stages move only by work being done. One accountable owner, never a pool. Junk leaves no record.<button class="row-discuss" data-quote="Stages move only by work being done. One accountable owner, never a pool.">Discuss</button></td></tr>
+                    <tr><td data-label="Island">Measurement</td><td data-label="Owns">Measurement versions, adopted roof map</td><td data-label="Invariant">Provider originals are immutable. Corrections fork. Nothing about money crosses the bridge.<button class="row-discuss" data-quote="Provider originals are immutable. Corrections fork. Nothing about money crosses the bridge.">Discuss</button></td></tr>
+                    <tr><td data-label="Island">Inspection</td><td data-label="Owns">Visit session, capture session, recap</td><td data-label="Invariant">FreeFlow capture, no pickers. One controller. Recovery never duplicates a visit.<button class="row-discuss" data-quote="FreeFlow capture, no pickers. One controller. Recovery never duplicates a visit.">Discuss</button></td></tr>
+                    <tr><td data-label="Island">Proposal and contract</td><td data-label="Owns">Proposal versions, signing, change orders, catalog</td><td data-label="Invariant">Signed price never mutates. Change orders are the only path. Agent drafts, human approves.<button class="row-discuss" data-quote="Signed price never mutates. Change orders are the only path.">Discuss</button></td></tr>
+                    <tr><td data-label="Island">Production</td><td data-label="Owns">Production status, crew, schedule, claims, evidence packets</td><td data-label="Invariant">Claims land on a real section of a real roof. Quantity conservation. Found work is a named item.<button class="row-discuss" data-quote="Claims land on a real section of a real roof. Quantity conservation.">Discuss</button></td></tr>
+                    <tr><td data-label="Island">Payroll and costing</td><td data-label="Owns">Pay periods, paychecks, costing layers</td><td data-label="Invariant">Piece rate times physical percent. FLSA per workweek. Seal locks the same transaction. Dash, never zero.<button class="row-discuss" data-quote="Piece rate times physical percent. FLSA per workweek.">Discuss</button></td></tr>
+                    <tr><td data-label="Island">Billing</td><td data-label="Owns">Requests, payments, refunds, QBO links</td><td data-label="Invariant">Request, submission, and settled money are three facts. Cleared principal only. Mesa's page, never QuickBooks'.<button class="row-discuss" data-quote="Request, submission, and settled money are three facts.">Discuss</button></td></tr>
+                  </tbody>
+                </table></div>
+              </div>
+            </section>
+
+            <section class="section-page" id="page-generic">
+              <div class="section-head"><span class="section-number" id="genericNumber">03</span><div><span class="section-kicker">Review section</span><h2 id="genericTitle">Instruction system</h2></div></div>
+              <div class="verdict"><b>Section verdict</b><p id="genericVerdict">The instruction system is too large to function as working memory. Put the rules that must hold where the system can enforce them.</p></div>
+              <p class="section-note">This page proves that ordinary H2 headings can drive the walkthrough without custom document syntax. The complete review content would remain editable here.</p>
+              <div class="fact-grid">
+                <article class="fact-card"><div class="fact-top"><span class="fact-index">A</span><span class="fact-type">Evidence</span><span class="evidence-tag">Open source</span></div><p>The source citation stays attached to the claim and opens the corresponding evidence document in Strata.</p></article>
+                <article class="fact-card"><div class="fact-top"><span class="fact-index">B</span><span class="fact-type">Owner call</span><span class="evidence-tag">Annotation</span></div><p>When the section needs a choice, Strata records it under Annotations. The decision does not become hidden markup.</p></article>
+              </div>
+            </section>
+
+            <section class="section-page" id="page-12">
+              <div class="section-head"><span class="section-number">12</span><div><span class="section-kicker">Ordered work</span><h2>Change list, ordered</h2></div></div>
+              <p class="section-note">Three ordinary Markdown tables become one phase board for reading. Click a task to try private walkthrough state.</p>
+              <div class="phase-board">
+                <div class="phase"><div class="phase-head"><b>Now</b><span>THIS WEEK</span></div><div class="action-card">Fix integration migration ordering and get one green run.<em>1 day · Tests</em></div><div class="action-card">Wire deploys to green CI.<em>0.5 day · Owner decision</em></div><div class="action-card">Delete retired process documents and dead validators.<em>1 day · Instructions</em></div><div class="action-card">Cut pre-commit to four jobs and CI to five lanes.<em>0.5 day · Gates</em></div></div>
+                <div class="phase"><div class="phase-head"><b>Next</b><span>WEEKS 2–3</span></div><div class="action-card">Add guard triggers to ten core tables.<em>3 days · Ownership</em></div><div class="action-card">Build the islands manifest and check script.<em>3 days · Ownership</em></div><div class="action-card">Fix system map extraction and add the island layer.<em>3.5 days · System map</em></div><div class="action-card">Convert mocked proposal tests to real API flows.<em>2 days · Tests</em></div></div>
+                <div class="phase"><div class="phase-head"><b>As touched</b><span>ONGOING</span></div><div class="action-card">Consolidate write modules one island at a time.<em>30 days · Architecture</em></div><div class="action-card">Run the test deletion sweep with cross-family review.<em>2 days · Tests</em></div><div class="action-card">Add symbol-level usage, then delete six catalogs.<em>3 days · System map</em></div><div class="action-card">Walk the product map by island.<em>Your interview time</em></div></div>
+              </div>
+            </section>
+          </article>
+        </div>
+
+        <div class="walkbar">
+          <div class="walkbar-nav"><button class="prev-section">‹</button><button class="next-section">›</button></div>
+          <div class="walkbar-center"><div class="walkbar-title"><span id="bottomProgressLabel">01 / 12</span><span id="bottomSectionTitle">Verdict</span></div><div class="progress-track"><div class="progress-fill shared-progress"></div></div></div>
+          <div class="state-actions"><button class="reviewed" id="reviewedButton">Reviewed</button><button class="revisit" id="revisitButton">Revisit</button></div>
+        </div>
+
+        <div class="focus-view" id="focusView"><div class="focus-head"><h2>Product islands</h2><span>8 of 17 · Focused table view</span><button id="closeFocus">Return to document</button></div><div class="focus-copy" id="focusCopy"></div></div>
+      </main>
+
+      <div class="resizer" aria-hidden="true"></div>
+
+      <div class="right-column">
+        <aside class="island right-rail" id="rightRail" aria-label="Review">
+          <div class="rail-tabs two">
+            <button class="rail-tab right-tab" data-pane="changesPane">Changes <span class="count">7</span></button>
+            <button class="rail-tab right-tab active" data-pane="annotationsPane">Annotations <span class="count" id="annotationCount">4</span></button>
+          </div>
+          <div class="right-body">
+            <section class="rail-pane" id="changesPane">
+              <div class="rail-content">
+                <div class="panel-heading"><h2>Changes</h2><span class="spacer"></span><button class="tiny-action">Mark reviewed</button></div>
+                <article class="change-card"><div class="change-author"><span class="avatar">C</span><div><b>Claude</b><small>Review author · 3 changes</small></div></div><div class="diff"><div class="removed">- The process spends almost all of its weight...</div><div class="added">+ The written process spends almost all of its weight...</div></div><div class="change-actions"><button class="keep">Keep</button><button class="revert">Revert</button></div></article>
+                <article class="change-card"><div class="change-author"><span class="avatar">C</span><div><b>Codex</b><small>Documentation · 4 changes</small></div></div><div class="diff"><div class="added">+ Evidence links now name the exact section.</div><div class="added">+ The tradeoff is stated beside the change.</div></div><div class="change-actions"><button class="keep">Keep</button><button class="revert">Revert</button></div></article>
+              </div>
+            </section>
+
+            <section class="rail-pane active" id="annotationsPane">
+              <div class="rail-content">
+                <div class="panel-heading"><h2>Annotations</h2><span class="spacer"></span><button class="icon-button" id="pinChanges" title="Pin Changes below">⌑</button><button class="icon-button" title="Add annotation">+</button></div>
+                <div class="filter-row"><button class="active" data-filter="all">All</button><button data-filter="decision">Decisions</button><button data-filter="thread">Threads</button></div>
+                <div id="annotationList">
+                  <article class="annotation-card decision"><div class="annotation-meta"><b>Decision</b><span>Section 7</span><span class="reply-count">2 replies</span></div><p>Should deploys wait for green CI?</p><div class="quote-mini">"Every push to main deployed anyway."</div><div class="decision-options"><button>Gate deploys</button><button>Informational</button></div></article>
+                  <article class="annotation-card decision"><div class="annotation-meta"><b>Decision</b><span>Section 3</span></div><p>Does the blocks-only composition rule still stand?</p><div class="decision-options"><button>Keep it</button><button>Drop it</button><button>Revisit</button></div></article>
+                  <article class="annotation-card decision"><div class="annotation-meta"><b>Decision</b><span>Section 9</span></div><p>Which islands should the product-map walk cover first?</p><div class="decision-options"><button>Current canon</button><button>Missing PRDs</button></div></article>
+                  <article class="annotation-card thread"><div class="annotation-meta"><b>Question</b><span>Section 1</span><span class="reply-count">1 reply</span></div><p>Is 5,000 tokens a hard target or a useful comparison?</p><div class="quote-mini">"The rules it needs fit in about 5,000."</div></article>
+                </div>
+              </div>
+            </section>
+
+            <div class="pinned-changes"><div class="pinned-head">Pinned Changes <span>7 pending</span></div><div class="pinned-row">Claude rewrote the section verdict. Keep or revert from the Changes tab.</div><div class="pinned-row">Codex added exact evidence section links.</div></div>
+          </div>
+        </aside>
+
+        <div class="row-resizer" aria-hidden="true"></div>
+
+        <section class="island agent-window" aria-label="Attached agents">
+          <div class="rail-content">
+            <div class="panel-heading"><h2>Attached agents <span class="agent-count">1</span></h2><span class="spacer"></span><button class="tiny-action">Copy prompt</button></div>
+            <article class="agent-card"><div class="agent-line"><span class="avatar">C</span><div class="agent-name"><b>Claude · review author</b><small>Reading Section 1</small></div><span class="status">working</span></div><p>Ask about a section, table row, or decision. The question stays attached to the exact passage.</p></article>
+            <div class="agent-events"><div class="agent-event"><i></i><span>Section 1 sent three minutes ago</span></div><div class="agent-event"><i style="background:var(--mint);box-shadow:0 0 10px var(--mint)"></i><span>Two replies ready</span></div></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <aside class="prototype-drawer" id="prototypeDrawer">
+    <div class="prototype-head"><div><h2>Prototype choices</h2><p>This drawer is a test harness, not proposed Strata chrome. Change the unresolved behaviors while using the document.</p></div><button id="closePrototype">×</button></div>
+    <div class="choice"><div><b>Open structured documents in Contents</b><small>Files stays one click away and remains the exception path.</small></div><button class="switch on" id="autoContents" aria-label="Auto-select Contents"></button></div>
+    <div class="choice"><div><b>Review window behavior</b><small>Agents keep their own bottom window. Compare tabs with a temporary pinned Changes view above it.</small></div><select id="rightBehavior"><option value="tabs">Tabs only</option><option value="split">Pin Changes</option></select></div>
+    <div class="choice"><div><b>Walkthrough depth</b><small>H2 gives twelve major steps. H3 adds nested landmarks.</small></div><select id="walkDepth"><option value="h2">H2 sections</option><option value="h3">H2 + H3</option></select></div>
+    <div class="choice"><div><b>Share reading progress on Send</b><small>Off keeps Reviewed and Revisit private to this machine.</small></div><button class="switch" id="shareProgress" aria-label="Share progress"></button></div>
+    <div class="choice"><div><b>Table view controls</b><small>Keep modes visible or collapse them into one compact menu.</small></div><select id="tableControls"><option value="visible">Always visible</option><option value="menu">Compact menu</option></select></div>
+    <div class="choice"><div><b>Focus behavior</b><small>Center-only keeps both rails visible. Window focus gives the table every pixel.</small></div><select id="focusBehavior"><option value="center">Center only</option><option value="window">Full window</option></select></div>
+    <div class="prototype-note">The document still uses ordinary headings and tables. These choices belong to Strata's local viewing state.</div>
+  </aside>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const sectionTitles = ['Verdict','What Mesa is','Instruction system','Program and model seats','Ownership and writes','Testing system','CI and release gates','System map','Product map','Rules to keep','Rules to remove','Change list, ordered']
+    const verdicts = [
+      '', '',
+      'The instruction system is too large to function as working memory. Put the rules that must hold where the system can enforce them.',
+      'Keep conductor and cross-family review. Stop pretending one fixed model belongs in every seat.',
+      'Ownership is tagged but write authority is scattered. The database needs one guarded door per record.',
+      'The test count looks healthy while the most important paths run against mocks or never run at all.',
+      'A red check cannot protect main when deployment ignores it. Make the gate mechanical.',
+      'The map records filenames better than behavior. Add the island and symbol relationships agents actually need.',
+      'The product map should record owner intent by island and make disagreement easy to find.',
+      'Keep the small set of rules that name real invariants, review responsibilities, and destructive boundaries.',
+      'Delete rules that restate tools, encode obsolete process, or depend on an agent reading forty-four files.',
+      ''
+    ]
+    let currentSection = 0
+    const reviewed = new Set()
+    const revisit = new Set()
+    const outlineRows = [...document.querySelectorAll('.outline-row')]
+    const pages = [...document.querySelectorAll('.section-page')]
+    const editorScroll = document.getElementById('editorScroll')
+    const rightRail = document.getElementById('rightRail')
+    const toast = document.getElementById('toast')
+
+    function showToast(message) {
+      toast.textContent = message
+      toast.classList.add('show')
+      clearTimeout(showToast.timer)
+      showToast.timer = setTimeout(() => toast.classList.remove('show'), 1500)
+    }
+
+    function setSection(index) {
+      currentSection = Math.max(0, Math.min(11, index))
+      outlineRows.forEach((row, i) => row.classList.toggle('active', i === currentSection))
+      pages.forEach(page => page.classList.remove('active'))
+      if (currentSection === 0) document.getElementById('page-1').classList.add('active')
+      else if (currentSection === 1) document.getElementById('page-2').classList.add('active')
+      else if (currentSection === 11) document.getElementById('page-12').classList.add('active')
+      else {
+        document.getElementById('page-generic').classList.add('active')
+        document.getElementById('genericNumber').textContent = String(currentSection + 1).padStart(2,'0')
+        document.getElementById('genericTitle').textContent = sectionTitles[currentSection]
+        document.getElementById('genericVerdict').textContent = verdicts[currentSection]
+      }
+      const progress = ((currentSection + 1) / 12 * 100) + '%'
+      document.querySelectorAll('.shared-progress').forEach(el => el.style.width = progress)
+      document.getElementById('sideProgressLabel').textContent = (currentSection + 1) + ' of 12'
+      document.getElementById('bottomProgressLabel').textContent = String(currentSection + 1).padStart(2,'0') + ' / 12'
+      document.getElementById('sideSectionTitle').textContent = sectionTitles[currentSection]
+      document.getElementById('bottomSectionTitle').textContent = sectionTitles[currentSection]
+      document.getElementById('reviewedButton').classList.toggle('on', reviewed.has(currentSection))
+      document.getElementById('revisitButton').classList.toggle('on', revisit.has(currentSection))
+      editorScroll.scrollTop = 0
+    }
+
+    function switchRail(tab, group) {
+      document.querySelectorAll('.' + group + '-tab').forEach(item => item.classList.toggle('active', item === tab))
+      const selector = group === 'left' ? '.left-rail .rail-pane' : '.right-rail .rail-pane'
+      document.querySelectorAll(selector).forEach(pane => pane.classList.toggle('active', pane.id === tab.dataset.pane))
+    }
+
+    document.querySelectorAll('.left-tab').forEach(tab => tab.addEventListener('click', () => switchRail(tab,'left')))
+    document.querySelectorAll('.right-tab').forEach(tab => tab.addEventListener('click', () => switchRail(tab,'right')))
+    outlineRows.forEach((row, index) => row.addEventListener('click', () => setSection(index)))
+    document.querySelectorAll('.next-section').forEach(button => button.addEventListener('click', () => setSection(currentSection + 1)))
+    document.querySelectorAll('.prev-section').forEach(button => button.addEventListener('click', () => setSection(currentSection - 1)))
+
+    document.getElementById('reviewedButton').addEventListener('click', function () {
+      reviewed.has(currentSection) ? reviewed.delete(currentSection) : reviewed.add(currentSection)
+      revisit.delete(currentSection)
+      outlineRows[currentSection].classList.toggle('reviewed', reviewed.has(currentSection))
+      outlineRows[currentSection].classList.remove('revisit')
+      setSection(currentSection)
+      showToast(document.getElementById('shareProgress').classList.contains('on') ? 'Reviewed will be included on Send' : 'Reviewed saved as private reading state')
+    })
+    document.getElementById('revisitButton').addEventListener('click', function () {
+      revisit.has(currentSection) ? revisit.delete(currentSection) : revisit.add(currentSection)
+      reviewed.delete(currentSection)
+      outlineRows[currentSection].classList.toggle('revisit', revisit.has(currentSection))
+      outlineRows[currentSection].classList.remove('reviewed')
+      setSection(currentSection)
+      showToast('Revisit marker saved')
+    })
+
+    function setTableMode(mode) {
+      const table = document.getElementById('islandTable')
+      table.classList.remove('rows','cards')
+      if (mode !== 'grid') table.classList.add(mode)
+      table.querySelectorAll('.table-modes button').forEach(button => button.classList.toggle('active', button.dataset.mode === mode))
+      table.querySelector('.view-menu').value = mode[0].toUpperCase() + mode.slice(1)
+    }
+    document.querySelectorAll('.table-modes button').forEach(button => button.addEventListener('click', () => setTableMode(button.dataset.mode)))
+    document.querySelector('.view-menu').addEventListener('change', event => setTableMode(event.target.value.toLowerCase()))
+
+    function selectRightPane(id) {
+      const tab = document.querySelector('.right-tab[data-pane="' + id + '"]')
+      switchRail(tab,'right')
+    }
+    document.querySelectorAll('.row-discuss').forEach(button => button.addEventListener('click', event => {
+      event.stopPropagation()
+      selectRightPane('annotationsPane')
+      const card = document.createElement('article')
+      card.className = 'annotation-card thread new-thread'
+      card.innerHTML = '<div class="annotation-meta"><b>New question</b><span>Table row</span></div><p>What do you want the agent to explain or challenge here?</p><div class="quote-mini"></div><div class="decision-options"><button>Write question</button><button>Send now</button></div>'
+      card.querySelector('.quote-mini').textContent = '"' + button.dataset.quote + '"'
+      document.getElementById('annotationList').prepend(card)
+      document.getElementById('annotationCount').textContent = document.querySelectorAll('.annotation-card').length
+      showToast('Question anchored to this table row')
+    }))
+
+    document.querySelectorAll('.decision-options').forEach(group => group.addEventListener('click', event => {
+      if (event.target.tagName !== 'BUTTON') return
+      group.querySelectorAll('button').forEach(button => button.classList.toggle('selected', button === event.target))
+      group.closest('.annotation-card')?.classList.add('resolved')
+      showToast('Decision recorded in Annotations')
+    }))
+    document.querySelectorAll('.filter-row button').forEach(button => button.addEventListener('click', () => {
+      document.querySelectorAll('.filter-row button').forEach(item => item.classList.toggle('active', item === button))
+      document.querySelectorAll('.annotation-card').forEach(card => card.style.display = button.dataset.filter === 'all' || card.classList.contains(button.dataset.filter) ? '' : 'none')
+    }))
+
+    document.getElementById('pinChanges').addEventListener('click', function () {
+      rightRail.classList.toggle('split')
+      this.classList.toggle('on', rightRail.classList.contains('split'))
+      document.getElementById('rightBehavior').value = rightRail.classList.contains('split') ? 'split' : 'tabs'
+    })
+
+    document.querySelectorAll('.action-card').forEach(card => card.addEventListener('click', () => card.classList.toggle('done')))
+    document.querySelectorAll('.editor-mode button').forEach(button => button.addEventListener('click', () => {
+      document.querySelectorAll('.editor-mode button').forEach(item => item.classList.toggle('active', item === button))
+      showToast(button.textContent === 'Source' ? 'Source mode is unchanged in the real editor' : 'Returned to reading view')
+    }))
+
+    const focusView = document.getElementById('focusView')
+    document.querySelector('.focus-table').addEventListener('click', () => {
+      const clone = document.getElementById('islandTable').cloneNode(true)
+      clone.id = ''
+      clone.classList.remove('rows','cards','menu-controls')
+      clone.querySelector('.table-top')?.remove()
+      clone.querySelectorAll('.row-discuss').forEach(button => button.remove())
+      document.getElementById('focusCopy').replaceChildren(clone)
+      focusView.classList.toggle('full-window', document.getElementById('focusBehavior').value === 'window')
+      focusView.classList.add('open')
+    })
+    document.getElementById('closeFocus').addEventListener('click', () => focusView.classList.remove('open'))
+
+    const prototypeDrawer = document.getElementById('prototypeDrawer')
+    document.getElementById('prototypeButton').addEventListener('click', () => prototypeDrawer.classList.toggle('open'))
+    document.getElementById('closePrototype').addEventListener('click', () => prototypeDrawer.classList.remove('open'))
+    document.querySelectorAll('.switch').forEach(toggle => toggle.addEventListener('click', () => toggle.classList.toggle('on')))
+    document.getElementById('rightBehavior').addEventListener('change', event => {
+      rightRail.classList.toggle('split', event.target.value === 'split')
+      document.getElementById('pinChanges').classList.toggle('on', event.target.value === 'split')
+    })
+    function setDepth(value) {
+      document.querySelectorAll('.h3-row').forEach(row => row.style.display = value === 'h3' ? '' : 'none')
+      document.getElementById('headingLevel').value = value
+      document.getElementById('walkDepth').value = value
+    }
+    document.getElementById('headingLevel').addEventListener('change', event => setDepth(event.target.value))
+    document.getElementById('walkDepth').addEventListener('change', event => setDepth(event.target.value))
+    document.getElementById('tableControls').addEventListener('change', event => document.getElementById('islandTable').classList.toggle('menu-controls', event.target.value === 'menu'))
+    document.getElementById('autoContents').addEventListener('click', () => showToast(document.getElementById('autoContents').classList.contains('on') ? 'Structured documents prefer Contents' : 'Strata remembers the last rail tab'))
+    document.querySelectorAll('.walk-actions .leave').forEach(button => button.addEventListener('click', () => {
+      document.querySelector('.left-tab[data-pane="filesPane"]').click()
+      showToast('Walkthrough left. Files is restored.')
+    }))
+    document.querySelectorAll('.tree-file').forEach(button => button.addEventListener('click', () => {
+      document.querySelectorAll('.tree-file').forEach(item => item.classList.toggle('active', item === button))
+      if (!button.textContent.includes('REVIEW')) showToast('The real app would open this file in a document tab')
+    }))
+    document.querySelectorAll('.change-actions button').forEach(button => button.addEventListener('click', () => {
+      button.closest('.change-card').style.opacity = '.45'
+      showToast(button.classList.contains('keep') ? 'Change kept' : 'Change reverted')
+    }))
+
+    setDepth('h2')
+    setSection(0)
+  </script>
+</body>
+</html>

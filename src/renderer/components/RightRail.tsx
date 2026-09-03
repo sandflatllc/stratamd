@@ -78,11 +78,15 @@ function annotationChipColor(annotation: AnnotationView): string {
   return AGENT_COLORS[annotation.author.color]
 }
 
+function Avatar({ name, color }: { name: string; color: string }) {
+  return <span className="change-avatar" style={{ background: color, color: textColorFor(color) }} aria-hidden="true">{initials(name)}</span>
+}
+
 function ChangeRow(props: Pick<RightRailProps, 'onJumpHunk' | 'onKeepHunk' | 'onRevertHunk'> & { hunk: HunkView; now: number }) {
   const { hunk, now } = props
   const meta = (
     <span className="change-meta" title={hunkSourceTooltip(hunk)}>
-      <i style={{ background: colorOf(hunk.author) }} />
+      <Avatar name={hunkAuthor(hunk)} color={colorOf(hunk.author)} />
       <strong style={{ color: colorOf(hunk.author) }}>{hunkAuthor(hunk)}</strong>
       <small>{hunkAction(hunk)}</small>
       <small className="change-time" title={absoluteTime(hunk.changedAt)}>{timeAgoShort(now - hunk.changedAt)}</small>
@@ -122,7 +126,7 @@ function SuggestionRow(props: Pick<RightRailProps, 'onJumpAnnotation' | 'onAccep
   const { annotation } = props
   const meta = (
     <span className="change-meta">
-      <i style={{ background: colorOf(annotation.author) }} />
+      <Avatar name={annotation.author === 'user' ? 'you' : annotation.author.name} color={colorOf(annotation.author)} />
       <strong style={{ color: colorOf(annotation.author) }}>{annotation.author === 'user' ? 'you' : annotation.author.name}</strong>
       <small>suggests</small>
     </span>
@@ -280,7 +284,46 @@ function ChangesPanel(props: RightRailProps & { now: number }) {
   )
 }
 
-function AnnotationsPanel(props: RightRailProps) {
+function annotationPlace(annotation: AnnotationView): string {
+  if (annotation.kind === 'decision') return annotation.anchor === 'document' ? 'Whole document' : annotation.anchor === 'heading' ? 'Heading' : 'Selected passage'
+  const context = annotation.context?.kind
+  if (context === 'table-row') return 'Table row'
+  if (context === 'table-cell') return 'Table cell'
+  if (context === 'screenshot-pin') return 'Screenshot pin'
+  return annotation.status === 'resolved' ? 'Resolved' : ''
+}
+
+/** One populated Annotations row: kind and place, the text, the exact quote, and a decision's choices. */
+function AnnotationCard({ annotation, onOpen }: { annotation: AnnotationView; onOpen(): void }) {
+  const orphaned = annotation.status === 'orphaned'
+  const place = annotationPlace(annotation)
+  const answer = annotation.decision?.answers.at(-1)
+  const body = annotation.kind === 'decision' ? annotation.text : annotation.kind === 'suggestion' ? (annotation.replacement ?? annotation.text) : annotation.text || annotation.quote
+  const showQuote = annotation.quote.length > 0 && body !== annotation.quote
+  return (
+    <button type="button" className={`annotation-row kind-${annotation.kind} status-${annotation.status}`} onClick={onOpen}>
+      <span className="annotation-meta">
+        <span
+          className={`annotation-chip chip-${orphaned ? 'orphaned' : annotation.kind}`}
+          style={{ '--chip-color': annotationChipColor(annotation) } as CSSProperties}
+          title={orphaned ? 'The text this was attached to was removed' : undefined}
+        >{orphaned ? 'text removed' : annotation.kind}</span>
+        {place && <span className="annotation-place">{place}</span>}
+        {annotation.replies.length > 0 && <span className="reply-count">{annotation.replies.length} {annotation.replies.length === 1 ? 'reply' : 'replies'}</span>}
+      </span>
+      <span className="annotation-text"><InlineMarkdown text={body} /></span>
+      {showQuote && <span className="quote-mini"><InlineMarkdown text={annotation.quote} /></span>}
+      {annotation.decision && (
+        <span className="decision-chips" aria-label="Choices">
+          {annotation.decision.options.map((option) => <span key={option} className={answer?.option === option ? 'selected' : ''}>{option}</span>)}
+          {answer?.other && <span className="selected">Other: {answer.other}</span>}
+        </span>
+      )}
+    </button>
+  )
+}
+
+function AnnotationsPanel(props: RightRailProps & { pinChanges: boolean; onPinChanges(): void }) {
   const [filter, setFilter] = useState<AnnotationFilter>('all')
   const [creating, setCreating] = useState(false)
   const [prompt, setPrompt] = useState('')
@@ -309,6 +352,7 @@ function AnnotationsPanel(props: RightRailProps) {
       <div className="panel-heading">
         <h2 id="annotations-heading">Annotations</h2>
         <span className="panel-counts">{counts.open} open{counts.removedText > 0 ? ` · ${counts.removedText} on removed text` : ''}</span>
+        <button type="button" className={`text-action pin-toggle ${props.pinChanges ? 'positive' : ''}`} aria-pressed={props.pinChanges} onClick={props.onPinChanges}>Pin changes</button>
       </div>
       <div className="panel-scroll">
         <div className="annotation-filter" role="toolbar" aria-label="Filter annotations">
@@ -328,16 +372,7 @@ function AnnotationsPanel(props: RightRailProps) {
             <div><button type="button" className="text-action" onClick={() => setChoices((current) => [...current, ''])}>Add choice</button><button type="submit" className="keep-button">Add decision</button></div>
           </form>
         )}
-        {annotations.map((annotation) => (
-          <button type="button" className="annotation-row" key={annotation.id} onClick={() => props.onJumpAnnotation(annotation)}>
-            <span
-              className={`annotation-chip chip-${annotation.status === 'orphaned' ? 'orphaned' : annotation.kind}`}
-              style={{ '--chip-color': annotationChipColor(annotation) } as CSSProperties}
-              title={annotation.status === 'orphaned' ? 'The text this was attached to was removed' : undefined}
-            >{annotation.status === 'orphaned' ? 'text removed' : annotation.kind}</span>
-            <span><InlineMarkdown text={annotation.kind === 'decision' ? annotation.text : annotation.quote} />{annotation.kind === 'decision' && <small>{annotation.anchor === 'document' ? 'Whole document' : annotation.anchor === 'heading' ? 'Heading' : 'Selected passage'}</small>}</span>
-          </button>
-        ))}
+        {annotations.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} onOpen={() => props.onJumpAnnotation(annotation)} />)}
         {annotations.length === 0 && <div className="empty-subtle">{filter === 'all' ? 'Select text to comment' : 'Nothing in this filter.'}</div>}
         {hasResolvedAnnotations(props.document) && <button type="button" className="clear-resolved" onClick={props.onClearResolved}>Clear resolved</button>}
       </div>
@@ -419,16 +454,14 @@ export function RightRail(props: RightRailProps) {
           <ChangesPanel {...props} now={now} />
         </section>
         <section role="tabpanel" id="review-panel-annotations" aria-labelledby="review-tab-annotations" hidden={props.selectedTab !== 'annotations'}>
-          <div className="annotation-host-actions">
-            <button type="button" className={`text-action ${pinChanges ? 'positive' : ''}`} aria-pressed={pinChanges} onClick={() => setPinChanges((value) => !value)}>Pin changes</button>
-          </div>
           {pinChanges && (
             <div className="pinned-changes" aria-label="Pinned changes">
+              <div className="pinned-head">Pinned changes <span>{pinned.length} pending</span></div>
               {pinned.map((item) => <button type="button" key={item.id} onClick={() => props.onSelectTab('changes')}><strong>{item.label}</strong><span>{item.text}</span></button>)}
               {pinned.length === 0 && <span>Nothing waiting for review.</span>}
             </div>
           )}
-          <AnnotationsPanel {...props} />
+          <AnnotationsPanel {...props} pinChanges={pinChanges} onPinChanges={() => setPinChanges((value) => !value)} />
         </section>
       </section>
       <Resizer axis="horizontal" label="Resize review window" value={props.upperReviewHeight} min={180} max={954} onChange={(value) => props.onHeight(value, false)} onCommit={(value) => props.onHeight(value, true)} />
