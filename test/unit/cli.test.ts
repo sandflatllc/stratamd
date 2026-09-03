@@ -53,6 +53,9 @@ describe('agent contract', () => {
     const prd = await readFile(join(process.cwd(), 'docs', 'PRD.md'), 'utf8')
     const contract = prd.match(/## 7\. Agent contract[\s\S]*?```\n([\s\S]*?)\n```/)?.[1]
     expect(contract).toBe(AGENT_HELP)
+    // A timeout is not an action: the contract says so in the loop and in the chat-conduct block.
+    expect(AGENT_HELP).toContain('run it again and say nothing in chat')
+    expect(AGENT_HELP).toContain('What to say in chat:')
 
     const io = captureIo()
     expect(await runCli(['--agent-help'], io.runtime)).toBe(0)

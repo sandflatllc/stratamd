@@ -4,6 +4,8 @@ import {
   guardrailLine,
   MESSAGE_GUIDANCE_LINE,
   PAYLOAD_VERSION,
+  SUPERSEDED_GUIDANCE_LINE,
+  TIMEOUT_GUIDANCE_LINE,
   writeOnlyLine,
   serializePayload,
   trimPayload,
@@ -29,6 +31,20 @@ describe('payload v13', () => {
     expect(payload.text.split('\n')[0]).toBe('Write only to /data/stratamd/buffer.md.')
     expect(payload.text.startsWith(writeOnlyLine(buffer))).toBe(true)
     expect(payload.text.split('\n')[0]).not.toContain(file)
+  })
+
+  it('tells the agent to listen again silently on timeout and superseded, and nowhere else', () => {
+    const timeout = createPayload({ file, buffer, agent: 'ag_1', event: 'timeout' })
+    expect(timeout.text).toBe(`${writeOnlyLine(buffer)}\n\n${TIMEOUT_GUIDANCE_LINE}`)
+    expect(TIMEOUT_GUIDANCE_LINE).toContain('say nothing in chat')
+    const superseded = createPayload({ file, buffer, agent: 'ag_1', event: 'superseded' })
+    expect(superseded.text).toBe(`${writeOnlyLine(buffer)}\n\n${SUPERSEDED_GUIDANCE_LINE}`)
+    expect(SUPERSEDED_GUIDANCE_LINE).toContain('say nothing in chat')
+    for (const event of ['send', 'closed', 'initial', 'state'] as const) {
+      const other = createPayload({ file, buffer, agent: 'ag_1', event, notes: ['a note'] })
+      expect(other.text).not.toContain(TIMEOUT_GUIDANCE_LINE)
+      expect(other.text).not.toContain(SUPERSEDED_GUIDANCE_LINE)
+    }
   })
 
   it('serializes documented fields as version 13 and omits absent fields', () => {

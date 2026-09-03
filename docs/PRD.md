@@ -371,6 +371,14 @@ Quick start:
   from "text": "text" has the comment markers inlined and will not
   match the buffer.
 
+What to say in chat:
+  The user reads the document in StrataMD, so everything you put in an
+  annotation, reply, edit, or decision is already in front of them.
+  Report only the actions you took, one line each. A timeout or a
+  superseded call is not an action: say nothing and listen again.
+  Report content in chat only when the document is not where the user
+  will read it: an error, a refusal, or something you could not post.
+
   stratamd attach [file] [--as <agent id>] [--name "<who you are>"]
                          [--timeout <seconds>, default 90; 0 = poll]
                          [--text-only]
@@ -394,16 +402,20 @@ Quick start:
       next call, even across restarts. Run it in the background and act
       when it returns. Re-run it after each response to keep listening.
       It returns {"event":"timeout"} after --timeout seconds if nothing
-      happens; just run it again. Pick a timeout below your tool's
-      command limit: the default 90 fits a 120 second limit. A call
-      your harness kills is safe; the delivery repeats on your next
-      call with the same deliveryId.
+      happens: run it again and say nothing in chat. Every wakeup is a
+      turn the user sees, so wait as long as your harness allows:
+      --timeout 3600 in a background command that has no time limit
+      (Claude Code's Bash tool), otherwise the tool's limit minus 30
+      seconds; the default 90 fits a 120 second limit. A call your
+      harness kills is safe; the delivery repeats on your next call
+      with the same deliveryId.
       --timeout 0 never blocks: it returns a queued delivery or
       {"event":"timeout"} at once, for a harness that cannot hold a
       command open. It returns {"event":"closed"} when the user has
       closed the document, after anything that was queued. It returns
       {"event":"superseded"} when a newer attach call for your id
-      replaced this one: do nothing, the newer call is listening.
+      replaced this one: do nothing and say nothing, the newer call is
+      listening.
       A delivery can arrive twice if a call was cut off; the same
       deliveryId means you already handled it.
       --text-only leaves out the "document" field; "text" already holds
@@ -738,7 +750,7 @@ Printed to stdout as one JSON object when `attach`, `state`, `changes`, or `docs
 }
 ```
 
-- Events: `initial` (first attach), `send` (one delivery), `message` (another agent's note; `from` names the sender; carries `notes` only and acknowledging it advances nothing), `resync` (baseline lost; full buffer), `closed` (document closed; sent after queued deliveries), `timeout`, `superseded` (a newer call for the same id took over), `state`, `changes`, `docs` (the open documents; carries `documents` and `text` only, no `file` or `buffer`).
+- Events: `initial` (first attach), `send` (one delivery), `message` (another agent's note; `from` names the sender; carries `notes` only and acknowledging it advances nothing), `resync` (baseline lost; full buffer), `closed` (document closed; sent after queued deliveries), `timeout` and `superseded` (a newer call for the same id took over; for both, `text` carries a one-line instruction to listen again without saying anything in chat), `state`, `changes`, `docs` (the open documents; carries `documents` and `text` only, no `file` or `buffer`).
 - `open` is present on `state`: true when the document is open in the instance, false for a closed one and for offline `state`. `theme` is present on every `state`.
 - `deliveryId` is present on `send`, `message`, `resync`, and `closed`. The same id is returned again if the previous return was not acknowledged.
 - `attachments` is present on `state` for an open document: every attachment as `{agent, name, state, lead}`, states per §6.6. Omitted for a closed document. `docs` carries the same rows inside each `documents` entry, with `focused` and `dirty` (unsaved changes).

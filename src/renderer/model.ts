@@ -264,19 +264,39 @@ export function timeAgoShort(ms: number): string {
 /** An agent that has not called in for this long while "working" is not listening. */
 export const NOT_LISTENING_AFTER_MS = 10 * 60_000
 
+/** The compact duration for a wait in progress: "3 min", "2 h"; nothing under a minute. */
+export function durationShort(ms: number): string | null {
+  const minutes = Math.floor(Math.max(0, ms) / 60_000)
+  if (minutes < 1) return null
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} h`
+  const days = Math.floor(hours / 24)
+  return `${days} day${days === 1 ? '' : 's'}`
+}
+
 /**
  * The attachment row's state line: the state, then when the agent last called
  * in. A working agent that has gone quiet reads as not listening instead, so
- * the row does not promise attention the agent is not paying.
+ * the row does not promise attention the agent is not paying. A waiting agent
+ * is inside one long attach call, so its line says how long it has listened
+ * rather than when it was last heard, which would read as staleness (PRD §7).
  */
 export function attachmentStatusLine(
   attachment: Pick<AttachmentView, 'state' | 'lastCallAt' | 'queuedSendCount'>,
   now = Date.now(),
 ): string {
   const { state, lastCallAt, queuedSendCount } = attachment
-  const quiet = state === 'working' && lastCallAt !== null && now - lastCallAt > NOT_LISTENING_AFTER_MS
-  const parts = [quiet ? 'not listening' : attachmentStateLabel(state)]
-  if (lastCallAt !== null) parts.push(`last heard ${timeAgoShort(now - lastCallAt)}`)
+  const parts: string[] = []
+  if (state === 'waiting') {
+    parts.push('listening')
+    const duration = lastCallAt === null ? null : durationShort(now - lastCallAt)
+    if (duration !== null) parts.push(`for ${duration}`)
+  } else {
+    const quiet = state === 'working' && lastCallAt !== null && now - lastCallAt > NOT_LISTENING_AFTER_MS
+    parts.push(quiet ? 'not listening' : attachmentStateLabel(state))
+    if (lastCallAt !== null) parts.push(`last heard ${timeAgoShort(now - lastCallAt)}`)
+  }
   if (queuedSendCount > 0) parts.push(`${queuedSendCount} update${queuedSendCount === 1 ? '' : 's'} waiting for it`)
   return parts.join(' · ')
 }

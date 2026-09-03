@@ -414,8 +414,15 @@ describe('rail relative time and attachment status (plan 5.5, 5.6)', () => {
     const now = 100 * MINUTE
     expect(attachmentStatusLine({ state: 'working', lastCallAt: now - 2 * MINUTE, queuedSendCount: 0 }, now))
       .toBe('working · last heard 2 min ago')
+    // A waiting agent is inside one long attach call: how long it has listened, not when it was last heard.
     expect(attachmentStatusLine({ state: 'waiting', lastCallAt: now - 30_000, queuedSendCount: 0 }, now))
-      .toBe('waiting for changes · last heard just now')
+      .toBe('listening')
+    expect(attachmentStatusLine({ state: 'waiting', lastCallAt: now - 8 * MINUTE, queuedSendCount: 0 }, now))
+      .toBe('listening · for 8 min')
+    expect(attachmentStatusLine({ state: 'waiting', lastCallAt: now - 90 * MINUTE, queuedSendCount: 1 }, now))
+      .toBe('listening · for 1 h · 1 update waiting for it')
+    expect(attachmentStatusLine({ state: 'waiting', lastCallAt: null, queuedSendCount: 0 }, now))
+      .toBe('listening')
     expect(attachmentStatusLine({ state: 'pending', lastCallAt: now - MINUTE, queuedSendCount: 2 }, now))
       .toBe('has an update waiting · last heard 1 min ago · 2 updates waiting for it')
     // No recorded call: the state alone, as before.
@@ -432,7 +439,7 @@ describe('rail relative time and attachment status (plan 5.5, 5.6)', () => {
       .toBe('not listening · last heard 12 min ago')
     // A waiting agent is listening by definition; a pending one is judged by its queue.
     expect(attachmentStatusLine({ state: 'waiting', lastCallAt: now - 12 * MINUTE, queuedSendCount: 0 }, now))
-      .toBe('waiting for changes · last heard 12 min ago')
+      .toBe('listening · for 12 min')
     expect(attachmentStatusLine({ state: 'pending', lastCallAt: now - 12 * MINUTE, queuedSendCount: 0 }, now))
       .toBe('has an update waiting · last heard 12 min ago')
   })

@@ -295,10 +295,10 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 
 | ID | Requirement | Verification |
 |---|---|---|
-| 7-01 | `--agent-help` reproduces §7 verbatim, including the attach/respond/re-attach loop and stop condition. | `S` byte comparison |
+| 7-01 | `--agent-help` reproduces §7 verbatim, including the attach/respond/re-attach loop, the chat-conduct block (timeouts are not reported), and stop condition. | `S` byte comparison; `U` help names the silent timeout rule |
 | 7-02 | First attach targets named/focused document, opens if needed, and returns whole annotated buffer, paths, and id immediately. | `A01`; `E` focused/cold attach |
 | 7-03 | Later attach immediately returns queued Send or blocks, returns user deltas/events/notes, and excludes others by default. | `A01`, `A14`, `A15` |
-| 7-04 | Sends queue across absence/restart; timeout retries; closed arrives after queued work. | `A12`; `U` closed ordering |
+| 7-04 | Sends queue across absence/restart; timeout retries silently and its payload text says so; closed arrives after queued work. | `A12`; `U` closed ordering; `U` timeout and superseded guidance lines (`test/unit/payload.test.ts`) |
 | 7-05 | Annotate enforces exact unique/context quote rules, cross-block comment/question rules, single-block suggestion rules, JSON batches, and proposal-only behavior. | `A09`, `A15`; `U` quote/batch matrix |
 | 7-06 | Reply supports all annotation threads and stdin. | `U` reply CLI |
 | 7-07 | State equals first-attach content without attachment changes. | `U` read-only comparison |

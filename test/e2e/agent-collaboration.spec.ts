@@ -100,7 +100,7 @@ test('1. a message queues while working, wakes a blocked attach, and points the 
     child.stdout.setEncoding('utf8')
     child.stdout.on('data', (chunk: string) => { stdout += chunk })
     const exited = new Promise<number>((resolve) => child.once('close', (code) => resolve(code ?? 1)))
-    await expect(rowB).toContainText('waiting for changes')
+    await expect(rowB).toContainText('listening')
     await page.waitForTimeout(250)
 
     const second = await cliJson(value, ['send', value.file, '--as', 'agent-a', '--text', 'Ring when caught up.'])

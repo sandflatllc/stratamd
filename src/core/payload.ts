@@ -442,6 +442,13 @@ function renderDecisionAnswer(answer: PayloadDecisionAnswer): string {
 export const MESSAGE_GUIDANCE_LINE =
   'To catch up before acting, run stratamd state --brief (who is attached and who leads), stratamd state (the buffer and annotations), or stratamd changes (unreviewed edits).'
 
+/** A timeout is not an action (PRD §7); the text says so where the agent reads it. */
+export const TIMEOUT_GUIDANCE_LINE =
+  'Nothing happened. Run stratamd attach again and say nothing in chat about this.'
+
+export const SUPERSEDED_GUIDANCE_LINE =
+  'A newer attach call for your id is listening. Do nothing and say nothing in chat.'
+
 export interface PayloadTrimOptions {
   /** Drop `document`, `text`, and `annotations`: the attachment and Lead view of `state`. */
   brief?: boolean
@@ -483,6 +490,11 @@ export function renderPayloadText(input: PayloadInput, context: RenderContext = 
       : `Message from ${input.from.name} (${input.from.agent}):`
     sections.push(`${heading}\n${(input.notes ?? []).join('\n\n')}`)
     sections.push(MESSAGE_GUIDANCE_LINE)
+    return sections.join('\n\n')
+  }
+
+  if (input.event === 'timeout' || input.event === 'superseded') {
+    sections.push(input.event === 'timeout' ? TIMEOUT_GUIDANCE_LINE : SUPERSEDED_GUIDANCE_LINE)
     return sections.join('\n\n')
   }
 

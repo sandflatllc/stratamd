@@ -37,17 +37,17 @@ While attached:
 - Pass `--as <agent>` on every command after the first attach. Subagents always pass `--as`; they do not inherit your attachment.
 - Do not ask the user to paste or use "Copy for agent" when attachment works.
 
-After every response, listen again, in the background, with a timeout below your tool's command limit (the default is 90 seconds):
+After every response, listen again in the background with a long wait; every wakeup is a turn the user sees, so fewer is better. When your harness runs background commands without a time limit (Claude Code's Bash tool does), use an hour:
 
 ```bash
-stratamd attach <file> --as <agent> --timeout 90
+stratamd attach <file> --as <agent> --timeout 3600
 ```
 
-Act on what it returns, then repeat. `{"event":"timeout"}` means nothing happened: run it again. A call your harness kills is safe; the delivery repeats on the next call with the same `deliveryId`. Stop when it returns `{"event":"closed"}` or the user tells you to stop.
+When the command must finish inside a limit, set that limit as high as the tool allows and pass a `--timeout` 30 seconds below it; the default 90 fits a 120 second limit. Act on what it returns, then repeat. `{"event":"timeout"}` means nothing happened: run it again and say nothing in chat. `{"event":"superseded"}` means a newer call of yours is listening: do nothing and say nothing. A call your harness kills is safe; the delivery repeats on the next call with the same `deliveryId`. Stop when it returns `{"event":"closed"}` or the user tells you to stop.
 
 ## What to say in chat
 
-The user reads the document in StrataMD. Everything you put in an annotation, reply, edit, or decision is already in front of them there. In chat, report only the actions you took, one line each: which thread you replied to, which passage you edited, which decisions you created, and what you are waiting on. Do not repeat or summarize the content of a reply, an edit, or an annotation; that is the same text twice. Report content in chat only when the document is not where the user will read it: an error, a refusal, or something you could not post. A `timeout` is not an action; after re-attaching, one short line is enough.
+The user reads the document in StrataMD. Everything you put in an annotation, reply, edit, or decision is already in front of them there. In chat, report only the actions you took, one line each: which thread you replied to, which passage you edited, which decisions you created, and what you are waiting on. Do not repeat or summarize the content of a reply, an edit, or an annotation; that is the same text twice. Report content in chat only when the document is not where the user will read it: an error, a refusal, or something you could not post. A `timeout` is not an action. Do not announce it, do not say you are reattaching, and do not summarize what you are waiting for again. The user sees your listening state in the Agents panel. Your next chat message is the next action you take.
 
 ## Exit codes
 
