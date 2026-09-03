@@ -7,12 +7,12 @@ import { defineConfig } from '@playwright/test'
 // test/unit/e2e-clipboard-tags.test.ts fails when a clipboard test lacks the tag.
 const clipboardTag = /@clipboard/
 
-// Ordinary tests run in parallel at the test level. Four workers matched the
-// useful concurrency on a 16-core workstation; eight pushed ordinary tests
-// past their 30-second timeout. CI runners have three or four cores.
+// Ordinary tests run in parallel at the test level. Two Electron workers keep
+// pointer and scroll tests deterministic on the shared Xvfb display while
+// still overlapping the long scenarios. CI uses the same bounded pressure.
 function ordinaryWorkerCount(): number {
   const override = process.env.STRATAMD_E2E_WORKERS
-  if (override === undefined || override === '') return process.env.CI ? 2 : 4
+  if (override === undefined || override === '') return 2
   if (!/^[1-9]\d*$/.test(override)) {
     throw new Error(`STRATAMD_E2E_WORKERS must be a positive integer such as 4; got ${JSON.stringify(override)}`)
   }

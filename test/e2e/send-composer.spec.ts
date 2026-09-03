@@ -214,10 +214,13 @@ test('the composer resizes with a remembered size and zooms like the panes', asy
     const handle = dialog.locator('.send-composer-resize')
     const grip = await handle.boundingBox()
     expect(grip).toBeTruthy()
-    await page.mouse.move(grip!.x + grip!.width / 2, grip!.y + grip!.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(grip!.x + 160, grip!.y + 120, { steps: 6 })
-    await page.mouse.up()
+    // Dispatch in renderer coordinates: Xvfb may clamp the OS pointer to a
+    // smaller shared screen while several 1440px Electron windows run.
+    await handle.dispatchEvent('pointerdown', { pointerId: 1, clientX: grip!.x + grip!.width / 2, clientY: grip!.y + grip!.height / 2, button: 0 })
+    await page.evaluate(({ x, y }) => {
+      window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, clientX: x + 160, clientY: y + 120, bubbles: true }))
+      window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, clientX: x + 160, clientY: y + 120, bubbles: true }))
+    }, { x: grip!.x + grip!.width / 2, y: grip!.y + grip!.height / 2 })
     const resized = await layoutSize(dialog)
     expect(resized.width).toBeGreaterThan(before.width + 100)
 

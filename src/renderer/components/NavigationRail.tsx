@@ -6,13 +6,13 @@ import { Contents } from './Contents'
 import { RailTabs } from './RailTabs'
 
 /** The left window's tabs: the two persisted navigation tabs plus the session-only Thread tab (PRD §6.9). */
-export type LeftTab = NavigationTab | 'thread'
+export type LeftTab = NavigationTab | 'projects' | 'conversation'
 
 interface NavigationRailProps {
   selected: LeftTab
   files: ReactNode
-  /** The open thread, or the Thread tab's empty state. */
-  thread: ReactNode
+  projects: ReactNode
+  conversation: ReactNode
   headings: readonly EditorHeading[]
   drafts: readonly DraftView[]
   activeHeadingId: string | null
@@ -31,7 +31,8 @@ export function NavigationRail(props: NavigationRailProps) {
       <RailTabs label="Document navigation" idPrefix="navigation" selected={props.selected} onSelect={props.onSelect} tabs={[
         { id: 'files', label: 'Files' },
         { id: 'contents', label: 'Contents' },
-        { id: 'thread', label: 'Thread' },
+        { id: 'projects', label: 'Projects' },
+        { id: 'conversation', label: 'Conversation' },
       ]} />
       <section role="tabpanel" id="navigation-panel-files" aria-labelledby="navigation-tab-files" hidden={props.selected !== 'files'}>
         {props.files}
@@ -39,8 +40,11 @@ export function NavigationRail(props: NavigationRailProps) {
       <section role="tabpanel" id="navigation-panel-contents" aria-labelledby="navigation-tab-contents" hidden={props.selected !== 'contents'}>
         <Contents headings={props.headings} drafts={props.drafts} activeId={props.activeHeadingId} walkthrough={props.walkthrough} content={props.content} onJump={props.onJumpHeading} onWalkthrough={props.onWalkthrough} />
       </section>
-      <section role="tabpanel" id="navigation-panel-thread" aria-labelledby="navigation-tab-thread" hidden={props.selected !== 'thread'}>
-        {props.thread}
+      <section role="tabpanel" id="navigation-panel-projects" aria-labelledby="navigation-tab-projects" hidden={props.selected !== 'projects'}>
+        {props.projects}
+      </section>
+      <section role="tabpanel" id="navigation-panel-conversation" aria-labelledby="navigation-tab-conversation" hidden={props.selected !== 'conversation'}>
+        {props.conversation}
       </section>
     </aside>
   )

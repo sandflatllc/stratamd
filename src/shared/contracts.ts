@@ -144,6 +144,50 @@ export interface DocumentTabView {
 export type NavigationTab = 'files' | 'contents'
 export type ReviewTab = 'changes' | 'annotations'
 
+export type EngineConnectionState = 'unpaired' | 'connecting' | 'connected' | 'disconnected' | 'mismatch'
+
+export interface EngineMessageView {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  text: string
+  turnId: string | null
+  streaming: boolean
+  createdAt: string
+}
+
+export interface EngineThreadView {
+  id: string
+  projectId: string
+  title: string
+  model: string
+  providerInstanceId: string
+  effort: string | null
+  access: 'approval-required' | 'auto-accept-edits' | 'auto' | 'full-access'
+  status: 'idle' | 'starting' | 'running' | 'ready' | 'interrupted' | 'stopped' | 'error'
+  updatedAt: string
+  unread: boolean
+  pendingApprovals: boolean
+  pendingUserInput: boolean
+  messages: EngineMessageView[]
+}
+
+export interface EngineProjectView {
+  id: string
+  title: string
+  workspaceRoot: string
+  threads: EngineThreadView[]
+}
+
+export interface EngineView {
+  state: EngineConnectionState
+  server: string | null
+  serverVersion: string | null
+  supportedVersion: string
+  problem: string | null
+  projects: EngineProjectView[]
+  activeThreadId: string | null
+}
+
 export interface HeadingReference {
   level: 1 | 2 | 3 | 4 | 5 | 6
   text: string
@@ -360,6 +404,7 @@ export interface AppView {
   activeDocument: DocumentView | null
   explorer: ExplorerFolderView[]
   settings: AppSettingsView
+  engine: EngineView
 }
 
 /**
@@ -477,6 +522,9 @@ export interface ErrorReport {
 export interface StrataApi {
   getState(): Promise<AppView>
   subscribe(listener: (state: AppView) => void): () => void
+  pairEngine(server: string, pairingCode: string): Promise<void>
+  reconnectEngine(): Promise<void>
+  openConversation(threadId: string): Promise<void>
   openDocument(path?: string): Promise<void>
   /** Renderer-only bridge: preload resolves Electron File objects with webUtils. */
   openDroppedFiles?(files: File[]): Promise<void>

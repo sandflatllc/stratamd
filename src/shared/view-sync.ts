@@ -21,6 +21,7 @@ export interface ViewUpdate {
     tabs?: AppView['tabs']
     explorer?: AppView['explorer']
     settings?: AppView['settings']
+    engine?: AppView['engine']
     activeDocument?: ActiveDocumentSection | null
   }
   /** Present in verify mode: the complete view the merged result must equal. */
@@ -65,6 +66,7 @@ export function encodeViewUpdate(previous: SyncedView | null, seq: number, next:
   if (next.tabs !== previous.view.tabs) sections.tabs = next.tabs
   if (next.explorer !== previous.view.explorer) sections.explorer = next.explorer
   if (next.settings !== previous.view.settings) sections.settings = next.settings
+  if (next.engine !== previous.view.engine) sections.engine = next.engine
   if (next.activeDocument !== previous.view.activeDocument) {
     if (next.activeDocument === null) {
       sections.activeDocument = null
@@ -119,6 +121,7 @@ export function applyViewUpdate(current: SyncedView | null, update: ViewUpdate):
     tabs: sections.tabs ?? current.view.tabs,
     explorer: sections.explorer ?? current.view.explorer,
     settings: sections.settings ?? current.view.settings,
+    engine: sections.engine ?? current.view.engine,
     activeDocument,
   }
   return { status: 'applied', synced: { seq: update.seq, view } }

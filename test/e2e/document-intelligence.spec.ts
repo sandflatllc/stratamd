@@ -70,10 +70,11 @@ test('diagrams, trees, images, local previews, and durable folds remain document
       const bounds = await label.boundingBox()
       expect(bounds).not.toBeNull()
       const start = { x: bounds!.x + bounds!.width / 2, y: bounds!.y + bounds!.height / 2 }
-      await page.mouse.move(start.x, start.y)
-      await page.mouse.down()
-      await page.mouse.move(start.x + deltaX, start.y + deltaY, { steps: 4 })
-      await page.mouse.up()
+      // Renderer coordinates avoid Xvfb clamping the shared OS pointer while
+      // several wider Electron windows run in parallel.
+      await diagramViewport.dispatchEvent('pointerdown', { pointerId: 1, isPrimary: true, clientX: start.x, clientY: start.y, button: 0 })
+      await diagramViewport.dispatchEvent('pointermove', { pointerId: 1, isPrimary: true, clientX: start.x + deltaX, clientY: start.y + deltaY, button: 0 })
+      await diagramViewport.dispatchEvent('pointerup', { pointerId: 1, isPrimary: true, clientX: start.x + deltaX, clientY: start.y + deltaY, button: 0 })
     }
     await dragLabel(30, 20)
     await expect(canvas).toHaveAttribute('style', /translate\(30px, 20px\) scale\(1\)/)

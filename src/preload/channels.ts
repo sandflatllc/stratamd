@@ -1,6 +1,9 @@
 export const IPC = {
   state: 'strata:state',
   stateChanged: 'strata:state-changed',
+  pairEngine: 'strata:pair-engine',
+  reconnectEngine: 'strata:reconnect-engine',
+  openConversation: 'strata:open-conversation',
   spelling: 'strata:spelling',
   addDictionaryWord: 'strata:add-dictionary-word',
   openDocument: 'strata:open-document',

@@ -12,6 +12,7 @@ type StrataIpcApi = Omit<StrataApi, 'subscribe'>
 const pathSchema = z.string().min(1).max(16_384)
 const idSchema = z.string().min(1).max(512)
 const textSchema = z.string().max(64 * 1_024)
+const serverSchema = z.string().url().max(2_048)
 const sendRequestSchema = z.object({
   recipients: z.array(idSchema).max(128),
   note: textSchema,
@@ -111,6 +112,9 @@ const settingsSchema = z.object({
 
 const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.state]: z.tuple([]),
+  [IPC.pairEngine]: z.tuple([serverSchema, idSchema]),
+  [IPC.reconnectEngine]: z.tuple([]),
+  [IPC.openConversation]: z.tuple([idSchema]),
   [IPC.openDocument]: z.tuple([pathSchema.optional()]),
   [IPC.closeDocument]: z.tuple([pathSchema, z.enum(['save', 'discard', 'cancel']).optional()]),
   [IPC.updateBuffer]: z.tuple([pathSchema, z.string(), z.enum(['edit', 'history'])]),
@@ -280,6 +284,9 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
       const view = await options.api.getState()
       return before === nextSeq ? record(view) : lastSent!
     },
+    [IPC.pairEngine]: (server: string, pairingCode: string) => options.api.pairEngine(server, pairingCode),
+    [IPC.reconnectEngine]: () => options.api.reconnectEngine(),
+    [IPC.openConversation]: (threadId: string) => options.api.openConversation(threadId),
     [IPC.openDocument]: (path?: string) => options.api.openDocument(path),
     [IPC.closeDocument]: (path: string, decision?: 'save' | 'discard' | 'cancel') => options.api.closeDocument(path, decision),
     [IPC.updateBuffer]: (path: string, content: string, origin: BufferOrigin) => options.api.updateBuffer(path, content, origin),

@@ -250,10 +250,12 @@ test('the theme panel floats over a live app, writes only chosen keys, follows a
     // Move and resize, then restart: geometry and theme persist.
     const header = panel.locator('.theme-panel-grip')
     const box = (await header.boundingBox())!
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(box.x + box.width / 2 - 200, box.y + box.height / 2 - 120, { steps: 4 })
-    await page.mouse.up()
+    const dragStart = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    await header.dispatchEvent('pointerdown', { pointerId: 1, isPrimary: true, clientX: dragStart.x, clientY: dragStart.y, button: 0 })
+    await page.evaluate(({ x, y }) => {
+      window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, isPrimary: true, clientX: x - 200, clientY: y - 120, bubbles: true }))
+      window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, isPrimary: true, clientX: x - 200, clientY: y - 120, bubbles: true }))
+    }, dragStart)
     const moved = (await panel.boundingBox())!
     expect(Math.round(moved.x)).toBeLessThan(Math.round(box.x) - 130)
     const settingsPath = join(String(value.env.XDG_CONFIG_HOME), 'stratamd', 'settings.json')

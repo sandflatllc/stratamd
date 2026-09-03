@@ -10,6 +10,7 @@ const view: AppView = {
   tabs: [],
   activeDocument: null,
   explorer: [],
+  engine: { state: 'unpaired', server: null, serverVersion: null, supportedVersion: '0.0.33', problem: null, projects: [], activeThreadId: null },
   settings: {
     animatedBackground: false,
     attachmentIdleHours: 24,
@@ -36,6 +37,9 @@ function fakeApi(): StrataApi {
   return {
     getState: vi.fn(async () => view),
     subscribe: vi.fn(() => () => undefined),
+    pairEngine: vi.fn(async () => undefined),
+    reconnectEngine: vi.fn(async () => undefined),
+    openConversation: vi.fn(async () => undefined),
     openDocument: vi.fn(async () => undefined),
     closeDocument: vi.fn(async () => 'closed' as const),
     updateBuffer: vi.fn(async () => undefined),

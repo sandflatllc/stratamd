@@ -148,6 +148,7 @@ import { DebouncedMirror, HashReconciler, WatchCoordinator, watchDirectory, type
 import { AttachWaitRegistry } from './socket'
 import { CommandFailure, type CommandArguments, type CommandRequest, type SocketCommandHandler } from '../cli/protocol'
 import { toDeliveredAnnotation } from '../core/annotations'
+import { T3EngineClient, type EngineReadClient } from './engine/client'
 
 /** One QUOTE_INVALID entry: the unified failure plus which input it was (PRD §6.8). */
 interface QuoteFailureEntry extends QuoteFailure {
@@ -290,6 +291,7 @@ export interface ApplicationOptions {
   selectFolder?: () => Promise<string | null>
   now?: () => number
   watch?: boolean
+  engine?: EngineReadClient
 }
 
 interface OpenDocumentsRecord {
@@ -317,6 +319,8 @@ export class StrataApplication implements StrataApi {
   readonly #selectFolder: () => Promise<string | null>
   readonly #now: () => number
   readonly #watch: boolean
+  readonly #engine: EngineReadClient
+  #unsubscribeEngine: (() => void) | null = null
   readonly #sessions = new Map<string, OpenDocumentSession>()
   /** The tail of each document's turn queue; see #withSession. */
   readonly #sessionTurns = new Map<string, Promise<void>>()
@@ -340,6 +344,7 @@ export class StrataApplication implements StrataApi {
     this.#selectFolder = options.selectFolder ?? (async () => null)
     this.#now = options.now ?? Date.now
     this.#watch = options.watch ?? true
+    this.#engine = options.engine ?? new T3EngineClient({ dataDirectory: this.#store.dataDirectory, now: this.#now })
     this.#tabs = new SessionRegistry({
       canonicalize: resolveDocumentPath,
       now: this.#now,
@@ -401,6 +406,8 @@ export class StrataApplication implements StrataApi {
 
   async initialize(): Promise<this> {
     await this.#store.initialize()
+    this.#unsubscribeEngine = this.#engine.subscribe(() => this.#publish())
+    await this.#engine.initialize()
     this.#settings = await this.#settingsStore.load()
     await this.#themeStore.ensureDirectory()
     await this.#loadActiveTheme(this.#settings.theme)
@@ -651,6 +658,9 @@ export class StrataApplication implements StrataApi {
     await this.#themeSubscription?.unsubscribe()
     this.#themeSubscription = null
     this.#attachWaits.rejectAll(new Error('StrataMD is shutting down'))
+    this.#unsubscribeEngine?.()
+    this.#unsubscribeEngine = null
+    await this.#engine.shutdown()
     const sessions = [...this.#sessions.values()]
     this.#listeners.clear()
     const results = await Promise.allSettled(sessions.map((session) => this.#withSession(session.path, async () => {
@@ -672,6 +682,7 @@ export class StrataApplication implements StrataApi {
       this.#tabs.close(session.path)
     })))
     const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
+    await this.#openDocumentsWrite
     if (failed) throw failed.reason
   }
 
@@ -685,6 +696,18 @@ export class StrataApplication implements StrataApi {
     // explorer) queue on the same key; the second finds the session the first
     // built and focuses it (plan 4.7).
     await this.#withSession(canonical, () => this.#openLocked(canonical))
+  }
+
+  async pairEngine(server: string, pairingCode: string): Promise<void> {
+    await this.#engine.pair(server, pairingCode)
+  }
+
+  async reconnectEngine(): Promise<void> {
+    await this.#engine.reconnect()
+  }
+
+  async openConversation(threadId: string): Promise<void> {
+    await this.#engine.openThread(threadId)
   }
 
   /** The paths of every open document whose buffer differs from the file. */
@@ -3239,7 +3262,8 @@ export class StrataApplication implements StrataApi {
       tabs: stableValue(last.tabs, raw.tabs),
       activeDocument: stableValue(last.activeDocument, raw.activeDocument),
       explorer: stableValue(last.explorer, raw.explorer),
-      settings: stableValue(last.settings, raw.settings)
+      settings: stableValue(last.settings, raw.settings),
+      engine: stableValue(last.engine, raw.engine)
     }
     this.#lastView = next
     return next
@@ -3266,7 +3290,8 @@ export class StrataApplication implements StrataApi {
       }),
       activeDocument: focused ? documentView(this.#sessions.get(focused)!, this.#store, this.#now()) : null,
       explorer: explorerView(this.#explorer, this.#sessions),
-      settings: { ...settingsView(this.#settings), theme: this.#themeView() }
+      settings: { ...settingsView(this.#settings), theme: this.#themeView() },
+      engine: this.#engine.view()
     }
   }
 

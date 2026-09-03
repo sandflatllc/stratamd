@@ -82,6 +82,7 @@ export const EMPTY_VIEW: AppView = {
   tabs: [],
   activeDocument: null,
   explorer: [],
+  engine: { state: 'unpaired', server: null, serverVersion: null, supportedVersion: '0.0.33', problem: null, projects: [], activeThreadId: null },
   settings: {
     animatedBackground: true,
     attachmentIdleHours: 24,

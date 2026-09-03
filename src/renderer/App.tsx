@@ -19,6 +19,8 @@ import { forgetReplyDrafts, ThreadPanel } from './components/ThreadPanel'
 import { Toast } from './components/Toast'
 import { TopBar } from './components/TopBar'
 import { NavigationRail, type LeftTab } from './components/NavigationRail'
+import { ProjectsPanel } from './components/ProjectsPanel'
+import { Conversation } from './components/Conversation'
 import { activitySnapshot, agentActivity, agentActivityMessage, AGENT_PROMPT, ambientStyles, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, hasUnsavedCounted, isZoomed, leftWindowWidth, nextReviewTarget, PANEL_LIMITS, pendingCount, rendererThemeStyle, reviewTargets, shouldAdoptPushed, sideWindowCeiling, stepZoom, tabsToClose, THREAD_PANEL_LIMITS, threadTargets, type ActivitySnapshot, type NumericPanelKey, type ReviewTarget } from './model'
 import { flushPendingBuffer, peekPendingBuffer, setPendingBuffer } from './pendingBuffer'
 import { nextToast, type ToastAction, type ToastState } from './toasts'
@@ -50,8 +52,8 @@ export function App({ createEditor }: AppProps) {
   const [revertAll, setRevertAll] = useState<{ name: string; hunks: HunkView[] } | null>(null)
   const [disconnecting, setDisconnecting] = useState<AttachmentView | null>(null)
   const [selectedAnnotation, setSelectedAnnotation] = useState<AnnotationView | null>(null)
-  /** Whether the left window shows its Thread tab; session state, never persisted (§6.9). */
-  const [threadTab, setThreadTab] = useState(false)
+  /** Engine tabs are session state; Files and Contents retain their document preference. */
+  const [engineTab, setEngineTab] = useState<'projects' | 'conversation' | null>(null)
   const [confirmResolve, setConfirmResolve] = useState(false)
   /** The window width, for the side windows' layout budget (§6.9). */
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth)
@@ -109,12 +111,12 @@ export function App({ createEditor }: AppProps) {
   /** Opens a thread in the left window's Thread tab, or closes it and returns to navigation (§6.9). */
   const showThread = useCallback((annotation: AnnotationView | null) => {
     setSelectedAnnotation(annotation)
-    setThreadTab(annotation !== null)
+    setEngineTab(annotation !== null ? 'conversation' : null)
     setConfirmResolve(false)
   }, [])
   const selectLeftTab = useCallback((tab: LeftTab) => {
-    if (tab === 'thread') { setThreadTab(true); return }
-    setThreadTab(false)
+    if (tab === 'projects' || tab === 'conversation') { setEngineTab(tab); return }
+    setEngineTab(null)
     selectNavigationTab(tab)
   }, [selectNavigationTab])
   const selectReviewTab = useCallback((tab: ReviewTab) => {
@@ -261,12 +263,12 @@ export function App({ createEditor }: AppProps) {
   // The left window has two widths: navigation and thread (§6.9). The handle
   // between it and the editor edits whichever the selected tab uses.
   const thread = document ? currentAnnotation(document, selectedAnnotation) : null
-  const leftWidth = leftWindowWidth(panelSizes, threadTab, windowWidth)
-  const leftMin = threadTab ? THREAD_PANEL_LIMITS.minWidth : PANEL_LIMITS.explorerWidth[0]
+  const leftWidth = leftWindowWidth(panelSizes, engineTab === 'conversation', windowWidth)
+  const leftMin = engineTab === 'conversation' ? THREAD_PANEL_LIMITS.minWidth : PANEL_LIMITS.explorerWidth[0]
   const leftMax = sideWindowCeiling(leftMin, windowWidth, panelSizes.rightRailWidth)
   const rightMax = sideWindowCeiling(PANEL_LIMITS.rightRailWidth[0], windowWidth, leftWidth)
   const resizeLeft = (value: number, commit: boolean) => {
-    if (threadTab) updatePanelSize('threadPanel', { ...panelSizes.threadPanel, width: value }, commit)
+    if (engineTab === 'conversation') updatePanelSize('threadPanel', { ...panelSizes.threadPanel, width: value }, commit)
     else updatePanel('explorerWidth', value, commit)
   }
   const threadEmpty = (
@@ -292,6 +294,11 @@ export function App({ createEditor }: AppProps) {
       opener={threadOpener}
     />
   )
+  const reconnectEngine = () => void perform(() => window.strata.reconnectEngine())
+  const projectsNode = <ProjectsPanel engine={view.engine} onReconnect={reconnectEngine} onOpenThread={(threadId) => void perform(async () => { await window.strata.openConversation(threadId); setEngineTab('conversation') })} />
+  const conversationNode = thread
+    ? threadNode(document!, thread)
+    : <Conversation engine={view.engine} onReconnect={reconnectEngine} />
 
   const flushBuffer = useCallback(async () => {
     if (mirrorTimer.current !== null) window.clearTimeout(mirrorTimer.current)
@@ -618,7 +625,7 @@ export function App({ createEditor }: AppProps) {
     <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell empty-shell" style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={enterFiles} onDragOver={overFiles} onDragLeave={leaveFiles} onDrop={dropFiles}>
       <AmbientBackground /><TopBar tabs={view.tabs} canSend={false} hasAgents={false} pending={0} pendingUnsaved={false} onOpenTab={(path) => void perform(() => window.strata.openDocument(path))} onCloseTab={setClosingTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onSend={() => undefined} onCopy={() => undefined} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} />
       <div className="workspace">
-        <div data-pane="explorer" style={{ width: panelSizes.explorerWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected="files" files={explorer()} thread={threadEmpty} headings={[]} drafts={[]} activeHeadingId={null} walkthrough={{ active: false, level: 'h2', current: null, excluded: [], markers: [] }} content="" onSelect={() => undefined} onJumpHeading={() => undefined} onWalkthrough={() => undefined} /></Boundary></div>
+        <div data-pane="explorer" style={{ width: panelSizes.explorerWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected={engineTab ?? 'files'} files={explorer()} projects={projectsNode} conversation={<Conversation engine={view.engine} onReconnect={reconnectEngine} />} headings={[]} drafts={[]} activeHeadingId={null} walkthrough={{ active: false, level: 'h2', current: null, excluded: [], markers: [] }} content="" onSelect={selectLeftTab} onJumpHeading={() => undefined} onWalkthrough={() => undefined} /></Boundary></div>
         <Resizer axis="vertical" label="Resize left window" value={panelSizes.explorerWidth} min={PANEL_LIMITS.explorerWidth[0]} max={sideWindowCeiling(PANEL_LIMITS.explorerWidth[0], windowWidth, panelSizes.rightRailWidth)} onChange={(value) => updatePanel('explorerWidth', value, false)} onCommit={(value) => updatePanel('explorerWidth', value, true)} />
         <main className="island editor-island empty-editor-island" data-pane="editor" style={{ '--zoom': zoom.editor } as CSSProperties}>
           <Boundary region="editor"><div className="empty-welcome"><StrataIcon /><h1>Open a markdown file</h1><p>Choose a folder, then open a document from the explorer.</p><button type="button" className="keep-button large" onClick={() => void perform(() => window.strata.addFolder())}>Add folder</button></div></Boundary>
@@ -643,7 +650,7 @@ export function App({ createEditor }: AppProps) {
       <AmbientBackground />
       <TopBar tabs={view.tabs} canSend={document.canSend} hasAgents={document.attachments.length > 0} pending={pendingCount(document)} pendingUnsaved={hasUnsavedCounted(document)} onOpenTab={(path) => void perform(() => window.strata.openDocument(path))} onCloseTab={closeTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onSend={() => void perform(openComposer)} onCopy={() => void perform(openComposer)} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} />
       <div className="workspace">
-        <div data-pane="explorer" style={{ width: leftWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected={threadTab ? 'thread' : document.reading.navigationTab} files={explorer(document.path)} thread={thread ? threadNode(document, thread) : threadEmpty} headings={headings} drafts={document.drafts} activeHeadingId={activeHeadingId} walkthrough={document.reading.walkthrough} content={document.content} onSelect={selectLeftTab} onJumpHeading={(id) => setJumpHeading({ id, token: Date.now() })} onWalkthrough={updateWalkthrough} /></Boundary></div>
+        <div data-pane="explorer" style={{ width: leftWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected={engineTab ?? document.reading.navigationTab} files={explorer(document.path)} projects={projectsNode} conversation={conversationNode} headings={headings} drafts={document.drafts} activeHeadingId={activeHeadingId} walkthrough={document.reading.walkthrough} content={document.content} onSelect={selectLeftTab} onJumpHeading={(id) => setJumpHeading({ id, token: Date.now() })} onWalkthrough={updateWalkthrough} /></Boundary></div>
         <Resizer axis="vertical" label="Resize left window" value={leftWidth} min={leftMin} max={leftMax} onChange={(value) => resizeLeft(value, false)} onCommit={(value) => resizeLeft(value, true)} />
         <Boundary region="editor"><EditorPane editorRef={editorHandle} document={document} walkthrough={document.reading.walkthrough} headings={headings} onWalkthrough={updateWalkthrough} onJumpHeading={(id) => setJumpHeading({ id, token: Date.now() })} documentMeasure={panelSizes.documentMeasure} zoom={zoom.editor} composerSize={panelSizes.annotationComposer} createEditor={createEditor} onDocumentMeasure={(value, commit) => updatePanel('documentMeasure', value, commit)} onComposerSize={(size, commit) => updatePanelSize('annotationComposer', size, commit)} onBufferChange={bufferChanged} onToggleSource={(source) => void perform(() => window.strata.setSourceMode(document.path, source))} onSave={save} onUndo={undoApplication} onRedo={redoApplication} onKeepHunk={(id) => void perform(() => window.strata.keepHunk(document.path, id), 'Kept.')} onRevertHunk={revert} onTableView={(state: TableViewState) => void perform(() => window.strata.updateTableView(document.path, state))} onAddAnnotation={addAnnotation} onAddDecision={addPassageDecision} onHoldDraft={holdDraft} onQuickSend={quickSend} onAdjustAnnotation={(id, quote, from, to) => void perform(() => window.strata.requoteAnnotation(document.path, id, { quote, from, to }), 'Annotation moved to the new quote. Agents receive it on the next Send.')} onAccept={(id) => void perform(() => window.strata.acceptSuggestion(document.path, id), 'Suggestion accepted as your change.')} onReject={(id) => void perform(() => window.strata.rejectSuggestion(document.path, id), 'Suggestion rejected.')} selectedAnnotation={selectedAnnotation} onSelectAnnotation={(annotation) => { threadOpener.current = null; showThread(annotation) }} jumpHunkId={jumpHunkId} jumpAnnotationId={jumpAnnotationId} jumpHeading={jumpHeading} onHeadings={(next, activeId, durationMs) => { setHeadingState({ path: document.path, headings: next, activeId }); globalThis.document.documentElement.dataset.headingIndexMs = durationMs.toFixed(3) }} /></Boundary>
         <Resizer axis="vertical" label="Resize right rail" value={panelSizes.rightRailWidth} min={PANEL_LIMITS.rightRailWidth[0]} max={rightMax} invert onChange={(value) => updatePanel('rightRailWidth', value, false)} onCommit={(value) => updatePanel('rightRailWidth', value, true)} />
