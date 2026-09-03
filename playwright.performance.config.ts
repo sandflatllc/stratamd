@@ -17,6 +17,7 @@ const SPEC_BY_PROFILE: Record<string, string> = {
   walkthrough: 'walkthrough.spec.ts',
   'table-views': 'table-views.spec.ts',
   decisions: 'decisions.spec.ts',
+  'send-composer': 'send-composer.spec.ts',
   'document-intelligence-proof': 'document-intelligence-proof.spec.ts',
   'document-intelligence': 'document-intelligence.spec.ts',
   components: 'components.spec.ts',

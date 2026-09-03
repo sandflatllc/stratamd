@@ -298,6 +298,12 @@ export function App({ createEditor }: AppProps) {
     mirrorTimer.current = null
     await flushPendingBuffer()
   }, [])
+  const previewPath = document?.path
+  const preview = useCallback(async (request: SendPreviewRequest) => {
+    if (previewPath === undefined) return []
+    await flushBuffer()
+    return window.strata.previewSend(previewPath, request)
+  }, [flushBuffer, previewPath])
 
   const bufferChanged = useCallback((content: string, origin: BufferOrigin) => {
     if (!document) return
@@ -613,7 +619,6 @@ export function App({ createEditor }: AppProps) {
 
   const save = () => void perform(saveDocument, document.pendingHunks.length > 0 ? `Saved. ${document.pendingHunks.length} change${document.pendingHunks.length === 1 ? '' : 's'} still waiting for review.` : 'Saved.')
   const revert = (hunk: HunkView) => hunk.status === 'mixed' ? setMixedHunk(hunk) : void perform(() => window.strata.revertHunk(document.path, hunk.id), `Change by ${hunk.author?.name ?? 'someone else'} reverted. Agents see the revert as your change.`)
-  const preview = async (request: SendPreviewRequest) => { await flushBuffer(); return window.strata.previewSend(document.path, request) }
   const disconnect = (attachment: AttachmentView) => void perform(
     () => window.strata.disconnectAgent(document.path, attachment.agent.id),
     `${attachment.agent.name} disconnected.`,

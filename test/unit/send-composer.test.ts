@@ -1,8 +1,98 @@
 import { describe, expect, it } from 'vitest'
-import type { SendPreviewRequest } from '../../src/shared/contracts'
-import { clearComposerDraft, draftRecipients, EMPTY_DRAFT, IDLE_SEND, isEmptyDraft, nextSendState, readComposerDraft, saveComposerDraft } from '../../src/renderer/components/SendComposer'
+import type { SendDocumentToken, SendPreview, SendPreviewRequest } from '../../src/shared/contracts'
+import {
+  buildPreviewRequest,
+  clearComposerDraft,
+  commitRequest,
+  draftRecipients,
+  EMPTY_DRAFT,
+  IDLE_PREVIEW,
+  IDLE_SEND,
+  isEmptyDraft,
+  mergePreviews,
+  nextPreviewState,
+  nextSendState,
+  readComposerDraft,
+  saveComposerDraft,
+} from '../../src/renderer/components/SendComposer'
 
 const request: SendPreviewRequest = { recipients: ['agent-a'], note: 'Ready for review', includeExternal: true }
+const token: SendDocumentToken = { snapshotId: 'snapshot-1', segmentIndex: 2, cursor: 3 }
+
+function sendPreview(text: string, nextToken = token): SendPreview {
+  return {
+    recipient: { id: 'agent-a', name: 'Agent A', color: 'grape' },
+    text,
+    token: nextToken,
+    items: {
+      changes: [{ key: 'segment-1:0', author: 'user', oldStart: 1, newStart: 1, removed: ['old'], added: ['new'] }],
+      events: [{ seq: 3, kind: 'annotation', author: 'user', text: 'Check this', quote: 'new' }],
+    },
+    dependentExternalHunks: 0,
+  }
+}
+
+describe('send composer preview lifecycle', () => {
+  it('distinguishes the first preview from a later refresh and keeps retained previews mounted', () => {
+    const pending = nextPreviewState(IDLE_PREVIEW, { type: 'request-changed', requestId: 1 })
+    expect(pending).toMatchObject({ hasPreview: false, pending: true, currentRequestId: 1, previews: [] })
+
+    const first = nextPreviewState(pending, { type: 'preview-succeeded', requestId: 1, previews: [sendPreview('first')] })
+    expect(first).toMatchObject({ hasPreview: true, pending: false, currentRequestId: 1 })
+
+    const refreshing = nextPreviewState(first, { type: 'request-changed', requestId: 2 })
+    expect(refreshing.pending).toBe(true)
+    expect(refreshing.previews).toBe(first.previews)
+  })
+
+  it('ignores a result from a superseded request', () => {
+    const first = nextPreviewState(IDLE_PREVIEW, { type: 'request-changed', requestId: 1 })
+    const second = nextPreviewState(first, { type: 'request-changed', requestId: 2 })
+    expect(nextPreviewState(second, { type: 'preview-succeeded', requestId: 1, previews: [sendPreview('stale')] })).toBe(second)
+  })
+
+  it('builds token-free requests and ignores an unused external-key universe', () => {
+    const selection = {
+      recipients: ['agent-a'],
+      note: 'Review this',
+      checkedExternal: new Set<string>(),
+      uncheckedUser: new Set(['user:0']),
+      uncheckedEvents: new Set([4]),
+      externalKeys: ['external:0'],
+      token,
+    }
+    const built = buildPreviewRequest(selection)
+    expect(built).toEqual({
+      recipients: ['agent-a'],
+      note: 'Review this',
+      includeExternal: false,
+      excludedHunks: ['user:0'],
+      excludedEvents: [4],
+    })
+    expect(buildPreviewRequest({ ...selection, token: { ...token, cursor: 99 } })).toEqual(built)
+    expect(buildPreviewRequest({ ...selection, externalKeys: ['external:0', 'external:1'] })).toEqual(built)
+  })
+
+  it('keeps only the last preview from a rapid note burst', () => {
+    let state = nextPreviewState(IDLE_PREVIEW, { type: 'request-changed', requestId: 1 })
+    state = nextPreviewState(state, { type: 'request-changed', requestId: 2 })
+    state = nextPreviewState(state, { type: 'request-changed', requestId: 3 })
+    state = nextPreviewState(state, { type: 'preview-succeeded', requestId: 3, previews: [sendPreview('last note')] })
+    expect(state.pending).toBe(false)
+    expect(state.previews.map((preview) => preview.text)).toEqual(['last note'])
+  })
+
+  it('retains item identity when the token and item keys match but adopts the new exact text', () => {
+    const previous = sendPreview('old text')
+    const next = sendPreview('new text')
+    const [merged] = mergePreviews([previous], [next])
+    expect(merged?.text).toBe('new text')
+    expect(merged?.items).toBe(previous.items)
+
+    const changed = sendPreview('changed document', { ...token, snapshotId: 'snapshot-2' })
+    expect(mergePreviews([previous], [changed])[0]?.items).toBe(changed.items)
+  })
+})
 
 describe('send composer commitment', () => {
   // docs/plans/open/performance-plan.md, "Send trace result": one run left the dialog open for
@@ -19,6 +109,7 @@ describe('send composer commitment', () => {
     expect(sending.phase).toBe('sending')
     expect(sending.request).toBe(request)
     expect(nextSendState(sending, { type: 'preview-settled' })).toBe(sending)
+    expect(commitRequest(sending.request!, token)).toEqual({ ...request, token })
   })
 
   it('returns the composer to a usable state and shows the reason when the send rejects', () => {
@@ -49,6 +140,42 @@ describe('send composer commitment', () => {
     // recipient toggle whose preview rejects mid-send must not mint a new sending state.
     const sending = nextSendState(nextSendState(IDLE_SEND, { type: 'submit', request }), { type: 'preview-settled' })
     expect(nextSendState(sending, { type: 'preview-failed', error: new Error('Preview unavailable.') })).toBe(sending)
+  })
+
+  it('leaves a queued click waiting while pending and releases it only after the preview settles', () => {
+    const queued = nextSendState(IDLE_SEND, { type: 'submit', request })
+    const pending = nextPreviewState(IDLE_PREVIEW, { type: 'request-changed', requestId: 1 })
+    expect(pending.pending).toBe(true)
+    expect(queued.phase).toBe('queued')
+
+    const settled = nextPreviewState(pending, { type: 'preview-succeeded', requestId: 1, previews: [sendPreview('settled')] })
+    const sending = settled.pending ? queued : nextSendState(queued, { type: 'preview-settled' })
+    expect(sending.phase).toBe('sending')
+    expect(commitRequest(sending.request!, settled.previews[0]!.token).token).toBe(token)
+  })
+
+  it('keeps retained previews after a failed refresh and returns a failed send to idle', () => {
+    const firstPending = nextPreviewState(IDLE_PREVIEW, { type: 'request-changed', requestId: 1 })
+    const ready = nextPreviewState(firstPending, { type: 'preview-succeeded', requestId: 1, previews: [sendPreview('ready')] })
+    const refreshing = nextPreviewState(ready, { type: 'request-changed', requestId: 2 })
+    const failedPreview = nextPreviewState(refreshing, { type: 'preview-failed', requestId: 2 })
+    expect(failedPreview.previews).toBe(ready.previews)
+
+    const queued = nextSendState(IDLE_SEND, { type: 'submit', request })
+    const reported = nextSendState(queued, { type: 'preview-failed', error: new Error('Preview unavailable.') })
+    const sending = nextSendState(reported, { type: 'preview-settled' })
+    const failedSend = nextSendState(sending, { type: 'send-failed', error: new Error('The document changed.') })
+    expect(failedSend).toEqual({ phase: 'idle', request: null, error: 'The document changed.' })
+  })
+
+  it('never strands a queued click in sending when the first preview fails without a token', () => {
+    const pending = nextPreviewState(IDLE_PREVIEW, { type: 'request-changed', requestId: 1 })
+    const previewFailed = nextPreviewState(pending, { type: 'preview-failed', requestId: 1 })
+    const queued = nextSendState(IDLE_SEND, { type: 'submit', request })
+    const reported = nextSendState(queued, { type: 'preview-failed', error: new Error('Preview unavailable.') })
+    const sending = previewFailed.pending ? reported : nextSendState(reported, { type: 'preview-settled' })
+    const idle = nextSendState(sending, { type: 'send-failed', error: new Error(reported.error) })
+    expect(idle).toEqual({ phase: 'idle', request: null, error: 'Preview unavailable.' })
   })
 })
 

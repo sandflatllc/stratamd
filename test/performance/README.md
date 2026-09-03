@@ -18,6 +18,12 @@ pnpm perf:stress
 pnpm perf:idle
 ```
 
+Measure note input and item-list renders with 250 Send checklist rows:
+
+```bash
+STRATAMD_PERF_PROFILE=send-composer node scripts/run-performance.mjs
+```
+
 Override the generated matrix with byte counts and shapes:
 
 ```bash

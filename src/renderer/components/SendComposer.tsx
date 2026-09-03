@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import type { AttachmentView, PanelSize, SendChangeItem, SendDocumentToken, SendEventItem, SendPreview, SendPreviewRequest } from '../../shared/contracts'
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import type { AttachmentView, PanelSize, SendChangeItem, SendDocumentToken, SendEventItem, SendItems, SendPreview, SendPreviewRequest } from '../../shared/contracts'
 import { AGENT_COLORS, previewTabIndex } from '../model'
 import { InlineMarkdown } from '../inlineMarkdown'
 import { useDialogFocus } from '../useDialogFocus'
@@ -20,17 +20,11 @@ interface SendComposerProps {
 
 const SIZE_LIMITS = { minWidth: 460, maxWidth: 1600, minHeight: 420, maxHeight: 1600 }
 const SNIPPET_LINES = 3
+const EMPTY_KEYS: readonly string[] = []
 
-// Send is a committed decision, not a state the button can lose. Toggling a
-// recipient or an item starts a fresh preview, and the old button disabled
-// itself for the duration, so a click landing in that window hit a button that
-// changed under it and vanished (docs/plans/open/performance-plan.md, "Send trace
-// result"). Instead the click always commits: it captures the exact request on
-// screen — exclusions and the previewed document token included — and parks in
-// `queued` until the in-flight preview settles, so the user still only sends
-// text the composer rendered, but the click itself cannot be dropped. The
-// button disables from `queued` onward, which keeps the old guarantee that an
-// in-progress send shows `Sending…` and cannot double-fire.
+// Send is a committed decision, not a state the button can lose. A click captures
+// the token-free selection on screen and waits for its preview to settle. The
+// settled token is attached only when the request is dispatched.
 export type SendPhase = 'idle' | 'queued' | 'sending'
 
 export interface SendState {
@@ -114,6 +108,87 @@ function sameToken(left: SendDocumentToken, right: SendDocumentToken): boolean {
     && left.cursor === right.cursor
 }
 
+function sameValues<T>(left: readonly T[], right: readonly T[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index])
+}
+
+export interface PreviewSelection {
+  recipients: readonly string[]
+  note: string
+  checkedExternal: ReadonlySet<string>
+  uncheckedUser: ReadonlySet<string>
+  uncheckedEvents: ReadonlySet<number>
+  externalKeys: readonly string[]
+  /** Stored preview state may carry a token, but preview requests deliberately ignore it. */
+  token?: SendDocumentToken | null
+}
+
+export function buildPreviewRequest(selection: PreviewSelection): SendPreviewRequest {
+  const includeExternal = selection.checkedExternal.size > 0
+  return {
+    recipients: [...selection.recipients],
+    note: selection.note,
+    includeExternal,
+    excludedHunks: [
+      ...selection.uncheckedUser,
+      ...(includeExternal ? selection.externalKeys.filter((key) => !selection.checkedExternal.has(key)) : []),
+    ],
+    excludedEvents: [...selection.uncheckedEvents],
+  }
+}
+
+export function commitRequest(request: SendPreviewRequest, token: SendDocumentToken): SendPreviewRequest {
+  return { ...request, token }
+}
+
+function canRetainItems(previous: SendPreview, next: SendPreview): boolean {
+  return previous.recipient.id === next.recipient.id
+    && sameToken(previous.token, next.token)
+    && previous.queuedAfter === next.queuedAfter
+    && previous.resync === next.resync
+    && sameValues(previous.items.changes.map((item) => item.key), next.items.changes.map((item) => item.key))
+    && sameValues(previous.items.events.map((item) => item.seq), next.items.events.map((item) => item.seq))
+}
+
+/** Keeps rich item objects when only the rendered delivery text changed. */
+export function mergePreviews(previous: readonly SendPreview[], next: readonly SendPreview[]): SendPreview[] {
+  const byRecipient = new Map(previous.map((preview) => [preview.recipient.id, preview]))
+  return next.map((preview) => {
+    const retained = byRecipient.get(preview.recipient.id)
+    return retained !== undefined && canRetainItems(retained, preview)
+      ? { ...preview, items: retained.items }
+      : preview
+  })
+}
+
+export interface PreviewState {
+  hasPreview: boolean
+  pending: boolean
+  currentRequestId: number
+  previews: SendPreview[]
+}
+
+export type PreviewEvent =
+  | { type: 'request-changed'; requestId: number }
+  | { type: 'preview-succeeded'; requestId: number; previews: SendPreview[] }
+  | { type: 'preview-failed'; requestId: number }
+
+export const IDLE_PREVIEW: PreviewState = { hasPreview: false, pending: false, currentRequestId: 0, previews: [] }
+
+export function nextPreviewState(state: PreviewState, event: PreviewEvent): PreviewState {
+  if (event.type === 'request-changed') {
+    return { ...state, pending: true, currentRequestId: event.requestId }
+  }
+  if (event.requestId !== state.currentRequestId) return state
+  if (event.type === 'preview-failed') return { ...state, pending: false }
+  return {
+    hasPreview: true,
+    pending: false,
+    currentRequestId: state.currentRequestId,
+    previews: mergePreviews(state.previews, event.previews),
+  }
+}
+
 function toggled<T>(values: ReadonlySet<T>, value: T): Set<T> {
   const next = new Set(values)
   if (next.has(value)) next.delete(value)
@@ -149,6 +224,74 @@ function eventKindLabel(item: SendEventItem): string {
   return words[item.text] ?? item.text
 }
 
+interface SendItemListProps {
+  items: SendItems
+  checkedExternal: ReadonlySet<string>
+  uncheckedUser: ReadonlySet<string>
+  uncheckedEvents: ReadonlySet<number>
+  dependentExternalHunks: number
+  onToggleChange(item: SendChangeItem): void
+  onToggleEvent(seq: number): void
+}
+
+const SendItemList = memo(function SendItemList({
+  items,
+  checkedExternal,
+  uncheckedUser,
+  uncheckedEvents,
+  dependentExternalHunks,
+  onToggleChange,
+  onToggleEvent,
+}: SendItemListProps) {
+  const renders = useRef(0)
+  renders.current += 1
+  const userChanges = items.changes.filter((item) => item.author === 'user')
+  const externalChanges = items.changes.filter((item) => item.author === 'external')
+  const changeChecked = (item: SendChangeItem) => item.author === 'external'
+    ? checkedExternal.has(item.key)
+    : !uncheckedUser.has(item.key)
+  const changeRow = (item: SendChangeItem) => (
+    <label className="send-item" key={item.key} data-author={item.author} data-checked={changeChecked(item)}>
+      <input type="checkbox" checked={changeChecked(item)} onChange={() => onToggleChange(item)} />
+      <span className="send-item-body">
+        {item.author === 'external' && <span className="send-item-meta"><strong>{item.name ?? 'Someone else'}</strong></span>}
+        <span className="change-snippet">
+          {snippetLines(item.removed, 'removed')}
+          {snippetLines(item.added, 'added')}
+        </span>
+      </span>
+    </label>
+  )
+  const eventRow = (item: SendEventItem) => (
+    <label className="send-item send-item-event" key={`${item.kind}:${item.seq}`} data-checked={!uncheckedEvents.has(item.seq)}>
+      <input type="checkbox" checked={!uncheckedEvents.has(item.seq)} onChange={() => onToggleEvent(item.seq)} />
+      <span className="send-item-body">
+        <span className="send-item-meta"><strong>{eventAuthor(item)}</strong><small>{eventKindLabel(item)}</small></span>
+        {item.quote !== undefined && item.quote.length > 0 && <blockquote><InlineMarkdown text={item.quote} /></blockquote>}
+        {item.kind !== 'verdict' && item.kind !== 'resolution' && <span className="send-item-text"><InlineMarkdown text={item.text} /></span>}
+      </span>
+    </label>
+  )
+
+  return (
+    <div className="send-items" data-render={renders.current}>
+      {userChanges.length > 0 && <>
+        <h3 className="send-group-heading">Your changes · {userChanges.length}</h3>
+        {userChanges.map(changeRow)}
+      </>}
+      {items.events.length > 0 && <>
+        <h3 className="send-group-heading">Annotations · {items.events.length}</h3>
+        {items.events.map(eventRow)}
+      </>}
+      {externalChanges.length > 0 && <>
+        <h3 className="send-group-heading">Changes not made by you · {externalChanges.length}</h3>
+        {dependentExternalHunks > 0 && <p className="send-group-note">{dependentExternalHunks} of your changes {dependentExternalHunks === 1 ? 'builds' : 'build'} on changes not made by you.</p>}
+        {externalChanges.map(changeRow)}
+      </>}
+    </div>
+  )
+})
+
 export function SendComposer({ attachments, documentPath, size, zoom, onSize, onCancel, onPreview, onSend }: SendComposerProps) {
   const dialogRef = useRef<HTMLElement>(null)
   const previewId = useId()
@@ -169,71 +312,86 @@ export function SendComposer({ attachments, documentPath, size, zoom, onSize, on
     })
   }, [checkedExternal, documentPath, note, selected, selectionTouched, uncheckedEvents, uncheckedUser])
   const [externalKeys, setExternalKeys] = useState<readonly string[]>([])
-  const [token, setToken] = useState<SendDocumentToken | null>(null)
   const [exact, setExact] = useState(false)
-  const [previews, setPreviews] = useState<SendPreview[]>([])
+  const [previewState, setPreviewState] = useState<PreviewState>(IDLE_PREVIEW)
   const [active, setActive] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const [requestInFlight, setRequestInFlight] = useState(false)
   const [refresh, setRefresh] = useState(0)
   const [send, setSend] = useState<SendState>(IDLE_SEND)
   const dispatched = useRef<SendState | null>(null)
+  const requestSequence = useRef(0)
+  const startedRequest = useRef<SendPreviewRequest | null>(null)
+  const startedRefresh = useRef(-1)
 
-  const request = useMemo<SendPreviewRequest>(() => {
-    const includeExternal = checkedExternal.size > 0
-    return {
+  const previewExternalKeys = checkedExternal.size > 0 ? externalKeys : EMPTY_KEYS
+  const request = useMemo<SendPreviewRequest>(() => buildPreviewRequest({
       recipients: selected,
       note,
-      includeExternal,
-      excludedHunks: [
-        ...uncheckedUser,
-        ...(includeExternal ? externalKeys.filter((key) => !checkedExternal.has(key)) : []),
-      ],
-      excludedEvents: [...uncheckedEvents],
-      ...(token === null ? {} : { token }),
-    }
-  }, [checkedExternal, externalKeys, note, selected, token, uncheckedEvents, uncheckedUser])
+      checkedExternal,
+      uncheckedUser,
+      uncheckedEvents,
+      externalKeys: previewExternalKeys,
+    }), [checkedExternal, note, previewExternalKeys, selected, uncheckedEvents, uncheckedUser])
+  const requestNeedsStart = startedRequest.current !== request || startedRefresh.current !== refresh
+  const pending = requestNeedsStart || previewState.pending
   const submit = useCallback(() => setSend((state) => nextSendState(state, { type: 'submit', request })), [request])
   useDialogFocus(dialogRef, onCancel)
 
   useEffect(() => {
+    const requestId = requestSequence.current + 1
+    requestSequence.current = requestId
+    startedRequest.current = request
+    startedRefresh.current = refresh
     let current = true
-    setLoading(true)
+    setPreviewState((state) => nextPreviewState(state, { type: 'request-changed', requestId }))
+    setRequestInFlight(false)
     const timer = window.setTimeout(() => {
+      if (!current) return
+      setRequestInFlight(true)
       void onPreview(request)
         .then((next) => {
           if (!current) return
-          setPreviews(next)
+          setPreviewState((state) => nextPreviewState(state, { type: 'preview-succeeded', requestId, previews: next }))
           setActive((index) => Math.min(index, Math.max(next.length - 1, 0)))
-          // Token and item universe update only on real change, so the request
-          // memo settles instead of previewing in a loop.
-          const nextToken = next[0]?.token ?? null
-          setToken((previous) => previous !== null && nextToken !== null && sameToken(previous, nextToken) ? previous : nextToken)
           const keys = [...new Set(next.flatMap((preview) => preview.items.changes
             .filter((change) => change.author === 'external')
             .map((change) => change.key)))].sort()
           setExternalKeys((previous) => previous.join('\n') === keys.join('\n') ? previous : keys)
-          setLoading(false)
+          setRequestInFlight(false)
         })
-        .catch((error: unknown) => { if (current) { setSend((state) => nextSendState(state, { type: 'preview-failed', error })); setLoading(false) } })
+        .catch((error: unknown) => {
+          if (!current) return
+          setPreviewState((state) => nextPreviewState(state, { type: 'preview-failed', requestId }))
+          setSend((state) => nextSendState(state, { type: 'preview-failed', error }))
+          setRequestInFlight(false)
+        })
     }, 120)
     return () => { current = false; window.clearTimeout(timer) }
   }, [onPreview, refresh, request])
 
-  // Reads the committed `loading` rather than the value the click closed over, so a
-  // click racing the settle is released on the very next commit instead of parking forever.
-  useEffect(() => { if (!loading) setSend((state) => nextSendState(state, { type: 'preview-settled' })) }, [loading, send])
+  // Reads committed preview state rather than the value the click closed over.
+  useEffect(() => {
+    if (!pending && send.phase === 'queued') {
+      setSend((state) => nextSendState(state, { type: 'preview-settled' }))
+    }
+  }, [pending, send.phase])
 
   useEffect(() => {
     if (send.phase !== 'sending' || !send.request || dispatched.current === send) return
     dispatched.current = send
-    void onSend(send.request)
+    const token = previewState.previews[0]?.token
+    if (token === undefined) {
+      setSend((state) => nextSendState(state, { type: 'send-failed', error: new Error(send.error || 'Could not prepare the exact text.') }))
+      return
+    }
+    void onSend(commitRequest(send.request, token))
       .then(() => clearComposerDraft(documentPath))
       .catch((error: unknown) => {
         setSend((state) => nextSendState(state, { type: 'send-failed', error }))
         // A refused send — the document changed under the preview — re-previews at once.
         setRefresh((count) => count + 1)
       })
-  }, [documentPath, onSend, send])
+  }, [documentPath, onSend, previewState.previews, send])
 
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
@@ -267,13 +425,15 @@ export function SendComposer({ attachments, documentPath, size, zoom, onSize, on
     window.addEventListener('pointerup', finish, { once: true })
   }
 
-  const changeChecked = (item: SendChangeItem) =>
-    item.author === 'external' ? checkedExternal.has(item.key) : !uncheckedUser.has(item.key)
-  const toggleChange = (item: SendChangeItem) => {
+  const toggleChange = useCallback((item: SendChangeItem) => {
     if (item.author === 'external') setCheckedExternal((previous) => toggled(previous, item.key))
     else setUncheckedUser((previous) => toggled(previous, item.key))
-  }
+  }, [])
+  const toggleEvent = useCallback((seq: number) => {
+    setUncheckedEvents((previous) => toggled(previous, seq))
+  }, [])
 
+  const previews = previewState.previews
   const preview = previews[active]
   const dependentCount = preview?.dependentExternalHunks ?? 0
   const movePreviewFocus = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -284,55 +444,13 @@ export function SendComposer({ attachments, documentPath, size, zoom, onSize, on
     event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
   }
 
-  const changeRow = (item: SendChangeItem) => (
-    <label className="send-item" key={item.key} data-author={item.author} data-checked={changeChecked(item)}>
-      <input type="checkbox" checked={changeChecked(item)} onChange={() => toggleChange(item)} />
-      <span className="send-item-body">
-        {item.author === 'external' && <span className="send-item-meta"><strong>{item.name ?? 'Someone else'}</strong></span>}
-        <span className="change-snippet">
-          {snippetLines(item.removed, 'removed')}
-          {snippetLines(item.added, 'added')}
-        </span>
-      </span>
-    </label>
-  )
-
-  const eventRow = (item: SendEventItem) => (
-    <label className="send-item send-item-event" key={`${item.kind}:${item.seq}`} data-checked={!uncheckedEvents.has(item.seq)}>
-      <input type="checkbox" checked={!uncheckedEvents.has(item.seq)} onChange={() => setUncheckedEvents((previous) => toggled(previous, item.seq))} />
-      <span className="send-item-body">
-        <span className="send-item-meta"><strong>{eventAuthor(item)}</strong><small>{eventKindLabel(item)}</small></span>
-        {item.quote !== undefined && item.quote.length > 0 && <blockquote><InlineMarkdown text={item.quote} /></blockquote>}
-        {item.kind !== 'verdict' && item.kind !== 'resolution' && <span className="send-item-text"><InlineMarkdown text={item.text} /></span>}
-      </span>
-    </label>
-  )
-
   const itemsView = () => {
     if (preview === undefined) return <div className="send-empty">Select at least one recipient.</div>
     if (preview.resync === true) return <div className="send-empty">Gets the whole document to catch up.</div>
-    const userChanges = preview.items.changes.filter((item) => item.author === 'user')
-    const externalChanges = preview.items.changes.filter((item) => item.author === 'external')
-    if (userChanges.length + externalChanges.length + preview.items.events.length === 0) {
+    if (preview.items.changes.length + preview.items.events.length === 0) {
       return <div className="send-empty">Nothing new for this agent.</div>
     }
-    return (
-      <div className="send-items">
-        {userChanges.length > 0 && <>
-          <h3 className="send-group-heading">Your changes · {userChanges.length}</h3>
-          {userChanges.map(changeRow)}
-        </>}
-        {externalChanges.length > 0 && <>
-          <h3 className="send-group-heading">Changes not made by you · {externalChanges.length}</h3>
-          {dependentCount > 0 && <p className="send-group-note">{dependentCount} of your changes {dependentCount === 1 ? 'builds' : 'build'} on changes not made by you.</p>}
-          {externalChanges.map(changeRow)}
-        </>}
-        {preview.items.events.length > 0 && <>
-          <h3 className="send-group-heading">Annotations · {preview.items.events.length}</h3>
-          {preview.items.events.map(eventRow)}
-        </>}
-      </div>
-    )
+    return <SendItemList items={preview.items} checkedExternal={checkedExternal} uncheckedUser={uncheckedUser} uncheckedEvents={uncheckedEvents} dependentExternalHunks={dependentCount} onToggleChange={toggleChange} onToggleEvent={toggleEvent} />
   }
 
   return (
@@ -361,10 +479,11 @@ export function SendComposer({ attachments, documentPath, size, zoom, onSize, on
         <div className="preview-heading" role="tablist" aria-label="What each agent receives">
           <strong aria-hidden="true">What each agent gets</strong>
           {previews.map((item, index) => <button type="button" role="tab" id={`${previewId}-tab-${index}`} aria-controls={`${previewId}-panel`} aria-selected={index === active} tabIndex={index === active ? 0 : -1} className={index === active ? 'active' : ''} key={item.recipient.id} onClick={() => setActive(index)} onKeyDown={(event) => movePreviewFocus(event, index)}>{item.recipient.name}</button>)}
+          {previewState.hasPreview && pending && requestInFlight && <span className="preview-updating">Updating exact text…</span>}
           <button type="button" className="exact-toggle" aria-pressed={exact} onClick={() => setExact((value) => !value)}>Exact text</button>
         </div>
-        <div className="send-tab-body" role="tabpanel" id={`${previewId}-panel`} aria-labelledby={preview ? `${previewId}-tab-${active}` : undefined}>
-          {loading
+        <div className="send-tab-body" role="tabpanel" id={`${previewId}-panel`} aria-labelledby={preview ? `${previewId}-tab-${active}` : undefined} aria-busy={pending}>
+          {!previewState.hasPreview
             ? <div className="send-empty">Preparing…</div>
             : exact
               ? <pre className="delivery-preview">{preview?.text ?? 'Select at least one recipient.'}</pre>

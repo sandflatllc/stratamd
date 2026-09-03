@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test'
-import { Scenario, setSource } from './harness'
+import { Scenario, selectTextInVisualEditor, setSource } from './harness'
 
 /** Layout size, immune to the pop-in animation's transform (which xvfb can leave mid-frame). */
 async function layoutSize(target: Locator): Promise<{ width: number; height: number }> {
@@ -114,6 +114,86 @@ test('a deselected change is skipped, marked partial, and never offered again', 
 
     // The skipped change is behind the acknowledged baseline now: nothing left to send.
     await expect(page.getByRole('button', { name: /^Send/i }).first()).toBeDisabled()
+  } finally {
+    await value.dispose()
+  }
+})
+
+test('a review-heavy composer puts the owner comment first and keeps its rows and scroll position while the note refreshes', async ({}, testInfo) => {
+  const unchanged = Array.from({ length: 45 }, (_, index) => `Paragraph ${index}.\n\nDivider ${index}.`).join('\n\n')
+  const changed = Array.from({ length: 45 }, (_, index) => `External paragraph ${index}.\n\nDivider ${index}.`).join('\n\n')
+  const ownerTarget = 'Owner comment target.'
+  const value = await scenario(testInfo, `# Review\n\n${ownerTarget}\n\n${unchanged}\n`)
+  try {
+    const page = value.page!
+    expect((await value.attach('agent-a', 'Agent A')).event).toBe('initial')
+    await writeTaggedBuffer(value, 'agent-b', 'Agent B', `# Review\n\n${ownerTarget}\n\n${changed}\n`)
+
+    await selectTextInVisualEditor(page, ownerTarget)
+    const annotate = page.getByRole('menu', { name: /annotate selection/i })
+    await expect(annotate).toBeVisible()
+    await annotate.getByRole('menuitem', { name: /Comment/i }).click()
+    const annotationComposer = page.locator('.annotation-composer')
+    await annotationComposer.getByRole('textbox', { name: /Annotation text/i }).fill('Please review this note.')
+    await annotationComposer.getByRole('button', { name: /^Add$/ }).click()
+    await expect(annotationComposer).toBeHidden()
+
+    const dialog = await openComposer(page)
+    const body = dialog.locator('.send-tab-body')
+    await expect(body).toHaveAttribute('aria-busy', 'false')
+    const headings = dialog.locator('.send-group-heading')
+    await expect(headings).toHaveCount(2)
+    await expect(headings.nth(0)).toContainText('Annotations')
+    await expect(headings.nth(1)).toContainText('Changes not made by you')
+
+    const externalRows = dialog.locator('.send-item[data-author="external"]')
+    await expect(externalRows).toHaveCount(45)
+    expect(await externalRows.locator('input').evaluateAll((inputs) => inputs.every((input) => !(input as HTMLInputElement).checked))).toBe(true)
+    const comment = dialog.locator('.send-item-event').filter({ hasText: 'Please review this note.' })
+    await expect(comment).toHaveCount(1)
+    await expect(comment.locator('input')).toBeChecked()
+
+    await body.evaluate((element) => { element.scrollTop = element.scrollHeight })
+    const scrollBefore = await body.evaluate((element) => element.scrollTop)
+    expect(scrollBefore).toBeGreaterThan(0)
+    await body.evaluate((element) => {
+      const state = window as typeof window & { __sendEmptyInsertions?: number; __sendObserver?: MutationObserver }
+      state.__sendEmptyInsertions = 0
+      state.__sendObserver = new MutationObserver((records) => {
+        for (const record of records) {
+          for (const node of record.addedNodes) {
+            if (!(node instanceof Element)) continue
+            if (node.matches('.send-empty')) state.__sendEmptyInsertions! += 1
+            state.__sendEmptyInsertions! += node.querySelectorAll('.send-empty').length
+          }
+        }
+      })
+      state.__sendObserver.observe(element, { childList: true, subtree: true })
+    })
+    const bodyHandle = await body.elementHandle()
+    const rowHandle = await externalRows.nth(20).elementHandle()
+    expect(bodyHandle).toBeTruthy()
+    expect(rowHandle).toBeTruthy()
+
+    const note = 'Ready for the focused review.'
+    await dialog.getByRole('textbox', { name: /Note for recipients/i }).pressSequentially(note)
+    await expect(body).toHaveAttribute('aria-busy', 'false')
+    expect(await body.evaluate(() => (window as typeof window & { __sendEmptyInsertions?: number }).__sendEmptyInsertions ?? -1)).toBe(0)
+    expect(await bodyHandle!.evaluate((element) => element.isConnected)).toBe(true)
+    expect(await rowHandle!.evaluate((element) => element.isConnected)).toBe(true)
+    expect(await body.evaluate((element) => element.scrollTop)).toBe(scrollBefore)
+
+    await dialog.getByRole('button', { name: /Exact text/i }).click()
+    await expect(dialog.locator('.delivery-preview')).toContainText(note)
+    await dialog.getByRole('button', { name: /^Send$/i }).click()
+    await expect(dialog).toBeHidden()
+
+    const payload = await value.attach('agent-a', 'Agent A')
+    expect(payload.event).toBe('send')
+    expect(payload.notes).toEqual([note])
+    expect(payload.annotations).toEqual([expect.objectContaining({ text: 'Please review this note.' })])
+    expect(payload.segments ?? []).toHaveLength(0)
+    expect((await value.attach('agent-a', 'Agent A')).event).toBe('timeout')
   } finally {
     await value.dispose()
   }

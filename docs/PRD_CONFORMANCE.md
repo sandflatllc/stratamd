@@ -116,6 +116,7 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.7-03 | Composer accepts an optional free-text note. | `A01` |
 | 6.7-04 | Composer selects all agents by default and shows a checklist for multiple agents. | `A15`; `SC` recipient deselection |
 | 6.7-05 | The composer lists per-recipient items with checkboxes: user changes and comments checked, changes not made by the user unchecked, one shared selection across recipients. | `E` item list and defaults |
+| 6.7-05b | Checked owner changes and annotations precede unchecked external changes; after first load, preview refresh keeps the item view, row identity, and scroll position stable. | `E` review-heavy composer; `P` 250-item Send checklist |
 | 6.7-06 | Composer gives the exact count/warning for user changes based on unseen external content, beside the external group. | `E` warning and preview |
 | 6.7-07 | Ctrl/Cmd+Enter sends from the composer. | `E` keyboard send |
 | 6.7-08 | The Exact text view exactly equals delivered `text`, exclusions included. | `E` preview-to-payload equality |
