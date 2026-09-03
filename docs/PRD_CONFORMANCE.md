@@ -7,7 +7,7 @@ References:
 - `A01` through `A15` are the executable Playwright tests in `test/e2e/prd-6.12.spec.ts`, numbered to match §6.12.
 - `EC` is the black-box filesystem/encoding/large-document suite in `test/e2e/edge-cases.spec.ts`.
 - `SC` is the shell, persistence, routing, network, and keyboard suite in `test/e2e/shell-conformance.spec.ts`.
-- `RS` is the explorer, drag-drop, window-recreation, and second-launch suite in `test/e2e/renderer-shell.spec.ts`.
+- `RS` is the explorer, drag-drop, last-window-quit, and second-launch suite in `test/e2e/renderer-shell.spec.ts`.
 - `VH` is the populated design-handoff renderer check in `test/e2e/visual-handoff.spec.ts`.
 - `UR` is the undo and redo timeline suite in `test/e2e/undo-redo.spec.ts`.
 - `AC` is the agent-collaboration suite in `test/e2e/agent-collaboration.spec.ts` (messages, the Lead, the review rail, the thread panel; cases specified in `docs/plans/completed/agent-collaboration-plan.md` §9).
@@ -169,7 +169,7 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.9-07 | Ambient motion defaults on, respects reduced motion, and pauses during typing. | `E` motion policy |
 | 6.9-08 | Upright Baloo 2 and real Nunito italic share the family mapping; owner approves by eye. | `S` font-face declarations; `M` owner check |
 | 6.9-09 | User is pink; agents cycle grape, sky, mint, tangerine in attach order. | `U` assignment; `E` computed colors |
-| 6.9-10 | A second path launch opens a tab in the existing instance. | `RS` process/tab assertion |
+| 6.9-10 | A second path launch opens a tab in the existing instance. Closing the last window quits the app and the CLI then answers offline. | `RS` second-instance tab; `RS` last window quits |
 | 6.9-11 | Each tab owns a session; initial pathless attach/state targets the focused tab. | `SC` multi-tab routing |
 | 6.9-12 | Explorer, CLI, file manager, and drag/drop can open files. File-drop UI ignores non-file transfers while valid Markdown files still open and other file extensions receive the existing message. | `RS` explorer, real Markdown drop, rejected extension, and ignored text transfer; `A07` CLI; `M` file manager |
 | 6.9-13 | Both extensions are associated (Linux MIME database; macOS bundle declaration) and the default handler changes only by explicit owner action (`setup --default` on Linux; Finder steps it prints on macOS). | `U` generated entries and bundle configuration; `M` desktop database and Finder |
@@ -221,7 +221,7 @@ An uncited `U`, `E`, `S`, or `M` item is open coverage, not an accepted implemen
 | 6.10-07 | Crash recovery follows §6.3. | `A06` |
 | 6.10-08 | Missing ghost-referenced file is struck through and retained until forgotten. | `U` scanner state; `EC` explorer/forget |
 | 6.10-09 | A pane failure shows the pane card with the rest of the window working; a root failure shows the window card; Reload restores from main with the newest keystrokes intact; each failure is recorded exactly once; uncatchable failures change no UI. | `CC` all three cases |
-| 6.10-10 | A renderer process death reloads the window once; a repeat within a minute closes it, and a window is recreated on the next launch or connection. | `S` gone-handler wiring; `RS` window recreation |
+| 6.10-10 | A renderer process death reloads the window once; a repeat within a minute closes it, which quits the app; the next launch or CLI connection starts it again. | `S` gone-handler wiring; `RS` last window quits |
 | 6.10-11 | Mirror, watcher, and persist failures are logged and shown as a plain-language document banner that clears when the job next succeeds. | `U` banner copy per problem kind (`test/unit/renderer-model.test.ts`); integration `problems` view field |
 
 ## §6.11 state model

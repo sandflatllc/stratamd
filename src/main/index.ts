@@ -282,7 +282,11 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
   }
 
   app.on('window-all-closed', () => {
-    // The socket and durable attachments remain active without a visible window.
+    // Closing the last window quits (PRD §6.9). Queued deliveries and
+    // attachments are durable, and `open` or `attach` starts the app again
+    // when an agent or the owner needs it, so nothing is served by a process
+    // with no window. before-quit flushes every buffer on the way out.
+    app.quit()
   })
   app.on('second-instance', (_event, argv, workingDirectory) => {
     void openLaunchDocuments(argv, workingDirectory).then(showAndFocus)

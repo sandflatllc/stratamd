@@ -146,26 +146,23 @@ test('send composer traps focus and Escape restores the trigger', async ({}, tes
   }
 })
 
-test('socket open recreates the BrowserWindow after the last window closes', async ({}, testInfo) => {
+test('closing the last window quits the app and the CLI answers offline', async ({}, testInfo) => {
   const value = await Scenario.create(testInfo, '# First\n', 'first.md')
-  const second = join(dirname(value.file), 'second.md')
-  await writeFile(second, '# Second\n')
   try {
     const page = await value.launch()
+    const child = value.app!.process()
     await page.close()
-    await expect.poll(() => value.app!.windows().length).toBe(0)
-    const opened = value.app!.waitForEvent('window')
-    const result = await value.cli(['open', second])
+    await expect.poll(() => child.exitCode !== null || child.signalCode !== null, { timeout: 15_000 }).toBe(true)
+    expect(child.exitCode).toBe(0)
+    const result = await value.cli(['state', value.file])
     expect(result.code, result.stderr).toBe(0)
-    const replacement = await opened
-    await replacement.waitForLoadState('domcontentloaded')
-    await expect(replacement.getByText('second.md', { exact: false }).first()).toBeVisible()
+    expect(JSON.parse(result.stdout)).toMatchObject({ open: false })
   } finally {
     await value.dispose()
   }
 })
 
-test('second-instance path launch recreates the BrowserWindow', async ({}, testInfo) => {
+test('second-instance path launch opens a tab in the running instance', async ({}, testInfo) => {
   test.setTimeout(60_000)
   const value = await Scenario.create(testInfo, '# First\n', 'first.md')
   const second = join(dirname(value.file), 'second.md')
@@ -173,9 +170,6 @@ test('second-instance path launch recreates the BrowserWindow', async ({}, testI
   try {
     const page = await value.launch()
     const executable = value.app!.process().spawnfile
-    await page.close()
-    await expect.poll(() => value.app!.windows().length).toBe(0)
-    const opened = value.app!.waitForEvent('window')
     const child = spawn(executable, [...launchArgs, mainEntry, second], {
       cwd: projectRoot,
       env: value.env,
@@ -189,14 +183,9 @@ test('second-instance path launch recreates the BrowserWindow', async ({}, testI
       child.once('error', rejectChild)
       child.once('close', (code) => resolveChild(code))
     })
-    const replacement = await Promise.race([
-      opened,
-      new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error(
-        `No replacement window arrived. Second instance exited ${childExit}. Output:\n${childOutput}`,
-      )), 30_000)),
-    ])
-    await replacement.waitForLoadState('domcontentloaded')
-    await expect(replacement.getByText('second.md', { exact: false }).first()).toBeVisible()
+    expect(childExit, childOutput).toBe(0)
+    expect(value.app!.windows()).toHaveLength(1)
+    await expect(page.getByText('second.md', { exact: false }).first()).toBeVisible()
   } finally {
     await value.dispose()
   }
