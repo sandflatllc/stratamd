@@ -127,3 +127,37 @@ test('7. the active conversation is the sole default until the Lead changes it',
     await value.dispose()
   }
 })
+
+test('an orphaned held draft stays out of preview and can be discarded', async ({}, testInfo) => {
+  const quote = 'Orphan this passage.'
+  const value = await scenario(testInfo, `# Draft review\n\n${quote}\n`)
+  try {
+    const page = value.page!
+    expect((await value.attach('agent-a', 'Agent A')).event).toBe('initial')
+
+    const comment = await openComment(page, quote)
+    await comment.getByRole('textbox', { name: /Annotation text/i }).fill('This quote will disappear.')
+    await comment.getByRole('button', { name: 'Hold' }).click()
+    await expect(page.locator('.strata-draft')).toHaveCount(1)
+
+    await selectTextInVisualEditor(page, quote)
+    await page.keyboard.press('Backspace')
+    await expect(page.getByRole('textbox', { name: /document editor/i })).not.toContainText(quote)
+
+    await page.getByRole('button', { name: /^Send/i }).first().click()
+    const send = page.getByRole('dialog', { name: /Send changes/i })
+    const row = send.locator('.send-item-draft')
+    await expect(send.locator('.send-tab-body')).toHaveAttribute('aria-busy', 'false')
+    await expect(row).toHaveCount(1)
+    await expect(row).toHaveAttribute('data-status', 'orphaned')
+    await expect(row).toContainText('orphaned draft')
+    await expect(row.getByRole('checkbox')).not.toBeChecked()
+
+    await row.getByRole('button', { name: 'Discard' }).click()
+
+    await expect(row).toHaveCount(0)
+    await expect.poll(() => page.evaluate(async () => (await window.strata.getState()).activeDocument?.drafts.length)).toBe(0)
+  } finally {
+    await value.dispose()
+  }
+})

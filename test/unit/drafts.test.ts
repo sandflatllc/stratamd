@@ -35,6 +35,14 @@ describe('private held comments', () => {
     expect(await readFile(path, 'utf8')).not.toContain('formatVersion": 4')
   })
 
+  it('names the drafts file when stored data is invalid', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'stratamd-drafts-invalid-'))
+    const path = join(directory, 'drafts.json')
+    const invalid = { formatVersion: 1 as const, drafts: [{}] }
+
+    await expect(writeDraftStore(path, invalid as never)).rejects.toThrow(`Invalid draft: ${path}`)
+  })
+
   it('marks the Contents section containing each draft', () => {
     const headings = [
       { id: 'h1', level: 1 as const, text: 'Plan', position: 0, sourceFrom: 0, atx: true },

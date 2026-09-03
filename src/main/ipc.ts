@@ -5,6 +5,7 @@ import { encodeViewUpdate, type SyncedView } from '../shared/view-sync'
 import { IPC, type InvokeChannel } from '../preload/channels'
 import { electronFileOps, type FileOps } from './file-ops'
 import { logRendererReport } from './log'
+import { annotationContextSchema } from './validation'
 
 type StrataIpcApi = Omit<StrataApi, 'subscribe'>
 
@@ -62,22 +63,6 @@ const tableViewSchema = z.object({
   density: z.enum(['comfortable', 'compact']),
   columnWidths: z.array(z.number().int().min(80).max(640)).max(100),
 }).strict()
-const tableAnnotationContextSchema = z.object({
-  kind: z.enum(['table-row', 'table-cell']),
-  heading: z.string().max(512).nullable(),
-  columns: z.array(z.string().max(512)).min(1).max(100),
-  column: z.object({ index: z.number().int().nonnegative().max(99), label: z.string().max(512) }).strict().nullable(),
-}).strict()
-const annotationContextSchema = z.union([
-  tableAnnotationContextSchema,
-  z.object({
-    kind: z.literal('screenshot-pin'),
-    component: z.literal('AnnotatedScreenshot'),
-    componentLine: z.number().int().positive().max(10_000_000),
-    image: z.string().min(1).max(16_384),
-    pin: z.number().int().positive().max(1_000_000),
-  }).strict(),
-])
 const draftRequestSchema = z.object({
   kind: z.enum(['comment', 'question', 'suggestion']),
   quote: z.string().min(1),

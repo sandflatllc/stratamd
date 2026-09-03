@@ -1,6 +1,6 @@
 import { EditorState, NodeSelection, TextSelection, type Command, type Transaction } from 'prosemirror-state'
 import { CellSelection } from 'prosemirror-tables'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   createEditorCommands,
   createEditorKeymap,
@@ -11,7 +11,7 @@ import {
   strataSchema,
 } from '../../src/editor/index.js'
 import { menuItemAfter, toolbarDisabledHint, toolbarMenuItems, type EditorCommand } from '../../src/renderer/components/Toolbar.js'
-import { bareHotkeysApply, isAnnotationDismissKey } from '../../src/renderer/components/AnnotationComposer.js'
+import { bareHotkeysApply, handleAnnotationTextKey, isAnnotationDismissKey } from '../../src/renderer/components/AnnotationComposer.js'
 
 function run(command: Command, state: EditorState): EditorState {
   let transaction: Transaction | undefined
@@ -201,6 +201,23 @@ describe('link and image popover placement (usability round 2 §2.8)', () => {
 })
 
 describe('toolbar menus and the annotate pill (usability round 2 §5.1, §5.13)', () => {
+  it('does not send when Enter belongs to an active IME composition', () => {
+    const onSend = vi.fn()
+    const preventDefault = vi.fn()
+    handleAnnotationTextKey(
+      { key: 'Enter', shiftKey: false, ctrlKey: false, metaKey: false, nativeEvent: { isComposing: true }, preventDefault, stopPropagation: vi.fn() },
+      'comment',
+      'Composing text',
+      [],
+      ['agent-a'],
+      vi.fn(),
+      onSend,
+    )
+
+    expect(onSend).not.toHaveBeenCalled()
+    expect(preventDefault).not.toHaveBeenCalled()
+  })
+
   it('walks menu items with the arrow keys and wraps', () => {
     expect(menuItemAfter(3, 0, 'ArrowDown')).toBe(1)
     expect(menuItemAfter(3, 2, 'ArrowDown')).toBe(0)

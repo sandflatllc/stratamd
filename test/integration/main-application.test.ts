@@ -150,6 +150,27 @@ describe('StrataApplication', () => {
     expect((await value.app.getState()).activeDocument?.drafts.map((draft) => draft.id)).toEqual([second])
   })
 
+  it('keeps a selected draft private when delivery enqueue fails', async () => {
+    const source = '# Plan\n\nKeep this passage.\n'
+    const value = await fixture(source)
+    await value.app.openDocument(value.path)
+    await command(value.app, 'attach', { file: value.path, agent: 'ag_1', name: 'Agent', timeout: 0 })
+    const id = await value.app.holdDraft(value.path, {
+      kind: 'comment', text: 'Still private.', recipients: ['ag_1'], quote: 'Keep this passage',
+      from: source.indexOf('Keep this passage'), to: source.indexOf('Keep this passage') + 'Keep this passage'.length,
+    })
+
+    await expect(value.app.send(value.path, {
+      recipients: ['ag_1'], note: 'x'.repeat(64 * 1_024 + 1), includeExternal: false, draftIds: [id],
+    })).rejects.toThrow('Delivery note exceeds the 64 KB limit')
+
+    const document = (await value.app.getState()).activeDocument!
+    expect(document.drafts.map((draft) => draft.id)).toEqual([id])
+    expect(document.annotations).toEqual([])
+    expect(JSON.parse(await readFile(value.store.pathsForDocument(value.path).drafts, 'utf8')).drafts)
+      .toEqual([expect.objectContaining({ id })])
+  })
+
   it('keeps drafts when malformed reading state is discarded', async () => {
     const source = '# Plan\n\nKeep this passage.\n'
     const value = await fixture(source)
@@ -162,6 +183,54 @@ describe('StrataApplication', () => {
     await writeFile(value.store.pathsForDocument(value.path).reading, '{malformed')
     await value.app.openDocument(value.path)
     expect((await value.app.getState()).activeDocument?.drafts.map((draft) => draft.id)).toEqual([id])
+  })
+
+  it('opens with no drafts and preserves a malformed private draft store', async () => {
+    const source = '# Plan\n\nKeep this passage.\n'
+    const value = await fixture(source)
+    await value.app.openDocument(value.path)
+    await value.app.holdDraft(value.path, {
+      kind: 'comment', text: 'Private note.', recipients: [], quote: 'Keep this passage',
+      from: source.indexOf('Keep this passage'), to: source.indexOf('Keep this passage') + 'Keep this passage'.length,
+    })
+    await value.app.closeDocument(value.path)
+    const draftPath = value.store.pathsForDocument(value.path).drafts
+    await writeFile(draftPath, '{malformed')
+
+    await value.app.openDocument(value.path)
+
+    expect((await value.app.getState()).activeDocument?.drafts).toEqual([])
+    const preserved = (await readdir(value.store.pathsForDocument(value.path).directory))
+      .find((name) => name.startsWith('drafts.json.broken-'))
+    expect(preserved).toBeDefined()
+    expect(await readFile(join(value.store.pathsForDocument(value.path).directory, preserved!), 'utf8')).toBe('{malformed')
+  })
+
+  it('drops a stored draft whose annotation was already persisted', async () => {
+    const source = '# Plan\n\nKeep this passage.\n'
+    const value = await fixture(source)
+    await value.app.openDocument(value.path)
+    const from = source.indexOf('Keep this passage')
+    const id = await value.app.holdDraft(value.path, {
+      kind: 'comment', text: 'Already sent.', recipients: [], quote: 'Keep this passage',
+      from, to: from + 'Keep this passage'.length,
+    })
+    await value.app.closeDocument(value.path)
+    const meta = await value.store.loadMeta(value.path)
+    const materialized = createAnnotation(createAnnotationLog(), source, {
+      id, kind: 'comment', author: 'user', quote: 'Keep this passage', text: 'Already sent.', start: from, createdAt: 1,
+    }).log
+    await value.store.saveMeta({
+      ...meta,
+      annotations: materialized.annotations,
+      annotationEvents: materialized.events,
+      nextAnnotationSeq: materialized.nextSeq,
+    })
+
+    await value.app.openDocument(value.path)
+
+    expect((await value.app.getState()).activeDocument?.drafts).toEqual([])
+    expect(JSON.parse(await readFile(value.store.pathsForDocument(value.path).drafts, 'utf8')).drafts).toEqual([])
   })
 
   it('keeps private shell tab choices in reading.json across close and restart without touching meta.json', async () => {

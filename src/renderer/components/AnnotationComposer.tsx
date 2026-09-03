@@ -31,6 +31,50 @@ interface AnnotationComposerProps {
   onSelectAll?(): void
 }
 
+interface AnnotationTextKeyEvent {
+  key: string
+  shiftKey: boolean
+  ctrlKey: boolean
+  metaKey: boolean
+  nativeEvent: { isComposing?: boolean }
+  preventDefault(): void
+  stopPropagation(): void
+}
+
+type AnnotationSubmit = (kind: AnnotationKind, text: string, options?: string[]) => void
+
+export function submitAnnotation(
+  kind: AnnotationKind,
+  text: string,
+  options: readonly string[],
+  onSubmit: AnnotationSubmit,
+): boolean {
+  const choices = options.map((option) => option.trim()).filter(Boolean)
+  if (kind === 'decision' && (text.trim().length === 0 || choices.length < 2 || new Set(choices).size !== choices.length)) return false
+  onSubmit(kind, text, kind === 'decision' ? choices : undefined)
+  return true
+}
+
+export function handleAnnotationTextKey(
+  event: AnnotationTextKeyEvent,
+  kind: AnnotationKind,
+  text: string,
+  options: readonly string[],
+  recipients: readonly string[],
+  onSubmit: AnnotationSubmit,
+  onSend: (kind: DraftKind, text: string, recipients: string[]) => void,
+): void {
+  if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
+  if (kind === 'decision' && !hasPrimaryModifier(event)) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (kind === 'decision') {
+    submitAnnotation(kind, text, options, onSubmit)
+    return
+  }
+  if (text.trim() && recipients.length > 0) onSend(kind, text, [...recipients])
+}
+
 /**
  * Whether the pill's bare C, Q, S, and D keys apply (§5.1): the selection came
  * from the pointer, or the pill itself has focus. A keyboard selection keeps
@@ -68,6 +112,8 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
   const form = useRef<HTMLFormElement>(null)
   const pill = useRef<HTMLDivElement>(null)
   const attachmentIds = attachments.map((attachment) => attachment.agent.id).join('\0')
+  const outsideState = useRef({ kind, text, recipients, onHold, onDismiss })
+  outsideState.current = { kind, text, recipients, onHold, onDismiss }
 
   useEffect(() => {
     setKind(selection?.annotationKind ?? null)
@@ -115,12 +161,13 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
       // Keep the empty composer alive so that click refreshes it instead of
       // dismissing and then being mistaken for the selection just dismissed.
       if (event.target instanceof Element && event.target.closest('.strata-screenshot-pin')) return
-      if (kind !== 'decision' && text.trim()) onHold(kind, text, recipients)
-      else onDismiss()
+      const latest = outsideState.current
+      if (latest.kind !== 'decision' && latest.kind !== null && latest.text.trim()) latest.onHold(latest.kind, latest.text, latest.recipients)
+      else latest.onDismiss()
     }
     window.addEventListener('pointerdown', outside, true)
     return () => window.removeEventListener('pointerdown', outside, true)
-  }, [kind, onDismiss, onHold, recipients, text])
+  }, [kind])
 
   const startResize = (event: React.PointerEvent<HTMLButtonElement>) => {
     event.preventDefault()
@@ -194,9 +241,7 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
   return (
     <form ref={form} className="annotation-composer" style={formStyle} onSubmit={(event) => {
       event.preventDefault()
-      const choices = options.map((option) => option.trim()).filter(Boolean)
-      if (kind === 'decision' && (text.trim().length === 0 || choices.length < 2 || new Set(choices).size !== choices.length)) return
-      onSubmit(kind, text, kind === 'decision' ? choices : undefined)
+      submitAnnotation(kind, text, options, onSubmit)
     }}>
       <div className="annotation-kinds" role="radiogroup" aria-label="Comment kind">
         {([['comment', 'Comment'], ['question', 'Question'], ['suggestion', 'Suggest'], ['decision', 'Decision']] as const).map(([value, label]) => (
@@ -225,21 +270,7 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
         ref={textarea}
         value={text}
         onChange={(event) => setText(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key !== 'Enter' || event.shiftKey) return
-          if (kind === 'decision') {
-            if (!hasPrimaryModifier(event)) return
-            event.preventDefault()
-            event.stopPropagation()
-            const choices = options.map((option) => option.trim()).filter(Boolean)
-            if (text.trim().length === 0 || choices.length < 2 || new Set(choices).size !== choices.length) return
-            onSubmit(kind, text, kind === 'decision' ? choices : undefined)
-            return
-          }
-          event.preventDefault()
-          event.stopPropagation()
-          if (text.trim() && recipients.length > 0) onSend(kind, text, recipients)
-        }}
+        onKeyDown={(event) => handleAnnotationTextKey(event, kind, text, options, recipients, onSubmit, onSend)}
         placeholder={kind === 'suggestion' ? 'Replacement markdown…' : kind === 'decision' ? 'What needs to be decided?' : 'Your note…'}
         aria-label={kind === 'suggestion' ? 'Replacement markdown' : kind === 'decision' ? 'Decision prompt' : 'Annotation text'}
       />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { SendDocumentToken, SendPreview, SendPreviewRequest } from '../../src/shared/contracts'
+import type { DraftView, SendDocumentToken, SendPreview, SendPreviewRequest } from '../../src/shared/contracts'
 import {
   buildPreviewRequest,
   clearComposerDraft,
@@ -13,6 +13,7 @@ import {
   nextPreviewState,
   nextSendState,
   readComposerDraft,
+  reconcileSelectedDrafts,
   saveComposerDraft,
 } from '../../src/renderer/components/SendComposer'
 
@@ -186,7 +187,7 @@ describe('send composer drafts (PRD §6.9)', () => {
   ]
 
   it('keeps the note and item choices per document until the send goes through', () => {
-    const draft = { note: 'Please review', selected: ['agent-b'], checkedExternal: ['s1:0'], uncheckedUser: ['s2:1'], uncheckedEvents: [4] }
+    const draft = { note: 'Please review', checkedExternal: ['s1:0'], uncheckedUser: ['s2:1'], uncheckedEvents: [4] }
     saveComposerDraft('/one.md', draft)
     expect(readComposerDraft('/one.md')).toEqual(draft)
     expect(readComposerDraft('/two.md')).toBe(EMPTY_DRAFT)
@@ -203,9 +204,25 @@ describe('send composer drafts (PRD §6.9)', () => {
   })
 
   it('preselects only the active conversation, with the Lead taking priority', () => {
-    expect(draftRecipients(EMPTY_DRAFT, attachments, null, 'agent-a')).toEqual(['agent-a'])
-    expect(draftRecipients(EMPTY_DRAFT, attachments, 'agent-b', 'agent-a')).toEqual(['agent-b'])
-    expect(draftRecipients({ ...EMPTY_DRAFT, selected: ['agent-b'] }, attachments, null, 'agent-a')).toEqual(['agent-a'])
-    expect(draftRecipients({ ...EMPTY_DRAFT, selected: ['agent-b', 'agent-gone'] }, attachments)).toEqual(['agent-b'])
+    expect(draftRecipients(attachments, null, 'agent-a')).toEqual(['agent-a'])
+    expect(draftRecipients(attachments, 'agent-b', 'agent-a')).toEqual(['agent-b'])
+    expect(draftRecipients(attachments, null, null)).toEqual([])
+  })
+
+  it('checks a newly attached draft without rechecking one the user unchecked', () => {
+    const view = (id: string): DraftView => ({
+      id, kind: 'comment', quote: id, prefix: '', suffix: '', text: id,
+      from: 0, to: id.length, status: 'attached', recipients: ['agent-a'], createdAt: 1,
+    })
+    const existing = view('existing')
+    const incoming = view('incoming')
+    const selected = reconcileSelectedDrafts(
+      new Set(),
+      new Map([[existing.id, existing.status]]),
+      new Set([existing.id]),
+      [existing, incoming],
+    )
+
+    expect([...selected]).toEqual(['incoming'])
   })
 })

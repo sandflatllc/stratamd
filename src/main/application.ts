@@ -810,7 +810,23 @@ export class StrataApplication implements StrataApi {
       this.#settings.attachmentIdleTimeoutMs
     ) }
     const storedReading = await readReadingState(this.#store.pathsForDocument(canonical).reading)
-    const drafts = await readDraftStore(this.#store.pathsForDocument(canonical).drafts)
+    const draftPath = this.#store.pathsForDocument(canonical).drafts
+    let drafts = await readDraftStore(draftPath)
+    const materializedDraftIds = drafts.drafts
+      .filter((draft) => annotations.annotations[draft.id] !== undefined)
+      .map((draft) => draft.id)
+    if (materializedDraftIds.length > 0) {
+      const duplicates = new Set(materializedDraftIds)
+      drafts = { ...drafts, drafts: drafts.drafts.filter((draft) => !duplicates.has(draft.id)) }
+      for (const id of materializedDraftIds) {
+        logError('drafts', `Stored draft ${id} was dropped because its annotation already exists: ${draftPath}`)
+      }
+      try {
+        await writeDraftStore(draftPath, drafts)
+      } catch (error) {
+        logError('drafts', `Duplicate drafts could not be removed from ${draftPath}`, error)
+      }
+    }
     const parsedShadow = parseMarkdown(state.shadow)
     const walkthroughIndex = buildWalkthroughIndex(state.shadow, 1, parsedShadow)
     const reconciledWalkthrough = reconcileWalkthroughState(storedReading.walkthrough, walkthroughIndex)
@@ -1553,17 +1569,22 @@ export class StrataApplication implements StrataApi {
         }
       }
       const materializedIds = [...new Set(request.draftIds ?? [])]
-      session.annotations = this.#materializeDrafts(session, materializedIds)
-      for (const id of materializedIds) session.drafts = removeDraft(session.drafts, id)
+      const nextAnnotations = this.#materializeDrafts(session, materializedIds)
+      let nextDrafts = session.drafts
+      for (const id of materializedIds) nextDrafts = removeDraft(nextDrafts, id)
+      const deliveries = await this.#enqueueDeliveries(session, request, request.recipients, 'send', nextAnnotations)
+      session.annotations = nextAnnotations
+      session.drafts = nextDrafts
       session.state = markSendBoundary(session.state)
-      const deliveries = await this.#enqueueDeliveries(session, request, request.recipients)
       session.lastSentSegmentIndex = currentSegmentIndex(session)
       session.lastSentAnnotationSeq = session.annotations.nextSeq - 1
       this.#clearApplicationHistory(session)
-      await this.#persist(session)
-      if (materializedIds.length > 0) {
-        await writeDraftStore(this.#store.pathsForDocument(path).drafts, session.drafts)
-      }
+      await Promise.all([
+        this.#persist(session),
+        ...(materializedIds.length > 0
+          ? [writeDraftStore(this.#store.pathsForDocument(path).drafts, session.drafts)]
+          : []),
+      ])
       for (const id of request.recipients) {
         const delivery = collectOldest(session.attachments[id]!)
         if (delivery) this.#attachWaits.deliver(attachKey(path, id), delivery.payload)
@@ -2910,13 +2931,14 @@ export class StrataApplication implements StrataApi {
     request: SendPreviewRequest,
     recipients: readonly string[],
     event: 'send' | 'closed' = 'send',
+    annotations: AnnotationLog = session.annotations,
   ) {
     const deliveries = await Promise.all(recipients.map(async (id) => {
       const attachment = session.attachments[id]
       if (!attachment) throw new Error(`Attachment ${id} was not found`)
       const delivery = freezeDelivery(
         attachment,
-        await this.#deliverySource(session, request, id, event),
+        await this.#deliverySource(session, request, id, event, annotations),
       )
       session.attachments[id] = enqueueDelivery(attachment, delivery)
       return delivery

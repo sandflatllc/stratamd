@@ -613,6 +613,8 @@ kbd { color: var(--muted); font-family: var(--font-code), "JetBrains Mono", mono
 .send-item:hover { border-color: color-mix(in srgb, var(--controls-primary) 45%, var(--line)); }
 .send-item[data-checked="false"] { opacity: .55; }
 .send-item-draft { border-style: dashed; border-color: color-mix(in srgb, var(--people-you) 58%, var(--line)); }
+.send-item-draft[data-status="orphaned"] { border-color: var(--controls-warning); }
+.send-draft-discard { flex: none; }
 .send-item > input { margin-top: 3px; accent-color: var(--controls-primary); }
 .send-item-body { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; font-size: calc(13px * var(--zoom, 1)); }
 .send-item-meta { display: flex; align-items: baseline; gap: 7px; }

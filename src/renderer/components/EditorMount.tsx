@@ -15,7 +15,7 @@ interface EditorMountProps extends RendererEditorOptions {
   drafts: DraftView[]
 }
 
-function draftRanges(drafts: readonly DraftView[]): AnnotationRange[] {
+export function draftRanges(drafts: readonly DraftView[]): AnnotationRange[] {
   return drafts.map((draft) => ({
     id: draft.id,
     kind: draft.kind,
@@ -25,6 +25,8 @@ function draftRanges(drafts: readonly DraftView[]): AnnotationRange[] {
     suffix: draft.suffix,
     from: draft.from ?? 0,
     to: draft.to ?? 0,
+    sourceFrom: draft.from,
+    sourceTo: draft.to,
     author: 'user',
     text: draft.text,
     draft: true,

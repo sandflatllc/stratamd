@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
+  annotationInputs,
   editorRangeForSource,
   parseMarkdownForEditor,
   sourceRangeIsSingleBlock,
   sourceSelectionForEditor,
   wordRangeAt,
 } from '../../src/editor/index.js'
+import { draftRanges } from '../../src/renderer/components/EditorMount.js'
+import type { DraftView } from '../../src/shared/contracts.js'
 
 function textPosition(
   parsed: ReturnType<typeof parseMarkdownForEditor>,
@@ -65,6 +68,21 @@ describe('visual selection markdown spans', () => {
       to: source.indexOf('bold target') + 'bold target'.length,
       singleBlock: true,
     })
+  })
+
+  it('maps a draft that quotes markdown delimiters into its visual-editor range', () => {
+    const source = '**bold** term\n'
+    const parsed = parseMarkdownForEditor(source)
+    const quote = '**bold** term'
+    const draft: DraftView = {
+      id: 'd_bold', kind: 'comment', quote, prefix: '', suffix: '', text: 'Review this.',
+      from: 0, to: quote.length, status: 'attached', recipients: ['agent-a'], createdAt: 1,
+    }
+
+    const [range] = annotationInputs(draftRanges([draft]), parsed.doc, parsed)
+
+    expect(range?.status).toBe('open')
+    expect(parsed.doc.textBetween(range!.from, range!.to, '\n', '\n')).toBe('bold term')
   })
 
   it('maps a selection inside a table cell to its exact source slice', () => {

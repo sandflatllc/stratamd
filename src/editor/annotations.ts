@@ -18,6 +18,9 @@ export interface AnnotationRange extends AnnotationQuoteAnchor {
   status: AnnotationStatus
   from: number
   to: number
+  /** Original markdown offsets for display-only drafts. */
+  sourceFrom?: number | null
+  sourceTo?: number | null
   author: string
   agent?: string | null
   color?: string | null

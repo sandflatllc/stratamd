@@ -234,7 +234,7 @@ function reviewInputs(inputs: readonly (ReviewRange | HunkView)[], doc: ProseMir
   })
 }
 
-function annotationInputs(
+export function annotationInputs(
   inputs: readonly (AnnotationRange | AnnotationView)[],
   doc: ProseMirrorNode,
   parsedMarkdown?: ParsedEditorMarkdown,
@@ -242,7 +242,16 @@ function annotationInputs(
   return inputs.flatMap((input) => {
     if (!('seq' in input)) {
       const range = input as AnnotationRange
-      const relocated = locateAnnotationAnchor(doc, range, range.kind)
+      const sourceMapped = range.draft
+        && parsedMarkdown
+        && typeof range.sourceFrom === 'number'
+        && typeof range.sourceTo === 'number'
+        ? editorRangeForSource(parsedMarkdown, doc, range.sourceFrom, range.sourceTo)
+        : null
+      const validSourceMapping = sourceMapped && (range.kind !== 'suggestion' || sourceMapped.singleBlock)
+        ? sourceMapped
+        : null
+      const relocated = validSourceMapping ?? locateAnnotationAnchor(doc, range, range.kind)
       return [relocated
         ? { ...range, ...relocated }
         : { ...range, status: 'orphaned' }]

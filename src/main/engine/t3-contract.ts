@@ -26,6 +26,10 @@ export const T3_RPC = {
 const id = z.string().trim().min(1)
 const isoDate = z.iso.datetime({ offset: true })
 const nonNegativeInt = z.number().int().nonnegative()
+const runtimeMode = z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access'])
+const interactionMode = z.enum(['default', 'plan'])
+const messageRole = z.enum(['user', 'assistant', 'system'])
+const checkpointStatus = z.enum(['ready', 'missing', 'error'])
 
 export const authScopes = z.array(z.enum([
   'orchestration:read', 'orchestration:operate', 'terminal:operate', 'review:write',
@@ -50,9 +54,8 @@ export const chatAttachment = z.object({
   mimeType: id,
   sizeBytes: nonNegativeInt,
 }).passthrough()
-export const orchestrationMessage = z.object({
-  id,
-  role: z.enum(['user', 'assistant', 'system']),
+const orchestrationMessageBase = z.object({
+  role: messageRole,
   text: z.string(),
   attachments: z.array(chatAttachment).optional(),
   turnId: id.nullable(),
@@ -60,17 +63,19 @@ export const orchestrationMessage = z.object({
   createdAt: isoDate,
   updatedAt: isoDate,
 }).passthrough()
+export const orchestrationMessage = orchestrationMessageBase.extend({ id })
 
 export const checkpointFile = z.object({ path: id, kind: id, additions: nonNegativeInt, deletions: nonNegativeInt }).passthrough()
-export const checkpointSummary = z.object({
+const checkpointSummaryBase = z.object({
   turnId: id,
   checkpointTurnCount: nonNegativeInt,
   checkpointRef: id,
-  status: z.enum(['ready', 'missing', 'error']),
+  status: checkpointStatus,
   files: z.array(checkpointFile),
   assistantMessageId: id.nullable(),
   completedAt: isoDate,
 }).passthrough()
+export const checkpointSummary = checkpointSummaryBase
 
 export const threadActivity = z.object({
   id,
@@ -87,7 +92,7 @@ export const orchestrationSession = z.object({
   status: z.enum(['idle', 'starting', 'running', 'ready', 'interrupted', 'stopped', 'error']),
   providerName: id.nullable(),
   providerInstanceId: id.optional(),
-  runtimeMode: z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access']),
+  runtimeMode,
   activeTurnId: id.nullable(),
   lastError: id.nullable(),
   updatedAt: isoDate,
@@ -97,22 +102,22 @@ export const orchestrationProject = z.object({
   scripts: z.array(z.unknown()), createdAt: isoDate, updatedAt: isoDate, deletedAt: isoDate.nullable(),
 }).passthrough()
 export const orchestrationProjectShell = orchestrationProject.omit({ deletedAt: true }).passthrough()
-export const orchestrationThreadShell = z.object({
+const orchestrationThreadBase = z.object({
   id, projectId: id, title: id, modelSelection,
-  runtimeMode: z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access']),
-  interactionMode: z.enum(['default', 'plan']), branch: id.nullable(), worktreePath: id.nullable(),
+  runtimeMode,
+  interactionMode, branch: id.nullable(), worktreePath: id.nullable(),
   latestTurn: z.unknown().nullable(), createdAt: isoDate, updatedAt: isoDate,
-  session: orchestrationSession.nullable(), latestUserMessageAt: isoDate.nullable(),
+  session: orchestrationSession.nullable(),
+}).passthrough()
+export const orchestrationThreadShell = orchestrationThreadBase.extend({
+  latestUserMessageAt: isoDate.nullable(),
   hasPendingApprovals: z.boolean(), hasPendingUserInput: z.boolean(), hasActionableProposedPlan: z.boolean(),
-}).passthrough()
-export const orchestrationThread = z.object({
-  id, projectId: id, title: id, modelSelection,
-  runtimeMode: z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access']),
-  interactionMode: z.enum(['default', 'plan']), branch: id.nullable(), worktreePath: id.nullable(),
-  latestTurn: z.unknown().nullable(), createdAt: isoDate, updatedAt: isoDate, deletedAt: isoDate.nullable(),
+})
+export const orchestrationThread = orchestrationThreadBase.extend({
+  deletedAt: isoDate.nullable(),
   messages: z.array(orchestrationMessage), activities: z.array(threadActivity),
-  checkpoints: z.array(checkpointSummary), session: orchestrationSession.nullable(),
-}).passthrough()
+  checkpoints: z.array(checkpointSummary),
+})
 export const shellSnapshot = z.object({
   snapshotSequence: nonNegativeInt,
   projects: z.array(orchestrationProjectShell),
@@ -145,11 +150,11 @@ export const threadStreamItem = z.union([
 ])
 export const messageSentEvent = eventBase.extend({
   type: z.literal('thread.message-sent'),
-  payload: z.object({ threadId: id, messageId: id, role: z.enum(['user', 'assistant', 'system']), text: z.string(), attachments: z.array(chatAttachment).optional(), turnId: id.nullable(), streaming: z.boolean(), createdAt: isoDate, updatedAt: isoDate }).passthrough(),
+  payload: orchestrationMessageBase.extend({ messageId: id }).extend({ threadId: id }),
 })
 export const turnDiffCompletedEvent = eventBase.extend({
   type: z.literal('thread.turn-diff-completed'),
-  payload: z.object({ threadId: id, turnId: id, checkpointTurnCount: nonNegativeInt, checkpointRef: id, status: z.enum(['ready', 'missing', 'error']), files: z.array(checkpointFile), assistantMessageId: id.nullable(), completedAt: isoDate }).passthrough(),
+  payload: checkpointSummaryBase.extend({ threadId: id }),
 })
 
 const commandBase = { commandId: id, threadId: id, createdAt: isoDate } as const
@@ -157,8 +162,8 @@ export const turnStartCommand = z.object({
   type: z.literal('thread.turn.start'), ...commandBase,
   message: z.object({ messageId: id, role: z.literal('user'), text: z.string(), attachments: z.array(chatAttachment) }).passthrough(),
   modelSelection: modelSelection.optional(),
-  runtimeMode: z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access']),
-  interactionMode: z.enum(['default', 'plan']),
+  runtimeMode,
+  interactionMode,
 }).passthrough()
 export const turnInterruptCommand = z.object({ type: z.literal('thread.turn.interrupt'), ...commandBase, turnId: id.optional() }).passthrough()
 export const approvalRespondCommand = z.object({ type: z.literal('thread.approval.respond'), ...commandBase, requestId: id, decision: z.enum(['accept', 'acceptForSession', 'acceptAlways', 'decline', 'cancel']) }).passthrough()
