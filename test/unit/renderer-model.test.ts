@@ -19,7 +19,7 @@ function document(overrides: Partial<DocumentView> = {}): DocumentView {
     path: '/tmp/plan.md', bufferPath: '/tmp/buffer.md', leadAgentId: null, content: '# Plan', sourceMode: false,
     reading: { formatVersion: 4, navigationTab: 'files', reviewTab: 'changes', walkthrough: { active: false, level: 'h2', current: null, excluded: [], markers: [] }, tables: [], foldedHeadings: [] },
     sourceOnly: false, readOnly: false, dirty: false, deleted: false, invalidUtf8: false,
-    lastSavedAt: null, historyStep: 0, pendingHunks: [], saves: [], annotations: [], attachments: [],
+    lastSavedAt: null, historyStep: 0, pendingHunks: [], saves: [], annotations: [], drafts: [], attachments: [],
     canSend: false, conflicts: [], problems: [], ...overrides
   }
 }

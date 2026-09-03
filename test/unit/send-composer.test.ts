@@ -202,9 +202,10 @@ describe('send composer drafts (PRD §6.9)', () => {
     expect(isEmptyDraft({ ...EMPTY_DRAFT, uncheckedEvents: [1] })).toBe(false)
   })
 
-  it('applies a remembered recipient choice only to agents still attached, and defaults to everyone', () => {
-    expect(draftRecipients(EMPTY_DRAFT, attachments)).toEqual(['agent-a', 'agent-b'])
+  it('preselects only the active conversation, with the Lead taking priority', () => {
+    expect(draftRecipients(EMPTY_DRAFT, attachments, null, 'agent-a')).toEqual(['agent-a'])
+    expect(draftRecipients(EMPTY_DRAFT, attachments, 'agent-b', 'agent-a')).toEqual(['agent-b'])
+    expect(draftRecipients({ ...EMPTY_DRAFT, selected: ['agent-b'] }, attachments, null, 'agent-a')).toEqual(['agent-a'])
     expect(draftRecipients({ ...EMPTY_DRAFT, selected: ['agent-b', 'agent-gone'] }, attachments)).toEqual(['agent-b'])
-    expect(draftRecipients({ ...EMPTY_DRAFT, selected: [] }, attachments)).toEqual([])
   })
 })

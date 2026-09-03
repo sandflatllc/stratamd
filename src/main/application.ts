@@ -22,6 +22,8 @@ import type {
   StrataApi,
   BufferOrigin,
   CreateAnnotationRequest,
+  CreateDraftRequest,
+  DraftView,
   DocumentProblem,
   ReadingState,
   TableViewState,
@@ -30,6 +32,7 @@ import type {
   LocalMarkdownPreview,
   LocalImageResolution,
 } from '../shared/contracts'
+import { createDraftStore, discardDraft as removeDraft, holdDraft as addHeldDraft, relocateDraft, type DraftStore } from '../core/drafts'
 import { logError } from './log'
 import {
   acceptAllSuggestions as acceptAllAnnotationSuggestions,
@@ -124,6 +127,7 @@ import { parseMarkdown } from '../core/markdown'
 import { analyzeComponentNode, annotatedScreenshotData, type ComponentAstNode } from '../core/markdown/components'
 import { findMarkdownByIdentity, scanAndSeedExplorer, scanExplorer, type ExplorerScanResult } from './explorer'
 import { readDiskState, readDocument, resolveAllowedLocalPath, resolveDocumentPath, saveDocumentWithHashCheck, seedGhostFromGit } from './files'
+import { readDraftStore, writeDraftStore } from './drafts'
 import { localImageUrl } from './protocols'
 import { lineAt, stableValue } from './view-stability'
 import { SessionRegistry } from './session'
@@ -189,6 +193,7 @@ interface OpenDocumentSession {
   /** Absolute index represented by state.segments[0]. */
   segmentOffset: number
   annotations: AnnotationLog
+  drafts: DraftStore
   attachments: Record<string, Attachment>
   /** The at-most-one attachment holding the Lead (PRD §6.6); dies with it. */
   leadAgentId: string | null
@@ -727,6 +732,7 @@ export class StrataApplication implements StrataApi {
         state,
         segmentOffset: 0,
         annotations: createAnnotationLog(),
+        drafts: createDraftStore(),
         attachments: {},
         leadAgentId: null,
         clipboardRecipient: createClipboardRecipient(),
@@ -804,6 +810,7 @@ export class StrataApplication implements StrataApi {
       this.#settings.attachmentIdleTimeoutMs
     ) }
     const storedReading = await readReadingState(this.#store.pathsForDocument(canonical).reading)
+    const drafts = await readDraftStore(this.#store.pathsForDocument(canonical).drafts)
     const parsedShadow = parseMarkdown(state.shadow)
     const walkthroughIndex = buildWalkthroughIndex(state.shadow, 1, parsedShadow)
     const reconciledWalkthrough = reconcileWalkthroughState(storedReading.walkthrough, walkthroughIndex)
@@ -815,6 +822,7 @@ export class StrataApplication implements StrataApi {
       state,
       segmentOffset: meta.segmentOffset,
       annotations: relocateOpenAnnotations(annotations, state.shadow),
+      drafts,
       attachments,
       leadAgentId: typeof meta.leadAgentId === 'string' && attachments[meta.leadAgentId] !== undefined
         ? meta.leadAgentId
@@ -1186,6 +1194,88 @@ export class StrataApplication implements StrataApi {
     })
   }
 
+  holdDraft(path: string, draft: CreateDraftRequest): Promise<string> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      if (!draft.text.trim()) throw new Error('Write a comment before holding it')
+      const start = this.#anchorQuote(session, draft)
+      const id = `d_${randomUUID().slice(0, 12)}`
+      session.drafts = addHeldDraft(session.drafts, session.state.shadow, {
+        ...draft,
+        id,
+        from: start,
+        to: start + draft.quote.length,
+        createdAt: this.#now(),
+      })
+      await writeDraftStore(this.#store.pathsForDocument(path).drafts, session.drafts)
+      this.#publish()
+      return id
+    })
+  }
+
+  discardDraft(path: string, draftId: string): Promise<void> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      const next = removeDraft(session.drafts, draftId)
+      if (next === session.drafts) return
+      session.drafts = next
+      await writeDraftStore(this.#store.pathsForDocument(path).drafts, session.drafts)
+      this.#publish()
+    })
+  }
+
+  quickSend(path: string, draft: CreateDraftRequest): Promise<string[]> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      if (draft.recipients.length === 0) throw new Error('Select at least one recipient')
+      if (!draft.text.trim()) throw new Error('Write a comment before sending it')
+      await session.mirror?.flush()
+      for (const recipient of new Set(draft.recipients)) {
+        if (!session.attachments[recipient]) throw new Error(`Attachment ${recipient} was not found`)
+      }
+      const start = this.#anchorQuote(session, draft)
+      const id = `a_${randomUUID().slice(0, 12)}`
+      const created = createAnnotation(session.annotations, session.state.shadow, {
+        createdAt: this.#now(),
+        id,
+        kind: draft.kind,
+        author: 'user',
+        quote: draft.quote,
+        text: draft.text,
+        start,
+        ...(draft.context ? { context: draft.context } : {}),
+      })
+      session.annotations = created.log
+      const allItems = draft.recipients.flatMap((recipient) => {
+        const attachment = session.attachments[recipient]!
+        return this.#sendItems(session, attachment).changes
+      })
+      const excludedEvents = session.annotations.events
+        .filter((event) => event.seq !== created.event.seq)
+        .map((event) => event.seq)
+      const request: SendPreviewRequest = {
+        recipients: [...new Set(draft.recipients)],
+        note: '',
+        includeExternal: false,
+        excludedHunks: [...new Set(allItems.map((item) => item.key))],
+        excludedEvents,
+      }
+      session.state = markSendBoundary(session.state)
+      const deliveries = await this.#enqueueDeliveries(session, request, request.recipients)
+      session.lastSentSegmentIndex = currentSegmentIndex(session)
+      session.lastSentAnnotationSeq = session.annotations.nextSeq - 1
+      this.#clearApplicationHistory(session)
+      await this.#persist(session)
+      for (const recipient of request.recipients) {
+        const delivery = collectOldest(session.attachments[recipient]!)
+        if (delivery) this.#attachWaits.deliver(attachKey(path, recipient), delivery.payload)
+      }
+      this.#scheduleIdleExpiry()
+      this.#publish()
+      return deliveries.map((delivery) => delivery.id)
+    })
+  }
+
   /**
    * The renderer captures quote offsets when the selection is made; an edit
    * landing before Submit (an agent writing while the composer is open) moves
@@ -1197,6 +1287,29 @@ export class StrataApplication implements StrataApi {
     const relocated = nearestQuoteStart(session.state.shadow, range.quote, range.from)
     if (relocated === null) throw new Error('The selected quote no longer matches the buffer')
     return relocated
+  }
+
+  #materializeDrafts(session: OpenDocumentSession, ids: readonly string[]): AnnotationLog {
+    let log = session.annotations
+    for (const id of [...new Set(ids)]) {
+      const draft = session.drafts.drafts.find((item) => item.id === id)
+      if (!draft) throw new Error(`Draft ${id} was not found`)
+      const location = relocateDraft(draft, session.state.shadow)
+      if (location.status !== 'attached' || location.from === null) {
+        throw new Error(`Draft ${id} no longer matches its quoted text`)
+      }
+      log = createAnnotation(log, session.state.shadow, {
+        createdAt: draft.createdAt,
+        id: draft.id,
+        kind: draft.kind,
+        author: 'user',
+        quote: draft.anchor.quote,
+        text: draft.text,
+        start: location.from,
+        ...(draft.context ? { context: draft.context } : {}),
+      }).log
+    }
+    return log
   }
 
   requoteAnnotation(path: string, annotationId: string, range: { quote: string; from: number; to: number }): Promise<void> {
@@ -1398,15 +1511,16 @@ export class StrataApplication implements StrataApi {
     return this.#withSession(path, async () => {
       const session = this.#require(path)
       const token = this.#documentToken(session)
+      const annotations = this.#materializeDrafts(session, request.draftIds ?? [])
       return Promise.all(request.recipients.map(async (id) => {
         const attachment = session.attachments[id]
         if (!attachment) throw new Error(`Attachment ${id} was not found`)
-        const delivery = freezeDelivery(attachment, await this.#deliverySource(session, request, id))
+        const delivery = freezeDelivery(attachment, await this.#deliverySource(session, request, id, 'send', annotations))
         return {
           recipient: agentIdentity(id, attachment.name, Object.keys(session.attachments).indexOf(id)),
           text: delivery.payload.text,
           token,
-          items: delivery.payload.event === 'resync' ? { changes: [], events: [] } : this.#sendItems(session, attachment),
+          items: delivery.payload.event === 'resync' ? { changes: [], events: [] } : this.#sendItems(session, attachment, annotations, new Set(request.draftIds ?? [])),
           ...(delivery.payload.event === 'resync' ? { resync: true } : {}),
           ...(attachment.deliveries.at(-1) ? { queuedAfter: attachment.deliveries.at(-1)!.id } : {}),
           dependentExternalHunks: dependentExternalHunkCount(
@@ -1424,6 +1538,9 @@ export class StrataApplication implements StrataApi {
       const session = this.#writable(path)
       if (request.recipients.length === 0) throw new Error('Select at least one recipient')
       await session.mirror?.flush()
+      for (const recipient of new Set(request.recipients)) {
+        if (!session.attachments[recipient]) throw new Error(`Attachment ${recipient} was not found`)
+      }
       // A frozen delivery must equal the preview the user saw: an edit landing
       // between preview and click can add content never shown, and a segment
       // extension renumbers hunk keys under the captured exclusions.
@@ -1435,12 +1552,18 @@ export class StrataApplication implements StrataApi {
           throw new Error("The document changed. Check what you're sending again.")
         }
       }
+      const materializedIds = [...new Set(request.draftIds ?? [])]
+      session.annotations = this.#materializeDrafts(session, materializedIds)
+      for (const id of materializedIds) session.drafts = removeDraft(session.drafts, id)
       session.state = markSendBoundary(session.state)
       const deliveries = await this.#enqueueDeliveries(session, request, request.recipients)
       session.lastSentSegmentIndex = currentSegmentIndex(session)
       session.lastSentAnnotationSeq = session.annotations.nextSeq - 1
       this.#clearApplicationHistory(session)
       await this.#persist(session)
+      if (materializedIds.length > 0) {
+        await writeDraftStore(this.#store.pathsForDocument(path).drafts, session.drafts)
+      }
       for (const id of request.recipients) {
         const delivery = collectOldest(session.attachments[id]!)
         if (delivery) this.#attachWaits.deliver(attachKey(path, id), delivery.payload)
@@ -2806,12 +2929,13 @@ export class StrataApplication implements StrataApi {
     request: SendPreviewRequest,
     recipient: string | 'clipboard',
     event: 'send' | 'closed' = 'send',
+    annotations: AnnotationLog = session.annotations,
   ): Promise<DeliverySource> {
-    const cursor = session.annotations.nextSeq - 1
+    const cursor = annotations.nextSeq - 1
     const fromCursor = recipient === 'clipboard'
       ? (session.clipboardRecipient.pending?.to.cursor ?? session.clipboardRecipient.cursor)
       : deliveryStart(session.attachments[recipient]!).cursor
-    const slice = annotationDeliverySlice(session.annotations, fromCursor, recipient, new Set(request.excludedEvents ?? []))
+    const slice = annotationDeliverySlice(annotations, fromCursor, recipient, new Set(request.excludedEvents ?? []))
     const start = recipient === 'clipboard'
       ? deliveryStartForClipboard(session.clipboardRecipient)
       : deliveryStart(session.attachments[recipient]!)
@@ -2845,7 +2969,7 @@ export class StrataApplication implements StrataApi {
   }
 
   /** Everything one recipient could receive, independent of the current selection, for the composer's checkboxes. */
-  #sendItems(session: OpenDocumentSession, attachment: Attachment): SendItems {
+  #sendItems(session: OpenDocumentSession, attachment: Attachment, annotations: AnnotationLog = session.annotations, draftIds: ReadonlySet<string> = new Set()): SendItems {
     const start = deliveryStart(attachment)
     const through = currentSegmentIndex(session)
     const changes: SendChangeItem[] = []
@@ -2864,7 +2988,7 @@ export class StrataApplication implements StrataApi {
     }
     const agentName = (agent: string | null | undefined) =>
       agent == null ? {} : { name: session.attachments[agent]?.name ?? agent }
-    const slice = annotationDeliverySlice(session.annotations, start.cursor, attachment.id)
+    const slice = annotationDeliverySlice(annotations, start.cursor, attachment.id)
     const requoted = new Set(slice.resolved.filter((item) => item.resolution === 'requoted').map((item) => item.id))
     const answerItems = new Map(slice.answers.map((answer) => [answer.seq, {
       seq: answer.seq,
@@ -2897,6 +3021,7 @@ export class StrataApplication implements StrataApi {
         ...agentName(annotation.agent),
         text: annotation.text,
         quote: annotation.quote,
+        ...(draftIds.has(annotation.id) ? { draftId: annotation.id } : {}),
       })),
       ...slice.replies.map((reply) => ({
         seq: reply.seq,
@@ -2912,7 +3037,7 @@ export class StrataApplication implements StrataApi {
         annotationKind: resolution.kind,
         text: resolution.resolution,
         ...(resolution.resolution === 'requoted'
-          ? { quote: session.annotations.annotations[resolution.id]?.quote ?? '' }
+          ? { quote: annotations.annotations[resolution.id]?.quote ?? '' }
           : {}),
       })),
       ...slice.edits.map((edit) => ({
@@ -3641,6 +3766,23 @@ function documentView(session: OpenDocumentSession, store: GhostStore, now: numb
       lastCallAt: attachment.lastCallAt > 0 ? attachment.lastCallAt : null
     }
   })
+  const drafts: DraftView[] = session.drafts.drafts.map((draft) => {
+    const location = relocateDraft(draft, session.state.shadow)
+    return {
+      id: draft.id,
+      kind: draft.kind,
+      quote: draft.anchor.quote,
+      prefix: draft.anchor.prefix,
+      suffix: draft.anchor.suffix,
+      text: draft.text,
+      from: location.from,
+      to: location.to,
+      status: location.status,
+      recipients: [...draft.recipients],
+      ...(draft.context ? { context: draft.context } : {}),
+      createdAt: draft.createdAt,
+    }
+  })
   return {
     path: session.path,
     bufferPath: store.pathsForDocument(session.path).buffer,
@@ -3662,6 +3804,7 @@ function documentView(session: OpenDocumentSession, store: GhostStore, now: numb
       authors: save.authors.map((author) => ({ ...author })),
     })),
     annotations: annotationView(session.annotations, session.attachments),
+    drafts,
     attachments,
     canSend:
       session.state.segments.some((segment, index) =>
@@ -3671,7 +3814,8 @@ function documentView(session: OpenDocumentSession, store: GhostStore, now: numb
       )
       || session.annotations.events.some((event) =>
         event.seq > session.lastSentAnnotationSeq && sendableToSomeone(event, Object.keys(session.attachments)),
-      ),
+      )
+      || drafts.length > 0,
     ...(session.recovery ? { recovery: session.recovery } : {}),
     conflicts: session.state.conflicts.map((conflict) => ({
       id: conflict.id,

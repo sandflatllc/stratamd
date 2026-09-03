@@ -22,6 +22,8 @@ export interface AnnotationRange extends AnnotationQuoteAnchor {
   agent?: string | null
   color?: string | null
   text?: string
+  /** Held owner comment. Drafts are display-only and have no annotation actions. */
+  draft?: boolean
 }
 
 export interface AnnotationAdjustment {
@@ -118,14 +120,14 @@ function annotationDecorations(
     const depth = visible.filter((other) => other.id !== range.id && other.from <= from && other.to >= to).length
     const isActive = range.id === active
     const attrs: Record<string, string> = {
-      class: `strata-annotation strata-annotation-${range.kind} strata-annotation-depth-${Math.min(depth, 5)}${range.kind === 'suggestion' ? ' strata-suggestion-deletion' : ''}${isActive ? ' is-active' : ''}${adjusting?.id === range.id ? ' is-adjusting' : ''}${range.id === flashing ? ' is-flashing' : ''}`,
-      'data-annotation-id': range.id,
+      class: `strata-annotation strata-annotation-${range.kind} strata-annotation-depth-${Math.min(depth, 5)}${range.kind === 'suggestion' && !range.draft ? ' strata-suggestion-deletion' : ''}${range.draft ? ' strata-draft' : ''}${isActive ? ' is-active' : ''}${adjusting?.id === range.id ? ' is-adjusting' : ''}${range.id === flashing ? ' is-flashing' : ''}`,
+      [range.draft ? 'data-draft-id' : 'data-annotation-id']: range.id,
       'data-annotation-author': range.author,
     }
     const color = safeColor(range.color)
     const styles: string[] = []
     if (color) styles.push(`--strata-annotation-color: ${color}`)
-    if (range.kind === 'suggestion') {
+    if (range.kind === 'suggestion' && !range.draft) {
       styles.push(
         'text-decoration: line-through',
         'background: color-mix(in srgb, var(--changes-removed) 14%, transparent)',
@@ -139,7 +141,16 @@ function annotationDecorations(
       decorations.push(Decoration.widget(from, () => handleWidget(range, 'start'), { key: `annotation-handle:${range.id}:start`, side: -1, ignoreSelection: true }))
       decorations.push(Decoration.widget(to, () => handleWidget(range, 'end'), { key: `annotation-handle:${range.id}:end`, side: 1, ignoreSelection: true }))
     }
-    if (range.kind === 'suggestion') {
+    if (range.draft) {
+      decorations.push(Decoration.widget(to, () => {
+        const chip = document.createElement('span')
+        chip.className = 'strata-draft-chip'
+        chip.dataset.draftId = range.id
+        chip.contentEditable = 'false'
+        chip.textContent = 'draft'
+        return chip
+      }, { key: `draft-chip:${range.id}`, side: 1 }))
+    } else if (range.kind === 'suggestion') {
       const presentation = suggestionPresentation(range)
       decorations.push(Decoration.widget(to, () => {
         const controls = document.createElement('span')

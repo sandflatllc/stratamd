@@ -89,6 +89,24 @@ export interface AnnotationView {
   replies: ReplyView[]
 }
 
+export type DraftKind = 'comment' | 'question' | 'suggestion'
+
+/** A private held comment. It is not an annotation until Send materializes it. */
+export interface DraftView {
+  id: string
+  kind: DraftKind
+  quote: string
+  prefix: string
+  suffix: string
+  text: string
+  from: number | null
+  to: number | null
+  status: 'attached' | 'orphaned'
+  recipients: string[]
+  context?: AnnotationContext
+  createdAt: number
+}
+
 export interface AttachmentView {
   agent: AgentIdentity
   attachedAt: number
@@ -231,6 +249,7 @@ export interface DocumentView {
   /** Save history summaries, oldest first (PRD §6.7); hunks come from saveRound on demand. */
   saves: SaveRoundView[]
   annotations: AnnotationView[]
+  drafts: DraftView[]
   attachments: AttachmentView[]
   canSend: boolean
   recovery?: {
@@ -365,6 +384,8 @@ export interface SendPreviewRequest {
   excludedHunks?: string[]
   /** Annotation event seqs the user unchecked. */
   excludedEvents?: number[]
+  /** Held comments to materialize into annotations for this Send. */
+  draftIds?: string[]
   token?: SendDocumentToken
 }
 
@@ -389,12 +410,24 @@ export interface SendEventItem {
   name?: string
   text: string
   quote?: string
+  /** Present only while this held comment is previewed in Your comments. */
+  draftId?: string
 }
 
 export type CreateAnnotationRequest =
   | { kind: 'comment' | 'question' | 'suggestion'; quote: string; text: string; from: number; to: number; context?: AnnotationContext }
   | { kind: 'decision'; quote: string; text: string; from: number; to: number; anchor: 'quote' | 'heading'; options: string[] }
   | { kind: 'decision'; quote: ''; text: string; from: 0; to: 0; anchor: 'document'; options: string[] }
+
+export interface CreateDraftRequest {
+  kind: DraftKind
+  quote: string
+  text: string
+  from: number
+  to: number
+  recipients: string[]
+  context?: AnnotationContext
+}
 
 export interface SendItems {
   changes: SendChangeItem[]
@@ -483,6 +516,9 @@ export interface StrataApi {
   /** The read-only hunks of one save round, computed on demand (PRD §6.7). */
   saveRound(path: string, index: number): Promise<{ hunks: RoundHunkView[] }>
   addAnnotation(path: string, annotation: CreateAnnotationRequest): Promise<string>
+  holdDraft(path: string, draft: CreateDraftRequest): Promise<string>
+  discardDraft(path: string, draftId: string): Promise<void>
+  quickSend(path: string, draft: CreateDraftRequest): Promise<string[]>
   requoteAnnotation(path: string, annotationId: string, range: { quote: string; from: number; to: number }): Promise<void>
   reply(path: string, annotationId: string, text: string): Promise<void>
   resolveAnnotation(path: string, annotationId: string): Promise<void>

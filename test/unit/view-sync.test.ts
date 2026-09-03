@@ -21,6 +21,7 @@ function makeDocument(content: string, overrides: Partial<DocumentView> = {}): D
     pendingHunks: [],
     saves: [],
     annotations: [],
+    drafts: [],
     attachments: [],
     canSend: false,
     conflicts: [],

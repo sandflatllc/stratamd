@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
-import type { AnnotationContext, AnnotationKind, AnnotationView, BufferOrigin, DocumentView, HunkView, PanelSize, RedoResult, SpellingContext, TableViewState, UndoResult, WalkthroughAction, WalkthroughState } from '../../shared/contracts'
+import type { AnnotationContext, AnnotationKind, AnnotationView, BufferOrigin, CreateDraftRequest, DocumentView, HunkView, PanelSize, RedoResult, SpellingContext, TableViewState, UndoResult, WalkthroughAction, WalkthroughState } from '../../shared/contracts'
 import type { EditorSelection, RendererEditorFactory, RendererEditorHandle } from '../editorAdapter'
 import { bannerFor, currentAnnotation } from '../model'
 import { NO_MATCHES, type FindResult } from '../../editor/find'
@@ -35,6 +35,8 @@ interface EditorPaneProps {
   onRevertHunk(hunk: HunkView): void
   onAddAnnotation(kind: Exclude<AnnotationKind, 'decision'>, quote: string, text: string, from: number, to: number, context?: AnnotationContext): void
   onAddDecision(quote: string, prompt: string, options: string[], from: number, to: number): void
+  onHoldDraft(draft: CreateDraftRequest): void
+  onQuickSend(draft: CreateDraftRequest): void
   onTableView(state: TableViewState): void
   onAdjustAnnotation(id: string, quote: string, from: number, to: number): void
   onAccept(id: string): void
@@ -52,6 +54,10 @@ interface EditorPaneProps {
 
 /** Scroll offsets per open document, so returning to a tab lands where the user left it. */
 const savedScroll = new Map<string, { pane: number; source: number }>()
+
+function selectionKey(selection: Pick<EditorSelection, 'from' | 'to' | 'quote'>): string {
+  return `${selection.from}:${selection.to}:${selection.quote}`
+}
 
 /** Drop scroll offsets for documents that are no longer open. */
 export function forgetClosedScroll(openPaths: ReadonlySet<string>): void {
@@ -99,7 +105,7 @@ export function EditorPane(props: EditorPaneProps) {
   useEffect(() => { setFind({ open: false, query: '', focusToken: 0 }); setFindResult(NO_MATCHES) }, [document.path])
   const command = (next: EditorCommand) => editor.current?.command?.(next)
   const dismissComposer = () => {
-    dismissedSelection.current = selection ? `${selection.from}:${selection.to}` : null
+    dismissedSelection.current = selection ? selectionKey(selection) : null
     setSelection(null)
     setSpelling(null)
     window.requestAnimationFrame(() => {
@@ -198,12 +204,13 @@ export function EditorPane(props: EditorPaneProps) {
             readOnly={document.readOnly}
             pendingHunks={document.pendingHunks}
             annotations={document.annotations}
+            drafts={document.drafts}
             tableViews={document.reading.tables}
             historyStep={document.historyStep}
             onChange={props.onBufferChange}
             onSelection={(next) => {
-              const selectionKey = next ? `${next.from}:${next.to}` : null
-              if (!next?.explicit && selectionKey !== null && selectionKey === dismissedSelection.current) return
+              const nextSelectionKey = next ? selectionKey(next) : null
+              if (!next?.explicit && nextSelectionKey !== null && nextSelectionKey === dismissedSelection.current) return
               dismissedSelection.current = null
               if (!next || !scroll.current) { setSelection(next); return }
               const bounds = scroll.current.getBoundingClientRect()
@@ -243,6 +250,19 @@ export function EditorPane(props: EditorPaneProps) {
           zoom={props.zoom}
           onSize={props.onComposerSize}
           onDismiss={dismissComposer}
+          attachments={document.attachments}
+          leadAgentId={document.leadAgentId}
+          activeConversationId={document.attachments[0]?.agent.id ?? null}
+          onHold={(kind, text, recipients) => {
+            if (!selection) return
+            props.onHoldDraft({ kind, text, recipients, quote: selection.quote, from: selection.from, to: selection.to, ...(selection.annotationContext ? { context: selection.annotationContext } : {}) })
+            dismissComposer()
+          }}
+          onSend={(kind, text, recipients) => {
+            if (!selection) return
+            props.onQuickSend({ kind, text, recipients, quote: selection.quote, from: selection.from, to: selection.to, ...(selection.annotationContext ? { context: selection.annotationContext } : {}) })
+            dismissComposer()
+          }}
           onSubmit={(kind, text, options) => {
             if (!selection) return
             if (kind === 'decision') props.onAddDecision(selection.quote, text, options ?? [], selection.from, selection.to)

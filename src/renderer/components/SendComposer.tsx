@@ -1,12 +1,15 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import type { AttachmentView, PanelSize, SendChangeItem, SendDocumentToken, SendEventItem, SendItems, SendPreview, SendPreviewRequest } from '../../shared/contracts'
-import { AGENT_COLORS, previewTabIndex } from '../model'
+import type { AttachmentView, DraftView, PanelSize, SendChangeItem, SendDocumentToken, SendEventItem, SendItems, SendPreview, SendPreviewRequest } from '../../shared/contracts'
+import { AGENT_COLORS, defaultRecipientIds, previewTabIndex } from '../model'
 import { InlineMarkdown } from '../inlineMarkdown'
 import { useDialogFocus } from '../useDialogFocus'
 import { hasPrimaryModifier, primaryModifierLabel } from '../../shared/primary-modifier'
 
 interface SendComposerProps {
   attachments: AttachmentView[]
+  drafts: DraftView[]
+  leadAgentId: string | null
+  activeConversationId: string | null
   /** Keys the draft: note and item choices survive closing the composer while the app runs. */
   documentPath: string
   /** Persisted size; height -1 keeps the default content sizing. */
@@ -95,10 +98,12 @@ export function forgetComposerDrafts(openPaths: ReadonlySet<string>): void {
   for (const path of composerDrafts.keys()) if (!openPaths.has(path)) composerDrafts.delete(path)
 }
 
-/** The recipients a draft still applies to; everyone when it never chose. */
-export function draftRecipients(draft: ComposerDraft, attachments: readonly AttachmentView[]): string[] {
+/** The one approved default recipient for this composer opening. */
+export function draftRecipients(draft: ComposerDraft, attachments: readonly AttachmentView[], leadAgentId: string | null = null, activeConversationId: string | null = null): string[] {
   const ids = attachments.map((item) => item.agent.id)
-  if (draft.selected === null) return ids
+  const preferred = defaultRecipientIds(attachments, leadAgentId, activeConversationId)
+  if (preferred.length > 0) return preferred
+  if (draft.selected === null) return defaultRecipientIds(attachments, leadAgentId, activeConversationId)
   return ids.filter((id) => draft.selected!.includes(id))
 }
 
@@ -119,6 +124,7 @@ export interface PreviewSelection {
   uncheckedUser: ReadonlySet<string>
   uncheckedEvents: ReadonlySet<number>
   externalKeys: readonly string[]
+  draftIds?: readonly string[]
   /** Stored preview state may carry a token, but preview requests deliberately ignore it. */
   token?: SendDocumentToken | null
 }
@@ -134,6 +140,7 @@ export function buildPreviewRequest(selection: PreviewSelection): SendPreviewReq
       ...(includeExternal ? selection.externalKeys.filter((key) => !selection.checkedExternal.has(key)) : []),
     ],
     excludedEvents: [...selection.uncheckedEvents],
+    ...(selection.draftIds ? { draftIds: [...selection.draftIds] } : {}),
   }
 }
 
@@ -232,6 +239,9 @@ interface SendItemListProps {
   dependentExternalHunks: number
   onToggleChange(item: SendChangeItem): void
   onToggleEvent(seq: number): void
+  drafts: readonly DraftView[]
+  selectedDrafts: ReadonlySet<string>
+  onToggleDraft(id: string): void
 }
 
 const SendItemList = memo(function SendItemList({
@@ -242,6 +252,9 @@ const SendItemList = memo(function SendItemList({
   dependentExternalHunks,
   onToggleChange,
   onToggleEvent,
+  drafts,
+  selectedDrafts,
+  onToggleDraft,
 }: SendItemListProps) {
   const renders = useRef(0)
   renders.current += 1
@@ -262,6 +275,7 @@ const SendItemList = memo(function SendItemList({
       </span>
     </label>
   )
+  const visibleEvents = items.events.filter((item) => item.draftId === undefined)
   const eventRow = (item: SendEventItem) => (
     <label className="send-item send-item-event" key={`${item.kind}:${item.seq}`} data-checked={!uncheckedEvents.has(item.seq)}>
       <input type="checkbox" checked={!uncheckedEvents.has(item.seq)} onChange={() => onToggleEvent(item.seq)} />
@@ -275,13 +289,20 @@ const SendItemList = memo(function SendItemList({
 
   return (
     <div className="send-items" data-render={renders.current}>
+      {drafts.length > 0 && <>
+        <h3 className="send-group-heading">Your comments · {drafts.length}</h3>
+        {drafts.map((draft) => <label className="send-item send-item-draft" key={draft.id} data-checked={selectedDrafts.has(draft.id)}>
+          <input type="checkbox" checked={selectedDrafts.has(draft.id)} onChange={() => onToggleDraft(draft.id)} />
+          <span className="send-item-body"><span className="send-item-meta"><strong>you</strong><small>{draft.kind} · draft</small></span><blockquote><InlineMarkdown text={draft.quote} /></blockquote><span className="send-item-text"><InlineMarkdown text={draft.text} /></span></span>
+        </label>)}
+      </>}
       {userChanges.length > 0 && <>
         <h3 className="send-group-heading">Your changes · {userChanges.length}</h3>
         {userChanges.map(changeRow)}
       </>}
-      {items.events.length > 0 && <>
-        <h3 className="send-group-heading">Annotations · {items.events.length}</h3>
-        {items.events.map(eventRow)}
+      {visibleEvents.length > 0 && <>
+        <h3 className="send-group-heading">Annotations · {visibleEvents.length}</h3>
+        {visibleEvents.map(eventRow)}
       </>}
       {externalChanges.length > 0 && <>
         <h3 className="send-group-heading">Changes not made by you · {externalChanges.length}</h3>
@@ -292,12 +313,13 @@ const SendItemList = memo(function SendItemList({
   )
 })
 
-export function SendComposer({ attachments, documentPath, size, zoom, onSize, onCancel, onPreview, onSend }: SendComposerProps) {
+export function SendComposer({ attachments, drafts, leadAgentId, activeConversationId, documentPath, size, zoom, onSize, onCancel, onPreview, onSend }: SendComposerProps) {
   const dialogRef = useRef<HTMLElement>(null)
   const previewId = useId()
   const draft = readComposerDraft(documentPath)
   const [note, setNote] = useState(draft.note)
-  const [selected, setSelected] = useState(() => draftRecipients(draft, attachments))
+  const [selected, setSelected] = useState(() => draftRecipients(draft, attachments, leadAgentId, activeConversationId))
+  const [selectedDrafts, setSelectedDrafts] = useState<ReadonlySet<string>>(() => new Set(drafts.map((item) => item.id)))
   const [selectionTouched, setSelectionTouched] = useState(draft.selected !== null)
   const [checkedExternal, setCheckedExternal] = useState<ReadonlySet<string>>(() => new Set(draft.checkedExternal))
   const [uncheckedUser, setUncheckedUser] = useState<ReadonlySet<string>>(() => new Set(draft.uncheckedUser))
@@ -331,7 +353,8 @@ export function SendComposer({ attachments, documentPath, size, zoom, onSize, on
       uncheckedUser,
       uncheckedEvents,
       externalKeys: previewExternalKeys,
-    }), [checkedExternal, note, previewExternalKeys, selected, uncheckedEvents, uncheckedUser])
+      draftIds: drafts.filter((item) => selectedDrafts.has(item.id)).map((item) => item.id),
+    }), [checkedExternal, drafts, note, previewExternalKeys, selected, selectedDrafts, uncheckedEvents, uncheckedUser])
   const requestNeedsStart = startedRequest.current !== request || startedRefresh.current !== refresh
   const pending = requestNeedsStart || previewState.pending
   const submit = useCallback(() => setSend((state) => nextSendState(state, { type: 'submit', request })), [request])
@@ -432,6 +455,7 @@ export function SendComposer({ attachments, documentPath, size, zoom, onSize, on
   const toggleEvent = useCallback((seq: number) => {
     setUncheckedEvents((previous) => toggled(previous, seq))
   }, [])
+  const toggleDraft = useCallback((id: string) => setSelectedDrafts((previous) => toggled(previous, id)), [])
 
   const previews = previewState.previews
   const preview = previews[active]
@@ -447,10 +471,10 @@ export function SendComposer({ attachments, documentPath, size, zoom, onSize, on
   const itemsView = () => {
     if (preview === undefined) return <div className="send-empty">Select at least one recipient.</div>
     if (preview.resync === true) return <div className="send-empty">Gets the whole document to catch up.</div>
-    if (preview.items.changes.length + preview.items.events.length === 0) {
+    if (preview.items.changes.length + preview.items.events.length === 0 && drafts.length === 0) {
       return <div className="send-empty">Nothing new for this agent.</div>
     }
-    return <SendItemList items={preview.items} checkedExternal={checkedExternal} uncheckedUser={uncheckedUser} uncheckedEvents={uncheckedEvents} dependentExternalHunks={dependentCount} onToggleChange={toggleChange} onToggleEvent={toggleEvent} />
+    return <SendItemList items={preview.items} drafts={drafts} selectedDrafts={selectedDrafts} checkedExternal={checkedExternal} uncheckedUser={uncheckedUser} uncheckedEvents={uncheckedEvents} dependentExternalHunks={dependentCount} onToggleChange={toggleChange} onToggleEvent={toggleEvent} onToggleDraft={toggleDraft} />
   }
 
   return (

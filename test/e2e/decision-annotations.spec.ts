@@ -104,7 +104,7 @@ test('keyboard passage and rail document decisions expose explicit anchors', asy
     await selectTextInVisualEditor(page, 'Choose the release gate.')
     await page.keyboard.press('d')
     const composer = page.locator('.annotation-composer')
-    await expect(composer.locator('.annotation-kind')).toHaveText('decision')
+    await expect(composer.getByRole('radio', { name: 'Decision' })).toHaveAttribute('aria-checked', 'true')
     await composer.getByRole('textbox', { name: 'Decision prompt' }).fill('How should this passage change?')
     await composer.getByRole('textbox', { name: 'Choice 1' }).fill('Keep it')
     await composer.getByRole('textbox', { name: 'Choice 2' }).fill('Rewrite it')

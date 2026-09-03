@@ -321,7 +321,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     await expect(menu.getByRole('menuitem', { name: /Suggest/i })).toBeDisabled()
     await menu.getByRole('menuitem', { name: /Comment/i }).click()
     await value.page!.getByRole('textbox', { name: /Annotation text/i }).fill('Cross-block note')
-    await value.page!.getByRole('button', { name: /^Add$/i }).click()
+    await value.page!.evaluate(() => (document.querySelector('.annotation-composer') as HTMLFormElement).requestSubmit())
 
     await expect.poll(async () => (await value.state()).annotations?.find((item) => item.text === 'Cross-block note')?.quote)
       .toBe('tail.\n\nBeta')
@@ -482,7 +482,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     const accepted = '# Accept\n\nUse the accepted phrase here.\n'
     await value.waitForBuffer(accepted)
     expect(await readFile(value.file, 'utf8')).toBe(original)
-    await send(value.page!)
+    await send(value.page!, { recipientNames: ['Agent A', 'Agent B'] })
 
     const authorDelivery = await value.attach('agent-a')
     expect(authorDelivery.resolved).toContainEqual(expect.objectContaining({ id: suggestion!.id, resolution: 'accepted' }))

@@ -102,6 +102,68 @@ async function trackedDescriptors(path: string): Promise<string[]> {
 }
 
 describe('StrataApplication', () => {
+  it('quick sends one comment while held drafts stay private and durable', async () => {
+    const source = '# Plan\n\nFirst sentence. Second sentence. Third sentence.\n'
+    const value = await fixture(source)
+    await value.app.openDocument(value.path)
+    for (const [agent, name] of [['ag_active', 'Active'], ['ag_other', 'Other']] as const) {
+      await command(value.app, 'attach', { file: value.path, agent, name, timeout: 0 })
+    }
+    const range = (quote: string) => ({ quote, from: source.indexOf(quote), to: source.indexOf(quote) + quote.length })
+    const first = await value.app.holdDraft(value.path, { kind: 'comment', text: 'Held first.', recipients: ['ag_active'], ...range('First sentence') })
+    const second = await value.app.holdDraft(value.path, { kind: 'question', text: 'Held second?', recipients: ['ag_active'], ...range('Second sentence') })
+    const deliveries = await value.app.quickSend(value.path, { kind: 'suggestion', text: 'Third line.', recipients: ['ag_active'], ...range('Third sentence') })
+
+    expect(deliveries).toHaveLength(1)
+    const document = (await value.app.getState()).activeDocument!
+    expect(document.drafts.map((draft) => draft.id)).toEqual([first, second])
+    expect(document.annotations).toHaveLength(1)
+    expect(document.content).toBe(source)
+    const stored = await storedApplication(value.store, value.path)
+    const payload = stored.attachments.ag_active!.deliveries[0]!.payload
+    expect(payload.annotations).toHaveLength(1)
+    expect(payload.annotations![0]).toMatchObject({ text: 'Third line.', quote: 'Third sentence' })
+    expect(JSON.stringify(payload)).not.toContain('Held first')
+    expect(JSON.stringify(payload)).not.toContain('Held second')
+    expect(JSON.stringify(await command(value.app, 'state', { file: value.path }))).not.toContain('Held first')
+    expect(JSON.parse(await readFile(value.store.pathsForDocument(value.path).drafts, 'utf8')).drafts).toHaveLength(2)
+  })
+
+  it('materializes only checked drafts and offers the unchecked draft again', async () => {
+    const source = '# Plan\n\nAlpha. Beta.\n'
+    const value = await fixture(source)
+    await value.app.openDocument(value.path)
+    await command(value.app, 'attach', { file: value.path, agent: 'ag_1', name: 'Agent', timeout: 0 })
+    const first = await value.app.holdDraft(value.path, { kind: 'comment', text: 'Send alpha.', recipients: ['ag_1'], quote: 'Alpha', from: source.indexOf('Alpha'), to: source.indexOf('Alpha') + 5 })
+    const second = await value.app.holdDraft(value.path, { kind: 'comment', text: 'Keep beta.', recipients: ['ag_1'], quote: 'Beta', from: source.indexOf('Beta'), to: source.indexOf('Beta') + 4 })
+    const request = { recipients: ['ag_1'], note: '', includeExternal: false, draftIds: [first] }
+    const [preview] = await value.app.previewSend(value.path, request)
+    expect(preview?.text).toContain('Send alpha.')
+    expect(preview?.text).not.toContain('Keep beta.')
+    expect(preview?.items.events.find((event) => event.draftId === first)).toBeTruthy()
+    await value.app.send(value.path, { ...request, token: preview!.token })
+    const document = (await value.app.getState()).activeDocument!
+    expect(document.drafts.map((draft) => draft.id)).toEqual([second])
+    expect(document.annotations.map((annotation) => annotation.id)).toEqual([first])
+    await value.app.closeDocument(value.path)
+    await value.app.openDocument(value.path)
+    expect((await value.app.getState()).activeDocument?.drafts.map((draft) => draft.id)).toEqual([second])
+  })
+
+  it('keeps drafts when malformed reading state is discarded', async () => {
+    const source = '# Plan\n\nKeep this passage.\n'
+    const value = await fixture(source)
+    await value.app.openDocument(value.path)
+    const id = await value.app.holdDraft(value.path, {
+      kind: 'comment', text: 'Private note.', recipients: [], quote: 'Keep this passage',
+      from: source.indexOf('Keep this passage'), to: source.indexOf('Keep this passage') + 'Keep this passage'.length,
+    })
+    await value.app.closeDocument(value.path)
+    await writeFile(value.store.pathsForDocument(value.path).reading, '{malformed')
+    await value.app.openDocument(value.path)
+    expect((await value.app.getState()).activeDocument?.drafts.map((draft) => draft.id)).toEqual([id])
+  })
+
   it('keeps private shell tab choices in reading.json across close and restart without touching meta.json', async () => {
     const value = await fixture()
     await value.app.openDocument(value.path)

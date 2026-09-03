@@ -354,6 +354,8 @@ kbd { color: var(--muted); font-family: var(--font-code), "JetBrains Mono", mono
 .strata-source-review-actions del { background: color-mix(in srgb, var(--changes-removed) 14%, transparent); color: var(--changes-removed-tint); }
 .strata-source-review-actions ins { background: color-mix(in srgb, var(--changes-added) 22%, transparent); color: var(--changes-added-tint); font-weight: 700; text-decoration: none; }
 .strata-source-suggestion-action .strata-review-author { background: var(--strata-annotation-color, var(--controls-primary)); }
+.strata-source-draft { border-bottom: 2px dashed var(--people-you); background: color-mix(in srgb, var(--people-you) 10%, transparent); }
+.strata-source-draft::after { margin-left: 4px; border-radius: 999px; padding: 1px 5px; background: color-mix(in srgb, var(--people-you) 18%, transparent); color: var(--people-you); font-family: var(--font-interface), sans-serif; font-size: 10px; font-weight: 800; content: "draft"; }
 .strata-source-review-actions button { border-radius: 999px; padding: 2px 12px; font-size: calc(12px * var(--zoom, 1)); font-weight: 800; cursor: pointer; transition: all .18s cubic-bezier(.34,1.56,.64,1); }
 .strata-source-review-actions button:first-of-type { border: 0; background: var(--controls-positive); color: var(--controls-positive-text); }
 .strata-source-review-actions button:last-of-type { border: 2px solid var(--controls-danger); padding-block: 0; background: transparent; color: var(--controls-danger); }
@@ -385,6 +387,8 @@ kbd { color: var(--muted); font-family: var(--font-code), "JetBrains Mono", mono
 .strata-annotation-question { border-bottom: 3px solid var(--strata-annotation-color, var(--controls-warning)); background: color-mix(in srgb, var(--strata-annotation-color, var(--controls-warning)) 16%, transparent); }
 .strata-annotation-comment { border-bottom: 3px solid var(--strata-annotation-color, var(--people-you)); background: color-mix(in srgb, var(--strata-annotation-color, var(--people-you)) 13%, transparent); }
 .strata-annotation-suggestion { border-bottom: 3px solid var(--strata-annotation-color, var(--controls-primary)); background: color-mix(in srgb, var(--strata-annotation-color, var(--controls-primary)) 16%, transparent); }
+.strata-annotation.strata-draft { border-bottom: 2px dashed var(--people-you); background: color-mix(in srgb, var(--people-you) 10%, transparent); cursor: default; text-decoration: none; color: inherit; }
+.strata-draft-chip { display: inline-block; margin-left: 4px; border-radius: 999px; padding: 1px 6px; background: color-mix(in srgb, var(--people-you) 18%, transparent); color: var(--people-you); font-family: var(--font-interface), sans-serif; font-size: calc(10px * var(--zoom, 1)); font-weight: 800; line-height: 1.4; vertical-align: .12em; }
 .strata-annotation.is-active { outline: 2px solid color-mix(in srgb, var(--strata-annotation-color, var(--people-you)) 70%, transparent); outline-offset: 1px; }
 .strata-annotation.is-adjusting { filter: brightness(1.2); }
 .strata-prosemirror.is-adjusting-annotation, .strata-prosemirror.is-adjusting-annotation * { cursor: col-resize !important; user-select: none; }
@@ -486,13 +490,25 @@ kbd { color: var(--muted); font-family: var(--font-code), "JetBrains Mono", mono
 .annotation-composer { display: flex; width: 330px; flex-direction: column; border: 1px solid var(--line); border-radius: 18px; padding: 15px; background: var(--card); box-shadow: 0 20px 50px -14px color-mix(in srgb, var(--surfaces-window) 70%, transparent); animation: pop-in .28s cubic-bezier(.34,1.56,.64,1); }
 .composer-resize { position: absolute; right: 2px; bottom: 2px; width: 18px; height: 18px; border: 0; border-radius: 6px; background: linear-gradient(135deg, transparent 50%, var(--line) 50%); cursor: nwse-resize; }
 .composer-resize:focus-visible { outline: 2px solid var(--controls-focus); }
-.annotation-kind { margin-bottom: 6px; color: var(--controls-primary); font-size: calc(13px * var(--zoom, 1)); font-weight: 800; text-transform: capitalize; }
+.annotation-kinds { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+.annotation-kinds button { border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; background: transparent; color: var(--dim); font-size: calc(12px * var(--zoom, 1)); font-weight: 800; cursor: pointer; }
+.annotation-kinds button[aria-checked="true"] { border-color: var(--people-you); background: color-mix(in srgb, var(--people-you) 15%, transparent); color: var(--text); }
+.annotation-kinds button:disabled { opacity: .4; cursor: not-allowed; }
 .annotation-composer blockquote { margin: 0 0 10px; border-left: 4px solid var(--controls-primary); border-radius: 0 9px 9px 0; padding: 6px 11px; background: var(--card-2); color: var(--dim); font-size: calc(13px * var(--zoom, 1)); font-style: italic; font-weight: 600; }
 .annotation-context { margin: -2px 0 10px; color: var(--interface-muted); font-size: calc(11px * var(--zoom, 1)); font-weight: 800; }
 .annotation-composer textarea, .send-composer > textarea { width: 100%; resize: none; border: 2px solid var(--line); border-radius: 12px; outline: none; padding: 9px 12px; background: var(--surfaces-field); color: var(--text); font-size: calc(14px * var(--zoom, 1)); font-weight: 500; }
 .annotation-composer textarea:focus, .send-composer textarea:focus { border-color: var(--controls-primary); }
 /* The writing modal's body text tracks the editor's body size (PRD paragraph 6.9). */
 .annotation-composer textarea { min-height: 64px; flex: 1; font-size: calc(21px * var(--zoom, 1)); }
+.composer-recipients { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; border: 0; padding: 0; }
+.composer-recipients legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+.composer-recipients label { display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 4px 9px; color: var(--dim); font-size: calc(11px * var(--zoom, 1)); font-weight: 800; cursor: pointer; }
+.composer-recipients label[data-selected="true"] { border-color: var(--recipient-color); color: var(--text); }
+.composer-recipients input { position: absolute; opacity: 0; }
+.composer-recipients i { width: 7px; height: 7px; border-radius: 50%; background: var(--recipient-color); opacity: .45; }
+.composer-recipients label[data-selected="true"] i { opacity: 1; }
+.composer-hint { margin-top: 7px; color: var(--muted); font-size: calc(10px * var(--zoom, 1)); font-weight: 700; }
+.composer-actions button:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
 .composer-actions, .modal-actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 10px; }
 .quiet-button, .primary-button { border: 0; border-radius: 999px; padding: 6px 12px; background: transparent; color: var(--dim); font-size: calc(13px * var(--zoom, 1)); font-weight: 700; cursor: pointer; }
 .quiet-button:hover { background: var(--card-2); }
@@ -596,6 +612,7 @@ kbd { color: var(--muted); font-family: var(--font-code), "JetBrains Mono", mono
 .send-item { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 8px 11px; background: var(--card); cursor: pointer; }
 .send-item:hover { border-color: color-mix(in srgb, var(--controls-primary) 45%, var(--line)); }
 .send-item[data-checked="false"] { opacity: .55; }
+.send-item-draft { border-style: dashed; border-color: color-mix(in srgb, var(--people-you) 58%, var(--line)); }
 .send-item > input { margin-top: 3px; accent-color: var(--controls-primary); }
 .send-item-body { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; font-size: calc(13px * var(--zoom, 1)); }
 .send-item-meta { display: flex; align-items: baseline; gap: 7px; }
@@ -905,7 +922,8 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .outline-include[data-included="true"] { background: color-mix(in srgb, var(--controls-primary) 78%, var(--surfaces-field)); color: var(--controls-primary-text); }
 .outline-include:hover, .outline-include:focus-visible { opacity: 1; transform: scale(1.08); }
 .outline-row { display: grid; min-width: 0; flex: 1; grid-template-columns: minmax(0, 1fr) 18px; align-items: center; gap: 7px; margin: 2px 0; border: 1px solid transparent; border-radius: 11px; padding: 7px 8px; background: transparent; color: var(--muted); text-align: left; }
-.outline-row-main { display: grid; min-width: 0; grid-template-columns: 25px minmax(0, 1fr); align-items: center; gap: 7px; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.outline-row-main { display: grid; min-width: 0; grid-template-columns: 25px minmax(0, 1fr) auto; align-items: center; gap: 7px; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.outline-drafts { display: inline-grid; min-width: 17px; height: 17px; place-items: center; border: 1px dashed var(--people-you); border-radius: 999px; color: var(--people-you); font-size: calc(9px * var(--zoom, 1)); font-weight: 900; }
 .outline-row:hover, .outline-row:focus-within { background: var(--surfaces-field); color: var(--dim); }
 .outline-row.active { border-color: color-mix(in srgb, var(--controls-primary) 43%, transparent); background: linear-gradient(100deg, color-mix(in srgb, var(--controls-primary) 20%, transparent), color-mix(in srgb, var(--surfaces-field) 42%, transparent)); color: var(--text); }
 .outline-num { color: var(--interface-muted); font-family: var(--mono); font-size: calc(9px * var(--zoom, 1)); font-weight: 500; }

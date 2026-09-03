@@ -6,6 +6,7 @@ import type { FindResult } from '../editor/find'
 import type { AnnotationContext, AnnotationKind, AnnotationView, BufferOrigin, HeadingReference, HunkView, RedoResult, TableViewState, UndoResult } from '../shared/contracts'
 import type { EditorCommand } from './components/Toolbar'
 import type { EditorHeading } from '../editor/headings'
+import type { AnnotationRange } from '../editor/annotations'
 
 export interface EditorSelection {
   quote: string
@@ -27,7 +28,7 @@ export interface RendererEditorOptions {
   sourceMode: boolean
   readOnly: boolean
   pendingHunks: HunkView[]
-  annotations: AnnotationView[]
+  annotations: (AnnotationView | AnnotationRange)[]
   tableViews: TableViewState[]
   focusedTable?: string | null
   visualCodeSessions?: VisualCodeBlockSessions
@@ -62,7 +63,7 @@ export interface RendererEditorHandle {
   setHistoryStep(step: number): void
   exportState(): EditorRestoreState
   setReviewState(hunks: HunkView[]): void
-  setAnnotations(annotations: AnnotationView[]): void
+  setAnnotations(annotations: (AnnotationView | AnnotationRange)[]): void
   setTableViews(states: TableViewState[]): void
   setFoldedHeadings(headings: readonly HeadingReference[]): void
   setReadOnly?(readOnly: boolean): void

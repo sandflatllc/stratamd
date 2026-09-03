@@ -179,7 +179,7 @@ test.describe('undo and redo timeline', () => {
     await expect(menu).toBeVisible()
     await menu.getByRole('menuitem', { name: /Comment/i }).click()
     await page.getByRole('textbox', { name: /Annotation text/i }).fill('Keep this.')
-    await page.getByRole('button', { name: /^Add$/i }).click()
+    await page.evaluate(() => (document.querySelector('.annotation-composer') as HTMLFormElement).requestSubmit())
     const hasComment = async () => (await value.state()).annotations?.some((item) => item.text === 'Keep this.') === true
     await expect.poll(hasComment).toBe(true)
 

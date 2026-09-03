@@ -53,6 +53,7 @@ test('a reverted agent edit reaches its author as a verdict and others as a user
     await revert.click()
 
     const dialog = await openComposer(page)
+    await dialog.getByRole('checkbox', { name: 'Agent B' }).check()
     await dialog.getByRole('tab', { name: 'Agent A' }).click()
     // The author sees its verdict, never its own change as an item.
     await expect(dialog.locator('.send-item-event')).toHaveCount(1)
@@ -135,7 +136,7 @@ test('a review-heavy composer puts the owner comment first and keeps its rows an
     await annotate.getByRole('menuitem', { name: /Comment/i }).click()
     const annotationComposer = page.locator('.annotation-composer')
     await annotationComposer.getByRole('textbox', { name: /Annotation text/i }).fill('Please review this note.')
-    await annotationComposer.getByRole('button', { name: /^Add$/ }).click()
+    await annotationComposer.getByRole('button', { name: /^Hold$/ }).click()
     await expect(annotationComposer).toBeHidden()
 
     const dialog = await openComposer(page)
@@ -143,13 +144,13 @@ test('a review-heavy composer puts the owner comment first and keeps its rows an
     await expect(body).toHaveAttribute('aria-busy', 'false')
     const headings = dialog.locator('.send-group-heading')
     await expect(headings).toHaveCount(2)
-    await expect(headings.nth(0)).toContainText('Annotations')
+    await expect(headings.nth(0)).toContainText('Your comments')
     await expect(headings.nth(1)).toContainText('Changes not made by you')
 
     const externalRows = dialog.locator('.send-item[data-author="external"]')
     await expect(externalRows).toHaveCount(45)
     expect(await externalRows.locator('input').evaluateAll((inputs) => inputs.every((input) => !(input as HTMLInputElement).checked))).toBe(true)
-    const comment = dialog.locator('.send-item-event').filter({ hasText: 'Please review this note.' })
+    const comment = dialog.locator('.send-item-draft').filter({ hasText: 'Please review this note.' })
     await expect(comment).toHaveCount(1)
     await expect(comment.locator('input')).toBeChecked()
 

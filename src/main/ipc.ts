@@ -17,6 +17,7 @@ const sendRequestSchema = z.object({
   includeExternal: z.boolean(),
   excludedHunks: z.array(z.string().max(256)).max(4_096).optional(),
   excludedEvents: z.array(z.number().int().nonnegative()).max(4_096).optional(),
+  draftIds: z.array(idSchema).max(4_096).optional(),
   token: z.object({
     snapshotId: z.string().max(128),
     segmentIndex: z.number().int().min(-1),
@@ -77,6 +78,15 @@ const annotationContextSchema = z.union([
     pin: z.number().int().positive().max(1_000_000),
   }).strict(),
 ])
+const draftRequestSchema = z.object({
+  kind: z.enum(['comment', 'question', 'suggestion']),
+  quote: z.string().min(1),
+  text: textSchema.refine((value) => value.trim().length > 0),
+  from: z.number().int().nonnegative(),
+  to: z.number().int().nonnegative(),
+  recipients: z.array(idSchema).max(128),
+  context: annotationContextSchema.optional(),
+}).strict()
 const settingsSchema = z.object({
   animatedBackground: z.boolean().optional(),
   attachmentIdleHours: z.number().positive().finite().optional(),
@@ -159,6 +169,9 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
         .refine((values) => new Set(values.map((value) => value.trim())).size === values.length),
     }).strict(),
   ])]),
+  [IPC.holdDraft]: z.tuple([pathSchema, draftRequestSchema]),
+  [IPC.discardDraft]: z.tuple([pathSchema, idSchema]),
+  [IPC.quickSend]: z.tuple([pathSchema, draftRequestSchema]),
   [IPC.requoteAnnotation]: z.tuple([pathSchema, idSchema, z.object({
     quote: z.string().min(1),
     from: z.number().int().nonnegative(),
@@ -296,6 +309,9 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.markReviewed]: (path: string) => options.api.markReviewed(path),
     [IPC.saveRound]: (path: string, index: number) => options.api.saveRound(path, index),
     [IPC.addAnnotation]: (path: string, annotation: Parameters<StrataApi['addAnnotation']>[1]) => options.api.addAnnotation(path, annotation),
+    [IPC.holdDraft]: (path: string, draft: Parameters<StrataApi['holdDraft']>[1]) => options.api.holdDraft(path, draft),
+    [IPC.discardDraft]: (path: string, draftId: string) => options.api.discardDraft(path, draftId),
+    [IPC.quickSend]: (path: string, draft: Parameters<StrataApi['quickSend']>[1]) => options.api.quickSend(path, draft),
     [IPC.requoteAnnotation]: (path: string, annotationId: string, range: Parameters<StrataApi['requoteAnnotation']>[2]) => options.api.requoteAnnotation(path, annotationId, range),
     [IPC.reply]: (path: string, annotationId: string, text: string) => options.api.reply(path, annotationId, text),
     [IPC.resolveAnnotation]: (path: string, annotationId: string) => options.api.resolveAnnotation(path, annotationId),

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { EditorHeading } from '../../editor/headings'
-import type { WalkthroughAction, WalkthroughState } from '../../shared/contracts'
+import type { DraftView, WalkthroughAction, WalkthroughState } from '../../shared/contracts'
 import { referenceKey } from '../../shared/walkthrough'
 import { sectionPreview, stepLevel, stepNumber, walkthroughView, type WalkthroughView } from '../walkthrough'
 
@@ -36,6 +36,19 @@ interface OutlineContext {
   onToggleExpand(id: string): void
   onJump(id: string): void
   onAction(action: WalkthroughAction): void
+  draftCounts: ReadonlyMap<string, number>
+}
+
+export function draftCountsForHeadings(headings: readonly EditorHeading[], drafts: readonly DraftView[]): Map<string, number> {
+  const ordered = headings.filter((heading) => heading.sourceFrom !== null).sort((left, right) => left.sourceFrom! - right.sourceFrom!)
+  const counts = new Map<string, number>()
+  for (const draft of drafts) {
+    const from = draft.from
+    if (from === null) continue
+    const heading = ordered.findLast((candidate) => candidate.sourceFrom! <= from)
+    if (heading) counts.set(heading.id, (counts.get(heading.id) ?? 0) + 1)
+  }
+  return counts
 }
 
 function StateMark({ heading, status, onToggle }: {
@@ -107,6 +120,7 @@ function OutlineRow({ node, number, depth, context, revealed = false }: { node: 
           >
             <span className="outline-num" aria-hidden="true">{number ?? (primary ? '' : '·')}</span>
             <span className="outline-text">{heading.text}</span>
+            {(context.draftCounts.get(heading.id) ?? 0) > 0 && <span className="outline-drafts" aria-label={`${context.draftCounts.get(heading.id)} drafts`}>{context.draftCounts.get(heading.id)}</span>}
           </button>
           {eligible && reference
             ? <StateMark heading={heading.text} status={marker?.status} onToggle={(status) => context.onAction({ type: 'mark', heading: reference, status })} />
@@ -171,8 +185,9 @@ function WalkthroughCard({ view, content, onJump, onAction }: {
   )
 }
 
-export function Contents({ headings, activeId, walkthrough, content, onJump, onWalkthrough }: {
+export function Contents({ headings, drafts, activeId, walkthrough, content, onJump, onWalkthrough }: {
   headings: readonly EditorHeading[]
+  drafts: readonly DraftView[]
   activeId: string | null
   walkthrough: WalkthroughState
   /** The live Markdown, for the walkthrough card's section preview. */
@@ -184,6 +199,7 @@ export function Contents({ headings, activeId, walkthrough, content, onJump, onW
   const title = headings.find((heading) => heading.level === 1)
   const outline = headingOutline(headings.filter((heading) => heading !== title))
   const view = walkthroughView(headings, walkthrough)
+  const draftCounts = draftCountsForHeadings(headings, drafts)
   const context: OutlineContext = {
     activeId,
     walkthrough: view,
@@ -196,6 +212,7 @@ export function Contents({ headings, activeId, walkthrough, content, onJump, onW
     }),
     onJump,
     onAction: onWalkthrough,
+    draftCounts,
   }
   return (
     <nav className="contents" aria-label="Document contents">
@@ -210,6 +227,7 @@ export function Contents({ headings, activeId, walkthrough, content, onJump, onW
             <button type="button" className={`contents-title ${activeId === title.id ? 'active' : ''}`} aria-current={activeId === title.id ? 'location' : undefined} onClick={() => onJump(title.id)}>
               <span>Document title</span>
               <strong>{title.text}</strong>
+              {(draftCounts.get(title.id) ?? 0) > 0 && <span className="outline-drafts" aria-label={`${draftCounts.get(title.id)} drafts`}>{draftCounts.get(title.id)}</span>}
             </button>
           )}
           <div className="outline-label"><span>Sections</span><span className="outline-count">{outline.length}</span></div>

@@ -376,6 +376,8 @@ test('keyboard operates composer recipient previews and an annotation thread', a
     await page.keyboard.press(primaryKey('Enter'))
     const composer = page.getByRole('dialog', { name: /Send changes/i })
     await expect(composer).toBeVisible()
+    await composer.getByRole('checkbox', { name: 'Agent B' }).check()
+    await expect(composer.getByRole('tabpanel')).toHaveAttribute('aria-busy', 'false')
     const previewTabs = composer.getByRole('tablist', { name: /What each agent receives/i })
     const agentAPreview = previewTabs.getByRole('tab', { name: 'Agent A' })
     const agentBPreview = previewTabs.getByRole('tab', { name: 'Agent B' })

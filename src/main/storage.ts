@@ -124,6 +124,7 @@ export interface DocumentPaths {
   readonly meta: string
   readonly buffer: string
   readonly reading: string
+  readonly drafts: string
   readonly lock: string
 }
 
@@ -511,6 +512,7 @@ export class GhostStore {
       meta: join(directory, 'meta.json'),
       buffer: join(directory, 'buffer.md'),
       reading: join(directory, 'reading.json'),
+      drafts: join(directory, 'drafts.json'),
       lock: join(directory, 'lock'),
     }
   }

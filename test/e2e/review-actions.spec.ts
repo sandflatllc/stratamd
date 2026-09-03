@@ -209,6 +209,7 @@ test('control names and headings use plain words: author and excerpt, not ids or
     await value.waitForBuffer(edited)
     await page.getByRole('button', { name: /^Send/i }).first().click()
     const composer = page.getByRole('dialog', { name: /Send changes/i })
+    await composer.getByRole('checkbox', { name: 'Agent B' }).check()
     await composer.getByRole('tab', { name: 'Agent B' }).click()
     await expect(composer.locator('.send-group-heading').filter({ hasText: 'Changes not made by you' })).toBeVisible()
     await expect(composer).not.toContainText('not made by me')

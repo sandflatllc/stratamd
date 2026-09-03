@@ -188,7 +188,7 @@ test('populated renderer preserves the handoff tokens, controls, and motion poli
     await expect(page.locator('.strata-review-author').first()).toContainText('Claude')
     await page.getByRole('button', { name: /^Send(?:\b|$)/i }).click()
     const recipients = page.locator('.recipients label[data-selected="true"]')
-    await expect(recipients).toHaveCount(2)
+    await expect(recipients).toHaveCount(1)
     // Selected-recipient text derives from the theme's bright interface text, not fixed white.
     await expect(recipients.first()).toHaveCSS('color', 'rgb(244, 243, 246)')
     await expect(recipients.first()).not.toHaveCSS('box-shadow', 'none')

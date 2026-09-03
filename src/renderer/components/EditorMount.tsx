@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
-import type { AnnotationView, HunkView } from '../../shared/contracts'
+import type { AnnotationView, DraftView, HunkView } from '../../shared/contracts'
+import type { AnnotationRange } from '../../editor/annotations'
 import type { ColdEditorState, EditorRestoreState } from '../../editor/types'
 import type { ImageInspectionState } from '../../editor/images'
 import type { VisualCodeBlockSessions } from '../../editor/code-blocks'
@@ -11,6 +12,23 @@ import { forgetFlushed, lastFlushedContent, peekPendingBuffer } from '../pending
 interface EditorMountProps extends RendererEditorOptions {
   createEditor: RendererEditorFactory
   documentPath: string
+  drafts: DraftView[]
+}
+
+function draftRanges(drafts: readonly DraftView[]): AnnotationRange[] {
+  return drafts.map((draft) => ({
+    id: draft.id,
+    kind: draft.kind,
+    status: draft.status === 'attached' ? 'open' : 'orphaned',
+    quote: draft.quote,
+    prefix: draft.prefix,
+    suffix: draft.suffix,
+    from: draft.from ?? 0,
+    to: draft.to ?? 0,
+    author: 'user',
+    text: draft.text,
+    draft: true,
+  }))
 }
 
 type SavedEditor =
@@ -53,7 +71,7 @@ export function forgetClosedEditors(openPaths: ReadonlySet<string>): void {
 }
 
 export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(function EditorMount(
-  { createEditor, documentPath, ...options }, forwardedRef
+  { createEditor, documentPath, drafts, ...options }, forwardedRef
 ) {
   const hostRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<RendererEditorHandle | null>(null)
@@ -70,7 +88,7 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
     void target.offsetWidth
     target.classList.add('is-flashing')
   }
-  const paintDecorations = (hunks: readonly HunkView[], annotations: readonly AnnotationView[]) => {
+  const paintDecorations = (hunks: readonly HunkView[], annotations: readonly (AnnotationView | AnnotationRange)[]) => {
     const host = hostRef.current
     if (!host) return
     const hunkColors = new Map(hunks.map((hunk) => [hunk.id, hunk.author ? AGENT_COLORS[hunk.author.color] : EXTERNAL_COLOR]))
@@ -82,7 +100,9 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
         node.style.setProperty('--review-color-text', textColorFor(resolved))
       }
     }
-    const annotationColors = new Map(annotations.map((annotation) => [annotation.id, annotation.author === 'user' ? annotation.kind === 'question' ? 'var(--controls-warning)' : USER_ANNOTATION_COLOR : AGENT_COLORS[annotation.author.color]]))
+    const annotationColors = new Map(annotations.map((annotation) => [annotation.id, annotation.author === 'user'
+      ? annotation.kind === 'question' ? 'var(--controls-warning)' : USER_ANNOTATION_COLOR
+      : typeof annotation.author === 'string' ? ('color' in annotation ? annotation.color ?? undefined : USER_ANNOTATION_COLOR) : AGENT_COLORS[annotation.author.color]]))
     for (const node of host.querySelectorAll<HTMLElement>('[data-annotation-id]')) {
       const color = node.dataset.annotationId ? annotationColors.get(node.dataset.annotationId) : undefined
       if (color) {
@@ -130,8 +150,10 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
     }
     const saved = savedEditors.get(documentPath)
     savedEditors.delete(documentPath)
+    const annotations = [...options.annotations, ...draftRanges(drafts)]
     const handle = createEditor(host, {
       ...options,
+      annotations,
       ...(saved?.kind === 'warm' ? { restore: saved.state } : {}),
       ...(saved?.kind === 'cold' ? { restoreCold: saved.state, content: saved.state.markdown } : {}),
       onChange: (content, origin) => handlersRef.current.onChange(content, origin),
@@ -184,7 +206,7 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
   }, [options.content])
   useEffect(() => { editorRef.current?.setHistoryStep(options.historyStep) }, [options.historyStep])
   useEffect(() => { editorRef.current?.setReviewState(options.pendingHunks); paintDecorations(options.pendingHunks, options.annotations) }, [options.pendingHunks])
-  useEffect(() => { editorRef.current?.setAnnotations(options.annotations); paintDecorations(options.pendingHunks, options.annotations) }, [options.annotations])
+  useEffect(() => { editorRef.current?.setAnnotations([...options.annotations, ...draftRanges(drafts)]); paintDecorations(options.pendingHunks, options.annotations) }, [drafts, options.annotations])
   useEffect(() => { editorRef.current?.setTableViews(options.tableViews) }, [options.tableViews])
   useEffect(() => { editorRef.current?.setFoldedHeadings(options.foldedHeadings) }, [options.foldedHeadings])
   useEffect(() => { editorRef.current?.toggleSource(options.sourceMode) }, [options.sourceMode])

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import type { AnnotationKind, PanelSize, SpellingContext } from '../../shared/contracts'
+import type { AnnotationKind, AttachmentView, DraftKind, PanelSize, SpellingContext } from '../../shared/contracts'
 import type { EditorSelection } from '../editorAdapter'
 import { COMPOSER_LIMITS, spellingForSelection } from '../model'
 import { claimEscape, isEscapeClaimed } from '../escape'
 import { hasPrimaryModifier } from '../../shared/primary-modifier'
+import { AGENT_COLORS, defaultRecipientIds } from '../model'
 
 interface AnnotationComposerProps {
   selection: EditorSelection | null
@@ -16,6 +17,11 @@ interface AnnotationComposerProps {
   onSize(size: PanelSize, commit: boolean): void
   onDismiss(): void
   onSubmit(kind: AnnotationKind, text: string, options?: string[]): void
+  attachments: AttachmentView[]
+  leadAgentId: string | null
+  activeConversationId: string | null
+  onHold(kind: DraftKind, text: string, recipients: string[]): void
+  onSend(kind: DraftKind, text: string, recipients: string[]): void
   onReplaceWord(suggestion: string): void
   onAddToDictionary(word: string): void
   /** Edit actions on a right-click selection (§5.15). */
@@ -53,15 +59,24 @@ function claimedByTextField(target: EventTarget | null): boolean {
     || (target instanceof HTMLElement && target.isContentEditable)
 }
 
-export function AnnotationComposer({ selection, spelling, size, zoom, onSize, onDismiss, onSubmit, onReplaceWord, onAddToDictionary, onCut, onCopy, onPaste, onSelectAll }: AnnotationComposerProps) {
+export function AnnotationComposer({ selection, spelling, size, zoom, onSize, onDismiss, onSubmit, attachments, leadAgentId, activeConversationId, onHold, onSend, onReplaceWord, onAddToDictionary, onCut, onCopy, onPaste, onSelectAll }: AnnotationComposerProps) {
   const [kind, setKind] = useState<AnnotationKind | null>(null)
   const [text, setText] = useState('')
   const [options, setOptions] = useState(['', ''])
+  const [recipients, setRecipients] = useState<string[]>([])
   const textarea = useRef<HTMLTextAreaElement>(null)
   const form = useRef<HTMLFormElement>(null)
   const pill = useRef<HTMLDivElement>(null)
+  const attachmentIds = attachments.map((attachment) => attachment.agent.id).join('\0')
 
-  useEffect(() => { setKind(selection?.annotationKind ?? null); setText(''); setOptions(['', '']) }, [selection])
+  useEffect(() => {
+    setKind(selection?.annotationKind ?? null)
+    setText('')
+    setOptions(['', ''])
+  }, [selection])
+  useEffect(() => {
+    setRecipients(defaultRecipientIds(attachments, leadAgentId, activeConversationId))
+  }, [activeConversationId, attachmentIds, leadAgentId, selection?.from, selection?.to])
   useEffect(() => { if (kind) textarea.current?.focus() }, [kind])
   useEffect(() => {
     if (!selection) return
@@ -92,6 +107,20 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
     window.addEventListener('keydown', key, true)
     return () => window.removeEventListener('keydown', key, true)
   }, [kind, onDismiss, selection])
+  useEffect(() => {
+    if (!kind) return
+    const outside = (event: PointerEvent) => {
+      if (form.current?.contains(event.target as Node)) return
+      // A screenshot pin can emit the same anchored selection again on click.
+      // Keep the empty composer alive so that click refreshes it instead of
+      // dismissing and then being mistaken for the selection just dismissed.
+      if (event.target instanceof Element && event.target.closest('.strata-screenshot-pin')) return
+      if (kind !== 'decision' && text.trim()) onHold(kind, text, recipients)
+      else onDismiss()
+    }
+    window.addEventListener('pointerdown', outside, true)
+    return () => window.removeEventListener('pointerdown', outside, true)
+  }, [kind, onDismiss, onHold, recipients, text])
 
   const startResize = (event: React.PointerEvent<HTMLButtonElement>) => {
     event.preventDefault()
@@ -169,7 +198,11 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
       if (kind === 'decision' && (text.trim().length === 0 || choices.length < 2 || new Set(choices).size !== choices.length)) return
       onSubmit(kind, text, kind === 'decision' ? choices : undefined)
     }}>
-      <div className="annotation-kind">{kind}</div>
+      <div className="annotation-kinds" role="radiogroup" aria-label="Comment kind">
+        {([['comment', 'Comment'], ['question', 'Question'], ['suggestion', 'Suggest'], ['decision', 'Decision']] as const).map(([value, label]) => (
+          <button type="button" role="radio" aria-checked={kind === value} disabled={value === 'suggestion' && !selection.singleBlock} key={value} onClick={() => setKind(value)}>{label}</button>
+        ))}
+      </div>
       <blockquote>{selection.quote}</blockquote>
       {selection.annotationContext && (
         <div className="annotation-context">
@@ -181,18 +214,31 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
               </>}
         </div>
       )}
+      {kind !== 'decision' && attachments.length > 0 && (
+        <fieldset className="composer-recipients"><legend>Recipients</legend>{attachments.map((attachment) => {
+          const checked = recipients.includes(attachment.agent.id)
+          const color = AGENT_COLORS[attachment.agent.color]
+          return <label key={attachment.agent.id} data-selected={checked} style={{ '--recipient-color': color } as CSSProperties}><input type="checkbox" checked={checked} onChange={() => setRecipients((current) => checked ? current.filter((id) => id !== attachment.agent.id) : [...current, attachment.agent.id])} /><i />{attachment.agent.name}</label>
+        })}</fieldset>
+      )}
       <textarea
         ref={textarea}
         value={text}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
-          // Ctrl+Enter adds this note; it must not open Send underneath (§5.2).
-          if (event.key !== 'Enter' || !hasPrimaryModifier(event)) return
+          if (event.key !== 'Enter' || event.shiftKey) return
+          if (kind === 'decision') {
+            if (!hasPrimaryModifier(event)) return
+            event.preventDefault()
+            event.stopPropagation()
+            const choices = options.map((option) => option.trim()).filter(Boolean)
+            if (text.trim().length === 0 || choices.length < 2 || new Set(choices).size !== choices.length) return
+            onSubmit(kind, text, kind === 'decision' ? choices : undefined)
+            return
+          }
           event.preventDefault()
           event.stopPropagation()
-          const choices = options.map((option) => option.trim()).filter(Boolean)
-          if (kind === 'decision' && (text.trim().length === 0 || choices.length < 2 || new Set(choices).size !== choices.length)) return
-          onSubmit(kind, text, kind === 'decision' ? choices : undefined)
+          if (text.trim() && recipients.length > 0) onSend(kind, text, recipients)
         }}
         placeholder={kind === 'suggestion' ? 'Replacement markdown…' : kind === 'decision' ? 'What needs to be decided?' : 'Your note…'}
         aria-label={kind === 'suggestion' ? 'Replacement markdown' : kind === 'decision' ? 'Decision prompt' : 'Annotation text'}
@@ -206,7 +252,9 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
           <button type="button" className="text-action" onClick={() => setOptions((current) => [...current, ''])}>Add choice</button>
         </div>
       )}
-      <div className="composer-actions"><button type="button" className="quiet-button" onClick={onDismiss}>Cancel</button><button type="submit" className="primary-button">Add</button></div>
+      {kind === 'decision'
+        ? <div className="composer-actions"><button type="button" className="quiet-button" onClick={onDismiss}>Cancel</button><button type="submit" className="primary-button">Add</button></div>
+        : <><div className="composer-hint">Esc discards · Shift+Enter new line</div><div className="composer-actions"><button type="button" className="quiet-button" disabled={!text.trim()} onClick={() => onHold(kind, text, recipients)}>Hold</button><button type="button" className="primary-button" disabled={!text.trim() || recipients.length === 0} onClick={() => onSend(kind, text, recipients)}>Send</button></div></>}
       <button type="button" className="composer-resize" aria-label="Resize annotation composer" onPointerDown={startResize} />
     </form>
   )

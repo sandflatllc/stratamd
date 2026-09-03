@@ -6,8 +6,8 @@ import { Scenario, lineStartKey, primaryKey, selectToLineEndKey, selectTextInVis
 // composer instead of copying, and letters typed into the thread-panel reply
 // were stolen to open a second composer whenever a selection pill was still up.
 // Round 2 (§5.1, §5.2): the bare letters act only on a pointer selection or a
-// focused pill, so a keyboard selection keeps typing-to-replace, and Ctrl+Enter
-// inside the composer or a thread reply submits that form, not Send.
+// focused pill, so a keyboard selection keeps typing-to-replace. A thread
+// reply keeps Ctrl+Enter, while the cockpit popover uses Enter for quick send.
 const document = '# Hotkeys\n\nReply to this thread sentence.\n\nSelect this other sentence.\n'
 
 test('Ctrl+C over a selection copies instead of opening the composer', { tag: '@clipboard' }, async ({}, testInfo) => {
@@ -66,10 +66,11 @@ test('letters typed into a thread reply stay there while a selection pill is up'
   }
 })
 
-test('a bare C on a pointer selection with focus in the editor opens the comment composer', async ({}, testInfo) => {
+test('a bare C opens the comment composer and Enter quick sends it', async ({}, testInfo) => {
   const scenario = await Scenario.create(testInfo, document, 'hotkeys.md')
   try {
     const page = await scenario.launch()
+    expect((await scenario.attach('agent-a', 'Agent A')).event).toBe('initial')
     await selectTextInVisualEditor(page, 'Select this other sentence.')
     await expect(page.getByRole('menu', { name: /annotate selection/i })).toBeVisible()
 
@@ -77,16 +78,17 @@ test('a bare C on a pointer selection with focus in the editor opens the comment
 
     const composer = page.locator('.annotation-composer')
     await expect(composer).toBeVisible()
-    await expect(composer.locator('.annotation-kind')).toHaveText('comment')
+    await expect(composer.getByRole('radio', { name: 'Comment' })).toHaveAttribute('aria-checked', 'true')
     await expect(composer.locator('textarea')).toBeFocused()
 
-    // Ctrl+Enter inside the composer adds the note instead of opening Send (§5.2).
+    // Enter carries only this comment and does not open the Send composer.
     await page.keyboard.type('Needs a citation.')
-    await page.keyboard.press(primaryKey('Enter'))
+    await page.keyboard.press('Enter')
     await expect(composer).toHaveCount(0)
     await expect(page.getByRole('dialog', { name: /Send changes/i })).toHaveCount(0)
-    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
-    await expect(page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'Select this other sentence.' })).toBeVisible()
+    const delivery = await scenario.attach('agent-a', 'Agent A')
+    expect(delivery.event).toBe('send')
+    expect(delivery.annotations).toEqual([expect.objectContaining({ text: 'Needs a citation.' })])
   } finally {
     await scenario.dispose()
   }

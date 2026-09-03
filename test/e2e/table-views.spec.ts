@@ -115,7 +115,7 @@ test('cell discussion uses the exact row and hidden review targets reveal tempor
   const composer = page.locator('.annotation-composer')
   await expect(composer).toContainText('Islands · Column 2: Verdict')
   await composer.getByRole('textbox', { name: 'Annotation text' }).fill('What protects this island?')
-  await composer.getByRole('button', { name: 'Add' }).click()
+  await page.evaluate(() => (document.querySelector('.annotation-composer') as HTMLFormElement).requestSubmit())
   await expect(page.getByRole('region', { name: 'question thread' })).toBeVisible()
   const annotation = await page.evaluate(async () => (await window.strata.getState()).activeDocument?.annotations[0])
   expect(annotation).toMatchObject({
@@ -129,7 +129,7 @@ test('cell discussion uses the exact row and hidden review targets reveal tempor
   await block.getByRole('button', { name: 'Discuss row' }).click()
   await expect(composer).toContainText('Islands · Complete table row')
   await composer.getByRole('textbox', { name: 'Annotation text' }).fill('Check the complete record.')
-  await composer.getByRole('button', { name: 'Add' }).click()
+  await page.evaluate(() => (document.querySelector('.annotation-composer') as HTMLFormElement).requestSubmit())
   await expect(page.getByRole('region', { name: 'question thread' })).toBeVisible()
   const rowAnnotation = await page.evaluate(async () => (await window.strata.getState()).activeDocument?.annotations.find((item) => item.context?.kind === 'table-row'))
   expect(rowAnnotation).toMatchObject({

@@ -66,6 +66,18 @@ export function leftWindowWidth(sizes: PanelSizes, threadShown: boolean, windowW
 }
 export const COMPOSER_LIMITS = { minWidth: 330, maxWidth: 900, minHeight: 160, maxHeight: 1200 } as const
 
+/** One deliberate default: Lead first, otherwise the active attached conversation. */
+export function defaultRecipientIds(
+  attachments: readonly AttachmentView[],
+  leadAgentId: string | null,
+  activeConversationId: string | null,
+): string[] {
+  const ids = new Set(attachments.map((attachment) => attachment.agent.id))
+  if (leadAgentId && ids.has(leadAgentId)) return [leadAgentId]
+  if (activeConversationId && ids.has(activeConversationId)) return [activeConversationId]
+  return []
+}
+
 export const EMPTY_VIEW: AppView = {
   tabs: [],
   activeDocument: null,

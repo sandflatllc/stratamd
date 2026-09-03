@@ -1088,6 +1088,11 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       })
     }
     for (const input of sourceAnnotationInputs) {
+      if (!('seq' in input) && input.draft) {
+        const located = locateSourceAnnotationQuote(currentMarkdown, input.quote, input.from, input.to)
+        if (located) highlights.push({ ...located, className: 'strata-source-draft' })
+        continue
+      }
       if (input.kind !== 'suggestion' || input.status !== 'open') continue
       const located = locateSourceAnnotationQuote(
         currentMarkdown,
@@ -1164,6 +1169,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       sourceActions.append(group)
     }
     for (const input of sourceAnnotationInputs) {
+      if (!('seq' in input) && input.draft) continue
       if (input.kind !== 'suggestion' || input.status !== 'open') continue
       const group = document.createElement('span')
       group.className = 'strata-source-suggestion-action'

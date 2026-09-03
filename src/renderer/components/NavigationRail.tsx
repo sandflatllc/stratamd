@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { EditorHeading } from '../../editor/headings'
-import type { NavigationTab, WalkthroughAction, WalkthroughState } from '../../shared/contracts'
+import type { DraftView, NavigationTab, WalkthroughAction, WalkthroughState } from '../../shared/contracts'
 import { AmbientDecor } from './AmbientDecor'
 import { Contents } from './Contents'
 import { RailTabs } from './RailTabs'
@@ -14,6 +14,7 @@ interface NavigationRailProps {
   /** The open thread, or the Thread tab's empty state. */
   thread: ReactNode
   headings: readonly EditorHeading[]
+  drafts: readonly DraftView[]
   activeHeadingId: string | null
   walkthrough: WalkthroughState
   /** The live Markdown, for the walkthrough card's section preview. */
@@ -36,7 +37,7 @@ export function NavigationRail(props: NavigationRailProps) {
         {props.files}
       </section>
       <section role="tabpanel" id="navigation-panel-contents" aria-labelledby="navigation-tab-contents" hidden={props.selected !== 'contents'}>
-        <Contents headings={props.headings} activeId={props.activeHeadingId} walkthrough={props.walkthrough} content={props.content} onJump={props.onJumpHeading} onWalkthrough={props.onWalkthrough} />
+        <Contents headings={props.headings} drafts={props.drafts} activeId={props.activeHeadingId} walkthrough={props.walkthrough} content={props.content} onJump={props.onJumpHeading} onWalkthrough={props.onWalkthrough} />
       </section>
       <section role="tabpanel" id="navigation-panel-thread" aria-labelledby="navigation-tab-thread" hidden={props.selected !== 'thread'}>
         {props.thread}
