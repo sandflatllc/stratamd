@@ -75,7 +75,8 @@ class CodeBlockNodeView implements NodeView {
   private generation = 0
   private renderTimer: number | null = null
   private diagramDirty = false
-  private dragging: { x: number; y: number; panX: number; panY: number } | null = null
+  private dragging: { pointerId: number; x: number; y: number; panX: number; panY: number } | null = null
+  private wheelTotal = 0
 
   constructor(node: ProseMirrorNode, _view: EditorView, getPos: () => number | undefined, options: CodeBlockNodeViewOptions) {
     this.node = node
@@ -103,6 +104,7 @@ class CodeBlockNodeView implements NodeView {
     this.dom.className = `strata-visual-code strata-visual-code--${special}`
     this.toolbar = document.createElement('div')
     this.toolbar.className = 'strata-visual-code__toolbar'
+    this.toolbar.contentEditable = 'false'
     const title = document.createElement('span')
     title.className = 'strata-visual-code__title'
     title.textContent = special === 'mermaid' ? 'Diagram' : 'File tree'
@@ -113,6 +115,7 @@ class CodeBlockNodeView implements NodeView {
     )
     this.visual = document.createElement('div')
     this.visual.className = 'strata-visual-code__visual'
+    this.visual.contentEditable = 'false'
     if (special === 'mermaid') {
       this.toolbar.append(
         button('−', () => this.changeZoom(-0.1)),
@@ -130,8 +133,11 @@ class CodeBlockNodeView implements NodeView {
       this.visual.append(this.viewport)
       this.viewport.addEventListener('pointerdown', (event) => this.startPan(event))
       this.viewport.addEventListener('pointermove', (event) => this.pan(event))
-      this.viewport.addEventListener('pointerup', () => { this.dragging = null })
-      this.viewport.addEventListener('pointercancel', () => { this.dragging = null })
+      this.viewport.addEventListener('pointerup', (event) => this.finishPan(event))
+      this.viewport.addEventListener('pointercancel', (event) => this.finishPan(event))
+      this.viewport.addEventListener('lostpointercapture', (event) => this.finishPan(event))
+      this.viewport.addEventListener('dragstart', (event) => event.preventDefault())
+      this.viewport.addEventListener('wheel', (event) => this.zoomWheel(event), { passive: false })
       this.viewport.addEventListener('keydown', (event) => this.panKey(event))
     } else {
       this.viewport = null
@@ -194,18 +200,36 @@ class CodeBlockNodeView implements NodeView {
   }
 
   private startPan(event: PointerEvent): void {
-    if (event.button !== 0) return
+    if (event.button !== 0 || !event.isPrimary) return
+    event.preventDefault()
+    this.viewport?.focus({ preventScroll: true })
     const state = this.state()
-    this.dragging = { x: event.clientX, y: event.clientY, panX: state.panX, panY: state.panY }
+    this.dragging = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, panX: state.panX, panY: state.panY }
     this.viewport?.setPointerCapture(event.pointerId)
   }
 
   private pan(event: PointerEvent): void {
-    if (!this.dragging) return
+    if (!this.dragging || event.pointerId !== this.dragging.pointerId) return
     this.updateState({
       panX: this.dragging.panX + event.clientX - this.dragging.x,
       panY: this.dragging.panY + event.clientY - this.dragging.y,
     })
+  }
+
+  private finishPan(event: PointerEvent): void {
+    if (this.dragging?.pointerId === event.pointerId) this.dragging = null
+  }
+
+  private zoomWheel(event: WheelEvent): void {
+    if (!event.ctrlKey || event.deltaY === 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    const delta = event.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? event.deltaY : event.deltaY * 100
+    if (Math.sign(delta) !== Math.sign(this.wheelTotal)) this.wheelTotal = 0
+    this.wheelTotal += delta
+    if (Math.abs(this.wheelTotal) < 100) return
+    this.changeZoom(this.wheelTotal < 0 ? 0.1 : -0.1)
+    this.wheelTotal = 0
   }
 
   private panKey(event: KeyboardEvent): void {

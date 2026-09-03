@@ -36,6 +36,10 @@ type FileDialogState =
 
 interface AppProps { createEditor: RendererEditorFactory }
 
+function hasFileTransfer(dataTransfer: DataTransfer, includeDroppedFiles = false): boolean {
+  return Array.from(dataTransfer.types).includes('Files') || includeDroppedFiles && dataTransfer.files.length > 0
+}
+
 export function App({ createEditor }: AppProps) {
   const [view, setView] = useState<AppView>(EMPTY_VIEW)
   const [ready, setReady] = useState(false)
@@ -195,6 +199,7 @@ export function App({ createEditor }: AppProps) {
       // ctrlKey on a wheel event is the zoom gesture on every platform:
       // Chromium synthesizes it for trackpad pinches, including on macOS.
       if (!event.ctrlKey) return
+      if (event.target instanceof Element && event.target.closest('.strata-mermaid-viewport')) return
       event.preventDefault()
       const pane = paneOf(event.target)
       if (!pane || event.deltaY === 0) return
@@ -397,6 +402,7 @@ export function App({ createEditor }: AppProps) {
   }, [document, flushBuffer, perform, report])
 
   const dropFiles = useCallback((event: React.DragEvent) => {
+    if (!hasFileTransfer(event.dataTransfer, true) || event.dataTransfer.files.length === 0) return
     event.preventDefault()
     setDragging(false)
     const files = Array.from(event.dataTransfer.files).filter((file) => /\.(?:md|markdown)$/iu.test(file.name))
@@ -405,6 +411,17 @@ export function App({ createEditor }: AppProps) {
     if (!openDroppedFiles) { report('Drag and drop is unavailable in this window.'); return }
     void perform(() => openDroppedFiles(files))
   }, [perform, report])
+  const enterFiles = useCallback((event: React.DragEvent) => {
+    if (!hasFileTransfer(event.dataTransfer)) return
+    event.preventDefault()
+    setDragging(true)
+  }, [])
+  const overFiles = useCallback((event: React.DragEvent) => {
+    if (hasFileTransfer(event.dataTransfer)) event.preventDefault()
+  }, [])
+  const leaveFiles = useCallback((event: React.DragEvent) => {
+    if (dragging && event.currentTarget === event.target) setDragging(false)
+  }, [dragging])
 
   const closeTab = useCallback((tab: DocumentTabView) => {
     if (tab.dirty) setClosingTab(tab)
@@ -578,7 +595,7 @@ export function App({ createEditor }: AppProps) {
 
   if (!ready) return <div className="boot-screen"><StrataIcon /><span>Opening StrataMD…</span></div>
   if (!document) return (
-    <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell empty-shell" style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={(event) => { event.preventDefault(); setDragging(true) }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (event.currentTarget === event.target) setDragging(false) }} onDrop={dropFiles}>
+    <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell empty-shell" style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={enterFiles} onDragOver={overFiles} onDragLeave={leaveFiles} onDrop={dropFiles}>
       <AmbientBackground /><TopBar tabs={view.tabs} canSend={false} hasAgents={false} pending={0} pendingUnsaved={false} onOpenTab={(path) => void perform(() => window.strata.openDocument(path))} onCloseTab={setClosingTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onSend={() => undefined} onCopy={() => undefined} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} />
       <div className="workspace">
         <div data-pane="explorer" style={{ width: panelSizes.explorerWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected="files" files={explorer()} thread={threadEmpty} headings={[]} activeHeadingId={null} walkthrough={{ active: false, level: 'h2', current: null, excluded: [], markers: [] }} content="" onSelect={() => undefined} onJumpHeading={() => undefined} onWalkthrough={() => undefined} /></Boundary></div>
@@ -603,7 +620,7 @@ export function App({ createEditor }: AppProps) {
   ).then(() => setDisconnecting(null))
 
   return (
-    <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell" style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={(event) => { event.preventDefault(); setDragging(true) }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (event.currentTarget === event.target) setDragging(false) }} onDrop={dropFiles}>
+    <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell" style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={enterFiles} onDragOver={overFiles} onDragLeave={leaveFiles} onDrop={dropFiles}>
       <AmbientBackground />
       <TopBar tabs={view.tabs} canSend={document.canSend} hasAgents={document.attachments.length > 0} pending={pendingCount(document)} pendingUnsaved={hasUnsavedCounted(document)} onOpenTab={(path) => void perform(() => window.strata.openDocument(path))} onCloseTab={closeTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onSend={() => void perform(openComposer)} onCopy={() => void perform(openComposer)} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} />
       <div className="workspace">

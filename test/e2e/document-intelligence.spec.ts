@@ -28,6 +28,10 @@ project/
 ## Next section
 
 Visible ending.
+
+## Scroll tail
+
+${Array.from({ length: 24 }, (_, index) => `Scrollable paragraph ${index + 1}.`).join('\n\n')}
 `
 
 test('diagrams, trees, images, local previews, and durable folds remain document-safe', async ({}, testInfo) => {
@@ -57,13 +61,90 @@ test('diagrams, trees, images, local previews, and durable folds remain document
     })
     expect(diagramTheme.stroke).toBe(diagramTheme.primary)
     expect(diagramTheme.fill).toBe(diagramTheme.text)
-    await diagram.getByRole('button', { name: '+', exact: true }).click()
-    const diagramViewport = diagram.getByRole('img', { name: /110 percent zoom/ })
-    await diagramViewport.focus()
+
+    const diagramViewport = diagram.getByRole('img', { name: /100 percent zoom/ })
+    const canvas = diagram.locator('.strata-mermaid-canvas')
+    const dragLabel = async (deltaX: number, deltaY: number) => {
+      const label = diagram.locator('svg text').first()
+      await label.scrollIntoViewIfNeeded()
+      const bounds = await label.boundingBox()
+      expect(bounds).not.toBeNull()
+      const start = { x: bounds!.x + bounds!.width / 2, y: bounds!.y + bounds!.height / 2 }
+      await page.mouse.move(start.x, start.y)
+      await page.mouse.down()
+      await page.mouse.move(start.x + deltaX, start.y + deltaY, { steps: 4 })
+      await page.mouse.up()
+    }
+    await dragLabel(30, 20)
+    await expect(canvas).toHaveAttribute('style', /translate\(30px, 20px\) scale\(1\)/)
+    expect(await page.evaluate(() => window.getSelection()?.isCollapsed)).toBe(true)
+    await expect(diagramViewport).toBeFocused()
     await diagramViewport.press('ArrowRight')
+    await expect(canvas).toHaveAttribute('style', /translate\(42px, 20px\) scale\(1\)/)
+
+    await page.evaluate(() => {
+      const counts = { dragstart: 0, dragenter: 0, drop: 0 }
+      ;(window as unknown as { mermaidDragCounts: typeof counts }).mermaidDragCounts = counts
+      for (const type of ['dragstart', 'dragenter', 'drop'] as const) {
+        window.addEventListener(type, () => { counts[type] += 1 }, { capture: true })
+      }
+    })
+    await dragLabel(20, 10)
+    await expect(canvas).toHaveAttribute('style', /translate\(62px, 30px\) scale\(1\)/)
+    expect(await page.evaluate(() => (window as unknown as { mermaidDragCounts: Record<string, number> }).mermaidDragCounts)).toEqual({ dragstart: 0, dragenter: 0, drop: 0 })
+    expect(await page.evaluate(() => window.getSelection()?.isCollapsed)).toBe(true)
+    await expect(diagramViewport).toBeFocused()
+    await expect(page.locator('.drop-overlay')).toHaveCount(0)
+    await expect(page.getByText('Drop a .md or .markdown file.', { exact: true })).toHaveCount(0)
+
+    const paneBeforeZoom = await page.evaluate(() => {
+      const pane = document.querySelector<HTMLElement>('[data-pane="editor"]')!
+      const paragraph = document.querySelector<HTMLElement>('.ProseMirror > p')!
+      return { zoom: getComputedStyle(pane).getPropertyValue('--zoom'), fontSize: getComputedStyle(paragraph).fontSize }
+    })
+    const viewportBounds = await diagramViewport.boundingBox()
+    expect(viewportBounds).not.toBeNull()
+    await page.mouse.move(viewportBounds!.x + viewportBounds!.width / 2, viewportBounds!.y + viewportBounds!.height / 2)
+    await page.keyboard.down('Control')
+    await page.mouse.wheel(0, -100)
+    await page.keyboard.up('Control')
+    await expect(diagram.getByRole('img', { name: /110 percent zoom/ })).toBeVisible()
+    await expect(canvas).toHaveAttribute('style', /translate\(62px, 30px\) scale\(1\.1\)/)
+    expect(await page.evaluate(() => {
+      const pane = document.querySelector<HTMLElement>('[data-pane="editor"]')!
+      const paragraph = document.querySelector<HTMLElement>('.ProseMirror > p')!
+      return { zoom: getComputedStyle(pane).getPropertyValue('--zoom'), fontSize: getComputedStyle(paragraph).fontSize }
+    })).toEqual(paneBeforeZoom)
+
+    const scrollBefore = await page.locator('.editor-scroll').evaluate((element) => element.scrollTop)
+    await page.mouse.wheel(0, 300)
+    await expect.poll(() => page.locator('.editor-scroll').evaluate((element) => element.scrollTop)).toBeGreaterThan(scrollBefore)
+    await expect(diagram.getByRole('img', { name: /110 percent zoom/ })).toBeVisible()
+
+    await page.locator('.editor-scroll').evaluate((element) => { element.scrollTop = 0 })
+    await diagram.getByRole('button', { name: 'Reset', exact: true }).click()
+    await diagram.getByRole('button', { name: '+', exact: true }).click()
+    const resetViewport = diagram.getByRole('img', { name: /110 percent zoom/ })
+    await resetViewport.focus()
+    await resetViewport.press('ArrowRight')
     await expect(diagram.locator('.strata-mermaid-canvas')).toHaveAttribute('style', /translate\(12px, 0px\) scale\(1\.1\)/)
     await diagram.getByRole('button', { name: 'Source', exact: true }).click()
     await expect(diagram.locator('pre')).toContainText('First<br/>line')
+    const mermaidSource = diagram.locator('code')
+    await mermaidSource.evaluate((element) => {
+      const selection = window.getSelection()!
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      range.collapse(false)
+      selection.removeAllRanges()
+      selection.addRange(range)
+      ;(element as HTMLElement).focus()
+    })
+    await page.keyboard.insertText('X')
+    const editedMermaid = markdown.replace('B[Second]\n```', 'B[Second]X\n```')
+    await scenario.waitForBuffer(editedMermaid)
+    await page.keyboard.press('Backspace')
+    await scenario.waitForBuffer(markdown)
     await diagram.getByRole('button', { name: 'Diagram', exact: true }).click()
 
     const tree = page.locator('.strata-visual-code--tree')

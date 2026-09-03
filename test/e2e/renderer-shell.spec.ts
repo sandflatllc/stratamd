@@ -34,13 +34,53 @@ test('blank shell opens the first document from the explorer and drag and drop',
       document.body.append(input)
     })
     const fixture = page.locator('#drop-fixture')
-    await fixture.setInputFiles(value.file)
+    const textDragDefaults = await page.evaluate(() => {
+      const transfer = new DataTransfer()
+      transfer.setData('text/plain', 'selected editor text')
+      const shell = document.querySelector<HTMLElement>('.app-shell')!
+      return ['dragenter', 'dragover', 'drop'].map((type) => {
+        const event = new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer })
+        shell.dispatchEvent(event)
+        return event.defaultPrevented
+      })
+    })
+    expect(textDragDefaults).toEqual([false, false, false])
+    await expect(page.locator('.drop-overlay')).toHaveCount(0)
+    await expect(page.getByText('Drop a .md or .markdown file.', { exact: true })).toHaveCount(0)
+
+    const nonMarkdown = join(dirname(value.file), 'not-markdown.txt')
+    await writeFile(nonMarkdown, 'Not Markdown.\n')
+    await fixture.setInputFiles(nonMarkdown)
     await page.evaluate(() => {
       const input = document.querySelector<HTMLInputElement>('#drop-fixture')!
       const transfer = new DataTransfer()
       transfer.items.add(input.files![0]!)
       const shell = document.querySelector<HTMLElement>('.app-shell')!
       shell.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: transfer }))
+    })
+    await expect(page.locator('.drop-overlay')).toBeVisible()
+    await page.evaluate(() => {
+      const input = document.querySelector<HTMLInputElement>('#drop-fixture')!
+      const transfer = new DataTransfer()
+      transfer.items.add(input.files![0]!)
+      document.querySelector<HTMLElement>('.app-shell')!.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }))
+    })
+    await expect(page.getByRole('status')).toContainText('Drop a .md or .markdown file.')
+    await expect(page.locator('.drop-overlay')).toHaveCount(0)
+
+    await fixture.setInputFiles(value.file)
+    await page.evaluate(() => {
+      const input = document.querySelector<HTMLInputElement>('#drop-fixture')!
+      const transfer = new DataTransfer()
+      transfer.items.add(input.files![0]!)
+      document.querySelector<HTMLElement>('.app-shell')!.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: transfer }))
+    })
+    await expect(page.locator('.drop-overlay')).toBeVisible()
+    await page.evaluate(() => {
+      const input = document.querySelector<HTMLInputElement>('#drop-fixture')!
+      const transfer = new DataTransfer()
+      transfer.items.add(input.files![0]!)
+      const shell = document.querySelector<HTMLElement>('.app-shell')!
       shell.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }))
     })
     await expect(page.getByRole('textbox', { name: /Document editor/i })).toBeVisible()
