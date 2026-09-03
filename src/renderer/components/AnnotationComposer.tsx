@@ -207,7 +207,7 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
         </div>
       )}
       <div className="composer-actions"><button type="button" className="quiet-button" onClick={onDismiss}>Cancel</button><button type="submit" className="primary-button">Add</button></div>
-      <button type="button" className="thread-panel-resize" aria-label="Resize annotation composer" onPointerDown={startResize} />
+      <button type="button" className="composer-resize" aria-label="Resize annotation composer" onPointerDown={startResize} />
     </form>
   )
 }

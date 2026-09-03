@@ -115,8 +115,6 @@ export interface StrataEditorHandle {
   jumpToAnnotation(id: string): void
   jumpToHeading(id: string): void
   headingSource(id: string): { quote: string; from: number; to: number; atx: boolean } | null
-  /** One-shot client coordinates of an annotation's span, queried at panel-open time. */
-  annotationCoordinates(id: string): { left: number; top: number; right: number; bottom: number } | null
   /** Shows drag handles on one open annotation (null hides them). */
   setActiveAnnotation(id: string | null): void
   /** Replaces the current visual selection through the normal edit path; no-op when empty, read-only, or in source mode. */

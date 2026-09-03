@@ -41,7 +41,7 @@ test('the thread panel accepts, rejects, and confirms before resolving an open s
 
     // Resolve asks first; Cancel changes nothing.
     await rows.filter({ hasText: 'first replacement' }).click()
-    const thread = page.getByRole('dialog', { name: /suggestion thread/i })
+    const thread = page.getByRole('region', { name: /suggestion thread/i })
     await expect(thread).toBeVisible()
     await thread.getByRole('button', { name: /Resolve thread/i }).click()
     const confirm = page.getByRole('dialog', { name: /Resolve this suggestion\?/i })
@@ -81,7 +81,7 @@ test('a thread reply is a text box where Enter sends and Shift+Enter breaks the 
     expect(created.code, created.stderr).toBe(0)
     await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
     await page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'Quote this sentence.' }).click()
-    const thread = page.getByRole('dialog', { name: /question thread/i })
+    const thread = page.getByRole('region', { name: /question thread/i })
     const reply = thread.getByRole('textbox', { name: 'Reply' })
     expect(await reply.evaluate((element) => element.tagName.toLowerCase())).toBe('textarea')
     await reply.click()

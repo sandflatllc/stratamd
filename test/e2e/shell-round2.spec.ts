@@ -24,7 +24,7 @@ test('the thread panel focuses its reply and hands focus back on close; F8 steps
     await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
     const row = page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'First point to discuss.' })
     await row.click()
-    const thread = page.getByRole('dialog', { name: /comment thread/i })
+    const thread = page.getByRole('region', { name: /comment thread/i })
     await expect(thread).toBeVisible()
     await expect(thread.getByRole('textbox', { name: 'Reply' })).toBeFocused()
     // The jump selects the annotated span, which raises the annotate pill above the thread;
@@ -40,13 +40,13 @@ test('the thread panel focuses its reply and hands focus back on close; F8 steps
 
     // F8 walks comments and questions in document order, skipping the suggestion; Shift+F8 goes back.
     await page.keyboard.press('F8')
-    await expect(page.getByRole('dialog', { name: /comment thread/i })).toContainText('Tighten this.')
+    await expect(page.getByRole('region', { name: /comment thread/i })).toContainText('Tighten this.')
     await page.keyboard.press('F8')
-    await expect(page.getByRole('dialog', { name: /question thread/i })).toContainText('Is this right?')
+    await expect(page.getByRole('region', { name: /question thread/i })).toContainText('Is this right?')
     await page.keyboard.press('F8')
-    await expect(page.getByRole('dialog', { name: /comment thread/i })).toContainText('Tighten this.')
+    await expect(page.getByRole('region', { name: /comment thread/i })).toContainText('Tighten this.')
     await page.keyboard.press('Shift+F8')
-    await expect(page.getByRole('dialog', { name: /question thread/i })).toContainText('Is this right?')
+    await expect(page.getByRole('region', { name: /question thread/i })).toContainText('Is this right?')
   } finally {
     await scenario.dispose()
   }

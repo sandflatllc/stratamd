@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DocumentView, HunkView } from '../../src/shared/contracts'
-import { activeAnnotations, activitySnapshot, agentActivity, agentActivityMessage, AGENT_PROMPT, annotationCounts, attachmentStatusLine, bannerFor, bulkRevertGroups, changeGroups, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, explorerTree, filteredAnnotations, hasResolvedAnnotations, hasUnsavedCounted, hunkAction, hunkAuthor, hunkSnippet, nextReviewTarget, NOT_LISTENING_AFTER_MS, pendingCount, previewTabIndex, rendererThemeStyle, reviewTargets, saveStateSentence, shouldAdoptPushed, spellingForSelection, tabsToClose, threadTargets, threadTime, timeAgoShort } from '../../src/renderer/model'
+import { activeAnnotations, activitySnapshot, agentActivity, agentActivityMessage, AGENT_PROMPT, annotationCounts, attachmentStatusLine, bannerFor, bulkRevertGroups, changeGroups, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, explorerTree, filteredAnnotations, hasResolvedAnnotations, hasUnsavedCounted, hunkAction, hunkAuthor, hunkSnippet, leftWindowWidth, nextReviewTarget, NOT_LISTENING_AFTER_MS, pendingCount, previewTabIndex, rendererThemeStyle, reviewTargets, saveStateSentence, shouldAdoptPushed, sideWindowCeiling, spellingForSelection, tabsToClose, threadTargets, threadTime, timeAgoShort } from '../../src/renderer/model'
 import { INFO_TOAST_MS, nextToast, toastLifetime } from '../../src/renderer/toasts'
 import { formatKeys, shortcutGroups } from '../../src/renderer/shortcuts'
 import { ancestorFolders } from '../../src/renderer/components/Explorer'
@@ -27,10 +27,24 @@ function document(overrides: Partial<DocumentView> = {}): DocumentView {
 describe('renderer model', () => {
   it('clamps all persisted panel sizes to the PRD ranges', () => {
     expect(clampPanelSize('explorerWidth', 50)).toBe(160)
-    expect(clampPanelSize('explorerWidth', 900)).toBe(340)
+    expect(clampPanelSize('explorerWidth', 900)).toBe(900)
     expect(clampPanelSize('rightRailWidth', 390.6)).toBe(391)
     expect(clampPanelSize('upperReviewHeight', 9_000)).toBe(954)
     expect(clampPanelSize('documentMeasure', 2000)).toBe(1600)
+  })
+
+  it('gives the left window a navigation width and a thread width, with no fixed ceiling', () => {
+    const sizes = { ...EMPTY_VIEW.settings.panelSizes, explorerWidth: 212, rightRailWidth: 300, threadPanel: { width: 780, height: -1 } }
+    expect(leftWindowWidth(sizes, false, 1440)).toBe(212)
+    expect(leftWindowWidth(sizes, true, 1440)).toBe(780)
+    expect(leftWindowWidth({ ...sizes, threadPanel: { width: 100, height: -1 } }, true, 1440)).toBe(330)
+    expect(leftWindowWidth({ ...sizes, explorerWidth: 1500 }, false, 2400)).toBe(1500)
+    expect(clampPanelSize('explorerWidth', 1500)).toBe(1500)
+    // The window is the only limit: a side window yields so the editor keeps its floor,
+    // and the side window's own minimum wins when the window cannot fit both.
+    expect(sideWindowCeiling(160, 1440, 300)).toBe(812)
+    expect(leftWindowWidth(sizes, true, 960)).toBe(332)
+    expect(sideWindowCeiling(330, 600, 300)).toBe(330)
   })
 
   it('labels review hunks in plain words without inventing attribution', () => {

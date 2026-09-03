@@ -17,6 +17,8 @@ async function run(testInfo: import('@playwright/test').TestInfo, typeFirst: str
   await cp(join(projectRoot, 'docs/screenshots'), join(dirname(dirname(value.file)), 'screenshots'), { recursive: true })
   try {
     const page = await value.launch()
+    // The open thread docks in the left window (§6.9); give the editor room so line ends stay aimable.
+    await page.setViewportSize({ width: 2000, height: 900 })
     log('launched')
     const editor = page.getByRole('textbox', { name: /document editor/i })
     await expect(editor).toBeVisible()

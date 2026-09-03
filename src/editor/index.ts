@@ -1593,21 +1593,6 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       if (typeof from !== 'number' || typeof to !== 'number' || from < 0 || to <= from || to > currentMarkdown.length) return null
       return { quote: currentMarkdown.slice(from, to), from, to, atx: heading?.attrs.style === 'atx' }
     },
-    annotationCoordinates(id) {
-      const range = getAnnotationRanges(view.state).find((candidate) => candidate.id === id)
-      if (!range || range.status === 'orphaned' || mode === 'source') return null
-      const size = view.state.doc.content.size
-      const from = Math.max(0, Math.min(range.from, size))
-      const to = Math.max(from, Math.min(range.to, size))
-      const start = view.coordsAtPos(from)
-      const end = view.coordsAtPos(to)
-      return {
-        left: Math.min(start.left, end.left),
-        top: Math.min(start.top, end.top),
-        right: Math.max(start.right, end.right),
-        bottom: Math.max(start.bottom, end.bottom),
-      }
-    },
     setActiveAnnotation(id) {
       if (getActiveAnnotation(view.state) === id) return
       view.dispatch(setActiveAnnotation(view.state.tr, id))

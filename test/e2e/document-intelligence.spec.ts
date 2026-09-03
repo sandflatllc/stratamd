@@ -157,7 +157,7 @@ test('diagrams, trees, images, local previews, and durable folds remain document
     await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
     await page.locator('.annotation-row').filter({ hasText: 'Hidden review sentence.' }).click()
     await expect(editor.getByText('Hidden review sentence.', { exact: true })).toBeVisible()
-    await expect(page.getByRole('dialog', { name: 'question thread' })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'question thread' })).toBeVisible()
     await page.getByRole('button', { name: 'Close thread' }).click()
     await editor.getByText('Visible ending.', { exact: true }).click()
     await expect(editor.getByText('Hidden review sentence.', { exact: true })).toBeHidden()

@@ -74,8 +74,6 @@ export interface RendererEditorHandle {
   jumpToAnnotation?(annotationId: string): void
   jumpToHeading?(headingId: string): void
   headingSource?(headingId: string): { quote: string; from: number; to: number; atx: boolean } | null
-  /** One-shot client coordinates of an annotation's span for the thread panel. */
-  annotationCoordinates?(annotationId: string): { left: number; top: number; right: number; bottom: number } | null
   setActiveAnnotation?(annotationId: string | null): void
   /** Replaces the current visual selection through the normal edit path (the annotate menu's spelling column). */
   replaceSelection?(text: string): void

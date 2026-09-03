@@ -23,17 +23,47 @@ import { AMBIENT_STYLES, BUILT_IN_THEME_ID, BUILT_IN_THEME_NAME, contrastingText
 
 export type NumericPanelKey = Exclude<keyof PanelSizes, 'themePanel' | 'threadPanel' | 'annotationComposer' | 'sendComposer'>
 
+/** Side windows have a floor but no ceiling: the owner decides how wide they get (decided 2026-09-02). */
+export const SIDE_WINDOW_MAX = 20_000
+
 export const PANEL_LIMITS = {
-  explorerWidth: [160, 340],
-  rightRailWidth: [240, 440],
+  explorerWidth: [160, SIDE_WINDOW_MAX],
+  rightRailWidth: [240, SIDE_WINDOW_MAX],
   upperReviewHeight: [180, 954],
   documentMeasure: [620, 1600]
 } as const satisfies Record<NumericPanelKey, readonly [number, number]>
 
 export const THEME_PANEL_LIMITS = { minWidth: 300, maxWidth: 900, minHeight: 320, maxHeight: 1600 } as const
 
-/** The floating thread panel: default about twice the old popover, never below it (PRD §6.9). */
-export const THREAD_PANEL_LIMITS = { minWidth: 330, maxWidth: 1200, minHeight: 180, maxHeight: 1600 } as const
+/** The left window's width while the Thread tab is selected: never below the old popover's 330px (PRD §6.9). */
+export const THREAD_PANEL_LIMITS = { minWidth: 330, maxWidth: SIDE_WINDOW_MAX } as const
+
+/** The editor never drops below this width because a side window grew; the side window yields instead. */
+export const EDITOR_FLOOR = 240
+/** Shell padding and the two drag handles either side of the editor. */
+const SIDE_CHROME = 88
+
+/**
+ * The widest a side window may be right now: whatever leaves the other side
+ * window, the handles, and an editor at least EDITOR_FLOOR wide on screen.
+ * There is no fixed ceiling; the window itself is the only limit. The floor
+ * wins over the editor when the window is too narrow for both.
+ */
+export function sideWindowCeiling(minimum: number, windowWidth: number, otherSide: number): number {
+  return Math.max(minimum, windowWidth - SIDE_CHROME - otherSide - EDITOR_FLOOR)
+}
+
+/**
+ * The left window carries two widths: one for Files and Contents, one for the
+ * Thread tab, so navigation can stay narrow while a conversation gets room.
+ * The stored width is what the owner chose; what shows is that width clamped
+ * to the window so the editor never collapses.
+ */
+export function leftWindowWidth(sizes: PanelSizes, threadShown: boolean, windowWidth: number): number {
+  const minimum = threadShown ? THREAD_PANEL_LIMITS.minWidth : PANEL_LIMITS.explorerWidth[0]
+  const preferred = threadShown ? sizes.threadPanel.width : sizes.explorerWidth
+  return Math.min(Math.max(minimum, preferred), sideWindowCeiling(minimum, windowWidth, sizes.rightRailWidth))
+}
 export const COMPOSER_LIMITS = { minWidth: 330, maxWidth: 900, minHeight: 160, maxHeight: 1200 } as const
 
 export const EMPTY_VIEW: AppView = {

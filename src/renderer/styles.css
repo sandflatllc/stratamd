@@ -209,7 +209,7 @@ kbd { color: var(--muted); font-family: var(--font-code), "JetBrains Mono", mono
 .navigation-rail > [role="tabpanel"] { min-height: 0; flex: 1; }
 .navigation-rail > [role="tabpanel"]:not([hidden]) { display: flex; flex-direction: column; }
 .explorer-embedded { border-radius: 0; background: transparent; box-shadow: none; }
-.rail-tabs { display: grid; height: 46px; flex: none; grid-template-columns: repeat(2, minmax(0, 1fr)); border-bottom: 1px solid color-mix(in srgb, var(--surfaces-border) 55%, transparent); background: color-mix(in srgb, var(--surfaces-window) 26%, transparent); }
+.rail-tabs { display: grid; height: 46px; flex: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); border-bottom: 1px solid color-mix(in srgb, var(--surfaces-border) 55%, transparent); background: color-mix(in srgb, var(--surfaces-window) 26%, transparent); }
 .rail-tab { position: relative; border: 0; outline: none; background: transparent; color: var(--muted); font-family: inherit; font-size: calc(12px * var(--zoom, 1)); font-weight: 800; cursor: pointer; }
 .rail-tab:hover, .rail-tab:focus-visible { color: var(--body); }
 .rail-tab:focus-visible { box-shadow: inset 0 0 0 2px var(--controls-focus); }
@@ -484,6 +484,8 @@ kbd { color: var(--muted); font-family: var(--font-code), "JetBrains Mono", mono
 .selection-menu .spelling-options button:hover { transform: none; }
 .selection-menu .spelling-options .spelling-learn { color: color-mix(in srgb, var(--surfaces-overlay-text) 72%, transparent); font-weight: 600; }
 .annotation-composer { display: flex; width: 330px; flex-direction: column; border: 1px solid var(--line); border-radius: 18px; padding: 15px; background: var(--card); box-shadow: 0 20px 50px -14px color-mix(in srgb, var(--surfaces-window) 70%, transparent); animation: pop-in .28s cubic-bezier(.34,1.56,.64,1); }
+.composer-resize { position: absolute; right: 2px; bottom: 2px; width: 18px; height: 18px; border: 0; border-radius: 6px; background: linear-gradient(135deg, transparent 50%, var(--line) 50%); cursor: nwse-resize; }
+.composer-resize:focus-visible { outline: 2px solid var(--controls-focus); }
 .annotation-kind { margin-bottom: 6px; color: var(--controls-primary); font-size: calc(13px * var(--zoom, 1)); font-weight: 800; text-transform: capitalize; }
 .annotation-composer blockquote { margin: 0 0 10px; border-left: 4px solid var(--controls-primary); border-radius: 0 9px 9px 0; padding: 6px 11px; background: var(--card-2); color: var(--dim); font-size: calc(13px * var(--zoom, 1)); font-style: italic; font-weight: 600; }
 .annotation-context { margin: -2px 0 10px; color: var(--interface-muted); font-size: calc(11px * var(--zoom, 1)); font-weight: 800; }
@@ -503,18 +505,17 @@ kbd { color: var(--muted); font-family: var(--font-code), "JetBrains Mono", mono
 .chip-suggestion, .chip-comment { color: var(--controls-primary-tint); background: color-mix(in srgb, var(--controls-primary) 20%, transparent); }
 .chip-orphaned { color: var(--interface-secondary); background: color-mix(in srgb, var(--people-external) 25%, transparent); }
 /* The one thread surface: floating, movable, resizable; body text at the editor's body size. */
-.thread-panel { position: fixed; z-index: 55; display: flex; flex-direction: column; max-height: calc(100vh - 16px); border: 1px solid var(--line); border-radius: 18px; padding: 15px; background: var(--card); box-shadow: 0 24px 60px -18px color-mix(in srgb, var(--surfaces-window) 70%, transparent); animation: pop-in .3s cubic-bezier(.34,1.56,.64,1); }
-.thread-panel-header { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; cursor: grab; user-select: none; }
-.thread-panel-header:active { cursor: grabbing; }
+.thread-panel { position: relative; display: flex; min-height: 0; flex: 1; flex-direction: column; padding: 14px 12px 12px; }
+.thread-panel-header { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; user-select: none; }
 .thread-panel .popover-close { position: static; }
+.thread-empty { padding: 28px 16px; }
+.thread-empty small { display: block; margin-top: 6px; font-size: calc(12px * var(--zoom, 1)); font-weight: 600; }
 .thread-panel-scroll { min-height: 0; flex: 1; overflow: auto; }
 .thread-panel-scroll > p { margin: 0 0 10px; color: var(--text); font-size: calc(21px * var(--zoom, 1)); font-weight: 600; line-height: 1.55; }
 .thread-panel-quote { margin: 0 0 10px; border-left: 4px solid var(--line); border-radius: 0 9px 9px 0; padding: 6px 11px; background: var(--card-2); color: var(--dim); font-size: calc(21px * var(--zoom, 1)); font-style: italic; font-weight: 600; }
 .thread-panel .reply span { font-size: calc(21px * var(--zoom, 1)); }
 .thread-panel .reply-box { flex: none; margin-top: 4px; }
 .thread-panel .reply-box input { font-size: calc(21px * var(--zoom, 1)); }
-.thread-panel-resize { position: absolute; right: 2px; bottom: 2px; width: 18px; height: 18px; border: 0; border-radius: 6px; background: linear-gradient(135deg, transparent 50%, var(--line) 50%); cursor: nwse-resize; }
-.thread-panel-resize:focus-visible { outline: 2px solid var(--controls-focus); }
 .reply { display: flex; flex-direction: column; margin-bottom: 10px; border-left: 3px solid; padding: 3px 0 3px 12px; animation: pop-in .3s cubic-bezier(.34,1.56,.64,1); }
 .reply strong { font-size: calc(12px * var(--zoom, 1)); }
 .reply span { color: var(--body); font-size: calc(14px * var(--zoom, 1)); line-height: 1.5; }
@@ -766,7 +767,7 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .app-shell[data-theme-highlight="effects-background"] .ambient-page,
 .app-shell[data-theme-highlight="effects-panels"] .ambient-layer,
 [data-theme-highlight] .theme-chrome [data-sample-active="true"] { outline: 2px solid var(--controls-primary); outline-offset: 2px; border-radius: 6px; }
-.app-shell[data-theme-highlight="surfaces-panel"] :is(.island, .theme-panel, .thread-panel, .context-menu, .modal), .app-shell[data-theme-highlight="surfaces-border"] .island { outline: 2px solid var(--controls-primary); outline-offset: -2px; }
+.app-shell[data-theme-highlight="surfaces-panel"] :is(.island, .theme-panel, .context-menu, .modal), .app-shell[data-theme-highlight="surfaces-border"] .island { outline: 2px solid var(--controls-primary); outline-offset: -2px; }
 .app-shell[data-theme-highlight="surfaces-window"] { outline: 3px solid var(--controls-primary); outline-offset: -3px; }
 
 /* Crash containment (docs/crash-hardening-plan.md §3): the fallback card a

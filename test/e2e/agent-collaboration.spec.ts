@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { Scenario, save, selectTextInVisualEditor, send, setSource, spawnCli, type Payload } from './harness'
 
 // The agent-collaboration suite (docs/plans/completed/agent-collaboration-plan.md §9): messages,
-// the Lead, the review board, the thread panel, orphans, and save state.
+// the Lead, the review board, the Thread tab, orphans, and save state.
 
 async function scenario(testInfo: TestInfo, content: string, name: string): Promise<Scenario> {
   const value = await Scenario.create(testInfo, content, name)
@@ -267,13 +267,15 @@ test('3b. disconnect confirms only when queued sends would be discarded, and end
   }
 })
 
-test('4. the thread panel opens beside a span pages below the fold, works, and keeps only its size', async ({}, testInfo) => {
+test('4. a thread pages below the fold opens in the Thread tab with the span centered, works, and keeps its own width', async ({}, testInfo) => {
   const filler = Array.from({ length: 70 }, (_, index) => `Filler paragraph ${index + 1} pads the page.`)
   const original = `# Threads\n\n${filler.slice(0, 60).join('\n\n')}\n\nThe needle sentence sits far below the fold.\n\n${filler.slice(60).join('\n\n')}\n`
   const value = await scenario(testInfo, original, 'threads.md')
   const settingsPath = join(String(value.env.XDG_CONFIG_HOME), 'stratamd', 'settings.json')
   try {
     const page = value.page!
+    // Room for the default thread width beside the right rail and the editor's floor.
+    await page.setViewportSize({ width: 1440, height: 900 })
     expect((await value.attach('agent-a', 'Agent A')).event).toBe('initial')
     const annotated = await value.cli([
       'annotate', value.file,
@@ -284,13 +286,17 @@ test('4. the thread panel opens beside a span pages below the fold, works, and k
     ])
     expect(annotated.code, annotated.stderr).toBe(0)
 
-    // A rail click centers the span and opens the panel beside it, inside the viewport.
+    // A rail click centers the span in the editor and opens the thread in the left window.
     await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
     await page.locator('.annotations-panel .annotation-row').first().click()
-    const panel = page.getByRole('dialog', { name: /comment thread/i })
+    const panel = page.getByRole('region', { name: /comment thread/i })
+    const navigation = page.getByRole('tablist', { name: 'Document navigation' })
+    const leftWindow = page.locator('[data-pane="explorer"]')
     await expect(panel).toBeVisible()
     await expect(panel).toBeInViewport()
+    await expect(navigation.getByRole('tab', { name: 'Thread', exact: true })).toHaveAttribute('aria-selected', 'true')
     await expect(page.locator('.strata-annotation.is-active').first()).toBeInViewport()
+    await expect.poll(() => leftWindow.evaluate((element) => (element as HTMLElement).style.width)).toBe('660px')
 
     // Reply and Resolve work from the panel.
     const reply = panel.getByRole('textbox', { name: 'Reply' })
@@ -302,8 +308,9 @@ test('4. the thread panel opens beside a span pages below the fold, works, and k
       return state.annotations?.flatMap((item) => item.replies ?? []).map((item) => item.text) ?? []
     }).toContain('Replying from the panel')
 
-    // Resizing persists the size; the position is derived fresh each open.
-    await dragBy(page, panel.getByRole('button', { name: 'Resize thread panel' }), 120, 80)
+    // Dragging the left window's handle while Thread shows persists the thread
+    // width and leaves the navigation width alone.
+    await dragBy(page, page.getByRole('button', { name: 'Resize left window' }), 120, 0)
     await expect.poll(async () => {
       try {
         return JSON.parse(await readFile(settingsPath, 'utf8')).panels?.threadPanel?.width ?? null
@@ -311,13 +318,17 @@ test('4. the thread panel opens beside a span pages below the fold, works, and k
         return null
       }
     }, { timeout: 15_000 }).toBe(780)
+    expect(JSON.parse(await readFile(settingsPath, 'utf8')).panels?.explorerWidth).toBe(212)
     await panel.getByRole('button', { name: 'Close thread' }).click()
     await expect(panel).toBeHidden()
+    // Closing returns the left window to navigation at its own width.
+    await expect(navigation.getByRole('tab', { name: 'Files', exact: true })).toHaveAttribute('aria-selected', 'true')
+    await expect.poll(() => leftWindow.evaluate((element) => (element as HTMLElement).style.width)).toBe('212px')
 
-    // The in-editor highlight opens the same panel.
+    // The in-editor highlight opens the same thread at the remembered width.
     await page.locator('.strata-annotation').first().click()
     await expect(panel).toBeVisible()
-    await expect.poll(() => panel.evaluate((element) => (element as HTMLElement).style.width)).toBe('780px')
+    await expect.poll(() => leftWindow.evaluate((element) => (element as HTMLElement).style.width)).toBe('780px')
 
     // The writing modal gets the same resize treatment.
     await panel.getByRole('button', { name: 'Close thread' }).click()
@@ -352,7 +363,7 @@ test('4. the thread panel opens beside a span pages below the fold, works, and k
     await expect(panel).toBeVisible()
     await panel.getByRole('button', { name: /Resolve thread/i }).click()
     await expect(page.locator('.annotations-panel .annotation-row')).toHaveCount(0)
-    // Resolving closes the panel, so the rail's Clear resolved button is reachable.
+    // Resolving closes the thread, so the rail's Clear resolved button is reachable.
     await expect(panel).toBeHidden()
     await page.getByRole('button', { name: 'Clear resolved' }).click()
     await expect.poll(async () => ((await value.state()).annotations ?? []).length).toBe(0)
@@ -386,7 +397,7 @@ test('5. an orphaned thread keeps every affordance except the jump', async ({}, 
 
     // The row opens the thread with the original quote shown; there is nothing to jump to.
     await row.click()
-    const panel = page.getByRole('dialog', { name: /comment thread/i })
+    const panel = page.getByRole('region', { name: /comment thread/i })
     await expect(panel).toBeVisible()
     await expect(panel.locator('.thread-panel-quote')).toContainText('quoted span')
 

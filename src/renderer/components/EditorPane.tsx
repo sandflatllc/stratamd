@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
-import { createPortal } from 'react-dom'
 import type { AnnotationContext, AnnotationKind, AnnotationView, BufferOrigin, DocumentView, HunkView, PanelSize, RedoResult, SpellingContext, TableViewState, UndoResult, WalkthroughAction, WalkthroughState } from '../../shared/contracts'
 import type { EditorSelection, RendererEditorFactory, RendererEditorHandle } from '../editorAdapter'
 import { bannerFor, currentAnnotation } from '../model'
@@ -9,9 +8,7 @@ import { AnnotationComposer } from './AnnotationComposer'
 import { AmbientDecor } from './AmbientDecor'
 import { EditorMount } from './EditorMount'
 import { FindBar } from './FindBar'
-import { ResolveSuggestionDialog } from './Overlays'
 import { Resizer } from './Resizer'
-import { ThreadPanel, type SpanAnchor } from './ThreadPanel'
 import { Toolbar, type EditorCommand } from './Toolbar'
 import { WalkthroughBar } from './WalkthroughBar'
 import { walkthroughView } from '../walkthrough'
@@ -25,11 +22,9 @@ interface EditorPaneProps {
   onJumpHeading(id: string): void
   documentMeasure: number
   zoom: number
-  threadPanelSize: PanelSize
   composerSize: PanelSize
   createEditor: RendererEditorFactory
   onDocumentMeasure(value: number, commit: boolean): void
-  onThreadPanelSize(size: PanelSize, commit: boolean): void
   onComposerSize(size: PanelSize, commit: boolean): void
   onBufferChange(content: string, origin: BufferOrigin): void
   onToggleSource(source: boolean): void
@@ -42,20 +37,16 @@ interface EditorPaneProps {
   onAddDecision(quote: string, prompt: string, options: string[], from: number, to: number): void
   onTableView(state: TableViewState): void
   onAdjustAnnotation(id: string, quote: string, from: number, to: number): void
-  onReply(id: string, text: string): void
-  onResolve(id: string): void
-  onAnswerDecision(id: string, answer: { option: string | null; other?: string }): void
-  onReopenDecision(id: string): void
   onAccept(id: string): void
   onReject(id: string): void
+  /** The open thread; its span is highlighted and offered drag handles in the editor. */
   selectedAnnotation: AnnotationView | null
+  /** An in-editor highlight click opens its thread in the left window's Thread tab (§6.9). */
   onSelectAnnotation(annotation: AnnotationView | null): void
   jumpHunkId: string | null
   jumpAnnotationId: string | null
   jumpHeading: { id: string; token: number } | null
   onHeadings(headings: readonly EditorHeading[], activeId: string | null, durationMs: number): void
-  /** What opened the current thread from outside the editor; focus returns there on close (§5.11). */
-  threadOpener?: RefObject<HTMLElement | null>
   editorRef?: RefObject<RendererEditorHandle | null>
 }
 
@@ -79,7 +70,6 @@ export function EditorPane(props: EditorPaneProps) {
   const banner = bannerDismissed ? null : bannerFor(document)
   const selectedAnnotation = currentAnnotation(document, props.selectedAnnotation)
   const walkthrough = walkthroughView(props.headings, props.walkthrough)
-  const [confirmResolve, setConfirmResolve] = useState(false)
   // Find (PRD §6.1): the bar is pane state; the marks live in the editor.
   const [find, setFind] = useState<{ open: boolean; query: string; focusToken: number }>({ open: false, query: '', focusToken: 0 })
   const [findResult, setFindResult] = useState<FindResult>(NO_MATCHES)
@@ -114,7 +104,7 @@ export function EditorPane(props: EditorPaneProps) {
     setSpelling(null)
     window.requestAnimationFrame(() => {
       // Hand focus back to the editor only when nothing else took it meanwhile
-      // (a closing thread panel returns focus to the rail row that opened it).
+      // (a closing thread returns focus to the rail row that opened it).
       const active = globalThis.document.activeElement
       if (active instanceof HTMLElement && active !== globalThis.document.body && !active.closest('.prosemirror-host, .selection-menu, .annotation-composer')) return
       editor.current?.focus()
@@ -175,25 +165,6 @@ export function EditorPane(props: EditorPaneProps) {
   useEffect(() => { if (props.jumpHeading) editor.current?.jumpToHeading?.(props.jumpHeading.id) }, [props.jumpHeading])
   const activeAnnotationId = selectedAnnotation?.status === 'open' && selectedAnnotation.anchor !== 'document' ? selectedAnnotation.id : null
   useEffect(() => { editor.current?.setActiveAnnotation?.(activeAnnotationId) }, [activeAnnotationId])
-  // One-shot coordinate query at open time, after the jump effect above has
-  // centered the span; a movable panel needs no live anchor tracking.
-  const [thread, setThread] = useState<{ id: string; anchor: SpanAnchor | null; fallback: { x: number; y: number } } | null>(null)
-  const selectedId = selectedAnnotation?.id ?? null
-  useEffect(() => { setConfirmResolve(false) }, [selectedId])
-  useEffect(() => {
-    if (selectedId === null) {
-      setThread(null)
-      return
-    }
-    const bounds = scroll.current?.getBoundingClientRect()
-    setThread({
-      id: selectedId,
-      anchor: editor.current?.annotationCoordinates?.(selectedId) ?? null,
-      fallback: bounds
-        ? { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 }
-        : { x: window.innerWidth / 2, y: window.innerHeight / 2 },
-    })
-  }, [selectedId, props.jumpAnnotationId])
   return (
     <main className="editor-island island" data-pane="editor" style={{ '--zoom': props.zoom } as CSSProperties}>
       <AmbientDecor variant="editor" />
@@ -305,38 +276,6 @@ export function EditorPane(props: EditorPaneProps) {
         />
       </div>
       {walkthrough && <WalkthroughBar view={walkthrough} onJump={props.onJumpHeading} onAction={props.onWalkthrough} />}
-      {selectedAnnotation && thread && thread.id === selectedAnnotation.id && createPortal(
-        <>
-          <ThreadPanel
-            key={selectedAnnotation.id}
-            annotation={selectedAnnotation}
-            documentPath={document.path}
-            anchor={thread.anchor}
-            fallbackCenter={thread.fallback}
-            size={props.threadPanelSize}
-            zoom={props.zoom}
-            onSize={props.onThreadPanelSize}
-            onReply={(text) => props.onReply(selectedAnnotation.id, text)}
-            // Resolving an open suggestion is neither Accept nor Reject: confirm first (PRD §6.5).
-            onResolve={() => selectedAnnotation.kind === 'suggestion' && selectedAnnotation.status === 'open' ? setConfirmResolve(true) : props.onResolve(selectedAnnotation.id)}
-            onAnswer={(answer) => props.onAnswerDecision(selectedAnnotation.id, answer)}
-            onReopen={() => props.onReopenDecision(selectedAnnotation.id)}
-            onAccept={() => props.onAccept(selectedAnnotation.id)}
-            onReject={() => props.onReject(selectedAnnotation.id)}
-            onClose={() => props.onSelectAnnotation(null)}
-            {...(props.threadOpener ? { opener: props.threadOpener } : {})}
-          />
-          {confirmResolve && (
-            <ResolveSuggestionDialog
-              onCancel={() => setConfirmResolve(false)}
-              onConfirm={() => { setConfirmResolve(false); props.onResolve(selectedAnnotation.id) }}
-            />
-          )}
-        </>,
-        // The panel floats over every island; inside the editor island the
-        // rail's own stacking context would paint on top of it.
-        globalThis.document.querySelector('.app-shell') ?? globalThis.document.body,
-      )}
     </main>
   )
 }

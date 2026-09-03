@@ -69,7 +69,6 @@ const createRendererEditor: RendererEditorFactory = (element, options) => {
     jumpToAnnotation: (id) => handle.jumpToAnnotation(id),
     jumpToHeading: (id) => handle.jumpToHeading(id),
     headingSource: (id) => handle.headingSource(id),
-    annotationCoordinates: (id) => handle.annotationCoordinates(id),
     replaceSelection: (text) => handle.replaceSelection(text),
     pasteText: (text) => handle.pasteText(text),
     selectAll: () => handle.selectAll(),

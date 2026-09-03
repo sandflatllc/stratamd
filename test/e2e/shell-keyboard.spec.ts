@@ -146,7 +146,7 @@ test('composer and reply drafts survive Escape, and Escape closes one surface at
     await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
     const row = page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'Reply to this sentence.' })
     await row.click()
-    const thread = page.getByRole('dialog', { name: /comment thread/i })
+    const thread = page.getByRole('region', { name: /comment thread/i })
     await expect(thread).toBeVisible()
     const reply = thread.getByRole('textbox', { name: 'Reply' })
     await reply.click()

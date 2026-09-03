@@ -109,7 +109,6 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
     jumpToAnnotation: (id) => editorRef.current?.jumpToAnnotation?.(id),
     jumpToHeading: (id) => editorRef.current?.jumpToHeading?.(id),
     headingSource: (id) => editorRef.current?.headingSource?.(id) ?? null,
-    annotationCoordinates: (id) => editorRef.current?.annotationCoordinates?.(id) ?? null,
     setActiveAnnotation: (id) => editorRef.current?.setActiveAnnotation?.(id),
     replaceSelection: (text) => editorRef.current?.replaceSelection?.(text),
     pasteText: (text) => editorRef.current?.pasteText?.(text),

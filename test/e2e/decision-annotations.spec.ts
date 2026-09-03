@@ -48,7 +48,7 @@ test('owner decisions keep choice, discussion, delivery, and edits separate', as
 
     const decisionRow = annotations.getByRole('button').filter({ hasText: 'Which release gate should we use?' })
     await decisionRow.click()
-    const thread = page.getByRole('dialog', { name: /decision thread/i })
+    const thread = page.getByRole('region', { name: /decision thread/i })
     await expect(thread).toContainText('CI gives us the clearest audit trail.')
     await thread.getByRole('radio', { name: 'Use CI' }).check()
     await thread.getByRole('button', { name: 'Answer decision' }).click()
@@ -85,7 +85,7 @@ test('owner decisions keep choice, discussion, delivery, and edits separate', as
 
     await annotations.getByRole('button', { name: 'Resolved', exact: true }).click()
     await annotations.getByRole('button').filter({ hasText: 'Which release gate should we use?' }).click()
-    const resolvedThread = page.getByRole('dialog', { name: /decision thread/i })
+    const resolvedThread = page.getByRole('region', { name: /decision thread/i })
     await resolvedThread.getByRole('button', { name: /Reopen decision/i }).click()
     const reopened = (await scenario.state()).annotations?.find((item) => item.id === created!.id)
     expect(reopened).toMatchObject({
@@ -159,7 +159,7 @@ test('an orphaned decision remains answerable', async ({}, testInfo) => {
     await expect.poll(async () => (await scenario.state()).annotations?.find((item) => item.id === id)?.status).toBe('orphaned')
     await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
     await page.locator('.annotation-row').filter({ hasText: 'Which gate?' }).click()
-    const thread = page.getByRole('dialog', { name: /decision thread/i })
+    const thread = page.getByRole('region', { name: /decision thread/i })
     await expect(thread.getByRole('button', { name: 'Answer decision' })).toBeVisible()
     await thread.getByRole('radio', { name: 'CI' }).check()
     await thread.getByRole('button', { name: 'Answer decision' }).click()

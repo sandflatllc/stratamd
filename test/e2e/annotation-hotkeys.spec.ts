@@ -44,7 +44,7 @@ test('letters typed into a thread reply stay there while a selection pill is up'
     await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
     const row = page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'Reply to this thread sentence.' })
     await row.click()
-    const thread = page.getByRole('dialog', { name: /comment thread/i })
+    const thread = page.getByRole('region', { name: /comment thread/i })
     await expect(thread).toBeVisible()
 
     // A live selection pill in the editor must not claim the reply's letters.

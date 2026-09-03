@@ -116,7 +116,7 @@ test('cell discussion uses the exact row and hidden review targets reveal tempor
   await expect(composer).toContainText('Islands · Column 2: Verdict')
   await composer.getByRole('textbox', { name: 'Annotation text' }).fill('What protects this island?')
   await composer.getByRole('button', { name: 'Add' }).click()
-  await expect(page.getByRole('dialog', { name: 'question thread' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'question thread' })).toBeVisible()
   const annotation = await page.evaluate(async () => (await window.strata.getState()).activeDocument?.annotations[0])
   expect(annotation).toMatchObject({
     kind: 'question',
@@ -130,7 +130,7 @@ test('cell discussion uses the exact row and hidden review targets reveal tempor
   await expect(composer).toContainText('Islands · Complete table row')
   await composer.getByRole('textbox', { name: 'Annotation text' }).fill('Check the complete record.')
   await composer.getByRole('button', { name: 'Add' }).click()
-  await expect(page.getByRole('dialog', { name: 'question thread' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'question thread' })).toBeVisible()
   const rowAnnotation = await page.evaluate(async () => (await window.strata.getState()).activeDocument?.annotations.find((item) => item.context?.kind === 'table-row'))
   expect(rowAnnotation).toMatchObject({
     quote: '| Gamma | Unprotected | 20 |',
@@ -159,7 +159,7 @@ test('cell discussion uses the exact row and hidden review targets reveal tempor
   await block.getByRole('button', { name: 'Return to table view' }).click()
 
   await page.keyboard.press('F8')
-  await expect(page.getByRole('dialog', { name: 'question thread' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'question thread' })).toBeVisible()
   await expect(block.locator('.strata-source-table')).toBeVisible()
   await page.getByRole('button', { name: 'Close thread' }).click()
   await block.getByRole('button', { name: 'Return to table view' }).click()
@@ -173,7 +173,7 @@ test('cell discussion uses the exact row and hidden review targets reveal tempor
   await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
   await page.locator('.annotation-row').first().click()
   await expect(block.locator('.strata-source-table')).toBeVisible()
-  await expect(page.getByRole('dialog', { name: 'question thread' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'question thread' })).toBeVisible()
   await page.getByRole('button', { name: 'Close thread' }).click()
   await block.getByRole('button', { name: 'Return to table view' }).click()
 

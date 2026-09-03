@@ -58,7 +58,7 @@ describe('settings', () => {
     })
     expect(settings.formatVersion).toBe(2)
     expect(settings.theme).toBe('strata-vivid')
-    expect(settings.panels).toMatchObject({ explorerWidth: 340, rightRailWidth: 240, documentMeasure: 1600 })
+    expect(settings.panels).toMatchObject({ explorerWidth: 900, rightRailWidth: 240, documentMeasure: 1600 })
     expect(settings.explorerFolders).toHaveLength(1)
   })
 

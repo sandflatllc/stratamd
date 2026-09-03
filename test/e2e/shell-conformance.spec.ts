@@ -42,7 +42,7 @@ test('panel resize persists across an application restart', async ({}, testInfo)
   const value = await Scenario.create(testInfo, '# Panels\n\nResize me.\n', 'panels.md')
   try {
     const page = await value.launch()
-    const resizer = page.getByRole('button', { name: 'Resize file explorer' })
+    const resizer = page.getByRole('button', { name: 'Resize left window' })
     await expect(resizer).toHaveAttribute('aria-valuenow', '212')
     const bounds = await resizer.boundingBox()
     expect(bounds).toBeTruthy()
@@ -64,7 +64,7 @@ test('panel resize persists across an application restart', async ({}, testInfo)
 
     await value.stop()
     const restarted = await value.launch()
-    await expect(restarted.getByRole('button', { name: 'Resize file explorer' })).toHaveAttribute('aria-valuenow', '276')
+    await expect(restarted.getByRole('button', { name: 'Resize left window' })).toHaveAttribute('aria-valuenow', '276')
   } finally {
     await value.dispose()
   }
@@ -420,7 +420,7 @@ test('keyboard operates composer recipient previews and an annotation thread', a
     await tabTo(page, row)
     await page.keyboard.press('Enter')
 
-    const thread = page.getByRole('dialog', { name: /comment thread/i })
+    const thread = page.getByRole('region', { name: /comment thread/i })
     await expect(thread).toBeVisible()
     const reply = thread.getByRole('textbox', { name: 'Reply' })
     await tabTo(page, reply)
