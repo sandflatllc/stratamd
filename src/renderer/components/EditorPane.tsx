@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
-import type { AnnotationContext, AnnotationKind, AnnotationView, BufferOrigin, CreateDraftRequest, DocumentView, HunkView, PanelSize, RedoResult, SpellingContext, TableViewState, UndoResult, WalkthroughAction, WalkthroughState } from '../../shared/contracts'
+import type { AnnotationContext, AnnotationKind, AnnotationView, BufferOrigin, CreateDraftRequest, DocumentView, HunkView, PanelSize, QuickSendRequest, RedoResult, SpellingContext, TableViewState, UndoResult, WalkthroughAction, WalkthroughState } from '../../shared/contracts'
 import type { EditorSelection, RendererEditorFactory, RendererEditorHandle } from '../editorAdapter'
 import { bannerFor, currentAnnotation } from '../model'
 import { NO_MATCHES, type FindResult } from '../../editor/find'
@@ -36,7 +36,7 @@ interface EditorPaneProps {
   onAddAnnotation(kind: Exclude<AnnotationKind, 'decision'>, quote: string, text: string, from: number, to: number, context?: AnnotationContext): void
   onAddDecision(quote: string, prompt: string, options: string[], from: number, to: number): void
   onHoldDraft(draft: CreateDraftRequest): void
-  onQuickSend(draft: CreateDraftRequest): void
+  onQuickSend(draft: QuickSendRequest): void
   onTableView(state: TableViewState): void
   onAdjustAnnotation(id: string, quote: string, from: number, to: number): void
   onAccept(id: string): void
@@ -253,9 +253,9 @@ export function EditorPane(props: EditorPaneProps) {
           attachments={document.attachments}
           leadAgentId={document.leadAgentId}
           activeConversationId={document.attachments[0]?.agent.id ?? null}
-          onHold={(kind, text, recipients) => {
+          onHold={(kind, text) => {
             if (!selection) return
-            props.onHoldDraft({ kind, text, recipients, quote: selection.quote, from: selection.from, to: selection.to, ...(selection.annotationContext ? { context: selection.annotationContext } : {}) })
+            props.onHoldDraft({ kind, text, quote: selection.quote, from: selection.from, to: selection.to, ...(selection.annotationContext ? { context: selection.annotationContext } : {}) })
             dismissComposer()
           }}
           onSend={(kind, text, recipients) => {

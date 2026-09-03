@@ -76,7 +76,7 @@ describe('visual selection markdown spans', () => {
     const quote = '**bold** term'
     const draft: DraftView = {
       id: 'd_bold', kind: 'comment', quote, prefix: '', suffix: '', text: 'Review this.',
-      from: 0, to: quote.length, status: 'attached', recipients: ['agent-a'], createdAt: 1,
+      from: 0, to: quote.length, status: 'attached', createdAt: 1,
     }
 
     const [range] = annotationInputs(draftRanges([draft]), parsed.doc, parsed)

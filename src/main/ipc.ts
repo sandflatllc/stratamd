@@ -69,8 +69,10 @@ const draftRequestSchema = z.object({
   text: textSchema.refine((value) => value.trim().length > 0),
   from: z.number().int().nonnegative(),
   to: z.number().int().nonnegative(),
-  recipients: z.array(idSchema).max(128),
   context: annotationContextSchema.optional(),
+}).strict()
+const quickSendRequestSchema = draftRequestSchema.extend({
+  recipients: z.array(idSchema).max(128),
 }).strict()
 const settingsSchema = z.object({
   animatedBackground: z.boolean().optional(),
@@ -156,7 +158,7 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   ])]),
   [IPC.holdDraft]: z.tuple([pathSchema, draftRequestSchema]),
   [IPC.discardDraft]: z.tuple([pathSchema, idSchema]),
-  [IPC.quickSend]: z.tuple([pathSchema, draftRequestSchema]),
+  [IPC.quickSend]: z.tuple([pathSchema, quickSendRequestSchema]),
   [IPC.requoteAnnotation]: z.tuple([pathSchema, idSchema, z.object({
     quote: z.string().min(1),
     from: z.number().int().nonnegative(),

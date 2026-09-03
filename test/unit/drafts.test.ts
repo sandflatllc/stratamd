@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
@@ -13,9 +13,9 @@ describe('private held comments', () => {
     const from = source.indexOf('target')
     const held = holdDraft(createDraftStore(), source, {
       id: 'd_one', kind: 'comment', text: '  Tighten this.  ', quote: 'target',
-      from, to: from + 6, recipients: ['thread-a', 'thread-a'], createdAt: 12,
+      from, to: from + 6, createdAt: 12,
     })
-    expect(held.drafts[0]).toMatchObject({ id: 'd_one', text: 'Tighten this.', recipients: ['thread-a'] })
+    expect(held.drafts[0]).toMatchObject({ id: 'd_one', text: 'Tighten this.' })
     expect(relocateDraft(held.drafts[0]!, `Before.\n${source}`)).toMatchObject({ status: 'attached', from: from + 8, to: from + 14 })
     expect(relocateDraft(held.drafts[0]!, source.replace('target', 'subject')).status).toBe('orphaned')
     expect(discardDraft(held, 'd_one').drafts).toEqual([])
@@ -27,7 +27,7 @@ describe('private held comments', () => {
     const source = 'Keep this sentence.\n'
     const store = holdDraft(createDraftStore(), source, {
       id: 'd_private', kind: 'question', text: 'Why?', quote: 'this sentence',
-      from: 5, to: 18, recipients: ['thread-a'], createdAt: 14,
+      from: 5, to: 18, createdAt: 14,
     })
     await writeDraftStore(path, store)
     expect((await stat(path)).mode & 0o777).toBe(0o600)
@@ -43,6 +43,22 @@ describe('private held comments', () => {
     await expect(writeDraftStore(path, invalid as never)).rejects.toThrow(`Invalid draft: ${path}`)
   })
 
+  it('loads an old stored recipient field without exposing it on the draft', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'stratamd-drafts-legacy-recipient-'))
+    const path = join(directory, 'drafts.json')
+    await writeFile(path, JSON.stringify({
+      formatVersion: 1,
+      drafts: [{
+        id: 'd_old', kind: 'comment', text: 'Held note.', recipients: ['thread-a'], createdAt: 12,
+        anchor: { quote: 'target', prefix: '', suffix: '', from: 0, to: 6 },
+      }],
+    }))
+
+    const loaded = await readDraftStore(path)
+    expect(loaded.drafts).toHaveLength(1)
+    expect(loaded.drafts[0]).not.toHaveProperty('recipients')
+  })
+
   it('marks the Contents section containing each draft', () => {
     const headings = [
       { id: 'h1', level: 1 as const, text: 'Plan', position: 0, sourceFrom: 0, atx: true },
@@ -50,7 +66,7 @@ describe('private held comments', () => {
     ]
     const makeDraft = (id: string, from: number): DraftView => ({
       id, kind: 'comment', quote: 'x', prefix: '', suffix: '', text: 'Note', from, to: from + 1,
-      status: 'attached', recipients: ['thread-a'], createdAt: 1,
+      status: 'attached', createdAt: 1,
     })
     expect([...draftCountsForHeadings(headings, [makeDraft('d_1', 5), makeDraft('d_2', 30)]).entries()]).toEqual([['h1', 1], ['h2', 1]])
   })

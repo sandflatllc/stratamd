@@ -8,7 +8,6 @@ export interface Draft {
   kind: DraftKind
   text: string
   anchor: StoredTextAnchor
-  recipients: readonly string[]
   context?: AnnotationContext
   createdAt: number
 }
@@ -20,10 +19,6 @@ export interface DraftStore {
 
 export function createDraftStore(): DraftStore {
   return { formatVersion: DRAFT_FORMAT_VERSION, drafts: [] }
-}
-
-function uniqueRecipients(recipients: readonly string[]): string[] {
-  return [...new Set(recipients.map((recipient) => recipient.trim()).filter(Boolean))]
 }
 
 export function holdDraft(
@@ -39,7 +34,6 @@ export function holdDraft(
     kind: input.kind,
     text,
     anchor: createStoredTextAnchor(source, { from: input.from, to: input.to }),
-    recipients: uniqueRecipients(input.recipients),
     ...(input.context ? { context: input.context } : {}),
     createdAt: input.createdAt,
   }

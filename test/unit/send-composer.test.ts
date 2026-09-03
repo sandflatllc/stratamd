@@ -212,7 +212,7 @@ describe('send composer drafts (PRD §6.9)', () => {
   it('checks a newly attached draft without rechecking one the user unchecked', () => {
     const view = (id: string): DraftView => ({
       id, kind: 'comment', quote: id, prefix: '', suffix: '', text: id,
-      from: 0, to: id.length, status: 'attached', recipients: ['agent-a'], createdAt: 1,
+      from: 0, to: id.length, status: 'attached', createdAt: 1,
     })
     const existing = view('existing')
     const incoming = view('incoming')

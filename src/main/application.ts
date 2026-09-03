@@ -31,6 +31,7 @@ import type {
   HeadingReference,
   LocalMarkdownPreview,
   LocalImageResolution,
+  QuickSendRequest,
 } from '../shared/contracts'
 import { createDraftStore, discardDraft as removeDraft, holdDraft as addHeldDraft, relocateDraft, type DraftStore } from '../core/drafts'
 import { logError } from './log'
@@ -83,6 +84,7 @@ import {
   expireIdleAttachments,
   finishAttachCall,
   freezeDelivery,
+  freezeQuickSend,
   freezeMessage,
   isMessageDelivery,
   noteAttachCall,
@@ -1240,7 +1242,7 @@ export class StrataApplication implements StrataApi {
     })
   }
 
-  quickSend(path: string, draft: CreateDraftRequest): Promise<string[]> {
+  quickSend(path: string, draft: QuickSendRequest): Promise<string[]> {
     return this.#withSession(path, async () => {
       const session = this.#writable(path)
       if (draft.recipients.length === 0) throw new Error('Select at least one recipient')
@@ -1261,28 +1263,26 @@ export class StrataApplication implements StrataApi {
         start,
         ...(draft.context ? { context: draft.context } : {}),
       })
+      const recipients = [...new Set(draft.recipients)]
+      const annotation = toDeliveredAnnotation(created.annotation)
+      const deliveries = recipients.map((recipient) => freezeQuickSend(session.attachments[recipient]!, {
+        file: session.path,
+        buffer: this.#store.pathsForDocument(session.path).buffer,
+        annotation,
+        now: this.#now(),
+      }))
+      const selected = new Map(recipients.map((recipient, index) => [recipient, deliveries[index]!]))
       session.annotations = created.log
-      const allItems = draft.recipients.flatMap((recipient) => {
-        const attachment = session.attachments[recipient]!
-        return this.#sendItems(session, attachment).changes
-      })
-      const excludedEvents = session.annotations.events
-        .filter((event) => event.seq !== created.event.seq)
-        .map((event) => event.seq)
-      const request: SendPreviewRequest = {
-        recipients: [...new Set(draft.recipients)],
-        note: '',
-        includeExternal: false,
-        excludedHunks: [...new Set(allItems.map((item) => item.key))],
-        excludedEvents,
-      }
-      session.state = markSendBoundary(session.state)
-      const deliveries = await this.#enqueueDeliveries(session, request, request.recipients)
-      session.lastSentSegmentIndex = currentSegmentIndex(session)
-      session.lastSentAnnotationSeq = session.annotations.nextSeq - 1
-      this.#clearApplicationHistory(session)
+      session.attachments = Object.fromEntries(Object.entries(session.attachments).map(([id, attachment]) => {
+        const settled = attachment.deliveredSeqs.includes(created.event.seq)
+          ? attachment.deliveredSeqs
+          : [...attachment.deliveredSeqs, created.event.seq]
+        const delivery = selected.get(id)
+        const next = { ...attachment, deliveredSeqs: settled }
+        return [id, delivery === undefined ? next : enqueueDelivery(next, delivery)]
+      }))
       await this.#persist(session)
-      for (const recipient of request.recipients) {
+      for (const recipient of recipients) {
         const delivery = collectOldest(session.attachments[recipient]!)
         if (delivery) this.#attachWaits.deliver(attachKey(path, recipient), delivery.payload)
       }
@@ -2957,7 +2957,6 @@ export class StrataApplication implements StrataApi {
     const fromCursor = recipient === 'clipboard'
       ? (session.clipboardRecipient.pending?.to.cursor ?? session.clipboardRecipient.cursor)
       : deliveryStart(session.attachments[recipient]!).cursor
-    const slice = annotationDeliverySlice(annotations, fromCursor, recipient, new Set(request.excludedEvents ?? []))
     const start = recipient === 'clipboard'
       ? deliveryStartForClipboard(session.clipboardRecipient)
       : deliveryStart(session.attachments[recipient]!)
@@ -2965,6 +2964,16 @@ export class StrataApplication implements StrataApi {
     const baselineAvailable = recipient === 'clipboard' && session.clipboardRecipient.baseline === null
       ? true
       : baselineWithinHistory && await this.#store.hasObject(start.snapshotId)
+    const skippedEvents = recipient === 'clipboard' || !baselineAvailable
+      ? new Set<number>()
+      : new Set(session.attachments[recipient]!.deliveredSeqs)
+    const slice = annotationDeliverySlice(
+      annotations,
+      baselineAvailable ? fromCursor : 0,
+      recipient,
+      new Set(request.excludedEvents ?? []),
+      skippedEvents,
+    )
     return {
       file: session.path,
       buffer: this.#store.pathsForDocument(session.path).buffer,
@@ -3010,7 +3019,13 @@ export class StrataApplication implements StrataApi {
     }
     const agentName = (agent: string | null | undefined) =>
       agent == null ? {} : { name: session.attachments[agent]?.name ?? agent }
-    const slice = annotationDeliverySlice(annotations, start.cursor, attachment.id)
+    const slice = annotationDeliverySlice(
+      annotations,
+      start.cursor,
+      attachment.id,
+      new Set(),
+      new Set(attachment.deliveredSeqs),
+    )
     const requoted = new Set(slice.resolved.filter((item) => item.resolution === 'requoted').map((item) => item.id))
     const answerItems = new Map(slice.answers.map((answer) => [answer.seq, {
       seq: answer.seq,
@@ -3327,6 +3342,14 @@ function sendableToSomeone(event: LogEvent, attachmentIds: readonly string[]): b
   return attachmentIds.some((id) => id !== event.agent)
 }
 
+function eventSettledForEveryAttachment(
+  event: LogEvent,
+  attachments: Readonly<Record<string, Attachment>>,
+): boolean {
+  const recipients = Object.values(attachments)
+  return recipients.length > 0 && recipients.every((attachment) => attachment.deliveredSeqs.includes(event.seq))
+}
+
 /** A user segment enables Send only when someone other than its author could receive it (PRD §6.7). */
 function sendableSegment(segment: DocumentState['segments'][number], attachmentIds: readonly string[]): boolean {
   const author = segment.attribution?.agentId
@@ -3548,7 +3571,12 @@ async function restoreAttachments(
   store: GhostStore,
   payloadBlobs: WeakMap<object, string>,
 ): Promise<Record<string, Attachment>> {
-  if (Object.keys(meta.attachments).length === 0) return structuredClone(legacy ?? {})
+  if (Object.keys(meta.attachments).length === 0) {
+    return Object.fromEntries(Object.entries(structuredClone(legacy ?? {})).map(([id, attachment]) => [
+      id,
+      { ...attachment, deliveredSeqs: attachment.deliveredSeqs ?? [] },
+    ]))
+  }
   const attachments: Record<string, Attachment> = {}
   for (const [id, stored] of Object.entries(meta.attachments)) {
     const deliveries: FrozenDelivery[] = []
@@ -3578,6 +3606,9 @@ async function restoreAttachments(
       waiting: false,
       baseline: { snapshotId: stored.baselineBlob, segmentIndex: stored.segmentIndex },
       cursor: stored.cursor,
+      deliveredSeqs: Array.isArray(stored.deliveredSeqs)
+        ? stored.deliveredSeqs.filter((seq): seq is number => typeof seq === 'number')
+        : [],
       deliveries,
     }
   }
@@ -3609,6 +3640,7 @@ async function persistAttachment(
     baselineBlob: attachment.baseline.snapshotId,
     segmentIndex: attachment.baseline.segmentIndex,
     cursor: attachment.cursor,
+    deliveredSeqs: attachment.deliveredSeqs,
     deliveries,
   }
 }
@@ -3800,7 +3832,6 @@ function documentView(session: OpenDocumentSession, store: GhostStore, now: numb
       from: location.from,
       to: location.to,
       status: location.status,
-      recipients: [...draft.recipients],
       ...(draft.context ? { context: draft.context } : {}),
       createdAt: draft.createdAt,
     }
@@ -3835,9 +3866,11 @@ function documentView(session: OpenDocumentSession, store: GhostStore, now: numb
         && sendableSegment(segment, Object.keys(session.attachments)),
       )
       || session.annotations.events.some((event) =>
-        event.seq > session.lastSentAnnotationSeq && sendableToSomeone(event, Object.keys(session.attachments)),
+        event.seq > session.lastSentAnnotationSeq
+        && sendableToSomeone(event, Object.keys(session.attachments))
+        && !eventSettledForEveryAttachment(event, session.attachments),
       )
-      || drafts.length > 0,
+      || (drafts.length > 0 && Object.keys(session.attachments).length > 0),
     ...(session.recovery ? { recovery: session.recovery } : {}),
     conflicts: session.state.conflicts.map((conflict) => ({
       id: conflict.id,

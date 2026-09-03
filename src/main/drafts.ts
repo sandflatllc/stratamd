@@ -16,7 +16,6 @@ function draft(value: unknown): Draft | null {
   const anchor = value.anchor
   if (typeof anchor.quote !== 'string' || !anchor.quote || typeof anchor.prefix !== 'string' || typeof anchor.suffix !== 'string') return null
   if (!Number.isInteger(anchor.from) || !Number.isInteger(anchor.to) || Number(anchor.from) < 0 || Number(anchor.to) < Number(anchor.from)) return null
-  if (!Array.isArray(value.recipients) || !value.recipients.every((item) => typeof item === 'string')) return null
   if (typeof value.createdAt !== 'number' || !Number.isFinite(value.createdAt)) return null
   const annotationContext = context(value.context)
   return {
@@ -30,7 +29,6 @@ function draft(value: unknown): Draft | null {
       from: Number(anchor.from),
       to: Number(anchor.to),
     },
-    recipients: [...new Set(value.recipients.slice(0, 128).map((item) => item.slice(0, 512)))],
     ...(annotationContext ? { context: annotationContext } : {}),
     createdAt: value.createdAt,
   }

@@ -20,7 +20,7 @@ interface AnnotationComposerProps {
   attachments: AttachmentView[]
   leadAgentId: string | null
   activeConversationId: string | null
-  onHold(kind: DraftKind, text: string, recipients: string[]): void
+  onHold(kind: DraftKind, text: string): void
   onSend(kind: DraftKind, text: string, recipients: string[]): void
   onReplaceWord(suggestion: string): void
   onAddToDictionary(word: string): void
@@ -112,8 +112,8 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
   const form = useRef<HTMLFormElement>(null)
   const pill = useRef<HTMLDivElement>(null)
   const attachmentIds = attachments.map((attachment) => attachment.agent.id).join('\0')
-  const outsideState = useRef({ kind, text, recipients, onHold, onDismiss })
-  outsideState.current = { kind, text, recipients, onHold, onDismiss }
+  const outsideState = useRef({ kind, text, onHold, onDismiss })
+  outsideState.current = { kind, text, onHold, onDismiss }
 
   useEffect(() => {
     setKind(selection?.annotationKind ?? null)
@@ -162,7 +162,7 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
       // dismissing and then being mistaken for the selection just dismissed.
       if (event.target instanceof Element && event.target.closest('.strata-screenshot-pin')) return
       const latest = outsideState.current
-      if (latest.kind !== 'decision' && latest.kind !== null && latest.text.trim()) latest.onHold(latest.kind, latest.text, latest.recipients)
+      if (latest.kind !== 'decision' && latest.kind !== null && latest.text.trim()) latest.onHold(latest.kind, latest.text)
       else latest.onDismiss()
     }
     window.addEventListener('pointerdown', outside, true)
@@ -285,7 +285,7 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
       )}
       {kind === 'decision'
         ? <div className="composer-actions"><button type="button" className="quiet-button" onClick={onDismiss}>Cancel</button><button type="submit" className="primary-button">Add</button></div>
-        : <><div className="composer-hint">Esc discards · Shift+Enter new line</div><div className="composer-actions"><button type="button" className="quiet-button" disabled={!text.trim()} onClick={() => onHold(kind, text, recipients)}>Hold</button><button type="button" className="primary-button" disabled={!text.trim() || recipients.length === 0} onClick={() => onSend(kind, text, recipients)}>Send</button></div></>}
+        : <><div className="composer-hint">{attachments.length === 0 ? 'A held comment is sent once an agent is attached.' : 'Esc discards · Shift+Enter new line'}</div><div className="composer-actions"><button type="button" className="quiet-button" disabled={!text.trim()} onClick={() => onHold(kind, text)}>Hold</button><button type="button" className="primary-button" disabled={!text.trim() || recipients.length === 0} onClick={() => onSend(kind, text, recipients)}>Send</button></div></>}
       <button type="button" className="composer-resize" aria-label="Resize annotation composer" onPointerDown={startResize} />
     </form>
   )

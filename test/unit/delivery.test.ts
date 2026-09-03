@@ -11,6 +11,7 @@ import {
   enqueueDelivery,
   expireIdleAttachments,
   freezeDelivery,
+  freezeQuickSend,
   freezeMessage,
   isMessageDelivery,
   mayExpireAttachment,
@@ -23,6 +24,7 @@ import {
   type DeliverySource,
   type IndexedSegment,
   type MessageSource,
+  type QuickSendSource,
 } from '../../src/core/delivery'
 
 const firstSnapshot: DeliverySnapshot = {
@@ -58,6 +60,20 @@ function source(overrides: Partial<DeliverySource> = {}): DeliverySource {
     note: 'Review this.',
     now: 20,
     id: 'd_1',
+    ...overrides,
+  }
+}
+
+function quickSendSource(overrides: Partial<QuickSendSource> = {}): QuickSendSource {
+  return {
+    file: '/docs/a.md',
+    buffer: '/data/buffer.md',
+    annotation: {
+      id: 'a_quick', seq: 5, kind: 'comment', author: 'user', agent: null,
+      status: 'open', quote: 'after', text: 'Look here.', line: 1, replies: [],
+    },
+    now: 30,
+    id: 'q_1',
     ...overrides,
   }
 }
@@ -293,6 +309,58 @@ describe('agent-to-agent messages', () => {
   it('accepts a 4096-byte note and rejects 4097 bytes', () => {
     expect(freezeMessage(attachment(), messageSource({ note: 'x'.repeat(4096) })).payload.notes).toEqual(['x'.repeat(4096)])
     expect(() => freezeMessage(attachment(), messageSource({ note: 'x'.repeat(4097) }))).toThrow('4 KB')
+  })
+})
+
+describe('quick sends', () => {
+  it('freezes one annotation at the next delivery start without a range or partial marker', () => {
+    const empty = attachment()
+    const quick = freezeQuickSend(empty, quickSendSource())
+    expect(quick.from).toEqual(deliveryStart(empty))
+    expect(quick.to).toEqual(deliveryStart(empty))
+    expect(quick.payload).toMatchObject({
+      event: 'send',
+      annotations: [expect.objectContaining({ id: 'a_quick', text: 'Look here.' })],
+    })
+    expect(quick.payload.segments).toBeUndefined()
+    expect(quick.payload.partial).toBeUndefined()
+
+    const queued = sendToRecipients({ ag_1: empty }, source()).attachments.ag_1!
+    const afterSend = freezeQuickSend(queued, quickSendSource())
+    expect(afterSend.from).toEqual(deliveryStart(queued))
+    expect(afterSend.to).toEqual(deliveryStart(queued))
+  })
+
+  it('leaves baseline and cursor unchanged in either queue order and keeps later Send starts stable', () => {
+    const initial = attachment()
+    const expectedSendStart = deliveryStart(initial)
+
+    let quickFirst: Attachment = {
+      ...initial,
+      deliveredSeqs: [5],
+      deliveries: [freezeQuickSend(initial, quickSendSource())],
+    }
+    expect(deliveryStart(quickFirst)).toEqual(expectedSendStart)
+    quickFirst = sendToRecipients({ ag_1: quickFirst }, source()).attachments.ag_1!
+    const beforeQuickAck = { baseline: quickFirst.baseline, cursor: quickFirst.cursor }
+    const quickAck = acknowledgeDelivery(quickFirst, 'q_1').attachment
+    expect({ baseline: quickAck.baseline, cursor: quickAck.cursor }).toEqual(beforeQuickAck)
+    const sendAck = acknowledgeDelivery(quickAck, 'd_1').attachment
+    expect(sendAck.baseline).toEqual({ snapshotId: 'snap_2', segmentIndex: 2 })
+    expect(sendAck.cursor).toBe(4)
+    expect(sendAck.deliveredSeqs).toEqual([5])
+
+    let sendFirst: Attachment = sendToRecipients({ ag_1: initial }, source()).attachments.ag_1!
+    sendFirst = {
+      ...sendFirst,
+      deliveredSeqs: [1, 5],
+      deliveries: [...sendFirst.deliveries, freezeQuickSend(sendFirst, quickSendSource({ id: 'q_2' }))],
+    }
+    const firstAck = acknowledgeDelivery(sendFirst, 'd_1').attachment
+    expect(firstAck.deliveredSeqs).toEqual([5])
+    const beforeSecondAck = { baseline: firstAck.baseline, cursor: firstAck.cursor }
+    const secondAck = acknowledgeDelivery(firstAck, 'q_2').attachment
+    expect({ baseline: secondAck.baseline, cursor: secondAck.cursor }).toEqual(beforeSecondAck)
   })
 })
 

@@ -565,6 +565,31 @@ describe('hunk verdicts', () => {
     expect(slice.cursor).toBe(2)
   })
 
+  it('skips a settled creation without marking it excluded and delivers a later reply alone', () => {
+    const created = createAnnotation(createAnnotationLog(), 'hello world', {
+      id: 'a1', kind: 'comment', author: 'user', quote: 'hello', text: 'quick comment',
+    })
+    const replied = replyToAnnotation(created.log, 'a1', {
+      id: 'r1', author: 'user', agent: null, text: 'later reply',
+    })
+
+    const slice = annotationDeliverySlice(
+      replied.log,
+      0,
+      'ag_1',
+      new Set(),
+      new Set([created.event.seq]),
+    )
+    expect(slice.annotations).toEqual([])
+    expect(slice.replies).toEqual([
+      {
+        id: 'r1', seq: 2, annotation: 'a1', author: 'user', agent: null, text: 'later reply',
+        parent: { kind: 'comment', quote: 'hello', line: 1, text: 'quick comment' },
+      },
+    ])
+    expect(slice.excluded).toBe(0)
+  })
+
   it("exclusions never count the recipient's own events as left out", () => {
     const created = createAnnotation(createAnnotationLog(), 'hello world', {
       id: 'a1', kind: 'question', author: 'agent', agent: 'ag_1', quote: 'hello', text: 'own question',

@@ -40,6 +40,11 @@ test('5 and 6. quick send carries one comment while held drafts stay private and
     await comment.getByRole('textbox', { name: /Annotation text/i }).fill('Held second.')
     await comment.getByRole('button', { name: 'Hold' }).click()
 
+    const editor = page.getByRole('textbox', { name: /document editor/i })
+    await editor.click()
+    await page.keyboard.press('Control+End')
+    await page.keyboard.type(' Batched edit.')
+
     comment = await openComment(page, 'Third sentence')
     await comment.getByRole('textbox', { name: /Annotation text/i }).fill('Send only this.')
     await comment.getByRole('textbox', { name: /Annotation text/i }).press('Enter')
@@ -56,7 +61,7 @@ test('5 and 6. quick send carries one comment while held drafts stay private and
     await expect(page.locator('.strata-draft-chip')).toHaveText(['draft', 'draft'])
     const state = await value.state()
     expect(JSON.stringify(state)).not.toContain('Held first.')
-    expect(await readFile(state.buffer!, 'utf8')).toBe(original)
+    expect(await readFile(state.buffer!, 'utf8')).toBe(`${original.trimEnd()} Batched edit.\n`)
 
     const navigation = page.getByRole('tablist', { name: 'Document navigation' })
     await navigation.getByRole('tab', { name: 'Contents' }).click()
@@ -64,6 +69,10 @@ test('5 and 6. quick send carries one comment while held drafts stay private and
 
     await page.getByRole('button', { name: /^Send/i }).first().click()
     let send = page.getByRole('dialog', { name: /Send changes/i })
+    await expect(send.getByText(/^Your changes/)).toBeVisible()
+    await expect(send.locator('.send-item[data-author="user"]')).not.toHaveCount(0)
+    await expect(send.getByText(/^Annotations/)).toHaveCount(0)
+    await expect(send.getByText(/^Your comments · 2$/)).toBeVisible()
     await expect(send.locator('.send-item-draft')).toHaveCount(2)
     const rows = send.locator('.send-item-draft')
     await rows.nth(1).getByRole('checkbox').uncheck()
@@ -123,6 +132,27 @@ test('7. the active conversation is the sole default until the Lead changes it',
       expect(delivery.event).toBe('send')
       expect(delivery.annotations?.map((item) => item.text)).toContain('Send this to both.')
     }
+  } finally {
+    await value.dispose()
+  }
+})
+
+test('a held comment waits for an agent without enabling Send', async ({}, testInfo) => {
+  const value = await scenario(testInfo, '# Draft review\n\nHold this passage.\n')
+  try {
+    const page = value.page!
+    const comment = await openComment(page, 'Hold this passage')
+    await comment.getByRole('textbox', { name: /Annotation text/i }).fill('Send this after an agent attaches.')
+    await expect(comment.getByRole('button', { name: 'Hold' })).toBeEnabled()
+    await expect(comment.getByRole('button', { name: 'Send' })).toBeDisabled()
+    await expect(comment).toContainText('A held comment is sent once an agent is attached.')
+    await comment.getByRole('button', { name: 'Hold' }).click()
+
+    const navigation = page.getByRole('tablist', { name: 'Document navigation' })
+    await navigation.getByRole('tab', { name: 'Contents' }).click()
+    await expect(page.locator('.outline-drafts')).toHaveText('1')
+    expect((await value.state()).event).toBe('state')
+    expect(await page.evaluate(async () => (await window.strata.getState()).activeDocument?.canSend)).toBe(false)
   } finally {
     await value.dispose()
   }

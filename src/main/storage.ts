@@ -85,6 +85,7 @@ export interface AttachmentMeta {
   readonly segmentIndex: number
   readonly deliveries: readonly DeliveryMeta[]
   readonly cursor: number
+  readonly deliveredSeqs?: readonly number[]
 }
 
 /**

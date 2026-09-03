@@ -110,8 +110,8 @@ describe('StrataApplication', () => {
       await command(value.app, 'attach', { file: value.path, agent, name, timeout: 0 })
     }
     const range = (quote: string) => ({ quote, from: source.indexOf(quote), to: source.indexOf(quote) + quote.length })
-    const first = await value.app.holdDraft(value.path, { kind: 'comment', text: 'Held first.', recipients: ['ag_active'], ...range('First sentence') })
-    const second = await value.app.holdDraft(value.path, { kind: 'question', text: 'Held second?', recipients: ['ag_active'], ...range('Second sentence') })
+    const first = await value.app.holdDraft(value.path, { kind: 'comment', text: 'Held first.', ...range('First sentence') })
+    const second = await value.app.holdDraft(value.path, { kind: 'question', text: 'Held second?', ...range('Second sentence') })
     const deliveries = await value.app.quickSend(value.path, { kind: 'suggestion', text: 'Third line.', recipients: ['ag_active'], ...range('Third sentence') })
 
     expect(deliveries).toHaveLength(1)
@@ -129,13 +129,159 @@ describe('StrataApplication', () => {
     expect(JSON.parse(await readFile(value.store.pathsForDocument(value.path).drafts, 'utf8')).drafts).toHaveLength(2)
   })
 
+  it('quick send survives reopen without consuming pending edits or annotation events', async () => {
+    const source = '# Plan\n\nFirst sentence. Second sentence. Third sentence.\n'
+    const edited = source.replace('First sentence', 'Edited first sentence')
+    const value = await fixture(source)
+    await value.app.openDocument(value.path)
+    for (const [agent, name] of [['ag_a', 'Agent A'], ['ag_b', 'Agent B']] as const) {
+      await command(value.app, 'attach', { file: value.path, agent, name, timeout: 0 })
+    }
+    await value.app.updateBuffer(value.path, edited)
+    const earlierId = await value.app.addAnnotation(value.path, {
+      kind: 'question', text: 'Earlier question?', quote: 'Second sentence',
+      from: edited.indexOf('Second sentence'), to: edited.indexOf('Second sentence') + 'Second sentence'.length,
+    })
+    const beforeQuick = await value.store.loadMeta(value.path)
+    await value.app.quickSend(value.path, {
+      kind: 'comment', text: 'Quick comment.', recipients: ['ag_a'], quote: 'Third sentence',
+      from: edited.indexOf('Third sentence'), to: edited.indexOf('Third sentence') + 'Third sentence'.length,
+    })
+    const quickId = (await value.app.getState()).activeDocument!.annotations
+      .find((annotation) => annotation.text === 'Quick comment.')!.id
+    const quickSeq = (await value.store.loadMeta(value.path)).annotationEvents
+      .find((event) => (event as { annotationId?: string }).annotationId === quickId) as { seq: number }
+
+    const quick = await command(value.app, 'attach', {
+      file: value.path, agent: 'ag_a', name: 'Agent A', timeout: 0,
+    }) as { event: string; deliveryId: string; segments?: unknown[]; annotations?: Array<{ id: string }>; partial?: boolean }
+    expect(quick.event).toBe('send')
+    expect(quick.segments).toBeUndefined()
+    expect(quick.partial).toBeUndefined()
+    expect(quick.annotations).toEqual([expect.objectContaining({ id: quickId })])
+    expect((await command(value.app, 'attach', {
+      file: value.path, agent: 'ag_b', name: 'Agent B', timeout: 0,
+    }) as { event: string }).event).toBe('timeout')
+
+    await value.app.shutdown()
+    const reopened = await createStrataApplication({
+      store: value.store, settingsStore: value.settingsStore, watch: false,
+    })
+    await reopened.openDocument(value.path)
+    await reopened.resolveRecovery(value.path, 'recover')
+    const repeatedQuick = await command(reopened, 'attach', {
+      file: value.path, agent: 'ag_a', name: 'Agent A', timeout: 0,
+    }) as { deliveryId: string }
+    expect(repeatedQuick.deliveryId).toBe(quick.deliveryId)
+    await command(reopened, 'ack', { file: value.path, agent: 'ag_a', deliveryId: quick.deliveryId })
+    const afterQuickAck = await value.store.loadMeta(value.path)
+    expect(afterQuickAck.attachments.ag_a).toMatchObject({
+      baselineBlob: beforeQuick.attachments.ag_a!.baselineBlob,
+      segmentIndex: beforeQuick.attachments.ag_a!.segmentIndex,
+      cursor: beforeQuick.attachments.ag_a!.cursor,
+    })
+    expect(afterQuickAck.attachments.ag_a!.deliveredSeqs).toContain(quickSeq.seq)
+    expect(afterQuickAck.attachments.ag_b!.deliveredSeqs).toContain(quickSeq.seq)
+
+    const request = { recipients: ['ag_a'], note: '', includeExternal: false }
+    const [previewA] = await reopened.previewSend(value.path, request)
+    const [previewB] = await reopened.previewSend(value.path, { ...request, recipients: ['ag_b'] })
+    for (const preview of [previewA!, previewB!]) {
+      expect(preview.items.changes).not.toHaveLength(0)
+      expect(preview.items.events).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: 'annotation', text: 'Earlier question?' }),
+      ]))
+      expect(preview.items.events).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ text: 'Quick comment.' }),
+      ]))
+    }
+
+    await reopened.send(value.path, { ...request, token: previewA!.token })
+    const sent = await command(reopened, 'attach', {
+      file: value.path, agent: 'ag_a', name: 'Agent A', timeout: 0,
+    }) as { segments?: unknown[]; annotations?: Array<{ id: string }> }
+    expect(sent.segments).not.toHaveLength(0)
+    expect(sent.annotations).toEqual([expect.objectContaining({ id: earlierId })])
+    expect(sent.annotations).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: quickId })]))
+
+    await reopened.reply(value.path, quickId, 'Later reply.')
+    const [replyPreview] = await reopened.previewSend(value.path, {
+      recipients: ['ag_b'], note: '', includeExternal: false,
+    })
+    const replySeq = (await value.store.loadMeta(value.path)).annotationEvents
+      .findLast((event) => (event as { annotationId?: string }).annotationId === quickId) as { seq: number }
+    await reopened.send(value.path, {
+      recipients: ['ag_b'], note: '', includeExternal: false,
+      excludedHunks: replyPreview!.items.changes.map((item) => item.key),
+      excludedEvents: replyPreview!.items.events
+        .filter((item) => item.seq !== replySeq.seq)
+        .map((item) => item.seq),
+      token: replyPreview!.token,
+    })
+    const replyDelivery = await command(reopened, 'attach', {
+      file: value.path, agent: 'ag_b', name: 'Agent B', timeout: 0,
+    }) as { annotations?: unknown[]; replies?: Array<{ annotation: string; parent?: { text: string } }> }
+    expect(replyDelivery.annotations).toEqual([])
+    expect(replyDelivery.replies).toEqual([
+      expect.objectContaining({ annotation: quickId, parent: expect.objectContaining({ text: 'Quick comment.' }) }),
+    ])
+  })
+
+  it('quick send settles the comment for every attachment without hiding it from state', async () => {
+    const source = '# Plan\n\nOne sentence.\n'
+    const value = await fixture(source)
+    await value.app.openDocument(value.path)
+    for (const [agent, name] of [['ag_a', 'Agent A'], ['ag_b', 'Agent B']] as const) {
+      await command(value.app, 'attach', { file: value.path, agent, name, timeout: 0 })
+    }
+    await value.app.quickSend(value.path, {
+      kind: 'comment', text: 'Only Agent A receives this.', recipients: ['ag_a'], quote: 'One sentence',
+      from: source.indexOf('One sentence'), to: source.indexOf('One sentence') + 'One sentence'.length,
+    })
+
+    expect((await value.app.getState()).activeDocument?.canSend).toBe(false)
+    expect(JSON.stringify(await command(value.app, 'state', { file: value.path })))
+      .toContain('Only Agent A receives this.')
+    expect((await command(value.app, 'attach', {
+      file: value.path, agent: 'ag_b', name: 'Agent B', timeout: 0,
+    }) as { event: string }).event).toBe('timeout')
+  })
+
+  it('quick send works without a baseline and the following Send resyncs with the comment', async () => {
+    const source = '# Plan\n\nOne sentence.\n'
+    const value = await fixture(source)
+    await value.app.openDocument(value.path)
+    await command(value.app, 'attach', { file: value.path, agent: 'ag_a', name: 'Agent A', timeout: 0 })
+    const baseline = (await value.store.loadMeta(value.path)).attachments.ag_a!.baselineBlob
+    await rename(join(value.store.objectsDirectory, baseline), join(value.root, 'missing-baseline'))
+
+    await value.app.quickSend(value.path, {
+      kind: 'comment', text: 'Quick without baseline.', recipients: ['ag_a'], quote: 'One sentence',
+      from: source.indexOf('One sentence'), to: source.indexOf('One sentence') + 'One sentence'.length,
+    })
+    const quick = await command(value.app, 'attach', {
+      file: value.path, agent: 'ag_a', name: 'Agent A', timeout: 0,
+    }) as { event: string; deliveryId: string; annotations?: Array<{ text: string }> }
+    expect(quick).toMatchObject({ event: 'send', annotations: [expect.objectContaining({ text: 'Quick without baseline.' })] })
+    await command(value.app, 'ack', { file: value.path, agent: 'ag_a', deliveryId: quick.deliveryId })
+
+    await value.app.send(value.path, { recipients: ['ag_a'], note: '', includeExternal: false })
+    const resync = await command(value.app, 'attach', {
+      file: value.path, agent: 'ag_a', name: 'Agent A', timeout: 0,
+    }) as { event: string; annotations?: Array<{ text: string }> }
+    expect(resync.event).toBe('resync')
+    expect(resync.annotations).toEqual([
+      expect.objectContaining({ text: 'Quick without baseline.' }),
+    ])
+  })
+
   it('materializes only checked drafts and offers the unchecked draft again', async () => {
     const source = '# Plan\n\nAlpha. Beta.\n'
     const value = await fixture(source)
     await value.app.openDocument(value.path)
     await command(value.app, 'attach', { file: value.path, agent: 'ag_1', name: 'Agent', timeout: 0 })
-    const first = await value.app.holdDraft(value.path, { kind: 'comment', text: 'Send alpha.', recipients: ['ag_1'], quote: 'Alpha', from: source.indexOf('Alpha'), to: source.indexOf('Alpha') + 5 })
-    const second = await value.app.holdDraft(value.path, { kind: 'comment', text: 'Keep beta.', recipients: ['ag_1'], quote: 'Beta', from: source.indexOf('Beta'), to: source.indexOf('Beta') + 4 })
+    const first = await value.app.holdDraft(value.path, { kind: 'comment', text: 'Send alpha.', quote: 'Alpha', from: source.indexOf('Alpha'), to: source.indexOf('Alpha') + 5 })
+    const second = await value.app.holdDraft(value.path, { kind: 'comment', text: 'Keep beta.', quote: 'Beta', from: source.indexOf('Beta'), to: source.indexOf('Beta') + 4 })
     const request = { recipients: ['ag_1'], note: '', includeExternal: false, draftIds: [first] }
     const [preview] = await value.app.previewSend(value.path, request)
     expect(preview?.text).toContain('Send alpha.')
@@ -150,13 +296,27 @@ describe('StrataApplication', () => {
     expect((await value.app.getState()).activeDocument?.drafts.map((draft) => draft.id)).toEqual([second])
   })
 
+  it('enables Send for a held draft only after an agent attaches', async () => {
+    const source = '# Plan\n\nHold this passage.\n'
+    const value = await fixture(source)
+    await value.app.openDocument(value.path)
+    await value.app.holdDraft(value.path, {
+      kind: 'comment', text: 'Send this later.', quote: 'Hold this passage',
+      from: source.indexOf('Hold this passage'), to: source.indexOf('Hold this passage') + 'Hold this passage'.length,
+    })
+
+    expect((await value.app.getState()).activeDocument?.canSend).toBe(false)
+    await command(value.app, 'attach', { file: value.path, agent: 'ag_1', name: 'Agent', timeout: 0 })
+    expect((await value.app.getState()).activeDocument?.canSend).toBe(true)
+  })
+
   it('keeps a selected draft private when delivery enqueue fails', async () => {
     const source = '# Plan\n\nKeep this passage.\n'
     const value = await fixture(source)
     await value.app.openDocument(value.path)
     await command(value.app, 'attach', { file: value.path, agent: 'ag_1', name: 'Agent', timeout: 0 })
     const id = await value.app.holdDraft(value.path, {
-      kind: 'comment', text: 'Still private.', recipients: ['ag_1'], quote: 'Keep this passage',
+      kind: 'comment', text: 'Still private.', quote: 'Keep this passage',
       from: source.indexOf('Keep this passage'), to: source.indexOf('Keep this passage') + 'Keep this passage'.length,
     })
 
@@ -176,7 +336,7 @@ describe('StrataApplication', () => {
     const value = await fixture(source)
     await value.app.openDocument(value.path)
     const id = await value.app.holdDraft(value.path, {
-      kind: 'comment', text: 'Private note.', recipients: [], quote: 'Keep this passage',
+      kind: 'comment', text: 'Private note.', quote: 'Keep this passage',
       from: source.indexOf('Keep this passage'), to: source.indexOf('Keep this passage') + 'Keep this passage'.length,
     })
     await value.app.closeDocument(value.path)
@@ -190,7 +350,7 @@ describe('StrataApplication', () => {
     const value = await fixture(source)
     await value.app.openDocument(value.path)
     await value.app.holdDraft(value.path, {
-      kind: 'comment', text: 'Private note.', recipients: [], quote: 'Keep this passage',
+      kind: 'comment', text: 'Private note.', quote: 'Keep this passage',
       from: source.indexOf('Keep this passage'), to: source.indexOf('Keep this passage') + 'Keep this passage'.length,
     })
     await value.app.closeDocument(value.path)
@@ -212,7 +372,7 @@ describe('StrataApplication', () => {
     await value.app.openDocument(value.path)
     const from = source.indexOf('Keep this passage')
     const id = await value.app.holdDraft(value.path, {
-      kind: 'comment', text: 'Already sent.', recipients: [], quote: 'Keep this passage',
+      kind: 'comment', text: 'Already sent.', quote: 'Keep this passage',
       from, to: from + 'Keep this passage'.length,
     })
     await value.app.closeDocument(value.path)

@@ -8,7 +8,7 @@ Held comments are private drafts in `drafts.json`, an owner-only atomic file bes
 
 | # | Scenario | Evidence |
 |---:|---|---|
-| 5 | Enter quick sends one comment. Two held drafts remain private and render dashed. | `test/e2e/cockpit-drafts.spec.ts` verifies the one-comment delivery, no delivery to the unselected thread, no held text in command state or the buffer, two dashed highlights with `draft` chips, and the Contents count. The application integration test also inspects the durable delivery and draft file. |
+| 5 | Enter quick sends one comment. Two held drafts remain private and render dashed. Unsent edits and events survive a quick send. | `test/integration/main-application.test.ts` closes and reopens between quick send and preview, then proves the pending edit and earlier event remain while the quick comment does not return. `test/e2e/cockpit-drafts.spec.ts` covers the batching case and also verifies the one-comment delivery, no delivery to the unselected thread, no held text in command state or the buffer, two dashed highlights with `draft` chips, and the Contents count. |
 | 6 | An unchecked draft remains a draft and returns checked next time. | The same browser test unchecks one of two drafts, sends the other, reopens Send, and finds the remaining draft checked. The integration test closes and reopens the document before checking the remaining draft. |
 | 7 | The Lead is the only default, otherwise the active conversation is. A second recipient takes a deliberate click. | The browser test checks both popover states, promotes the other thread to Lead, opens Send with only the Lead selected, clicks the second pill, and confirms both deliveries. Recipient selection has focused unit coverage in `test/unit/send-composer.test.ts`. |
 

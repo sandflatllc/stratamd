@@ -49,6 +49,8 @@ export interface Attachment {
   waiting?: boolean
   baseline: DeliveryBaseline
   cursor: number
+  /** Event seqs settled outside the attachment's cursor range. */
+  deliveredSeqs: readonly number[]
   deliveries: readonly FrozenDelivery[]
 }
 
@@ -146,6 +148,7 @@ export function createAttachment(input: CreateAttachmentInput): Attachment {
       segmentIndex: input.snapshot.segmentIndex,
     },
     cursor: input.snapshot.cursor,
+    deliveredSeqs: [],
     deliveries: [],
   }
 }
@@ -296,6 +299,39 @@ export interface MessageSource {
   id?: string
 }
 
+export interface QuickSendSource {
+  file: string
+  buffer: string
+  annotation: PayloadAnnotation
+  now: number
+  id?: string
+}
+
+/**
+ * Freezes one annotation without moving the recipient's baseline or cursor.
+ * Later Sends start at the same endpoint whichever side of this delivery they
+ * occupy in the queue.
+ */
+export function freezeQuickSend(attachment: Attachment, source: QuickSendSource): FrozenDelivery {
+  const id = source.id ?? makeId('d')
+  const endpoint = deliveryStart(attachment)
+  return cloneAndFreeze({
+    id,
+    createdAt: source.now,
+    includeExternal: false,
+    from: endpoint,
+    to: endpoint,
+    payload: createPayload({
+      file: source.file,
+      buffer: source.buffer,
+      agent: attachment.id,
+      event: 'send',
+      deliveryId: id,
+      annotations: [source.annotation],
+    }),
+  })
+}
+
 /**
  * Freezes an agent-to-agent message as a delivery whose endpoints both equal
  * the recipient's next delivery start, so acknowledging it writes the baseline
@@ -394,6 +430,7 @@ export function acknowledgeDelivery(
         segmentIndex: oldest.to.segmentIndex,
       },
       cursor: oldest.to.cursor,
+      deliveredSeqs: attachment.deliveredSeqs.filter((seq) => seq > oldest.to.cursor),
       deliveries: attachment.deliveries.slice(1),
     },
   }
@@ -473,6 +510,7 @@ export function prepareClipboardDelivery(
         lastCallAt: source.now,
         baseline: recipient.baseline,
         cursor: recipient.cursor,
+        deliveredSeqs: [],
         deliveries: [],
       }
 

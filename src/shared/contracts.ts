@@ -102,7 +102,6 @@ export interface DraftView {
   from: number | null
   to: number | null
   status: 'attached' | 'orphaned'
-  recipients: string[]
   context?: AnnotationContext
   createdAt: number
 }
@@ -425,8 +424,11 @@ export interface CreateDraftRequest {
   text: string
   from: number
   to: number
-  recipients: string[]
   context?: AnnotationContext
+}
+
+export interface QuickSendRequest extends CreateDraftRequest {
+  recipients: string[]
 }
 
 export interface SendItems {
@@ -518,7 +520,7 @@ export interface StrataApi {
   addAnnotation(path: string, annotation: CreateAnnotationRequest): Promise<string>
   holdDraft(path: string, draft: CreateDraftRequest): Promise<string>
   discardDraft(path: string, draftId: string): Promise<void>
-  quickSend(path: string, draft: CreateDraftRequest): Promise<string[]>
+  quickSend(path: string, draft: QuickSendRequest): Promise<string[]>
   requoteAnnotation(path: string, annotationId: string, range: { quote: string; from: number; to: number }): Promise<void>
   reply(path: string, annotationId: string, text: string): Promise<void>
   resolveAnnotation(path: string, annotationId: string): Promise<void>

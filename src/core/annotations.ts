@@ -1201,6 +1201,7 @@ export function annotationDeliverySlice(
   cursor: number,
   recipientAgent: string,
   excludedEvents: ReadonlySet<number> = new Set(),
+  skippedEvents: ReadonlySet<number> = new Set(),
 ): AnnotationDeliverySlice {
   const events = eventsAfter(log, cursor)
   const created = new Map<string, number>()
@@ -1212,6 +1213,7 @@ export function annotationDeliverySlice(
   for (const event of events) {
     if (isHunkVerdict(event)) {
       if (event.targetAgentId !== recipientAgent) continue
+      if (skippedEvents.has(event.seq)) continue
       if (excludedEvents.has(event.seq)) {
         excluded += 1
         continue
@@ -1222,6 +1224,7 @@ export function annotationDeliverySlice(
     const annotation = log.annotations[event.annotationId]
     if (annotation === undefined) continue
     if (event.author === 'agent' && event.agent === recipientAgent) continue
+    if (skippedEvents.has(event.seq)) continue
     // Exclusion runs after the recipient-author guard, so the recipient's own
     // events never count as left out, and before thread grouping, so a reply
     // whose excluded creation stays behind delivers alone, keyed by id.
@@ -1285,7 +1288,10 @@ export function annotationDeliverySlice(
           ?? stored.seq
         const delivered = { ...toDeliveredAnnotation(stored), seq: creationSeq, deliveredAt: seq }
         const includedEvents = events.filter((event) =>
-          !isHunkVerdict(event) && event.annotationId === id && !excludedEvents.has(event.seq),
+          !isHunkVerdict(event)
+          && event.annotationId === id
+          && !excludedEvents.has(event.seq)
+          && !skippedEvents.has(event.seq),
         )
         let status: AnnotationStatus = 'open'
         for (const event of includedEvents) {
@@ -1296,11 +1302,15 @@ export function annotationDeliverySlice(
         return {
           ...delivered,
           status,
-          replies: delivered.replies.filter((reply) => !excludedEvents.has(reply.seq)),
+          replies: delivered.replies.filter((reply) =>
+            !excludedEvents.has(reply.seq) && !skippedEvents.has(reply.seq),
+          ),
           ...(delivered.decision === undefined ? {} : {
             decision: {
               ...delivered.decision,
-              answers: delivered.decision.answers.filter((answer) => !excludedEvents.has(answer.seq)),
+              answers: delivered.decision.answers.filter((answer) =>
+                !excludedEvents.has(answer.seq) && !skippedEvents.has(answer.seq),
+              ),
             },
           }),
         }
