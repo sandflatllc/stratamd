@@ -54,7 +54,7 @@ describe('agent contract', () => {
     const contract = prd.match(/## 7\. Agent contract[\s\S]*?```\n([\s\S]*?)\n```/)?.[1]
     expect(contract).toBe(AGENT_HELP)
     // A timeout is not an action: the contract says so in the loop and in the chat-conduct block.
-    expect(AGENT_HELP).toContain('run it again and say nothing in chat')
+    expect(AGENT_HELP).toContain('run it again and say nothing about it in chat')
     expect(AGENT_HELP).toContain('What to say in chat:')
 
     const io = captureIo()

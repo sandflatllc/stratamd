@@ -22,7 +22,8 @@ What to say in chat:
   The user reads the document in StrataMD, so everything you put in an
   annotation, reply, edit, or decision is already in front of them.
   Report only the actions you took, one line each. A timeout or a
-  superseded call is not an action: say nothing and listen again.
+  superseded call is not an action: listen again and say nothing about
+  it; if your harness demands a visible reply, one word is enough.
   Report content in chat only when the document is not where the user
   will read it: an error, a refusal, or something you could not post.
 
@@ -49,13 +50,14 @@ What to say in chat:
       next call, even across restarts. Run it in the background and act
       when it returns. Re-run it after each response to keep listening.
       It returns {"event":"timeout"} after --timeout seconds if nothing
-      happens: run it again and say nothing in chat. Every wakeup is a
-      turn the user sees, so wait as long as your harness allows:
-      --timeout 3600 in a background command that has no time limit
-      (Claude Code's Bash tool), otherwise the tool's limit minus 30
-      seconds; the default 90 fits a 120 second limit. A call your
-      harness kills is safe; the delivery repeats on your next call
-      with the same deliveryId.
+      happens: run it again and say nothing about it in chat; if your
+      harness demands a visible reply after a tool-only turn, one word
+      is enough. Every wakeup is a turn the user sees, so wait as long
+      as your harness allows: --timeout 3600 in a background command
+      that has no time limit (Claude Code's Bash tool), otherwise the
+      tool's limit minus 30 seconds; the default 90 fits a 120 second
+      limit. A call your harness kills is safe; the delivery repeats on
+      your next call with the same deliveryId.
       --timeout 0 never blocks: it returns a queued delivery or
       {"event":"timeout"} at once, for a harness that cannot hold a
       command open. It returns {"event":"closed"} when the user has

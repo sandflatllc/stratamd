@@ -444,10 +444,10 @@ export const MESSAGE_GUIDANCE_LINE =
 
 /** A timeout is not an action (PRD §7); the text says so where the agent reads it. */
 export const TIMEOUT_GUIDANCE_LINE =
-  'Nothing happened. Run stratamd attach again and say nothing in chat about this.'
+  'Nothing happened. Run stratamd attach again and say nothing about it in chat; if your harness demands a visible reply, one word is enough.'
 
 export const SUPERSEDED_GUIDANCE_LINE =
-  'A newer attach call for your id is listening. Do nothing and say nothing in chat.'
+  'A newer attach call for your id is listening. Do nothing and say nothing about it in chat; if your harness demands a visible reply, one word is enough.'
 
 export interface PayloadTrimOptions {
   /** Drop `document`, `text`, and `annotations`: the attachment and Lead view of `state`. */

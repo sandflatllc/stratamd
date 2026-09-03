@@ -36,10 +36,10 @@ describe('payload v13', () => {
   it('tells the agent to listen again silently on timeout and superseded, and nowhere else', () => {
     const timeout = createPayload({ file, buffer, agent: 'ag_1', event: 'timeout' })
     expect(timeout.text).toBe(`${writeOnlyLine(buffer)}\n\n${TIMEOUT_GUIDANCE_LINE}`)
-    expect(TIMEOUT_GUIDANCE_LINE).toContain('say nothing in chat')
+    expect(TIMEOUT_GUIDANCE_LINE).toContain('say nothing about it in chat')
     const superseded = createPayload({ file, buffer, agent: 'ag_1', event: 'superseded' })
     expect(superseded.text).toBe(`${writeOnlyLine(buffer)}\n\n${SUPERSEDED_GUIDANCE_LINE}`)
-    expect(SUPERSEDED_GUIDANCE_LINE).toContain('say nothing in chat')
+    expect(SUPERSEDED_GUIDANCE_LINE).toContain('say nothing about it in chat')
     for (const event of ['send', 'closed', 'initial', 'state'] as const) {
       const other = createPayload({ file, buffer, agent: 'ag_1', event, notes: ['a note'] })
       expect(other.text).not.toContain(TIMEOUT_GUIDANCE_LINE)
