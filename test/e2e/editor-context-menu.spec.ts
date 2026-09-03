@@ -4,7 +4,7 @@ import { primaryKey, Scenario } from './harness'
 // The right-click menu (usability round 2 §5.15) carries Cut, Copy, Paste,
 // and Select all beside the annotate buttons.
 
-test('right-click offers Copy, Cut, Paste, and Select all on the word under the pointer', async ({}, testInfo) => {
+test('right-click offers Copy, Cut, Paste, and Select all on the word under the pointer', { tag: '@clipboard' }, async ({}, testInfo) => {
   const scenario = await Scenario.create(testInfo, '# Menu\n\nAlpha beta gamma.\n', 'menu.md')
   try {
     const page = await scenario.launch()

@@ -180,7 +180,7 @@ test('extended visuals remain editable, accessible, document-safe, and collabora
   }
 })
 
-test('copy and paste preserves explicit component properties', async ({}, testInfo) => {
+test('copy and paste preserves explicit component properties', { tag: '@clipboard' }, async ({}, testInfo) => {
   const source = '# Clipboard\n\n<Callout kind="warning">\nWarning body.\n</Callout>\n'
   const scenario = await Scenario.create(testInfo, source, 'component-clipboard.md')
   try {

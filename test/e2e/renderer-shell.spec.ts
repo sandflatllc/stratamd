@@ -49,7 +49,7 @@ test('blank shell opens the first document from the explorer and drag and drop',
   }
 })
 
-test('explorer and document tabs copy full paths from a right-click menu', async ({}, testInfo) => {
+test('explorer and document tabs copy full paths from a right-click menu', { tag: '@clipboard' }, async ({}, testInfo) => {
   const value = await Scenario.create(testInfo, '# Paths\n\nCopy me.\n', 'paths.md')
   const folder = dirname(value.file)
   const segments = folder.split('/').filter(Boolean)

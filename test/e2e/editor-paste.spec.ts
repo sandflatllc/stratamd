@@ -4,7 +4,7 @@ import { Scenario, lineEndKey, primaryKey, sourceEditor } from './harness'
 // Paste (usability round 2 §5.9): plain text that reads as markdown is
 // inserted as markdown; plain prose is inserted as typed.
 
-test('pasting markdown text creates structure while plain prose pastes as words', async ({}, testInfo) => {
+test('pasting markdown text creates structure while plain prose pastes as words', { tag: '@clipboard' }, async ({}, testInfo) => {
   const scenario = await Scenario.create(testInfo, '# Paste\n\nLead paragraph.\n', 'paste.md')
   try {
     const page = await scenario.launch()

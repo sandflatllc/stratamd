@@ -409,7 +409,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     expect(retried.text).toContain('Queued user edit.')
   })
 
-  test('13. Save does not advance the Copy for agent baseline', async ({}, testInfo) => {
+  test('13. Save does not advance the Copy for agent baseline', { tag: '@clipboard' }, async ({}, testInfo) => {
     const value = await scenario(testInfo, '# Clipboard\n\nOriginal.\n')
     await value.launch()
     await copyForAgent(value.page!)

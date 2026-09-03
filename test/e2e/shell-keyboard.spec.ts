@@ -57,7 +57,7 @@ test('tabs cycle from the keyboard, close with the primary modifier and W, and c
   }
 })
 
-test('an error toast uses the danger color, outlives a success, and clears from its button or Escape', async ({}, testInfo) => {
+test('an error toast uses the danger color, outlives a success, and clears from its button or Escape', { tag: '@clipboard' }, async ({}, testInfo) => {
   const original = '# Toast\n\nOriginal.\n'
   const value = await Scenario.create(testInfo, original, 'toast.md')
   const folder = dirname(value.file)
@@ -171,7 +171,7 @@ test('composer and reply drafts survive Escape, and Escape closes one surface at
   }
 })
 
-test('a root folder can be removed from the explorer, and the empty agents panel offers the attach prompt', async ({}, testInfo) => {
+test('a root folder can be removed from the explorer, and the empty agents panel offers the attach prompt', { tag: '@clipboard' }, async ({}, testInfo) => {
   const value = await Scenario.create(testInfo, '# Remove\n\nKeep me remembered.\n', 'remove.md')
   const folder = dirname(value.file)
   await value.writeSettings({ explorerFolders: [folder] })

@@ -10,7 +10,7 @@ import { Scenario, lineStartKey, primaryKey, selectToLineEndKey, selectTextInVis
 // inside the composer or a thread reply submits that form, not Send.
 const document = '# Hotkeys\n\nReply to this thread sentence.\n\nSelect this other sentence.\n'
 
-test('Ctrl+C over a selection copies instead of opening the composer', async ({}, testInfo) => {
+test('Ctrl+C over a selection copies instead of opening the composer', { tag: '@clipboard' }, async ({}, testInfo) => {
   const scenario = await Scenario.create(testInfo, document, 'hotkeys.md')
   try {
     const page = await scenario.launch()

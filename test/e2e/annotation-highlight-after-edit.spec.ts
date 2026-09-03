@@ -139,7 +139,7 @@ test('dragging the end handle moves the stored quote to the new span', async ({}
     const state = await value.state()
     storedAfter = state.annotations?.find((a) => a.text === 'probe comment')?.quote
     console.log(JSON.stringify({ storedAfter: clip(storedAfter), highlightAfter: clip(highlightAfter) }, null, 1))
-    await page.screenshot({ path: '/tmp/strata-repro/after-drag.png' })
+    await page.screenshot({ path: testInfo.outputPath('after-drag.png') })
   })
   expect(storedAfter).toMatch(/^StrataMD itself makes no network calls/)
   expect(storedAfter).toMatch(/Windows build yet\.$/)
