@@ -75,13 +75,13 @@ test('the Mesa-style review reads as numbered sections with Contents, the walkth
   await expect(bar.getByRole('button', { name: 'Reviewed' })).toBeVisible()
   await expect(bar.getByRole('button', { name: 'Revisit' })).toBeVisible()
   // H2 mode shows include controls only for H2 steps; H3 rows never carry them here.
-  await expect(page.getByRole('checkbox', { name: 'Include 1. Verdict in walkthrough' })).toBeVisible()
-  await expect(page.getByRole('checkbox', { name: /Include 3\.1 What exists/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Remove 1. Verdict from walkthrough' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Remove 3\.1 What exists.*from walkthrough/ })).toHaveCount(0)
   await page.getByRole('button', { name: 'Show subsections of 3. Islands: the ownership model' }).click()
   await expect(page.getByRole('button', { name: /3\.1 What exists/ })).toBeVisible()
-  await expect(page.getByRole('checkbox', { name: /Include 3\.1 What exists/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Remove 3\.1 What exists.*from walkthrough/ })).toHaveCount(0)
   await card.getByRole('radio', { name: 'H2 + H3' }).click()
-  await expect(page.getByRole('checkbox', { name: 'Include 3.1 What exists in walkthrough' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Remove 3.1 What exists from walkthrough' })).toBeVisible()
   await card.getByRole('radio', { name: 'H2', exact: true }).click()
   await page.getByRole('button', { name: 'Hide subsections of 3. Islands: the ownership model' }).click()
   await expect(page.locator('.strata-fold-heading:has(> h2)').first()).toHaveCSS('counter-increment', /strata-section/)
@@ -115,7 +115,7 @@ test('the Mesa-style review reads as numbered sections with Contents, the walkth
   await page.getByRole('button', { name: 'Pin changes' }).click()
 
   // Tables: the product-islands table in its default, Focus row, and Compare views.
-  await page.getByRole('button', { name: /2\. What Mesa is, in one page per island/ }).first().click()
+  await page.getByRole('button', { name: '2. What Mesa is, in one page per island', exact: true }).click()
   await expect(card).toContainText('Section 2 of 7')
   const islands = page.locator('.strata-table-block').filter({ hasText: 'Address and job' })
   const head = islands.locator('.strata-table-head')

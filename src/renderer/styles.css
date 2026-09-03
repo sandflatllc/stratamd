@@ -900,19 +900,24 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .outline-count { margin-left: auto; color: var(--interface-muted); }
 .contents-tree, .outline-sub { margin: 0; padding: 0; list-style: none; }
 .outline-row-wrap { display: flex; align-items: center; gap: 3px; }
-.outline-include { width: 13px; height: 13px; flex: none; margin: 0 1px 0 3px; accent-color: var(--controls-primary); opacity: .75; }
-.outline-include:hover, .outline-include:focus-visible { opacity: 1; }
-.outline-row { display: grid; min-width: 0; flex: 1; grid-template-columns: 25px minmax(0, 1fr) 18px; align-items: center; gap: 7px; margin: 2px 0; border: 1px solid transparent; border-radius: 11px; padding: 7px 8px; background: transparent; color: var(--muted); text-align: left; cursor: pointer; }
-.outline-row:hover, .outline-row:focus-visible { background: var(--surfaces-field); color: var(--dim); }
+.outline-include { display: grid; width: 16px; height: 16px; flex: none; margin: 0 0 0 1px; place-items: center; border: 1px solid color-mix(in srgb, var(--controls-primary) 72%, transparent); border-radius: 999px; padding: 0; background: transparent; color: var(--controls-primary); font: 800 12px/1 var(--font-text), sans-serif; cursor: pointer; opacity: .78; }
+.outline-include[data-included="true"] { background: color-mix(in srgb, var(--controls-primary) 78%, var(--surfaces-field)); color: var(--controls-primary-text); }
+.outline-include:hover, .outline-include:focus-visible { opacity: 1; transform: scale(1.08); }
+.outline-row { display: grid; min-width: 0; flex: 1; grid-template-columns: minmax(0, 1fr) 18px; align-items: center; gap: 7px; margin: 2px 0; border: 1px solid transparent; border-radius: 11px; padding: 7px 8px; background: transparent; color: var(--muted); text-align: left; }
+.outline-row-main { display: grid; min-width: 0; grid-template-columns: 25px minmax(0, 1fr); align-items: center; gap: 7px; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.outline-row:hover, .outline-row:focus-within { background: var(--surfaces-field); color: var(--dim); }
 .outline-row.active { border-color: color-mix(in srgb, var(--controls-primary) 43%, transparent); background: linear-gradient(100deg, color-mix(in srgb, var(--controls-primary) 20%, transparent), color-mix(in srgb, var(--surfaces-field) 42%, transparent)); color: var(--text); }
 .outline-num { color: var(--interface-muted); font-family: var(--mono); font-size: calc(9px * var(--zoom, 1)); font-weight: 500; }
 .outline-text { min-width: 0; overflow: hidden; font-size: calc(12px * var(--zoom, 1)); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .outline-row.active .outline-text { overflow: visible; white-space: normal; overflow-wrap: anywhere; }
-.outline-state { display: grid; width: 16px; height: 16px; place-items: center; border: 1px solid var(--line); border-radius: 6px; color: transparent; font-size: 9px; font-style: normal; }
+.outline-state { display: grid; width: 16px; height: 16px; place-items: center; border: 1px solid var(--line); border-radius: 6px; padding: 0; background: transparent; color: transparent; font: inherit; font-size: 9px; cursor: pointer; }
 .outline-state i { font-style: normal; }
+.outline-state:hover, .outline-state:focus-visible { border-color: var(--controls-positive); background: color-mix(in srgb, var(--controls-positive) 10%, transparent); color: var(--controls-positive); transform: scale(1.08); }
 .outline-state[data-state="reviewed"] { border-color: var(--controls-positive); background: color-mix(in srgb, var(--controls-positive) 13%, transparent); color: var(--controls-positive); }
 .outline-state[data-state="revisit"] { border-color: var(--controls-warning); background: color-mix(in srgb, var(--controls-warning) 13%, transparent); color: var(--controls-warning); }
-.outline-row.nested { grid-template-columns: 12px minmax(0, 1fr) 16px; margin: 1px 0; padding: 4px 8px; }
+.outline-state-placeholder { width: 16px; height: 16px; }
+.outline-row.nested { margin: 1px 0; padding: 4px 8px; }
+.outline-row.nested .outline-row-main { grid-template-columns: 12px minmax(0, 1fr); }
 .outline-row.nested .outline-num { text-align: center; }
 .outline-row.nested .outline-text { font-size: calc(11px * var(--zoom, 1)); font-weight: 600; }
 .outline-sub { margin: 0 0 4px 29px; border-left: 1px solid var(--border-soft); padding: 1px 0 2px 5px; }

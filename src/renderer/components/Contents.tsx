@@ -38,13 +38,27 @@ interface OutlineContext {
   onAction(action: WalkthroughAction): void
 }
 
-function StateMark({ status }: { status: 'reviewed' | 'revisit' | undefined }) {
-  // Shape and text carry the state; color only reinforces it.
+function StateMark({ heading, status, onToggle }: {
+  heading: string
+  status: 'reviewed' | 'revisit' | undefined
+  onToggle(status: 'reviewed' | 'revisit'): void
+}) {
+  const reviewed = status === 'reviewed'
+  const label = reviewed ? `Mark ${heading} for revisit` : `Mark ${heading} reviewed`
+  // Shape, glyph, accessible state, and text all carry the state; color only reinforces it.
   return (
-    <span className="outline-state" data-state={status ?? 'none'}>
+    <button
+      type="button"
+      role="checkbox"
+      className="outline-state"
+      data-state={status ?? 'none'}
+      aria-checked={reviewed}
+      aria-label={label}
+      title={label}
+      onClick={() => onToggle(reviewed ? 'revisit' : 'reviewed')}
+    >
       <i aria-hidden="true">{status === 'reviewed' ? '✓' : status === 'revisit' ? '↻' : ''}</i>
-      {status && <span className="sr-only">{status === 'reviewed' ? 'Reviewed' : 'Revisit'}</span>}
-    </span>
+    </button>
   )
 }
 
@@ -68,28 +82,36 @@ function OutlineRow({ node, number, depth, context, revealed = false }: { node: 
     <li role="treeitem" aria-level={heading.level} aria-expanded={hasChildren ? showChildren : undefined} className={excluded ? 'walkthrough-excluded' : undefined}>
       <div className="outline-row-wrap">
         {eligible && reference && (
-          <input
-            type="checkbox"
+          <button
+            type="button"
             className="outline-include"
-            aria-label={`Include ${heading.text} in walkthrough`}
-            checked={!excluded}
-            onChange={(event) => context.onAction({ type: 'set-included', heading: reference, included: event.currentTarget.checked })}
-          />
+            data-included={!excluded}
+            aria-pressed={!excluded}
+            aria-label={`${excluded ? 'Include' : 'Remove'} ${heading.text} ${excluded ? 'in' : 'from'} walkthrough`}
+            title={`${excluded ? 'Include in' : 'Remove from'} walkthrough`}
+            onClick={() => context.onAction({ type: 'set-included', heading: reference, included: excluded })}
+          >
+            <span aria-hidden="true">{excluded ? '+' : '−'}</span>
+          </button>
         )}
-        <button
-          type="button"
-          className={classes.filter(Boolean).join(' ')}
-          aria-current={active ? 'location' : undefined}
-          title={heading.text}
-          onClick={() => {
-            if (walkthrough && reference && eligible && !excluded) context.onAction({ type: 'set-current', heading: reference })
-            context.onJump(heading.id)
-          }}
-        >
-          <span className="outline-num" aria-hidden="true">{number ?? (primary ? '' : '·')}</span>
-          <span className="outline-text">{heading.text}</span>
-          <StateMark status={marker?.status} />
-        </button>
+        <div className={classes.filter(Boolean).join(' ')}>
+          <button
+            type="button"
+            className="outline-row-main"
+            aria-current={active ? 'location' : undefined}
+            title={heading.text}
+            onClick={() => {
+              if (walkthrough && reference && eligible && !excluded) context.onAction({ type: 'set-current', heading: reference })
+              context.onJump(heading.id)
+            }}
+          >
+            <span className="outline-num" aria-hidden="true">{number ?? (primary ? '' : '·')}</span>
+            <span className="outline-text">{heading.text}</span>
+          </button>
+          {eligible && reference
+            ? <StateMark heading={heading.text} status={marker?.status} onToggle={(status) => context.onAction({ type: 'mark', heading: reference, status })} />
+            : <span className="outline-state-placeholder" aria-hidden="true" />}
+        </div>
         {hasChildren && (
           <button
             type="button"
