@@ -3,8 +3,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { T3EngineClient } from '../../src/main/engine/client'
+import { fakeEngineServer } from './support/fake-engine-socket'
 
 const at = '2026-09-03T12:00:00.000Z'
+
+/** The engine's RPC socket: subscriptions synchronize at once, uploads get a signed URL, nothing else is served. */
+function liveServer() {
+  return fakeEngineServer((tag) => tag.startsWith('orchestration.subscribe') ? [{ kind: 'synchronized' }] : tag === 'attachments.createUploadUrl' ? { attachmentId: 'pending-upload', relativeUrl: '/upload/signed', expiresAt: 1 } : null)
+}
 
 function shell(text = 'First thread', status: 'idle' | 'running' = 'idle') {
   return {
@@ -37,11 +43,13 @@ function detail(message = 'Engine transcript', checkpoints: unknown[] = []) {
 describe('T3 engine read client', () => {
   it('projects markdown and code files from completed turn diffs without opening them', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'strata-engine-files-'))
+    const server = liveServer()
     const checkpoint = { turnId: 'turn-1', checkpointTurnCount: 1, checkpointRef: 'ref', status: 'ready', files: [{ path: 'notes/one.md', kind: 'modified', additions: 4, deletions: 1 }, { path: 'src/two.ts', kind: 'created', additions: 8, deletions: 0 }], assistantMessageId: 'm1', completedAt: at }
     const fetch = vi.fn(async (input: string | URL | Request) => String(input).endsWith('/oauth/token')
       ? Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+      : String(input).endsWith('/api/auth/websocket-ticket') ? Response.json({ ticket: 'ticket-1', expiresAt: at })
       : String(input).endsWith('/api/orchestration/shell') ? Response.json(shell(), { headers: { 'x-t3-version': '0.0.33' } }) : Response.json(detail('Done', [checkpoint]))) as typeof globalThis.fetch
-    const client = new T3EngineClient({ dataDirectory: directory, fetch, pollMs: 60_000 })
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
     await client.pair('http://engine.test', 'code')
     await client.openThread('t1')
     expect(client.view().projects[0]!.threads[0]!.documents).toEqual([
@@ -53,18 +61,26 @@ describe('T3 engine read client', () => {
 
   it('creates a thread with the picker choices and makes it active', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'strata-engine-create-'))
+    const server = liveServer()
     let created: Record<string, unknown> | null = null
     const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input)
       if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
-      if (url.endsWith('/api/orchestration/dispatch')) { created = JSON.parse(String(init?.body)); return Response.json({ sequence: 2 }) }
+      if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
       const base = shell()
-      if (created) { const command = created as { threadId: string; title: string; modelSelection: unknown; runtimeMode: string }; base.threads.push({ ...base.threads[0]!, id: command.threadId, title: command.title, modelSelection: command.modelSelection as typeof base.threads[0]['modelSelection'], runtimeMode: command.runtimeMode as 'full-access' }) }
+      const listed = (command: { threadId: string; title: string; modelSelection: unknown; runtimeMode: string }) => ({ ...base.threads[0]!, id: command.threadId, title: command.title, modelSelection: command.modelSelection as typeof base.threads[0]['modelSelection'], runtimeMode: command.runtimeMode as 'full-access' })
+      if (url.endsWith('/api/orchestration/dispatch')) {
+        created = JSON.parse(String(init?.body))
+        // T3 announces the created thread on the shell subscription; nothing is polled.
+        server.push('orchestration.subscribeShell', [{ kind: 'thread-upserted', sequence: 5, thread: listed(created as Parameters<typeof listed>[0]) }])
+        return Response.json({ sequence: 5 })
+      }
+      if (created) base.threads.push(listed(created as Parameters<typeof listed>[0]))
       if (url.endsWith('/api/orchestration/shell')) return Response.json(base, { headers: { 'x-t3-version': '0.0.33' } })
       const id = url.split('/').pop()!
       return Response.json({ ...detail(''), thread: { ...detail('').thread, ...base.threads.find((thread) => thread.id === id), id } })
     }) as typeof globalThis.fetch
-    const client = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), pollMs: 60_000 })
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), webSocket: server.WebSocket })
     await client.pair('http://engine.test', 'code')
     const id = await client.createThread({ projectId: 'p1', title: 'From document', model: 'gpt-5.6', effort: 'high', access: 'full-access' })
     expect(client.view().activeThreadId).toBe(id)
@@ -73,16 +89,18 @@ describe('T3 engine read client', () => {
   })
   it('pairs, keeps the credential private, projects the shell, and persists visits', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'strata-engine-'))
+    const server = liveServer()
     const requests: Array<{ url: string; init?: RequestInit }> = []
     const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input)
       requests.push({ url, ...(init ? { init } : {}) })
       if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'session-secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+      if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
       if (url.endsWith('/api/orchestration/shell')) return Response.json(shell(), { headers: { 'x-t3-version': '0.0.33' } })
       if (url.endsWith('/api/orchestration/threads/t1')) return Response.json(detail())
       return new Response('', { status: 404 })
     }) as typeof globalThis.fetch
-    const client = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), pollMs: 60_000 })
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), webSocket: server.WebSocket })
     await client.initialize()
     expect(client.view().state).toBe('unpaired')
 
@@ -103,16 +121,18 @@ describe('T3 engine read client', () => {
 
   it('publishes one disconnected state and recovers the same active conversation', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'strata-engine-reconnect-'))
+    const server = liveServer()
     let online = true
     let transcript = 'Before restart'
     const fetch = vi.fn(async (input: string | URL | Request) => {
       const url = String(input)
       if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+      if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
       if (!online) throw new TypeError('fetch failed')
       if (url.endsWith('/api/orchestration/shell')) return Response.json(shell(), { headers: { 'x-t3-version': '0.0.33' } })
       return Response.json(detail(transcript))
     }) as typeof globalThis.fetch
-    const client = new T3EngineClient({ dataDirectory: directory, fetch, pollMs: 60_000 })
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
     await client.initialize()
     await client.pair('http://engine.test', 'code')
     await client.openThread('t1')
@@ -129,10 +149,12 @@ describe('T3 engine read client', () => {
 
   it('dispatches conversation turns, interruption, approvals, and user input with the T3 command contract', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'strata-engine-write-'))
+    const server = liveServer()
     const commands: Array<Record<string, unknown>> = []
     const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input)
       if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+      if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
       if (url.endsWith('/api/orchestration/dispatch')) {
         commands.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
         return Response.json({ sequence: commands.length })
@@ -140,7 +162,7 @@ describe('T3 engine read client', () => {
       if (url.endsWith('/api/orchestration/shell')) return Response.json(shell('First thread', 'running'), { headers: { 'x-t3-version': '0.0.33' } })
       return Response.json(detail())
     }) as typeof globalThis.fetch
-    const client = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), pollMs: 60_000 })
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), webSocket: server.WebSocket })
     await client.pair('http://engine.test', 'code')
     await client.openThread('t1')
     await client.startTurn('t1', { text: 'Continue the work', model: 'gpt-5.6', effort: 'high', access: 'full-access' })
@@ -168,11 +190,13 @@ describe('T3 engine read client', () => {
 
   it('reuses a persisted command id until the matching message is visible after restart', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'strata-engine-retry-'))
+    const server = liveServer()
     const commands: Array<Record<string, unknown>> = []
     let acknowledged = false
     const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input)
       if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+      if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
       if (url.endsWith('/api/orchestration/dispatch')) {
         commands.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
         return Response.json({ sequence: commands.length })
@@ -185,14 +209,14 @@ describe('T3 engine read client', () => {
       return Response.json(snapshot)
     }) as typeof globalThis.fetch
 
-    const first = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), pollMs: 60_000 })
+    const first = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), webSocket: server.WebSocket })
     await first.pair('http://engine.test', 'code')
     await first.openThread('t1')
     await first.startTurn('t1', { text: 'Delivery delivery-1', model: 'gpt-5.6', effort: 'medium', access: 'full-access', messageId: 'delivery-1', commandId: 'command-1' })
     await first.shutdown()
 
     acknowledged = true
-    const second = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), pollMs: 60_000 })
+    const second = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), webSocket: server.WebSocket })
     await second.initialize()
     expect(commands).toHaveLength(2)
     expect(commands[0]).toMatchObject({ commandId: 'command-1', message: { messageId: 'delivery-1' } })
@@ -203,36 +227,24 @@ describe('T3 engine read client', () => {
 
   it('uploads a Markdown delivery before dispatching its file attachment', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'strata-engine-upload-'))
+    const server = liveServer()
     const commands: Array<Record<string, unknown>> = []
     const uploads: Array<{ url: string; body: string }> = []
-    class UploadSocket {
-      static readonly CONNECTING = 0; static readonly OPEN = 1; static readonly CLOSING = 2; static readonly CLOSED = 3
-      readonly listeners = new Map<string, Array<(event: { data?: string }) => void>>()
-      constructor(readonly url: string | URL) { queueMicrotask(() => this.emit('open', {})) }
-      addEventListener(name: string, listener: (event: { data?: string }) => void) { this.listeners.set(name, [...(this.listeners.get(name) ?? []), listener]) }
-      send(value: string) {
-        const request = JSON.parse(value) as { id: string; tag: string; payload: unknown }
-        // The same socket also serves the accounts probe (§5.13); this test only cares about the upload.
-        if (request.tag === 'server.getConfig') { queueMicrotask(() => this.emit('message', { data: JSON.stringify({ _tag: 'Exit', requestId: request.id, exit: { _tag: 'Success', value: { providers: [] } } }) })); return }
-        expect(request).toMatchObject({ tag: 'attachments.createUploadUrl', payload: { type: 'file', name: 'delivery.md', mimeType: 'text/markdown' } })
-        queueMicrotask(() => this.emit('message', { data: JSON.stringify({ _tag: 'Exit', requestId: request.id, exit: { _tag: 'Success', value: { attachmentId: 'pending-upload', relativeUrl: '/upload/signed', expiresAt: 1 } } }) }))
-      }
-      close() {}
-      emit(name: string, event: { data?: string }) { for (const listener of this.listeners.get(name) ?? []) listener(event) }
-    }
     const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input)
       if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+      if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
       if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
       if (url.endsWith('/upload/signed')) { uploads.push({ url, body: new TextDecoder().decode(init?.body as Uint8Array) }); return new Response('', { status: 200 }) }
       if (url.endsWith('/api/orchestration/dispatch')) { commands.push(JSON.parse(String(init?.body)) as Record<string, unknown>); return Response.json({ sequence: 1 }) }
       if (url.endsWith('/api/orchestration/shell')) return Response.json(shell(), { headers: { 'x-t3-version': '0.0.33' } })
       return Response.json(detail())
     }) as typeof globalThis.fetch
-    const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: UploadSocket as unknown as typeof WebSocket, pollMs: 60_000 })
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
     await client.pair('http://engine.test', 'code')
     await client.startTurn('t1', { text: 'Delivery d1.', model: 'gpt-5.6', effort: 'medium', access: 'full-access', attachment: { name: 'delivery.md', text: '# Delivery' } })
     expect(uploads).toEqual([{ url: 'http://engine.test/upload/signed', body: '# Delivery' }])
+    expect(server.requests.find((request) => request.tag === 'attachments.createUploadUrl')).toMatchObject({ payload: { type: 'file', name: 'delivery.md', mimeType: 'text/markdown' } })
     expect(commands[0]).toMatchObject({ message: { text: 'Delivery d1.', attachments: [{ type: 'file', id: 'pending-upload', name: 'delivery.md', mimeType: 'text/markdown', sizeBytes: 10 }] } })
     await client.shutdown()
   })

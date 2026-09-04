@@ -58,8 +58,34 @@ function readFrames(buffer: Buffer): { frames: Array<{ opcode: number; payload: 
 
 interface CreatedThread { id: string; projectId: string; title: string; modelSelection: unknown; runtimeMode: string }
 interface CreatedProject { id: string; title: string; workspaceRoot: string }
+interface Subscription { requestId: string; tag: string; threadId: string | null }
+interface Connection { socket: Socket; subscriptions: Subscription[] }
 
-export async function startEngine(options: FakeEngineOptions = {}): Promise<{ server: Server; origin: string; commands: Array<Record<string, unknown>>; uploads: string[]; tokenRequests: string[]; setOnline(value: boolean): void; setMessage(value: string): void; setWorkspaceRoot(value: string): void; setProviders(value: unknown[]): void; rpcRequests: Array<{ tag: string; payload: unknown }>; finish(): void; close(): Promise<void> }> {
+export interface FakeEngine {
+  server: Server
+  origin: string
+  commands: Array<Record<string, unknown>>
+  uploads: string[]
+  tokenRequests: string[]
+  rpcRequests: Array<{ tag: string; payload: unknown }>
+  /** Offline refuses HTTP and drops every socket, as a stopped server would; online again accepts new connections. */
+  setOnline(value: boolean): void
+  setMessage(value: string): void
+  setWorkspaceRoot(value: string): void
+  setProviders(value: unknown[]): void
+  finish(): void
+  /** Live sockets right now. */
+  connections(): number
+  close(): Promise<void>
+}
+
+/**
+ * A fake T3: HTTP for pairing, snapshots, dispatch, and uploads; a real
+ * WebSocket server for RPC and the shell and thread subscriptions (§5.1).
+ * Every state change pushes fresh snapshot items to subscribers, so the app
+ * only learns of changes the way it would from T3, never by polling.
+ */
+export async function startEngine(options: FakeEngineOptions = {}): Promise<FakeEngine> {
   let online = true
   const pairingCodes = new Set(options.pairingCodes ?? ['pair-code-1'])
   const tokenRequests: string[] = []
@@ -67,6 +93,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<{ se
   let status: 'running' | 'stopped' = 'running'
   let approvalOpen = true
   let inputOpen = true
+  let sequence = 2
   const commands: Array<Record<string, unknown>> = []
   const uploads: string[] = []
   const createdThreads: CreatedThread[] = []
@@ -75,6 +102,65 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<{ se
   let providers = options.providers ?? DEFAULT_PROVIDERS
   const rpcRequests: Array<{ tag: string; payload: unknown }> = []
   const sockets = new Set<Socket>()
+  const connections = new Set<Connection>()
+
+  const shellThread = (thread: CreatedThread) => ({ id: thread.id, projectId: thread.projectId, title: thread.title, modelSelection: thread.modelSelection, runtimeMode: thread.runtimeMode, interactionMode: 'default', branch: null, worktreePath: null, latestTurn: null, createdAt: at, updatedAt: at, session: { threadId: thread.id, status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: thread.runtimeMode, activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: null, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false })
+  const shellJson = () => ({
+    snapshotSequence: sequence,
+    projects: [
+      { id: 'p1', title: 'Cockpit project', workspaceRoot, defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at },
+      ...createdProjects.map((project) => ({ id: project.id, title: project.title, workspaceRoot: project.workspaceRoot, defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at })),
+    ],
+    threads: [
+      ...createdThreads.map(shellThread),
+      { id: 't1', projectId: 'p1', title: 'Live engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: { turnId: 'turn-1', state: status === 'running' ? 'running' : 'interrupted', requestedAt: at, startedAt: at, completedAt: null, assistantMessageId: 'm1' }, createdAt: at, updatedAt: at, session: { threadId: 't1', status, providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: approvalOpen, hasPendingUserInput: inputOpen, hasActionableProposedPlan: false },
+      { id: 't2', projectId: 'p1', title: 'Second engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: null, createdAt: at, updatedAt: at, session: { threadId: 't2', status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false },
+    ],
+    updatedAt: at,
+  })
+  const sentMessages = (threadId: string, turnId: string, keepAttachments: boolean) => commands
+    .filter((command) => command.type === 'thread.turn.start' && command.threadId === threadId)
+    .map((command, index) => ({ id: ((command.message as { messageId?: string }).messageId ?? `sent-${index}`), role: 'user', text: (command.message as { text: string }).text, attachments: keepAttachments ? ((command.message as { attachments?: unknown[] }).attachments ?? []) : [], turnId, streaming: false, createdAt: at, updatedAt: at }))
+  const threadJson = (threadId: string): unknown => {
+    const page = { beforeCursor: null, hasMore: false, snapshotSequence: sequence, threadSequence: sequence }
+    const created = createdThreads.find((thread) => thread.id === threadId)
+    if (created) {
+      return { snapshotSequence: sequence, thread: { ...shellThread(created), deletedAt: null, messages: sentMessages(created.id, `turn-${created.id}`, true), activities: [], checkpoints: [] }, page }
+    }
+    if (threadId !== 't1' && threadId !== 't2') return null
+    const threadTitle = threadId === 't2' ? 'Second engine thread' : 'Live engine thread'
+    const messageId = threadId === 't2' ? 'm2' : 'm1'
+    const activities = [
+      ...(approvalOpen ? [{ id: 'a1', tone: 'approval', kind: 'approval.requested', summary: 'Command approval requested', payload: { requestId: 'approval-1', detail: 'Run the cockpit verification?' }, turnId: 'turn-1', createdAt: at }] : [{ id: 'a2', tone: 'approval', kind: 'approval.resolved', summary: 'Approval resolved', payload: { requestId: 'approval-1' }, turnId: 'turn-1', createdAt: at }]),
+      ...(inputOpen ? [{ id: 'u1', tone: 'info', kind: 'user-input.requested', summary: 'User input requested', payload: { requestId: 'input-1', questions: [{ id: 'release', question: 'Which release?', options: [{ label: 'Version one' }] }] }, turnId: 'turn-1', createdAt: at }] : [{ id: 'u2', tone: 'info', kind: 'user-input.resolved', summary: 'User input submitted', payload: { requestId: 'input-1' }, turnId: 'turn-1', createdAt: at }]),
+      { id: 'tool-1', tone: 'tool', kind: 'tool.completed', summary: 'Updated cockpit files', payload: {}, turnId: 'turn-1', createdAt: at },
+    ]
+    return { snapshotSequence: sequence, thread: { id: threadId, projectId: 'p1', title: threadTitle, modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: threadId === 't1' ? { turnId: 'turn-1', state: status === 'running' ? 'running' : 'interrupted', requestedAt: at, startedAt: at, completedAt: null, assistantMessageId: messageId } : null, createdAt: at, updatedAt: at, session: { threadId, status: threadId === 't1' ? status : 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: threadId === 't1' && status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, deletedAt: null, messages: threadId === 't1' ? [...sentMessages('t1', 'turn-1', false), { id: messageId, role: 'assistant', text: message, attachments: [], turnId: 'turn-1', streaming: status === 'running', createdAt: at, updatedAt: at }] : sentMessages('t2', 'turn-1', false), activities: threadId === 't1' ? activities : [], checkpoints: threadId === 't1' ? [{ turnId: 'turn-1', checkpointTurnCount: 1, checkpointRef: 'ref', status: 'ready', files: [{ path: 'notes/one.md', kind: 'created', additions: 4, deletions: 0 }, { path: 'src/two.ts', kind: 'created', additions: 8, deletions: 0 }], assistantMessageId: messageId, completedAt: at }] : [] }, page }
+  }
+
+  const send = (socket: Socket, frame: unknown) => { if (!socket.destroyed) socket.write(textFrame(JSON.stringify(frame))) }
+  const chunk = (connection: Connection, subscription: Subscription, values: unknown[]) => send(connection.socket, { _tag: 'Chunk', requestId: subscription.requestId, values })
+  const snapshotFor = (subscription: Subscription): unknown[] => subscription.threadId
+    ? (threadJson(subscription.threadId) ? [{ kind: 'snapshot', snapshot: threadJson(subscription.threadId) }] : [])
+    : [{ kind: 'snapshot', snapshot: shellJson() }]
+  /** Every state change is a new sequence pushed to every subscriber, the way T3 streams its projections. */
+  const broadcast = () => {
+    sequence += 1
+    for (const connection of connections) for (const subscription of connection.subscriptions) {
+      const values = snapshotFor(subscription)
+      if (values.length) chunk(connection, subscription, values)
+    }
+  }
+  function rpcValue(tag: string): unknown {
+    if (tag === 'attachments.createUploadUrl') {
+      const attachmentId = `upload-${uploads.length + 1}`
+      return { attachmentId, relativeUrl: `/upload/${attachmentId}`, expiresAt: Date.now() + 60_000 }
+    }
+    if (tag === 'server.getConfig') return { providers, settings: { providerInstances: { codex: { config: { homePath: '/home/owner/.codex-work' } } } } }
+    if (tag === 'server.refreshProviders') return { providers }
+    return null
+  }
+
   const server = createServer((request, response) => {
     if (!online) {
       response.writeHead(503).end('offline')
@@ -84,7 +170,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<{ se
     response.setHeader('x-t3-version', '0.0.33')
     if (request.url === '/oauth/token' && request.method === 'POST') {
       const chunks: Buffer[] = []
-      request.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+      request.on('data', (piece) => chunks.push(Buffer.from(piece)))
       request.on('end', () => {
         const form = new URLSearchParams(Buffer.concat(chunks).toString('utf8'))
         const code = form.get('subject_token') ?? ''
@@ -100,13 +186,13 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<{ se
     }
     if (request.url?.startsWith('/upload/') && request.method === 'PUT') {
       const chunks: Buffer[] = []
-      request.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+      request.on('data', (piece) => chunks.push(Buffer.from(piece)))
       request.on('end', () => { uploads.push(Buffer.concat(chunks).toString('utf8')); response.end('{}') })
       return
     }
     if (request.url === '/api/orchestration/dispatch' && request.method === 'POST') {
       const chunks: Buffer[] = []
-      request.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+      request.on('data', (piece) => chunks.push(Buffer.from(piece)))
       request.on('end', () => {
         const command = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>
         commands.push(command)
@@ -116,43 +202,19 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<{ se
         if (command.type === 'thread.user-input.respond') inputOpen = false
         if (command.type === 'thread.create') createdThreads.push({ id: String(command.threadId), projectId: String(command.projectId), title: String(command.title), modelSelection: command.modelSelection, runtimeMode: String(command.runtimeMode) })
         if (command.type === 'project.create') createdProjects.push({ id: String(command.projectId), title: String(command.title), workspaceRoot: String(command.workspaceRoot) })
-        response.end(JSON.stringify({ sequence: commands.length + 2 }))
+        broadcast()
+        response.end(JSON.stringify({ sequence }))
       })
       return
     }
     if (request.url === '/api/orchestration/shell') {
-      response.end(JSON.stringify({
-        snapshotSequence: 1,
-        projects: [
-          { id: 'p1', title: 'Cockpit project', workspaceRoot, defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at },
-          ...createdProjects.map((project) => ({ id: project.id, title: project.title, workspaceRoot: project.workspaceRoot, defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at })),
-        ],
-        threads: [
-          ...createdThreads.map((thread) => ({ id: thread.id, projectId: thread.projectId, title: thread.title, modelSelection: thread.modelSelection, runtimeMode: thread.runtimeMode, interactionMode: 'default', branch: null, worktreePath: null, latestTurn: null, createdAt: at, updatedAt: at, session: { threadId: thread.id, status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: thread.runtimeMode, activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: null, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false })),
-          { id: 't1', projectId: 'p1', title: 'Live engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: { turnId: 'turn-1', state: status === 'running' ? 'running' : 'interrupted', requestedAt: at, startedAt: at, completedAt: null, assistantMessageId: 'm1' }, createdAt: at, updatedAt: at, session: { threadId: 't1', status, providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: approvalOpen, hasPendingUserInput: inputOpen, hasActionableProposedPlan: false },
-          { id: 't2', projectId: 'p1', title: 'Second engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: null, createdAt: at, updatedAt: at, session: { threadId: 't2', status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false },
-        ],
-        updatedAt: at,
-      }))
+      response.end(JSON.stringify(shellJson()))
       return
     }
-    const created = createdThreads.find((thread) => request.url === `/api/orchestration/threads/${thread.id}`)
-    if (created) {
-      const sent = commands.filter((command) => command.type === 'thread.turn.start' && command.threadId === created.id).map((command, index) => ({ id: ((command.message as { messageId?: string }).messageId ?? `sent-${index}`), role: 'user', text: (command.message as { text: string }).text, attachments: (command.message as { attachments?: unknown[] }).attachments ?? [], turnId: `turn-${created.id}`, streaming: false, createdAt: at, updatedAt: at }))
-      response.end(JSON.stringify({ snapshotSequence: commands.length + 2, thread: { id: created.id, projectId: created.projectId, title: created.title, modelSelection: created.modelSelection, runtimeMode: created.runtimeMode, interactionMode: 'default', branch: null, worktreePath: null, latestTurn: null, createdAt: at, updatedAt: at, session: { threadId: created.id, status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: created.runtimeMode, activeTurnId: null, lastError: null, updatedAt: at }, deletedAt: null, messages: sent, activities: [], checkpoints: [] }, page: { beforeCursor: null, hasMore: false, snapshotSequence: commands.length + 2, threadSequence: commands.length + 2 } }))
-      return
-    }
-    if (request.url === '/api/orchestration/threads/t1' || request.url === '/api/orchestration/threads/t2') {
-      const threadId = request.url.endsWith('/t2') ? 't2' : 't1'
-      const threadTitle = threadId === 't2' ? 'Second engine thread' : 'Live engine thread'
-      const messageId = threadId === 't2' ? 'm2' : 'm1'
-      const activities = [
-        ...(approvalOpen ? [{ id: 'a1', tone: 'approval', kind: 'approval.requested', summary: 'Command approval requested', payload: { requestId: 'approval-1', detail: 'Run the cockpit verification?' }, turnId: 'turn-1', createdAt: at }] : [{ id: 'a2', tone: 'approval', kind: 'approval.resolved', summary: 'Approval resolved', payload: { requestId: 'approval-1' }, turnId: 'turn-1', createdAt: at }]),
-        ...(inputOpen ? [{ id: 'u1', tone: 'info', kind: 'user-input.requested', summary: 'User input requested', payload: { requestId: 'input-1', questions: [{ id: 'release', question: 'Which release?', options: [{ label: 'Version one' }] }] }, turnId: 'turn-1', createdAt: at }] : [{ id: 'u2', tone: 'info', kind: 'user-input.resolved', summary: 'User input submitted', payload: { requestId: 'input-1' }, turnId: 'turn-1', createdAt: at }]),
-        { id: 'tool-1', tone: 'tool', kind: 'tool.completed', summary: 'Updated cockpit files', payload: {}, turnId: 'turn-1', createdAt: at },
-      ]
-      const sent = commands.filter((command) => command.type === 'thread.turn.start' && command.threadId === threadId).map((command, index) => ({ id: ((command.message as { messageId?: string }).messageId ?? `sent-${index}`), role: 'user', text: (command.message as { text: string }).text, attachments: [], turnId: 'turn-1', streaming: false, createdAt: at, updatedAt: at }))
-      response.end(JSON.stringify({ snapshotSequence: commands.length + 2, thread: { id: threadId, projectId: 'p1', title: threadTitle, modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: threadId === 't1' ? { turnId: 'turn-1', state: status === 'running' ? 'running' : 'interrupted', requestedAt: at, startedAt: at, completedAt: null, assistantMessageId: messageId } : null, createdAt: at, updatedAt: at, session: { threadId, status: threadId === 't1' ? status : 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: threadId === 't1' && status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, deletedAt: null, messages: threadId === 't1' ? [...sent, { id: messageId, role: 'assistant', text: message, attachments: [], turnId: 'turn-1', streaming: status === 'running', createdAt: at, updatedAt: at }] : [], activities: threadId === 't1' ? activities : [], checkpoints: threadId === 't1' ? [{ turnId: 'turn-1', checkpointTurnCount: 1, checkpointRef: 'ref', status: 'ready', files: [{ path: 'notes/one.md', kind: 'created', additions: 4, deletions: 0 }, { path: 'src/two.ts', kind: 'created', additions: 8, deletions: 0 }], assistantMessageId: messageId, completedAt: at }] : [] }, page: { beforeCursor: null, hasMore: false, snapshotSequence: commands.length + 2, threadSequence: commands.length + 2 } }))
+    const threadMatch = /^\/api\/orchestration\/threads\/([^/?]+)$/u.exec(request.url ?? '')
+    const detail = threadMatch ? threadJson(decodeURIComponent(threadMatch[1]!)) : null
+    if (detail) {
+      response.end(JSON.stringify(detail))
       return
     }
     response.writeHead(404).end('{}')
@@ -163,51 +225,55 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<{ se
   })
   server.on('upgrade', (request, socket: Socket) => {
     const key = request.headers['sec-websocket-key']
-    if (typeof key !== 'string') { socket.destroy(); return }
+    if (typeof key !== 'string' || !online) { socket.destroy(); return }
     const accept = createHash('sha1').update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64')
     socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`)
+    const connection: Connection = { socket, subscriptions: [] }
+    connections.add(connection)
+    socket.once('close', () => connections.delete(connection))
     let pending: Buffer = Buffer.alloc(0)
-    socket.on('data', (chunk) => {
-      pending = Buffer.concat([pending, Buffer.from(chunk)])
+    socket.on('data', (piece) => {
+      pending = Buffer.concat([pending, Buffer.from(piece)])
       const { frames, rest } = readFrames(pending)
       pending = rest
       for (const frame of frames) {
         if (frame.opcode === 8) { socket.write(Buffer.from([0x88, 0])); socket.end(); return }
         if (frame.opcode !== 1) continue
-        const rpc = JSON.parse(frame.payload.toString('utf8')) as { _tag?: string; id: string; tag: string; payload: unknown }
-        if (rpc._tag !== 'Request') continue
+        const rpc = JSON.parse(frame.payload.toString('utf8')) as { _tag?: string; id?: string; tag?: string; payload?: unknown; requestId?: string }
+        if (rpc._tag === 'Ping') { send(socket, { _tag: 'Pong' }); continue }
+        if (rpc._tag === 'Interrupt') { connection.subscriptions = connection.subscriptions.filter((subscription) => subscription.requestId !== rpc.requestId); continue }
+        if (rpc._tag !== 'Request' || !rpc.id || !rpc.tag) continue
         rpcRequests.push({ tag: rpc.tag, payload: rpc.payload })
-        socket.write(textFrame(JSON.stringify({ _tag: 'Exit', requestId: rpc.id, exit: { _tag: 'Success', value: rpcValue(rpc.tag) } })))
+        if (rpc.tag === 'orchestration.subscribeShell' || rpc.tag === 'orchestration.subscribeThread') {
+          const subscription: Subscription = { requestId: rpc.id, tag: rpc.tag, threadId: rpc.tag === 'orchestration.subscribeThread' ? String((rpc.payload as { threadId?: unknown }).threadId ?? '') : null }
+          connection.subscriptions.push(subscription)
+          chunk(connection, subscription, [...snapshotFor(subscription), { kind: 'synchronized' }])
+          continue
+        }
+        send(socket, { _tag: 'Exit', requestId: rpc.id, exit: { _tag: 'Success', value: rpcValue(rpc.tag) } })
       }
     })
     socket.on('error', () => undefined)
   })
-  function rpcValue(tag: string): unknown {
-    if (tag === 'attachments.createUploadUrl') {
-      const attachmentId = `upload-${uploads.length + 1}`
-      return { attachmentId, relativeUrl: `/upload/${attachmentId}`, expiresAt: Date.now() + 60_000 }
-    }
-    if (tag === 'server.getConfig') return { providers, settings: { providerInstances: { codex: { config: { homePath: '/home/owner/.codex-work' } } } } }
-    if (tag === 'server.refreshProviders') return { providers }
-    return null
-  }
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('Fake engine did not bind')
+  const dropSockets = () => { for (const socket of sockets) socket.destroy(); connections.clear() }
   return {
     server,
     origin: `http://127.0.0.1:${address.port}`,
     commands,
     uploads,
     tokenRequests,
-    setOnline: (value) => { online = value },
-    setMessage: (value) => { message = value },
-    setWorkspaceRoot: (value) => { workspaceRoot = value },
-    setProviders: (value) => { providers = value },
     rpcRequests,
-    finish: () => { status = 'stopped' },
+    setOnline: (value) => { online = value; if (!value) dropSockets() },
+    setMessage: (value) => { message = value; broadcast() },
+    setWorkspaceRoot: (value) => { workspaceRoot = value; broadcast() },
+    setProviders: (value) => { providers = value; broadcast() },
+    finish: () => { status = 'stopped'; broadcast() },
+    connections: () => connections.size,
     close: async () => {
-      for (const socket of sockets) socket.destroy()
+      dropSockets()
       await new Promise<void>((resolve) => server.close(() => resolve()))
     },
   }

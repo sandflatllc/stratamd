@@ -46,6 +46,11 @@ test('1 and 2 read side: disconnect is isolated and reconnect restores the activ
     await expect(page.getByRole('button', { name: /^Open Live engine thread$/ })).toBeVisible()
     await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
     await expect(page.getByRole('region', { name: 'Conversation' })).toContainText('Read-side conversation from T3.')
+    // The conversation is a live subscription (§5.1): the fake engine holds one socket with a thread subscription.
+    await expect.poll(() => engine.rpcRequests.filter((request) => request.tag === 'orchestration.subscribeThread').length).toBeGreaterThan(0)
+    expect(engine.connections()).toBe(1)
+    engine.setMessage('Read-side conversation from T3. Pushed live.')
+    await expect(page.getByRole('region', { name: 'Conversation' })).toContainText('Pushed live.')
 
     engine.setOnline(false)
     await expect(page.getByTestId('conversation-disconnected')).toBeVisible({ timeout: 2_000 })

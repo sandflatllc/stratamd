@@ -20,9 +20,18 @@ import {
   T3_HTTP,
   T3_RPC,
   serverConfigSlice,
+  shellStreamItem,
+  threadStreamItem,
+  messageSentEvent,
+  turnDiffCompletedEvent,
+  orchestrationSession,
+  orchestrationProjectShell,
+  orchestrationThreadShell,
+  threadActivity,
   type T3ShellSnapshot,
   type T3ThreadDetailSnapshot,
 } from './t3-contract'
+import { EngineSocket, type EngineStream } from './socket'
 import { accountViews, chooseInstance, emptyAccountsStore, providerInstancesOf, readAccountsStore, recordMeasurements, terminalShimTargets, writeAccountsStore, type AccountsStore, type EngineProviderInstance } from './accounts'
 import { writeTerminalShims } from '../account-shims'
 import { logError } from '../log'
@@ -51,8 +60,14 @@ export interface EngineClientOptions {
   dataDirectory: string
   fetch?: typeof globalThis.fetch
   now?: () => number
-  pollMs?: number
   webSocket?: typeof WebSocket
+  /** Backoff between automatic reconnects after the socket drops; the last delay repeats. */
+  reconnectDelaysMs?: number[]
+  /** Keepalive on the subscription socket (§5.1); a missed Pong closes it and shows Disconnected. */
+  pingMs?: number
+  pongTimeoutMs?: number
+  /** Stream items publish coalesced after this many ms so a streaming reply does not republish per token. */
+  publishDelayMs?: number
   /** How long a provider usage reading stays fresh before the next refresh asks the engine again (§5.13). */
   configRefreshMs?: number
   /** Where terminal launchers are written, or null to write none (§5.13: Linux only). */
@@ -96,6 +111,36 @@ const EMPTY_ENGINE: EngineView = {
 /** The launcher names Strata may have written; a driver without a terminal default gets its launcher removed. */
 const SHIM_NAMES = ['codex', 'claude']
 
+const DEFAULT_RECONNECT_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000]
+
+type ShellThread = T3ShellSnapshot['threads'][number]
+type DetailThread = T3ThreadDetailSnapshot['thread']
+
+/** The fork's rule for closing a running turn when the session leaves `running`. */
+function settledTurnState(status: ShellThread['session'] extends infer S ? S extends { status: infer T } ? T : never : never): 'completed' | 'interrupted' | 'error' | null {
+  switch (status) {
+    case 'idle': case 'ready': return 'completed'
+    case 'error': return 'error'
+    case 'interrupted': case 'stopped': return 'interrupted'
+    default: return null
+  }
+}
+
+function sessionApplied<T extends { session: ShellThread['session']; latestTurn: unknown; updatedAt: string }>(thread: T, session: NonNullable<ShellThread['session']>, occurredAt: string): T {
+  const latest = thread.latestTurn && typeof thread.latestTurn === 'object' ? thread.latestTurn as Record<string, unknown> : null
+  const settled = settledTurnState(session.status)
+  const latestTurn = session.status === 'running' && session.activeTurnId !== null
+    ? {
+        turnId: session.activeTurnId, state: 'running',
+        requestedAt: latest?.turnId === session.activeTurnId && typeof latest.requestedAt === 'string' ? latest.requestedAt : session.updatedAt,
+        startedAt: latest?.turnId === session.activeTurnId && typeof latest.startedAt === 'string' ? latest.startedAt : session.updatedAt,
+        completedAt: null,
+        assistantMessageId: latest?.turnId === session.activeTurnId ? latest.assistantMessageId ?? null : null,
+      }
+    : latest && latest.state === 'running' && settled ? { ...latest, state: settled, completedAt: session.updatedAt } : thread.latestTurn
+  return { ...thread, session, latestTurn, updatedAt: occurredAt }
+}
+
 function cleanServer(value: string): string {
   const url = new URL(value)
   if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('The engine address must use http or https')
@@ -114,7 +159,6 @@ function statusOf(thread: T3ShellSnapshot['threads'][number]): EngineThreadView[
 export class T3EngineClient implements EngineReadClient {
   readonly #fetch: typeof globalThis.fetch
   readonly #now: () => number
-  readonly #pollMs: number
   readonly #credentialPath: string
   readonly #readingPath: string
   readonly #commandsPath: string
@@ -135,15 +179,32 @@ export class T3EngineClient implements EngineReadClient {
   #state: EngineView['state'] = 'unpaired'
   #problem: string | null = null
   #serverVersion: string | null = null
-  #timer: ReturnType<typeof setTimeout> | null = null
   #running = false
-  #polling: Promise<void> | null = null
+  #refreshing: Promise<void> | null = null
   #pendingCommands: Array<{ key: string; command: unknown; messageId?: string }> = []
+  readonly #reconnectDelaysMs: number[]
+  readonly #pingMs: number
+  readonly #pongTimeoutMs: number
+  readonly #publishDelayMs: number
+  #socket: EngineSocket | null = null
+  #shellStream: EngineStream | null = null
+  #threadStream: EngineStream | null = null
+  #shellSequence = 0
+  #threadSequence = 0
+  #reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  #reconnectAttempt = 0
+  #publishTimer: ReturnType<typeof setTimeout> | null = null
+  #configTimer: ReturnType<typeof setTimeout> | null = null
+  #connecting: Promise<void> | null = null
+  readonly #shellWaiters = new Set<() => void>()
 
   constructor(options: EngineClientOptions) {
     this.#fetch = options.fetch ?? globalThis.fetch
     this.#now = options.now ?? Date.now
-    this.#pollMs = options.pollMs ?? 400
+    this.#reconnectDelaysMs = options.reconnectDelaysMs?.length ? options.reconnectDelaysMs : DEFAULT_RECONNECT_DELAYS_MS
+    this.#pingMs = options.pingMs ?? 20_000
+    this.#pongTimeoutMs = options.pongTimeoutMs ?? 10_000
+    this.#publishDelayMs = options.publishDelayMs ?? 25
     this.#credentialPath = join(options.dataDirectory, 'engine-credential.json')
     this.#readingPath = join(options.dataDirectory, 'engine-reading.json')
     this.#commandsPath = join(options.dataDirectory, 'engine-commands.json')
@@ -167,9 +228,14 @@ export class T3EngineClient implements EngineReadClient {
 
   async shutdown(): Promise<void> {
     this.#running = false
-    if (this.#timer) clearTimeout(this.#timer)
-    this.#timer = null
-    await this.#polling
+    this.#clearReconnect()
+    if (this.#publishTimer) clearTimeout(this.#publishTimer)
+    this.#publishTimer = null
+    if (this.#configTimer) clearTimeout(this.#configTimer)
+    this.#configTimer = null
+    this.#closeSocket()
+    await this.#refreshing
+    await this.#connecting?.catch(() => undefined)
   }
 
   subscribe(listener: (view: EngineView) => void): () => void {
@@ -279,7 +345,7 @@ export class T3EngineClient implements EngineReadClient {
    */
   async refreshAccounts(): Promise<void> {
     if (!this.#credential) throw new Error('No engine is paired')
-    await this.#rpc(T3_RPC.refreshProviders, {}, 'provider refresh').catch(() => undefined)
+    await this.#rpcOrSocket(T3_RPC.refreshProviders, {}, 'provider refresh').catch(() => undefined)
     this.#configFetchedAt = 0
     await this.#refreshConfig()
     this.#publish()
@@ -325,27 +391,63 @@ export class T3EngineClient implements EngineReadClient {
     await this.reconnect()
   }
 
+  /**
+   * Connects (§5.1): HTTP snapshots of the shell and the active thread give
+   * the first picture, then one socket subscribes to both so the running trace
+   * is live. Called on start, after pairing, by the owner's Reconnect, and by
+   * the backoff after a dropped socket; each call resubscribes exactly once.
+   */
   async reconnect(): Promise<void> {
     if (!this.#credential) {
       this.#state = 'unpaired'
       this.#publish()
       return
     }
-    this.#state = 'connecting'
-    this.#problem = null
-    this.#publish()
-    await this.#refresh()
-    this.#schedule()
+    if (this.#connecting) return this.#connecting
+    this.#connecting = (async () => {
+      this.#clearReconnect()
+      this.#closeSocket()
+      this.#state = 'connecting'
+      this.#problem = null
+      this.#publish()
+      await this.#refresh()
+      if (!this.#reachable()) { this.#scheduleReconnect(); return }
+      try {
+        await this.#subscribe()
+        this.#reconnectAttempt = 0
+        // Accounts (§5.13) read over the same socket once it is up; a failure keeps the last measurement.
+        await this.#refreshConfig()
+        this.#publish()
+      } catch (error) {
+        this.#state = 'disconnected'
+        this.#problem = error instanceof Error ? error.message : 'The engine socket is unreachable'
+        this.#publish()
+        this.#scheduleReconnect()
+      }
+    })().finally(() => { this.#connecting = null })
+    return this.#connecting
   }
 
   async openThread(threadId: string): Promise<void> {
-    const known = this.#shell?.threads.some((thread) => thread.id === threadId)
-    if (!known) throw new Error(`Thread was not found: ${threadId}`)
+    if (!this.#shell?.threads.some((thread) => thread.id === threadId)) await this.#waitForShell((shell) => shell.threads.some((thread) => thread.id === threadId))
+    if (!this.#shell?.threads.some((thread) => thread.id === threadId)) throw new Error(`Thread was not found: ${threadId}`)
     this.#reading.activeThreadId = threadId
     this.#reading.lastVisited[threadId] = this.#now()
     await this.#writeReading()
     await this.#refreshThread(threadId)
     this.#publish()
+    await this.#subscribeThread()
+  }
+
+  /** Waits for the shell stream to show something, such as a thread or project a command just created. */
+  #waitForShell(predicate: (shell: T3ShellSnapshot) => boolean, timeoutMs = 5_000): Promise<void> {
+    if (this.#shell && predicate(this.#shell)) return Promise.resolve()
+    return new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { this.#shellWaiters.delete(check); resolve() }, timeoutMs)
+      timer.unref?.()
+      const check = () => { if (this.#shell && predicate(this.#shell)) { clearTimeout(timer); this.#shellWaiters.delete(check); resolve() } }
+      this.#shellWaiters.add(check)
+    })
   }
 
   async startTurn(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access']; messageId?: string; commandId?: string; attachment?: { name: string; text: string } }): Promise<void> {
@@ -402,6 +504,7 @@ export class T3EngineClient implements EngineReadClient {
       type: 'project.create', commandId: randomUUID(), projectId, title: input.title, workspaceRoot: input.workspaceRoot,
       createdAt: new Date(this.#now()).toISOString(),
     }))
+    await this.#waitForShell((shell) => shell.projects.some((project) => project.id === projectId))
     if (!this.#shell?.projects.some((project) => project.id === projectId)) throw new Error(`The engine did not list the new project for ${input.workspaceRoot}`)
     return projectId
   }
@@ -435,14 +538,16 @@ export class T3EngineClient implements EngineReadClient {
     }))
   }
 
+  /** HTTP snapshots: the initial picture and the one taken on every reconnect (§5.1). */
   async #refresh(): Promise<void> {
     if (!this.#credential) return
-    if (this.#polling) return this.#polling
-    this.#polling = (async () => {
+    if (this.#refreshing) return this.#refreshing
+    this.#refreshing = (async () => {
       try {
         const response = await this.#request(T3_HTTP.shell)
         this.#serverVersion = response.headers.get('x-t3-version') ?? response.headers.get('server-version')
         this.#shell = shellSnapshot.parse(await response.json())
+        this.#shellSequence = this.#shell.snapshotSequence
         const active = this.#reading.activeThreadId
         if (active && this.#shell.threads.some((thread) => thread.id === active)) await this.#refreshThread(active)
         else if (active) {
@@ -454,16 +559,213 @@ export class T3EngineClient implements EngineReadClient {
         this.#problem = this.#state === 'mismatch'
           ? `Server ${this.#serverVersion} is outside the tested ${T3_SUPPORTED_VERSION} contract (${T3_CONTRACT_REVISION.slice(0, 8)}).`
           : null
-        if (this.#now() - this.#configFetchedAt >= this.#configRefreshMs) await this.#refreshConfig()
       } catch (error) {
         this.#state = 'disconnected'
         this.#problem = error instanceof Error ? error.message : 'The engine is unreachable'
       } finally {
-        this.#polling = null
+        this.#refreshing = null
         this.#publish()
       }
     })()
-    return this.#polling
+    return this.#refreshing
+  }
+
+  /** One socket, two subscriptions: the shell, and the active thread when there is one. */
+  async #subscribe(): Promise<void> {
+    if (!this.#credential) throw new Error('No engine is paired')
+    const ticketResponse = await this.#fetch(`${this.#credential.server}${T3_HTTP.websocketTicket}`, {
+      method: 'POST', headers: { authorization: `Bearer ${this.#credential.accessToken}` }, signal: AbortSignal.timeout(3_000),
+    })
+    if (!ticketResponse.ok) throw new Error(`The engine could not authorize a live connection (${ticketResponse.status})`)
+    const ticket = websocketTicketResult.parse(await ticketResponse.json())
+    const socketUrl = new URL(T3_HTTP.websocket, this.#credential.server)
+    socketUrl.protocol = socketUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+    socketUrl.searchParams.set('wsTicket', ticket.ticket)
+    const socket = new EngineSocket({
+      url: socketUrl, webSocket: this.#WebSocket, pingMs: this.#pingMs, pongTimeoutMs: this.#pongTimeoutMs,
+      onClose: (reason) => this.#onSocketClosed(socket, reason),
+    })
+    this.#socket = socket
+    await socket.open()
+    this.#shellStream = await socket.stream(T3_RPC.subscribeShell, { afterSequence: this.#shellSequence, requestCompletionMarker: true }, (item) => this.#onShellItem(item), (error) => { if (error && this.#socket === socket) this.#onSocketClosed(socket, error.message) })
+    await this.#subscribeThread()
+    this.#scheduleConfigRefresh()
+  }
+
+  async #subscribeThread(): Promise<void> {
+    this.#threadStream?.interrupt()
+    this.#threadStream = null
+    const threadId = this.#reading.activeThreadId
+    const socket = this.#socket
+    if (!threadId || !socket || socket.closed) return
+    this.#threadStream = await socket.stream(T3_RPC.subscribeThread, { threadId, afterSequence: this.#threadSequence, requestCompletionMarker: true }, (item) => this.#onThreadItem(threadId, item), (error) => { if (error && this.#socket === socket) this.#onSocketClosed(socket, error.message) })
+  }
+
+  #onShellItem(raw: unknown): void {
+    const parsed = shellStreamItem.safeParse(raw)
+    if (!parsed.success) return
+    const item = parsed.data
+    if (item.kind === 'synchronized') return
+    if (item.kind === 'snapshot') {
+      this.#shell = item.snapshot
+      this.#shellSequence = item.snapshot.snapshotSequence
+    } else {
+      if (!this.#shell || item.sequence <= this.#shellSequence) return
+      this.#shellSequence = item.sequence
+      const shell = this.#shell
+      if (item.kind === 'project-upserted') {
+        const project = orchestrationProjectShell.safeParse((item as { project?: unknown }).project)
+        if (project.success) shell.projects = [...shell.projects.filter((candidate) => candidate.id !== project.data.id), project.data]
+      } else if (item.kind === 'project-removed') {
+        const projectId = (item as { projectId?: unknown }).projectId
+        shell.projects = shell.projects.filter((candidate) => candidate.id !== projectId)
+        shell.threads = shell.threads.filter((candidate) => candidate.projectId !== projectId)
+      } else if (item.kind === 'thread-upserted') {
+        const thread = orchestrationThreadShell.safeParse((item as { thread?: unknown }).thread)
+        if (thread.success) {
+          const index = shell.threads.findIndex((candidate) => candidate.id === thread.data.id)
+          shell.threads = index === -1 ? [...shell.threads, thread.data] : shell.threads.map((candidate, at) => at === index ? thread.data : candidate)
+        }
+      } else if (item.kind === 'thread-removed') {
+        const threadId = (item as { threadId?: unknown }).threadId
+        shell.threads = shell.threads.filter((candidate) => candidate.id !== threadId)
+        if (this.#reading.activeThreadId === threadId) { this.#reading.activeThreadId = null; this.#detail = null; void this.#writeReading() }
+      }
+    }
+    for (const waiter of [...this.#shellWaiters]) waiter()
+    this.#publishSoon()
+  }
+
+  #onThreadItem(threadId: string, raw: unknown): void {
+    if (this.#reading.activeThreadId !== threadId) return
+    const parsed = threadStreamItem.safeParse(raw)
+    if (!parsed.success) return
+    const item = parsed.data
+    if (item.kind === 'synchronized') return
+    if (item.kind === 'snapshot') {
+      if (item.snapshot.thread.id !== threadId) return
+      this.#detail = item.snapshot
+      this.#threadSequence = item.snapshot.snapshotSequence
+    } else {
+      const event = item.event
+      if (event.sequence <= this.#threadSequence) return
+      this.#threadSequence = event.sequence
+      if (event.aggregateKind !== 'thread' || event.aggregateId !== threadId || !this.#detail) return
+      this.#detail = { ...this.#detail, thread: this.#applyThreadEvent(this.#detail.thread, event) }
+    }
+    void this.#settleAcknowledgedCommands()
+    this.#publishSoon()
+  }
+
+  /** Mirrors the fork's projector for the events a conversation shows (§5.1, §5.3). */
+  #applyThreadEvent(thread: DetailThread, event: { type: string; sequence: number; occurredAt: string; payload: unknown }): DetailThread {
+    switch (event.type) {
+      case 'thread.message-sent': {
+        const parsed = messageSentEvent.safeParse(event)
+        if (!parsed.success) return thread
+        const payload = parsed.data.payload
+        const incoming = { id: payload.messageId, role: payload.role, text: payload.text, turnId: payload.turnId, streaming: payload.streaming, createdAt: payload.createdAt, updatedAt: payload.updatedAt, ...(payload.attachments ? { attachments: payload.attachments } : {}) }
+        const existing = thread.messages.find((message) => message.id === incoming.id)
+        const messages = existing
+          ? thread.messages.map((message) => message.id !== incoming.id ? message : {
+              ...message,
+              text: incoming.streaming ? `${message.text}${incoming.text}` : incoming.text.length > 0 ? incoming.text : message.text,
+              streaming: incoming.streaming, updatedAt: incoming.updatedAt, turnId: incoming.turnId,
+              ...(incoming.attachments ? { attachments: incoming.attachments } : {}),
+            })
+          : [...thread.messages, incoming]
+        return { ...thread, messages, updatedAt: event.occurredAt }
+      }
+      case 'thread.session-set': {
+        const session = orchestrationSession.safeParse((event.payload as { session?: unknown } | null)?.session)
+        if (!session.success) return thread
+        const next = sessionApplied(thread, session.data, event.occurredAt)
+        if (this.#shell) this.#shell.threads = this.#shell.threads.map((candidate) => candidate.id === thread.id ? sessionApplied(candidate, session.data, event.occurredAt) : candidate)
+        return next
+      }
+      case 'thread.activity-appended': {
+        const activity = threadActivity.safeParse((event.payload as { activity?: unknown } | null)?.activity)
+        if (!activity.success) return thread
+        const activities = [...thread.activities.filter((entry) => entry.id !== activity.data.id), activity.data]
+          .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0) || a.createdAt.localeCompare(b.createdAt))
+          .slice(-500)
+        return { ...thread, activities, updatedAt: event.occurredAt }
+      }
+      case 'thread.turn-diff-completed': {
+        const parsed = turnDiffCompletedEvent.safeParse(event)
+        if (!parsed.success) return thread
+        const { threadId: _threadId, ...checkpoint } = parsed.data.payload
+        const existing = thread.checkpoints.find((entry) => entry.turnId === checkpoint.turnId)
+        if (existing && existing.status !== 'missing' && checkpoint.status === 'missing') return thread
+        const checkpoints = [...thread.checkpoints.filter((entry) => entry.turnId !== checkpoint.turnId), checkpoint].sort((a, b) => a.checkpointTurnCount - b.checkpointTurnCount)
+        return { ...thread, checkpoints, updatedAt: event.occurredAt }
+      }
+      case 'thread.deleted':
+        this.#reading.activeThreadId = null
+        void this.#writeReading()
+        return thread
+      default:
+        return { ...thread, updatedAt: event.occurredAt }
+    }
+  }
+
+  #reachable(): boolean {
+    return this.#state === 'connected' || this.#state === 'mismatch'
+  }
+
+  #onSocketClosed(socket: EngineSocket, reason: string): void {
+    if (this.#socket !== socket) return
+    this.#socket = null
+    this.#shellStream = null
+    this.#threadStream = null
+    if (this.#configTimer) clearTimeout(this.#configTimer)
+    this.#configTimer = null
+    if (!this.#running) return
+    this.#state = 'disconnected'
+    this.#problem = reason
+    this.#publish()
+    this.#scheduleReconnect()
+  }
+
+  #closeSocket(): void {
+    const socket = this.#socket
+    this.#socket = null
+    this.#shellStream = null
+    this.#threadStream = null
+    socket?.close()
+  }
+
+  #scheduleReconnect(): void {
+    if (!this.#running || this.#reconnectTimer) return
+    const delay = this.#reconnectDelaysMs[Math.min(this.#reconnectAttempt, this.#reconnectDelaysMs.length - 1)]!
+    this.#reconnectAttempt += 1
+    this.#reconnectTimer = setTimeout(() => {
+      this.#reconnectTimer = null
+      void this.reconnect()
+    }, delay)
+    this.#reconnectTimer.unref?.()
+  }
+
+  #clearReconnect(): void {
+    if (this.#reconnectTimer) clearTimeout(this.#reconnectTimer)
+    this.#reconnectTimer = null
+  }
+
+  #scheduleConfigRefresh(): void {
+    if (this.#configTimer) clearTimeout(this.#configTimer)
+    this.#configTimer = setTimeout(() => {
+      this.#configTimer = null
+      if (!this.#socket || this.#socket.closed) return
+      void this.#refreshConfig().then(() => { this.#publish(); this.#scheduleConfigRefresh() })
+    }, this.#configRefreshMs)
+    this.#configTimer.unref?.()
+  }
+
+  #publishSoon(): void {
+    if (this.#publishDelayMs <= 0) { this.#publish(); return }
+    if (this.#publishTimer) return
+    this.#publishTimer = setTimeout(() => { this.#publishTimer = null; this.#publish() }, this.#publishDelayMs)
+    this.#publishTimer.unref?.()
   }
 
   /**
@@ -474,7 +776,7 @@ export class T3EngineClient implements EngineReadClient {
   async #refreshConfig(): Promise<void> {
     this.#configFetchedAt = this.#now()
     try {
-      const config = serverConfigSlice.parse(await this.#rpc(T3_RPC.getServerConfig, {}))
+      const config = serverConfigSlice.parse(await this.#rpcOrSocket(T3_RPC.getServerConfig, {}, 'provider report'))
       this.#providers = providerInstancesOf(config)
       const next = recordMeasurements(this.#accounts, this.#providers, new Date(this.#now()).toISOString())
       if (next !== this.#accounts) {
@@ -500,6 +802,7 @@ export class T3EngineClient implements EngineReadClient {
   async #refreshThread(threadId: string): Promise<void> {
     const response = await this.#request(T3_HTTP.thread(threadId))
     this.#detail = threadDetailSnapshot.parse(await response.json())
+    this.#threadSequence = this.#detail.snapshotSequence
   }
 
   async #request(path: string): Promise<Response> {
@@ -520,7 +823,7 @@ export class T3EngineClient implements EngineReadClient {
     }
     await this.#postCommand(command)
     if (!messageId && key) { this.#pendingCommands = this.#pendingCommands.filter((pending) => pending.key !== key); await this.#writeCommands() }
-    await this.#refresh()
+    // The subscriptions deliver the command's effects; nothing is polled here.
     await this.#settleAcknowledgedCommands()
   }
 
@@ -536,9 +839,16 @@ export class T3EngineClient implements EngineReadClient {
     dispatchResult.parse(await response.json())
   }
 
+  /** The live socket answers when it is up; otherwise a one-shot connection does. */
+  async #rpcOrSocket(tag: string, payload: unknown, what: string): Promise<unknown> {
+    if (this.#socket && !this.#socket.closed) return this.#socket.request(tag, payload)
+    return this.#rpc(tag, payload, what)
+  }
+
   /**
-   * One request over T3's Effect RPC socket: a ticket, a `Request` frame, and
-   * the matching `Exit`. Uploads and the server config both go this way.
+   * One request over its own T3 RPC socket: a ticket, a `Request` frame, and
+   * the matching `Exit`. Uploads go this way so a large attachment never
+   * blocks the subscription socket.
    */
   async #rpc(tag: string, payload: unknown, what = 'request'): Promise<unknown> {
     if (!this.#credential) throw new Error('No engine is paired')
@@ -583,7 +893,7 @@ export class T3EngineClient implements EngineReadClient {
 
   async #retryPendingCommands(): Promise<void> {
     for (const pending of this.#pendingCommands) await this.#postCommand(pending.command)
-    if (this.#pendingCommands.length) { await this.#refresh(); await this.#settleAcknowledgedCommands() }
+    if (this.#pendingCommands.length) await this.#settleAcknowledgedCommands()
   }
 
   async #settleAcknowledgedCommands(): Promise<void> {
@@ -592,16 +902,6 @@ export class T3EngineClient implements EngineReadClient {
     if (next.length === this.#pendingCommands.length) return
     this.#pendingCommands = next
     await this.#writeCommands()
-  }
-
-  #schedule(): void {
-    if (!this.#running) return
-    if (this.#timer) clearTimeout(this.#timer)
-    this.#timer = setTimeout(() => {
-      this.#timer = null
-      void this.#refresh().finally(() => this.#schedule())
-    }, this.#pollMs)
-    this.#timer.unref?.()
   }
 
   #publish(): void {
