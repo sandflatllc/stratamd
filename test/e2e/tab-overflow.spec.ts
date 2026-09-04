@@ -19,6 +19,13 @@ async function openDocuments(testInfo: TestInfo, count: number): Promise<Page> {
     await writeFile(file, `# Doc ${i}\n`)
     await page.evaluate((path) => window.strata.openDocument(path), file)
   }
+  // Only pinned and active documents are pills (§6.9); pin them all so the strip can overflow.
+  for (let i = 1; i <= count; i += 1) {
+    const name = i === 1 ? 'scenario.md' : `meeting-notes-${String(i).padStart(2, '0')}.md`
+    await page.getByRole('button', { name: 'Docs menu' }).click()
+    await page.getByRole('button', { name: `Pin ${name}` }).click()
+    await page.keyboard.press('Escape')
+  }
   await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(count)
   return page
 }

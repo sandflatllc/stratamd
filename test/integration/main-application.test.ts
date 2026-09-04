@@ -131,6 +131,7 @@ describe('StrataApplication: drafts and quick send', () => {
     const value = await fixture(source, twoThreads)
     await value.app.openDocument(value.path)
     await attach(value, 't_a')
+    await value.app.flushPersistence()
     const baseline = (await value.store.loadMeta(value.path)).attachments.t_a!.baselineBlob
     await rename(join(value.store.objectsDirectory, baseline), join(value.root, 'missing-baseline'))
 

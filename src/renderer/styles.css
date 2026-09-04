@@ -177,9 +177,9 @@ button:disabled { opacity: .42; cursor: not-allowed; }
 .stratamd-logo { display: block; width: 112px; height: auto; }
 .strata-loader { display: block; width: 72px; height: 72px; object-fit: contain; }
 /* Padding and matching negative margins keep the hover lift and active shadow inside the clip box. */
-.tabs { display: flex; min-width: 0; gap: 8px; overflow-x: auto; overflow-y: hidden; padding: 4px 4px 12px; margin: -4px -4px -12px; }
+.tabs { display: flex; flex: 1; min-width: 0; gap: 8px; overflow-x: auto; overflow-y: hidden; padding: 4px 4px 12px; margin: -4px -4px -12px; }
 .tabs::-webkit-scrollbar { height: 6px; }
-.tab { display: flex; flex: 0 0 auto; align-items: center; max-width: 220px; border: 1px solid var(--line); border-radius: 999px; padding: 8px 13px 8px 20px; background: var(--card); color: var(--dim); font-size: 15px; font-weight: 800; white-space: nowrap; cursor: pointer; transition: all .2s cubic-bezier(.34,1.56,.64,1); }
+.tab { display: flex; flex: 0 0 auto; align-items: center; max-width: min(220px, calc(100% - 8px)); border: 1px solid var(--line); border-radius: 999px; padding: 8px 13px 8px 20px; background: var(--card); color: var(--dim); font-size: 15px; font-weight: 800; white-space: nowrap; cursor: pointer; transition: all .2s cubic-bezier(.34,1.56,.64,1); }
 .tab-name { overflow: hidden; text-overflow: ellipsis; }
 .tab:hover { transform: translateY(-2px); }
 .tab:active { transform: scale(.96); }
@@ -190,6 +190,30 @@ button:disabled { opacity: .42; cursor: not-allowed; }
 .tab-close:hover { color: var(--controls-danger); background: color-mix(in srgb, var(--controls-danger) 20%, transparent); }
 .tab-close:active { transform: scale(.82); }
 .topbar-spacer, .toolbar-spacer, .explorer-spacer { flex: 1; }
+/* Dropdown pills (§6.9, decided 2026-09-04): Docs and Conversations hold every open item; pinned and active items are pills. */
+.open-file-button { flex: none; white-space: nowrap; }
+.tab-navigation { display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; }
+.tab-menu-anchor { position: relative; display: flex; flex: 0 0 auto; }
+.tab-menu { max-width: 220px; gap: 6px; padding-left: 14px; }
+.tab-menu-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.tab-menu-active { color: var(--text); }
+.tab-menu-expanded, .tab-menu:hover { border-color: var(--controls-primary-highlight); }
+.tab-menu-count { margin-left: 0; }
+.tab-menu-chevron { color: var(--muted); font-size: 11px; }
+.tab-menu-list { position: absolute; z-index: 70; top: calc(100% + 8px); left: 0; display: grid; width: 360px; max-width: calc(100vw - 32px); max-height: 60vh; overflow: auto; border: 1px solid var(--line); border-radius: 14px; padding: 6px; background: var(--card); box-shadow: 0 14px 40px -8px color-mix(in srgb, var(--surfaces-window) 60%, transparent); }
+.tab-menu-empty { margin: 0; padding: 8px 10px; color: var(--dim); font-size: 13px; font-weight: 600; }
+.tab-menu-row { display: flex; align-items: center; gap: 2px; border-radius: 9px; }
+.tab-menu-row:hover, .tab-menu-row:focus-within { background: var(--card-2); }
+.tab-menu-row-active { background: color-mix(in srgb, var(--controls-selected) 18%, transparent); }
+.tab-menu-row-active .tab-menu-open { color: var(--controls-selected-tint); }
+.tab-menu-open { display: flex; min-width: 0; flex: 1; align-items: center; gap: 7px; border: 0; padding: 7px 10px; background: transparent; color: var(--text); font-family: inherit; font-size: 14px; font-weight: 700; text-align: left; cursor: pointer; }
+.tab-menu-open .tab-name { min-width: 0; flex: 1; white-space: nowrap; }
+.tab-menu-open .tab-badge { margin-left: 0; }
+.tab-pin, .tab-menu-close { flex: none; border: 0; border-radius: 999px; padding: 4px 8px; background: transparent; color: var(--muted); font-family: inherit; font-size: 14px; cursor: pointer; }
+.tab-pin:hover, .tab-menu-close:hover, .tab-pin:focus-visible, .tab-menu-close:focus-visible { color: var(--text); background: var(--card); outline: none; }
+.tab-pin[aria-pressed="true"] { color: var(--controls-warning); }
+.tab-menu-close:hover { color: var(--controls-danger); }
+.tab-pin-mark { margin-right: 5px; color: var(--controls-warning); font-size: 11px; }
 .pending-status { color: var(--dim); font-size: 13px; font-weight: 600; }
 .pending-status[data-unsaved="true"] { color: var(--controls-warning); }
 kbd { color: var(--muted); font-family: var(--font-code), "JetBrains Mono", monospace; font-size: 11px; font-weight: 500; }
@@ -685,6 +709,8 @@ kbd { color: var(--muted); font-family: var(--font-code), "JetBrains Mono", mono
 
 @media (max-width: 1200px) {
   .app-shell { padding-inline: 16px; }
+  .topbar { flex-wrap: wrap; gap: 8px 16px; }
+  .tab-navigation { order: 1; flex-basis: 100%; }
   .pending-status, .topbar > kbd { display: none; }
   .editor-scroll { padding-inline: 30px; }
 }

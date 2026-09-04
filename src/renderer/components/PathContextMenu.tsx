@@ -23,6 +23,9 @@ export interface PathMenuActions {
   onNewFile?(directory: string): void
   /** Tab actions (§5.16). */
   onCloseOthers?(path: string): void
+  /** Pin or unpin the document's pill on the top bar (§6.9); `pinned` says which the item offers. */
+  onTogglePin?(path: string): void
+  pinned?: boolean
   onCloseAll?(): void
   onCloseSaved?(): void
 }
@@ -84,6 +87,7 @@ export function PathContextMenu({ menu, onClose, ...actions }: { menu: PathConte
       {isFile && actions.onRename && item('Rename…', () => actions.onRename!(menu.path))}
       {actions.onReveal && item('Show in file manager', () => actions.onReveal!(menu.path))}
       {item('Copy full path', () => actions.onCopyPath(menu.path))}
+      {isFile && actions.onTogglePin && item(actions.pinned ? 'Unpin from top bar' : 'Pin to top bar', () => actions.onTogglePin!(menu.path))}
       {isFile && actions.onCloseOthers && item('Close other tabs', () => actions.onCloseOthers!(menu.path))}
       {isFile && actions.onCloseSaved && item('Close saved tabs', () => actions.onCloseSaved!())}
       {isFile && actions.onCloseAll && item('Close all tabs', () => actions.onCloseAll!())}
