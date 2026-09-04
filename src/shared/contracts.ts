@@ -205,12 +205,43 @@ export interface EngineActivityView {
   createdAt: string
 }
 
+export interface ModelOption { id: string; value: string | boolean }
+export interface ModelOptionDescriptor {
+  id: string
+  label: string
+  type: 'select' | 'boolean'
+  currentValue?: string | boolean | undefined
+  options?: Array<{ id: string; label: string; description?: string | undefined; isDefault?: boolean | undefined }> | undefined
+}
+export interface EngineModelView {
+  instanceId: string
+  accountName: string
+  driver: string
+  slug: string
+  name: string
+  isDefault?: boolean
+  options: ModelOptionDescriptor[]
+}
+export interface ConversationInput {
+  messageId?: string
+  commandId?: string
+  text: string
+  model: string
+  effort: string | null
+  access: EngineThreadView['access']
+  instanceId?: string | null
+  options?: ModelOption[]
+  attachment?: { name: string; text: string }
+}
+
 export interface EngineThreadView {
   id: string
   projectId: string
   title: string
   model: string
   providerInstanceId: string
+  options?: ModelOption[]
+  branch?: string | null
   effort: string | null
   access: 'approval-required' | 'auto-accept-edits' | 'auto' | 'full-access'
   status: 'idle' | 'starting' | 'running' | 'ready' | 'interrupted' | 'stopped' | 'error'
@@ -251,6 +282,7 @@ export interface EngineProjectView {
   id: string
   title: string
   workspaceRoot: string
+  defaultModelSelection?: { instanceId: string; model: string; options?: ModelOption[] } | null
   threads: EngineThreadView[]
 }
 
@@ -289,6 +321,7 @@ export interface AccountView {
 }
 
 export interface EngineView {
+  models?: EngineModelView[]
   state: EngineConnectionState
   server: string | null
   problem: string | null
@@ -639,6 +672,7 @@ export interface ErrorReport {
 
 /** The picker's choices when a thread starts (§5.7, §5.13). */
 export interface StartThreadInput {
+  threadId?: string
   projectId: string
   title: string
   model: string
@@ -646,10 +680,13 @@ export interface StartThreadInput {
   access: EngineThreadView['access']
   /** A provider instance id, or null for Auto (§5.13). */
   instanceId?: string | null
+  options?: ModelOption[]
 }
 
 /** Start thread from a document (§5.7): the picker's choices plus what the first turn carries. */
 export interface StartThreadFromDocumentInput extends StartThreadInput {
+  threadId?: string
+  note?: string
   /** The popover's pending comment, materialized as the first annotation. */
   comment?: CreateDraftRequest
   /** Held drafts to materialize into the first delivery. */
@@ -666,7 +703,7 @@ export interface StrataApi {
   reconnectEngine(): Promise<void>
   openConversation(threadId: string): Promise<void>
   /** Sends the owner's note plus every queued item reply as one delivery (§5.4); either may be empty, not both. */
-  startConversationTurn(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access']; attachment?: { name: string; text: string } }): Promise<void>
+  startConversationTurn(threadId: string, input: ConversationInput): Promise<void>
   /** Queues a reply to a message-anchored item; the row shows Drafted until the Send carrying it is acknowledged (§5.4). */
   queueItemReply(threadId: string, itemId: string, text: string): Promise<void>
   discardItemReply(threadId: string, itemId: string): Promise<void>

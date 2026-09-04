@@ -196,10 +196,16 @@ export const dispatchResult = z.object({ sequence: nonNegativeInt }).passthrough
 export const providerUsageWindow = z.object({ usedPercent: z.number().min(0).max(100), resetsAt: isoDate.nullable(), measuredAt: isoDate, source: z.enum(['probe', 'session']) }).passthrough()
 export const providerUsage = z.object({ session: providerUsageWindow.nullable(), weekly: providerUsageWindow.nullable(), planLabel: id.optional(), applicable: z.boolean() }).passthrough()
 export const serverProviderAuth = z.object({ status: z.enum(['authenticated', 'unauthenticated', 'unknown']), type: id.optional(), label: id.optional(), email: id.optional() }).passthrough()
+const optionDescriptor = z.object({
+  id, label: id, type: z.enum(['select', 'boolean']), currentValue: z.union([z.string(), z.boolean()]).optional(),
+  options: z.array(z.object({ id, label: id, description: z.string().optional(), isDefault: z.boolean().optional() })).optional(),
+})
+const providerModel = z.object({ slug: id, name: id, isDefault: z.boolean().optional(), capabilities: z.object({ optionDescriptors: z.array(z.unknown()).transform((items) => items.flatMap((item) => { const parsed = optionDescriptor.safeParse(item); return parsed.success ? [parsed.data] : [] })).optional() }).nullable().optional() })
 export const serverProvider = z.object({
   instanceId: id, driver: id, displayName: id.optional(), enabled: z.boolean(), installed: z.boolean(), version: id.nullable().optional(),
   status: z.string(), auth: serverProviderAuth, message: id.optional(), availability: z.string().optional(), unavailableReason: id.optional(),
   usage: providerUsage.optional(),
+  models: z.array(z.unknown()).transform((items) => items.flatMap((item) => { const parsed = providerModel.safeParse(item); return parsed.success ? [parsed.data] : [] })).optional(),
 }).passthrough()
 /**
  * The slice of `server.getConfig` Accounts reads (§5.13). Providers decode one

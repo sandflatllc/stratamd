@@ -54,7 +54,7 @@ StrataMD runs on the owner's Linux workstation or a Mac on macOS 13 or newer. It
 | **Block id** | A short stable id for a Markdown block in one delivery or message. |
 | **Strata block** | The final fenced `strata` JSON array in an agent reply. |
 | **Working folder** | The project root or the thread's T3-managed worktree copy. |
-| **Picker** | The model, effort, access, account, and parking chooser for a new thread. |
+| **Composer** | Message input with inline model/account, thinking/context, access, and attachment controls, shared by new and existing conversations. |
 | **Stop** | Interrupt the running T3 turn. |
 | **Detach** | End a document/thread attachment without changing the thread. |
 | **Settle** | T3's lifecycle state for a finished thread. |
@@ -71,6 +71,14 @@ StrataMD runs on the owner's Linux workstation or a Mac on macOS 13 or newer. It
 | **Explorer** | The Markdown files under folders the owner added. |
 
 ## 6. Functional requirements
+
+### 6.0 Starting a conversation
+
+- New thread on a project row opens a blank central conversation for that project and focuses the message input. Global New thread and Ctrl/Cmd+Shift+N use the active project. No setup dialog or name field precedes typing.
+- The first Send creates the thread with the title New thread and submits the message. T3 generates a title using its configured text-generation model and streams it to Strata; its manual-rename protection remains authoritative. Empty drafts create no threads. Draft text, attachments, and settings survive navigation and reload. Failed sends keep the draft and reuse the created thread on retry.
+- New and existing conversations share a composer. The model menu searches model/account pairs, supports favorites and Ctrl/Cmd+1..9 while the composer is focused, and disables unusable accounts. Thinking and context options come from T3's model descriptors, including defaults. Access options explain their behavior. Project selections persist. Account management remains reachable through Engine status and settings.
+- A regular new conversation carries no previous messages or open documents. Start thread from a document previews the document, held drafts, and pending comment and infers its containing project. Sending carries that context and the owner's message as one first turn. An unmatched folder can be added inline.
+- Current checkout and workspace appear below the composer; an existing thread's known branch is shown. These are informational, with no branch-switching operation.
 
 ### 6.1 Editor
 
@@ -383,7 +391,7 @@ Config, in `$XDG_CONFIG_HOME/stratamd` (fallback `~/.config/stratamd`) on both p
 
 - **Electron.** Main, renderer, and the file-only launcher share TypeScript and one packaged application.
 - **Main process** owns file I/O, the shadow, ghost storage, engine HTTP/WebSocket traffic, explorer scanning, diffing, file watching, single-instance routing, and config.
-- **Renderer** owns the editor, projects, conversations, item/review overlays, rails, tabs, picker, and composer. It is context-isolated and sandboxed behind validated IPC.
+- **Renderer** owns the editor, projects, conversations, item/review overlays, rails, tabs, and composer. It is context-isolated and sandboxed behind validated IPC.
 - **Editor** is built directly on the ProseMirror toolkit (document model, transactions, selection, undo, IME, DOM reconciliation, position mapping). The markdown schema, the source-span-tracking parser, and the byte-preserving serializer are StrataMD's own and must satisfy §6.1. No prebuilt markdown editor layer.
 - **Engine client:** `src/main/engine/` alone owns the vendored T3 schemas, paired credential, snapshots, stream cursors, reconnect, and retry-safe dispatch.
 - **Diff:** Myers line diff between snapshots. Block-level byte preservation on serialize keeps diffs minimal.

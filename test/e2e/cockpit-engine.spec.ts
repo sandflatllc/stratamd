@@ -198,23 +198,21 @@ test('4 inference: seven prose questions queue four keyed replies in one deliver
   }
 })
 
-test('8 and 9 projects: picker is project-scoped, row actions dispatch, and turn files stay closed in Documents', async ({}, testInfo) => {
+test('8 and 9 projects: the blank draft is project-scoped, row actions dispatch, and turn files stay closed', async ({}, testInfo) => {
   const engine = await startEngine()
   const scenario = await seededScenario(testInfo, engine.origin)
   try {
     const page = await scenario.launch()
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
-    await page.getByRole('button', { name: 'New thread' }).click()
-    const picker = page.getByRole('form', { name: 'Start thread' })
-    await expect(picker.getByLabel('Project')).toHaveValue('p1')
-    await expect(picker.getByLabel('Model')).toHaveValue('gpt-5.6')
-    await expect(picker.getByLabel('Account')).toHaveValue('auto')
-    await picker.getByRole('button', { name: 'Cancel' }).click()
+    await page.getByRole('button', { name: 'New thread', exact: true }).click()
+    const draft = page.getByRole('region', { name: 'New conversation' })
+    await expect(draft.getByLabel('Conversation project')).toHaveValue('p1')
+    await expect(draft.getByRole('button', { name: 'Choose model and account' })).toContainText('GPT-5.6')
+    await expect(draft.getByLabel('Message conversation')).toBeFocused()
+    expect(engine.commands.some((command) => command.type === 'thread.create')).toBe(false)
     await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
-    await expect(page.getByRole('heading', { name: 'Documents' })).toBeVisible()
-    await expect(page.locator('.documents-panel > button')).toHaveCount(2)
-    await expect(page.locator('.tabs > .tab:not(.conversation-tab)')).toHaveCount(1)
-    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
+    await expect(page.locator('.conversation-panel[data-placement="center"]')).toBeVisible()
+    await expect.poll(() => page.evaluate(async () => (await window.strata.getState()).tabs.length)).toBe(1)
     await page.getByRole('button', { name: 'Settle Live engine thread' }).click()
     await expect.poll(() => engine.commands.some((command) => command.type === 'thread.settle')).toBe(true)
   } finally {
@@ -223,7 +221,7 @@ test('8 and 9 projects: picker is project-scoped, row actions dispatch, and turn
   }
 })
 
-test('10 accounts: usage from the engine, parking from the top bar, and the parked account survives a reload and is refused by the picker', async ({}, testInfo) => {
+test('10 accounts: usage from the engine, parking from the top bar, and the model menu refuses parked accounts after reload', async ({}, testInfo) => {
   const engine = await startEngine()
   const scenario = await seededScenario(testInfo, engine.origin)
   try {
@@ -251,10 +249,11 @@ test('10 accounts: usage from the engine, parking from the top bar, and the park
     await modal.getByRole('button', { name: 'Close' }).click()
 
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
-    await page.getByRole('button', { name: 'New thread' }).click()
-    const account = page.getByRole('form', { name: 'Start thread' }).getByLabel('Account')
-    await expect(account.getByRole('option', { name: 'Codex work · parked' })).toHaveAttribute('disabled', '')
-    await expect(account.getByRole('option', { name: 'Claude' })).not.toHaveAttribute('disabled', '')
+    await page.getByRole('button', { name: 'New thread', exact: true }).click()
+    await page.getByRole('button', { name: 'Choose model and account' }).click()
+    const models = page.getByRole('region', { name: 'Models and accounts' })
+    await expect(models.getByRole('button', { name: /^GPT-5.6 Codex work/ })).toBeDisabled()
+    await expect(models.getByRole('button', { name: 'Claude Fable 5.1 Claude', exact: true })).toBeEnabled()
   } finally {
     await scenario.dispose()
     await engine.close()

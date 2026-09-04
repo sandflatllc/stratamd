@@ -7,7 +7,7 @@ interface ProjectsPanelProps {
   onOpenThread(threadId: string): void
   onBeginRename(): void
   onReconnect(): void
-  onNewThread(): void
+  onNewThread(projectId?: string): void
   onAddProject(input: { title: string; workspaceRoot: string }): void
   onAction(threadId: string, action: 'archive' | 'settle' | 'unsettle' | 'delete'): void
   onUpdate(threadId: string, change: EngineThreadChange): void
@@ -122,7 +122,7 @@ function Shelf({ label, entries, activeThreadId, expanded, visibleCount, nowMs, 
   </section>
 }
 
-export function ProjectsPanel({ engine, onOpenThread, onBeginRename, onReconnect, onNewThread, onAddProject, onAction, onUpdate, onOpenEngine, onOpenAccounts, attachedThreadIds = new Set(), now = Date.now }: ProjectsPanelProps) {
+export function ProjectsPanel({ engine, onOpenThread, onBeginRename, onReconnect, onNewThread, onAddProject, onAction, onUpdate, onOpenEngine, attachedThreadIds = new Set(), now = Date.now }: ProjectsPanelProps) {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<ProjectThreadSort>('recent')
   const [preferences, setPreferences] = useState<FolderPreferences>(readPreferences)
@@ -168,13 +168,13 @@ export function ProjectsPanel({ engine, onOpenThread, onBeginRename, onReconnect
   return <div className="projects-panel">
     <div className="projects-search"><span aria-hidden="true">⌕</span><input ref={search} type="search" aria-label="Search threads" placeholder="Search threads" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>Ctrl K</kbd></div>
     <header className="projects-header"><h2>Projects</h2><label title="Sort threads"><span className="sr-only">Sort projects</span><select aria-label="Sort projects" value={sort} onChange={(event) => setSort(event.target.value as ProjectThreadSort)}><option value="recent">Recent</option><option value="oldest">Oldest</option><option value="title">Name</option></select></label><button type="button" aria-label="Add project" title="Add project" onClick={() => setAddingProject((value) => !value)}>＋</button></header>
-    <div className="projects-primary-actions"><button type="button" onClick={onNewThread}>New thread</button>{onOpenAccounts && <button type="button" onClick={onOpenAccounts}>Accounts</button>}</div>
+    <div className="projects-primary-actions"><button type="button" title="New thread (Ctrl+Shift+N)" onClick={() => onNewThread()}>New thread</button></div>
     {addingProject && <form className="projects-add-form" aria-label="Add project" onSubmit={submitProject}><input aria-label="Project title" placeholder="Project name" value={projectTitle} onChange={(event) => setProjectTitle(event.target.value)} /><input aria-label="Project folder" placeholder="/path/to/folder" value={projectPath} onChange={(event) => setProjectPath(event.target.value)} /><div><button type="button" onClick={() => setAddingProject(false)}>Cancel</button><button type="submit" disabled={!projectPath.trim()}>Add</button></div></form>}
     <div className="project-folders">
       {filtered.folders.map((folder) => {
         const state = preference(folder.project.id)
         return <section className="project-group" key={folder.project.id} data-open={state.open}>
-          <button type="button" className="project-folder-header" aria-expanded={state.open} title={folder.project.workspaceRoot} onClick={() => updatePreference(folder.project.id, { open: !state.open })}><i className="project-folder-chevron" aria-hidden="true">›</i><span className="project-folder-icon" aria-hidden="true">▱</span><strong>{folder.project.title}</strong>{folder.unread && <span className="unread-dot" aria-label="Unread threads" />}</button>
+          <div className="project-folder-row"><button type="button" className="project-folder-header" aria-expanded={state.open} title={folder.project.workspaceRoot} onClick={() => updatePreference(folder.project.id, { open: !state.open })}><i className="project-folder-chevron" aria-hidden="true">›</i><span className="project-folder-icon" aria-hidden="true">▱</span><strong>{folder.project.title}</strong>{folder.unread && <span className="unread-dot" aria-label="Unread threads" />}</button><button type="button" className="project-new-thread" aria-label={`New thread in ${folder.project.title}`} title={`New thread in ${folder.project.title}`} onClick={() => onNewThread(folder.project.id)}>＋</button></div>
           {state.open && <>{folder.visibleThreads.map((thread) => <ThreadRow key={thread.id} thread={thread} active={thread.id === engine.activeThreadId} attached={attachedThreadIds.has(thread.id)} nowMs={nowMs} renaming={renamingId === thread.id} onRename={() => beginRename(thread.id)} onDoneRenaming={() => setRenamingId(null)} onOpen={() => onOpenThread(thread.id)} onMenu={(event) => openMenu(event, thread)} onUpdate={(change) => onUpdate(thread.id, change)} onAction={(action) => onAction(thread.id, action)} />)}{folder.hasOverflow && folder.visibleThreads.length < folder.threads.length && <button type="button" className="project-show-more" onClick={() => updatePreference(folder.project.id, { previewCount: state.previewCount + 5 })}>Show more ({folder.threads.length - folder.visibleThreads.length})</button>}{folder.threads.length === 0 && <div className="empty-subtle">No active threads.</div>}</>}
         </section>
       })}

@@ -12,11 +12,16 @@ type StrataIpcApi = Omit<StrataApi, 'subscribe'>
 const pathSchema = z.string().min(1).max(16_384)
 const idSchema = z.string().min(1).max(512)
 const textSchema = z.string().max(64 * 1_024)
+const modelOptionsSchema = z.array(z.object({ id: idSchema, value: z.union([idSchema, z.boolean()]) }).strict()).max(64)
 const conversationTurnSchema = z.object({
+  messageId: idSchema.optional(),
+  commandId: idSchema.optional(),
   // Empty text is allowed: queued item replies alone make a Send (§5.4); the client refuses a turn with neither.
   text: textSchema,
+  instanceId: idSchema.nullable().optional(),
   model: idSchema,
   effort: idSchema.nullable(),
+  options: modelOptionsSchema.optional(),
   access: z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access']),
   attachment: z.object({ name: idSchema, text: z.string().max(2 * 1_024 * 1_024) }).strict().optional(),
 }).strict()
@@ -83,10 +88,12 @@ const quickSendRequestSchema = draftRequestSchema.extend({
   recipients: z.array(idSchema).max(128),
 }).strict()
 const startThreadSchema = z.object({
+  threadId: idSchema.optional(),
   projectId: idSchema,
   title: idSchema,
   model: idSchema,
   effort: idSchema.nullable(),
+  options: modelOptionsSchema.optional(),
   access: z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access']),
   instanceId: idSchema.nullable().optional(),
 }).strict()
@@ -134,7 +141,7 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.openConversation]: z.tuple([idSchema]),
   [IPC.createEngineThread]: z.tuple([startThreadSchema]),
   [IPC.createEngineProject]: z.tuple([z.object({ title: z.string().trim().min(1).max(512), workspaceRoot: pathSchema }).strict()]),
-  [IPC.startThreadFromDocument]: z.tuple([pathSchema, startThreadSchema.extend({ comment: draftRequestSchema.optional(), draftIds: z.array(idSchema).max(4_096).optional() }).strict()]),
+  [IPC.startThreadFromDocument]: z.tuple([pathSchema, startThreadSchema.extend({ threadId: idSchema.optional(), note: textSchema.optional(), comment: draftRequestSchema.optional(), draftIds: z.array(idSchema).max(4_096).optional() }).strict()]),
   [IPC.actOnEngineThread]: z.tuple([idSchema, z.enum(['archive', 'settle', 'unsettle', 'delete'])]),
   [IPC.parkAccount]: z.tuple([idSchema, z.boolean()]),
   [IPC.updateEngineThread]: z.tuple([idSchema, z.object({ pinned: z.boolean().optional(), snoozedUntil: z.iso.datetime({ offset: true }).nullable().optional(), title: z.string().trim().min(1).max(512).optional(), unread: z.boolean().optional() }).strict()]),

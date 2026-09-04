@@ -388,12 +388,13 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     await attachAll(value, [['t1', 'Agent A'], ['t2', 'Agent B']])
     // A third thread, started from Projects, joins as Agent C.
     await value.page!.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
-    await value.page!.getByRole('button', { name: 'New thread' }).click()
-    const picker = value.page!.getByRole('form', { name: 'Start thread' })
-    await picker.getByLabel('Name').fill('Agent C')
-    await picker.getByRole('button', { name: 'Create' }).click()
+    await value.page!.getByRole('button', { name: 'New thread', exact: true }).click()
+    await value.page!.getByLabel('Message conversation').fill('Join this review.')
+    await value.page!.getByLabel('Message conversation').press('Enter')
     await expect.poll(() => engine.commands.find((command) => command.type === 'thread.create')?.threadId).toBeTruthy()
     const agentC = String(engine.commands.find((command) => command.type === 'thread.create')!.threadId)
+    await value.page!.evaluate(async (id) => window.strata.updateEngineThread(id, { title: 'Agent C' }), agentC)
+    await value.page!.getByRole('button', { name: 'Move to side' }).click()
     await openThread(value.page!, 'Agent C')
     await attachThread(value.page!, agentC, 'Agent C')
     await openThread(value.page!, 'Agent A')
@@ -415,8 +416,8 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     await setSource(value.page!, finalRound)
     await value.waitForBuffer(finalRound)
     await send(value.page!, { includeExternal: true, recipientNames: ['Agent C'] })
-    await expect.poll(() => uploadsFor(engine, agentC).length).toBe(2)
-    const included = uploadsFor(engine, agentC)[1]!
+    await expect.poll(() => uploadsFor(engine, agentC).filter(Boolean).length).toBe(2)
+    const included = uploadsFor(engine, agentC).filter(Boolean)[1]!
     expect(included).toContain('Changes by Agent B (t2):')
     expect(included).toContain('Agent B private edit.')
   })

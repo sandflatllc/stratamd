@@ -22,12 +22,13 @@ import { NavigationRail, type LeftTab } from './components/NavigationRail'
 import { ProjectsPanel } from './components/ProjectsPanel'
 import { Conversation } from './components/Conversation'
 import { EngineDialog } from './components/EngineDialog'
-import { ThreadPicker } from './components/ThreadPicker'
+import { NewConversation } from './components/NewConversation'
 import { AccountsDialog } from './components/AccountsDialog'
-import { activitySnapshot, agentActivity, agentActivityMessage, ambientStyles, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, hasUnsavedCounted, isZoomed, leftWindowWidth, nextReviewTarget, PANEL_LIMITS, pendingCount, rendererThemeStyle, reviewTargets, shouldAdoptPushed, sideWindowCeiling, stepZoom, tabsToClose, THREAD_PANEL_LIMITS, threadTargets, type ActivitySnapshot, type NumericPanelKey, type ReviewTarget } from './model'
+import { activitySnapshot, agentActivity, agentActivityMessage, ambientStyles, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, hasUnsavedCounted, isZoomed, leftWindowWidth, nextReviewTarget, PANEL_LIMITS, pendingCount, projectForPath, rendererThemeStyle, reviewTargets, shouldAdoptPushed, sideWindowCeiling, stepZoom, tabsToClose, THREAD_PANEL_LIMITS, threadTargets, type ActivitySnapshot, type NumericPanelKey, type ReviewTarget } from './model'
 import { flushPendingBuffer, peekPendingBuffer, setPendingBuffer } from './pendingBuffer'
 import { nextToast, type ToastAction, type ToastState } from './toasts'
 import { consumeDocumentLaunch, readWorkspace, writeWorkspace } from './workspaceState'
+import { readNewConversationTarget, writeNewConversationTarget, type NewConversationTarget } from './conversationDrafts'
 import { hasPrimaryModifier } from '../shared/primary-modifier'
 
 /** Ctrl+Enter inside the annotation composer or a thread reply belongs to that form (§5.2). */
@@ -63,24 +64,25 @@ export function App({ createEditor }: AppProps) {
   const [savedWorkspace] = useState(readWorkspace)
   useEffect(consumeDocumentLaunch, [])
   const [conversationCentered, setConversationCentered] = useState(savedWorkspace.conversationCentered)
-  const centerConversationId = conversationCentered ? view.engine.activeThreadId : null
+  const [documentPicker, setDocumentPicker] = useState<NewConversationTarget | null>(readNewConversationTarget)
+  useEffect(() => { writeNewConversationTarget(documentPicker) }, [documentPicker])
+  const centerConversationId = conversationCentered ? (documentPicker ? '__new__' : view.engine.activeThreadId) : null
   /** Conversation tabs stay listed while a document shows and survive restarts. */
   const [conversationTabs, setConversationTabs] = useState<string[]>(savedWorkspace.conversationTabs)
   useEffect(() => {
     if (!ready) return
     // The engine restores its active thread independently, sometimes after the first view.
     const id = view.engine.activeThreadId
-    if (conversationCentered && id && !conversationTabs.includes(id)) {
+    if (conversationCentered && !documentPicker && id && !conversationTabs.includes(id)) {
       setConversationTabs((current) => current.includes(id) ? current : [...current, id])
       return
     }
     writeWorkspace({ conversationCentered, conversationTabs })
-  }, [ready, view.engine.activeThreadId, conversationCentered, conversationTabs])
+  }, [ready, view.engine.activeThreadId, conversationCentered, conversationTabs, documentPicker])
   const [confirmResolve, setConfirmResolve] = useState(false)
   /** The engine dialog: pairing, server, version, connection state (§5.1). */
   const [engineDialog, setEngineDialog] = useState(false)
   /** The picker (§5.7): from Projects with no document, or from a document, carrying the popover's pending comment when there is one. */
-  const [documentPicker, setDocumentPicker] = useState<{ path: string | null; comment?: CreateDraftRequest } | null>(null)
   const [accountsDialog, setAccountsDialog] = useState(false)
   /** The window width, for the side windows' layout budget (§6.9). */
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth)
@@ -121,6 +123,7 @@ export function App({ createEditor }: AppProps) {
   /** The last change stepped to with F7 / Shift+F7, so the next press continues from it. */
   const reviewCursor = useRef<string | null>(null)
   const document = view.activeDocument
+  useEffect(() => { if (!document && view.engine.state === 'connected') setEngineTab('projects') }, [Boolean(document), view.engine.state])
   const headings = document && headingState.path === document.path ? headingState.headings : []
   const activeHeadingId = document && headingState.path === document.path ? headingState.activeId : null
 
@@ -334,31 +337,23 @@ export function App({ createEditor }: AppProps) {
   )
   const reconnectEngine = () => void perform(() => window.strata.reconnectEngine())
   const pickerDocument = documentPicker?.path && document?.path === documentPicker.path ? document : null
-  const documentPickerNode = documentPicker && (documentPicker.path === null || pickerDocument) && (
-    <ThreadPicker
-      engine={view.engine}
-      {...(pickerDocument ? {
-        documentPath: pickerDocument.path,
-        carries: `The first turn carries ${[documentPicker.comment ? 'your comment' : null, pickerDocument.drafts.length > 0 ? `${pickerDocument.drafts.length} held draft${pickerDocument.drafts.length === 1 ? '' : 's'}` : null, 'the document'].filter(Boolean).join(', ')}.`,
-      } : {})}
-      onCancel={() => setDocumentPicker(null)}
-      onAddProject={(input) => window.strata.createEngineProject(input)}
-      onConfirm={(input) => {
-        const pending = documentPicker
-        setDocumentPicker(null)
-        void perform(async () => {
-          if (!pickerDocument) {
-            const id = await window.strata.createEngineThread(input)
-            await openEngineThread(id)
-            return
-          }
-          await flushBuffer()
-          const id = await window.strata.startThreadFromDocument(pickerDocument.path, { ...input, ...(pending.comment ? { comment: pending.comment } : {}) })
-          await openEngineThread(id)
-        }, pickerDocument ? 'Thread started. Its first turn carries this document.' : undefined)
-      }}
-    />
-  )
+  const beginNewConversation = (projectId?: string) => {
+    cancelEngineNavigation()
+    setEngineTab("projects")
+    const currentProject = projectId ?? (conversationCentered ? documentPicker?.projectId : document ? projectForPath(view.engine, document.path)?.id : undefined) ?? view.engine.projects.find((project) => project.threads.some((thread) => thread.id === view.engine.activeThreadId))?.id ?? view.engine.projects[0]?.id
+    setDocumentPicker({ path: null, ...(currentProject ? { projectId: currentProject } : {}) })
+    setConversationCentered(true)
+  }
+  useEffect(() => {
+    const start = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'n') {
+        event.preventDefault()
+        if (!globalThis.document.querySelector('[role="dialog"]')) beginNewConversation()
+      }
+    }
+    window.addEventListener('keydown', start)
+    return () => window.removeEventListener('keydown', start)
+  }, [documentPicker?.projectId, view.engine.activeThreadId, view.engine.projects, document?.path, conversationCentered])
   const openAccounts = () => {
     setEngineDialog(false)
     setAccountsDialog(true)
@@ -369,7 +364,7 @@ export function App({ createEditor }: AppProps) {
   const accountsDialogNode = accountsDialog && <AccountsDialog engine={view.engine} onPark={(instanceId, parked) => void perform(() => window.strata.parkAccount(instanceId, parked))} onTerminalDefault={(driver, selection) => void perform(() => window.strata.setTerminalDefault(driver, selection))} onClose={() => setAccountsDialog(false)} onOpenEngine={() => { setAccountsDialog(false); setEngineDialog(true) }} />
   const runConversation = {
     onReconnect: reconnectEngine,
-    onStart: (threadId: string, input: Parameters<typeof window.strata.startConversationTurn>[1]) => void perform(() => window.strata.startConversationTurn(threadId, input)),
+    onStart: (threadId: string, input: Parameters<typeof window.strata.startConversationTurn>[1]) => window.strata.startConversationTurn(threadId, input),
     onStop: (threadId: string) => void perform(() => window.strata.stopConversationTurn(threadId), 'Stop requested.'),
     onApproval: (threadId: string, requestId: string, decision: 'accept' | 'decline') => void perform(() => window.strata.answerEngineApproval(threadId, requestId, decision)),
     onUserInput: (threadId: string, requestId: string, answers: Record<string, unknown>) => void perform(() => window.strata.answerEngineUserInput(threadId, requestId, answers)),
@@ -379,14 +374,17 @@ export function App({ createEditor }: AppProps) {
   const activeEngineThread = view.engine.projects.flatMap((project) => project.threads).find((candidate) => candidate.id === view.engine.activeThreadId) ?? null
   /** Shows a thread in the center and keeps its tab listed until closed. */
   const showCenterConversation = (threadId: string) => {
+    setDocumentPicker(null)
     setConversationTabs((current) => current.includes(threadId) ? current : [...current, threadId])
     setConversationCentered(true)
   }
   const closeConversationTab = (threadId: string) => {
+    if (threadId === "__new__") { setDocumentPicker(null); setConversationCentered(false); return }
     setConversationTabs((current) => current.filter((id) => id !== threadId))
     if (centerConversationId === threadId) setConversationCentered(false)
   }
   const openEngineThread = (threadId: string) => void perform(async () => {
+    setDocumentPicker(null)
     cancelEngineNavigation()
     const intent = engineNavigationIntent.current
     await window.strata.openConversation(threadId)
@@ -402,8 +400,9 @@ export function App({ createEditor }: AppProps) {
   const engineThreads = view.engine.projects.flatMap((project) => project.threads)
   const attentionTotal = engineThreads.reduce((sum, thread) => sum + thread.attention, 0)
   const conversationTabViews = conversationTabs.flatMap((id) => { const thread = engineThreads.find((candidate) => candidate.id === id); return thread ? [{ id, name: thread.title, attention: thread.attention, active: centerConversationId === id }] : [] })
-  const topBarConversations = { conversationTabs: conversationTabViews, onOpenConversationTab: (id: string) => void perform(async () => { await window.strata.openConversation(id); showCenterConversation(id) }), onCloseConversation: closeConversationTab }
-  const projectsNode = <ProjectsPanel engine={view.engine} onReconnect={reconnectEngine} onOpenThread={openEngineThread} onBeginRename={cancelEngineNavigation} onNewThread={() => setDocumentPicker({ path: null })} onAddProject={(input) => void perform(() => window.strata.createEngineProject(input), 'Project added.')} onAction={(id, action) => void perform(() => window.strata.actOnEngineThread(id, action))} onUpdate={(id, change) => void perform(() => window.strata.updateEngineThread(id, change))} onOpenEngine={() => setEngineDialog(true)} onOpenAccounts={openAccounts} attachedThreadIds={new Set(document?.attachments.map((attachment) => attachment.agent.id) ?? [])} />
+  if (documentPicker) conversationTabViews.push({ id: '__new__', name: 'New thread', attention: 0, active: centerConversationId === '__new__' })
+  const topBarConversations = { conversationTabs: conversationTabViews, onOpenConversationTab: (id: string) => void perform(async () => { if (id === '__new__') { if (documentPicker?.path) await window.strata.openDocument(documentPicker.path); setConversationCentered(true); return }; await window.strata.openConversation(id); showCenterConversation(id) }), onCloseConversation: closeConversationTab }
+  const projectsNode = <ProjectsPanel engine={view.engine} onReconnect={reconnectEngine} onOpenThread={openEngineThread} onBeginRename={cancelEngineNavigation} onNewThread={beginNewConversation} onAddProject={(input) => void perform(() => window.strata.createEngineProject(input), 'Project added.')} onAction={(id, action) => void perform(() => window.strata.actOnEngineThread(id, action))} onUpdate={(id, change) => void perform(() => window.strata.updateEngineThread(id, change))} onOpenEngine={() => setEngineDialog(true)} onOpenAccounts={openAccounts} attachedThreadIds={new Set(document?.attachments.map((attachment) => attachment.agent.id) ?? [])} />
   const conversationItems = document?.items ?? []
   const itemActions = document ? {
     items: conversationItems,
@@ -418,8 +417,8 @@ export function App({ createEditor }: AppProps) {
     },
   } : {}
   const sideConversation = <Conversation engine={view.engine} passage={thread && document ? threadNode(document, thread) : undefined} placement="side" {...runConversation} {...itemActions} onMove={() => { if (view.engine.activeThreadId) showCenterConversation(view.engine.activeThreadId); setEngineTab(null) }} />
-  const centerConversation = <Conversation engine={view.engine} placement="center" {...runConversation} {...itemActions} onMove={() => { setConversationCentered(false); setEngineTab('conversation') }} />
-  const conversationNode = sideConversation
+  const centerConversation = documentPicker && (documentPicker.path === null || pickerDocument) ? <NewConversation key={`${documentPicker.path ?? "new"}:${documentPicker.projectId ?? "current"}`} engine={view.engine} {...(documentPicker.projectId ? { projectId: documentPicker.projectId } : {})} document={pickerDocument} {...(documentPicker.comment ? { comment: documentPicker.comment } : {})} onProjectChange={(projectId) => setDocumentPicker((current) => current && current.projectId !== projectId ? { ...current, projectId } : current)} onBeforeSend={async () => { if (pickerDocument) await flushBuffer() }} onStarted={showCenterConversation} /> : <Conversation engine={view.engine} placement="center" {...runConversation} {...itemActions} onMove={() => { setConversationCentered(false); setEngineTab('conversation') }} />
+  const conversationNode = conversationCentered ? null : sideConversation
 
   const flushBuffer = useCallback(async () => {
     if (mirrorTimer.current !== null) window.clearTimeout(mirrorTimer.current)
@@ -489,12 +488,14 @@ export function App({ createEditor }: AppProps) {
     if (document.recipients.length === 0) {
       // Any document can start a thread (§3.10); the picker replaces Send until one is attached (§5.7).
       setDocumentPicker({ path: document.path })
+      setEngineTab("projects")
+      setConversationCentered(true)
     } else if (document.canSend || document.recipients.some((recipient) => !recipient.attached)) setComposer(true)
     else report('Nothing to send. Make an edit or add an annotation first.')
   }, [document, flushBuffer, report])
   const startThreadWithComment = useCallback((comment: CreateDraftRequest) => {
     if (!document) return
-    setDocumentPicker({ path: document.path, comment })
+    setDocumentPicker({ path: document.path, comment }); setEngineTab("projects"); setConversationCentered(true)
   }, [document])
 
   const addAnnotation = useCallback((kind: Exclude<AnnotationKind, 'decision'>, quote: string, text: string, from: number, to: number, context?: AnnotationContext) => {
@@ -747,17 +748,16 @@ export function App({ createEditor }: AppProps) {
 
   if (!ready) return <div className="boot-screen"><StrataIcon /><span>Opening StrataMD…</span></div>
   if (!document) return (
-    <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell empty-shell" style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={enterFiles} onDragOver={overFiles} onDragLeave={leaveFiles} onDrop={dropFiles}>
+    <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell empty-shell" data-new-conversation={Boolean(documentPicker && conversationCentered)} style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={enterFiles} onDragOver={overFiles} onDragLeave={leaveFiles} onDrop={dropFiles}>
       <AmbientBackground /><TopBar tabs={view.tabs} canSend={false} hasAgents={false} pending={0} pendingUnsaved={false} onOpenTab={(path) => { setConversationCentered(false); void perform(() => window.strata.openDocument(path)) }} onCloseTab={setClosingTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onSend={() => undefined} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} engine={view.engine} onOpenEngine={() => setEngineDialog(true)} onOpenAccounts={openAccounts} {...topBarConversations} />
       <div className="workspace">
-        <div data-pane="explorer" style={{ width: panelSizes.explorerWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected={engineTab ?? 'files'} files={explorer()} projects={projectsNode} conversation={sideConversation} projectsCount={attentionTotal} conversationCount={activeEngineThread?.attention ?? 0} headings={[]} drafts={[]} activeHeadingId={null} walkthrough={{ active: false, level: 'h2', current: null, excluded: [], markers: [] }} content="" onSelect={selectLeftTab} onJumpHeading={() => undefined} onWalkthrough={() => undefined} /></Boundary></div>
+        <div data-pane="explorer" style={{ width: panelSizes.explorerWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected={engineTab ?? 'files'} files={explorer()} projects={projectsNode} conversation={conversationCentered ? null : sideConversation} projectsCount={attentionTotal} conversationCount={activeEngineThread?.attention ?? 0} headings={[]} drafts={[]} activeHeadingId={null} walkthrough={{ active: false, level: 'h2', current: null, excluded: [], markers: [] }} content="" onSelect={selectLeftTab} onJumpHeading={() => undefined} onWalkthrough={() => undefined} /></Boundary></div>
         <Resizer axis="vertical" label="Resize left window" value={panelSizes.explorerWidth} min={PANEL_LIMITS.explorerWidth[0]} max={sideWindowCeiling(PANEL_LIMITS.explorerWidth[0], windowWidth, panelSizes.rightRailWidth)} onChange={(value) => updatePanel('explorerWidth', value, false)} onCommit={(value) => updatePanel('explorerWidth', value, true)} />
         <main className="island editor-island empty-editor-island" data-pane="editor" style={{ '--zoom': zoom.editor } as CSSProperties}>
           <Boundary region="editor">{conversationCentered ? centerConversation : <div className="empty-welcome"><StrataIcon /><h1>Open a markdown file</h1><p>Choose a folder, then open a document from the explorer.</p><button type="button" className="keep-button large" onClick={() => void perform(() => window.strata.addFolder())}>Add folder</button></div>}</Boundary>
         </main>
       </div>
       {dragging && <div className="drop-overlay">Drop markdown files to open</div>}
-      {documentPickerNode}
       {engineDialogNode}
       {accountsDialogNode}
       {themePanel}
@@ -774,7 +774,7 @@ export function App({ createEditor }: AppProps) {
   ).then(() => setDetaching(null))
 
   return (
-    <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell" style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={enterFiles} onDragOver={overFiles} onDragLeave={leaveFiles} onDrop={dropFiles}>
+    <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell" data-new-conversation={Boolean(documentPicker && conversationCentered)} style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={enterFiles} onDragOver={overFiles} onDragLeave={leaveFiles} onDrop={dropFiles}>
       <AmbientBackground />
       <TopBar tabs={view.tabs} canSend={document.canSend || document.recipients.some((recipient) => !recipient.attached)} hasAgents={document.recipients.length > 0} pending={pendingCount(document)} pendingUnsaved={hasUnsavedCounted(document)} onOpenTab={(path) => { setConversationCentered(false); void perform(() => window.strata.openDocument(path)) }} onCloseTab={closeTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onSend={() => void perform(openComposer)} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} engine={view.engine} onOpenEngine={() => setEngineDialog(true)} onOpenAccounts={openAccounts} onStartThread={() => void perform(openComposer)} {...topBarConversations} />
       <div className="workspace">
@@ -803,7 +803,6 @@ export function App({ createEditor }: AppProps) {
       {document.recovery && <RecoveryDialog fileName={document.path.split('/').pop() ?? document.path} onChoose={(choice) => void perform(() => window.strata.resolveRecovery(document.path, choice), choice === 'recover' ? 'Recovered the buffer.' : 'Discarded the buffer and restored the disk copy.')} />}
       {document.conflicts[0] && <ConflictDialog conflict={document.conflicts[0]} fileName={document.path.split('/').pop() ?? document.path} onChoose={(choice) => void perform(() => window.strata.resolveConflict(document.path, document.conflicts[0]!.id, choice), choice === 'mine' ? 'Kept your block.' : 'Incoming block applied for review.')} />}
       {closingTab && <CloseTabDialog tab={closingTab} onChoose={(choice) => { if (choice === 'cancel') { setClosingTab(null); return } void perform(() => window.strata.closeDocument(closingTab.path, choice)).then(() => setClosingTab(null)) }} />}
-      {documentPickerNode}
       {engineDialogNode}
       {accountsDialogNode}
       {themePanel}

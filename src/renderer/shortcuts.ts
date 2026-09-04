@@ -65,6 +65,7 @@ export function shortcutGroups(keymapKeys: readonly string[] = Object.keys(creat
       title: 'Documents',
       entries: [
         { keys: `${primary}+N`, action: 'New file beside the open document' },
+        { keys: `${primary}+Shift+N`, action: 'New conversation in the current project' },
         { keys: `${primary}+O`, action: 'Open a file' },
         { keys: `${primary}+W`, action: 'Close the tab' },
         { keys: 'Ctrl+Tab · Ctrl+Shift+Tab', action: 'Next or previous tab' },

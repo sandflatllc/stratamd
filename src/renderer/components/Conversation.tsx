@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { EngineActivityView, EngineThreadView, EngineView, ItemView } from '../../shared/contracts'
 import { deriveWorkEntries, groupWorkRows, type WorkEntry } from '../../core/work-log'
+import { ConversationComposer } from './ConversationComposer'
 import { ConversationHistory } from './ConversationHistory'
 import { InlineMarkdown } from '../inlineMarkdown'
 
@@ -62,7 +63,7 @@ interface ConversationProps {
   passage?: ReactNode
   onReconnect(): void
   onMove(): void
-  onStart(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access']; attachment?: { name: string; text: string } }): void
+  onStart(threadId: string, input: import('../../shared/contracts').ConversationInput): Promise<void>
   onStop(threadId: string): void
   onApproval(threadId: string, requestId: string, decision: 'accept' | 'decline'): void
   onUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): void
@@ -117,22 +118,10 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
   const [scope, setScope] = useState<'whole' | 'passage'>(passage ? 'passage' : 'whole')
   const [expandedWork, setExpandedWork] = useState<Record<string, boolean>>({})
   const [expandedMessages, setExpandedMessages] = useState<Record<string, boolean>>({})
-  const [text, setText] = useState('')
-  const [attachment, setAttachment] = useState<{ name: string; text: string } | null>(null)
-  const attachmentInput = useRef<HTMLInputElement>(null)
-  const [model, setModel] = useState('')
-  const [effort, setEffort] = useState<string | null>(null)
-  const [access, setAccess] = useState<EngineThreadView['access']>('approval-required')
   const [now, setNow] = useState(Date.now())
   const thread = selected?.thread
 
   useEffect(() => { if (passage) setScope('passage') }, [passage])
-  useEffect(() => {
-    if (!thread) return
-    setModel(thread.model)
-    setEffort(thread.effort)
-    setAccess(thread.access)
-  }, [thread?.id, thread?.model, thread?.effort, thread?.access])
   useEffect(() => {
     if (thread?.status !== 'running' && thread?.status !== 'starting') return
     const timer = window.setInterval(() => setNow(Date.now()), 1_000)
@@ -167,21 +156,6 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
   </section>
   if (!thread || !selected) return <div className="engine-empty">No conversation open.<small>Choose a thread under Projects.</small></div>
   const running = thread.status === 'running' || thread.status === 'starting'
-  const send = () => {
-    if (!text.trim() && queuedCount === 0 && attachment === null) return
-    onStart(thread.id, { text: text.trim(), model, effort, access, ...(attachment ? { attachment } : {}) })
-    setText('')
-    setAttachment(null)
-  }
-  const attach = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-    setAttachment({ name: file.name, text: await file.text() })
-  }
-  const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send() }
-  }
   return <section className="conversation-panel" aria-label="Conversation" data-placement={placement}>
     <header>
       <div className="conversation-title"><strong><span>{selected.project}</span><i aria-hidden="true">/</i>{thread.title}</strong><button type="button" onClick={onMove}>{placement === 'side' ? 'Open in center' : 'Move to side'}</button></div>
@@ -229,11 +203,6 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
         </section>
       })}
     </ConversationHistory>}
-    <footer className="conversation-composer">
-      <div className="conversation-pills"><label>Model<input aria-label="Conversation model" value={model} onChange={(event) => setModel(event.target.value)} /></label><label>Effort<select aria-label="Conversation effort" value={effort ?? ''} onChange={(event) => setEffort(event.target.value || null)}><option value="">Default</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">Extra high</option></select></label><label>Access<select aria-label="Conversation access" value={access} onChange={(event) => setAccess(event.target.value as EngineThreadView['access'])}><option value="approval-required">Ask</option><option value="auto-accept-edits">Auto edits</option><option value="auto">Auto</option><option value="full-access">Full</option></select></label></div>
-      {queuedCount > 0 && <small>{queuedCount} answer{queuedCount === 1 ? '' : 's'} queued</small>}
-      {attachment && <div className="conversation-attachment-preview"><span aria-hidden="true">▤</span><strong>{attachment.name}</strong><button type="button" aria-label={`Remove ${attachment.name}`} onClick={() => setAttachment(null)}>×</button></div>}
-      <div className="conversation-compose-row"><input ref={attachmentInput} className="conversation-attachment-input" type="file" onChange={(event) => void attach(event)} /><button type="button" className="conversation-attach" aria-label="Attach file" onClick={() => attachmentInput.current?.click()}>＋</button><textarea aria-label="Message conversation" value={text} onChange={(event) => setText(event.target.value)} onKeyDown={keyDown} placeholder="Message this thread" /><button type="button" onClick={send} disabled={!text.trim() && queuedCount === 0 && attachment === null}>Send</button></div>
-    </footer>
+    <ConversationComposer key={thread.id} engine={engine} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} queuedCount={queuedCount} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} onSend={(input) => onStart(thread.id, input)} />
   </section>
 }

@@ -42,7 +42,7 @@ import { applyConversationState, emptyConversationState, readConversationsStore,
 import { accountViews, chooseInstance, emptyAccountsStore, providerInstancesOf, readAccountsStore, recordMeasurements, terminalShimTargets, writeAccountsStore, type AccountsStore, type EngineProviderInstance } from './accounts'
 import { writeTerminalShims } from '../account-shims'
 import { logError } from '../log'
-import type { EngineProjectView, EngineThreadChange, EngineThreadView, EngineView } from '../../shared/contracts'
+import type { ConversationInput, ModelOption, EngineModelView, StartThreadInput, EngineProjectView, EngineThreadChange, EngineThreadView, EngineView } from '../../shared/contracts'
 import { assertSupportedPlatform } from '../../platform/runtime'
 import { mapMarkdownBlocks, parseStrataBlock } from '../../core/blocks'
 import { postedMessageItems } from '../../core/items'
@@ -105,11 +105,11 @@ export interface EngineReadClient {
   openThread(threadId: string): Promise<void>
   /** Threads whose transcripts Strata must follow besides the active one: every thread attached to an open document (§5.9). */
   watchThreads?(threadIds: readonly string[]): Promise<void>
-  startTurn(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access']; messageId?: string; commandId?: string; attachment?: { name: string; text: string } }): Promise<void>
+  startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string }): Promise<void>
   interrupt(threadId: string): Promise<void>
   respondApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
   respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
-  createThread?(input: { projectId: string; title: string; model: string; effort: string | null; access: EngineThreadView['access']; instanceId?: string | null }): Promise<string>
+  createThread?(input: StartThreadInput): Promise<string>
   createProject?(input: { title: string; workspaceRoot: string }): Promise<string>
   actOnThread?(threadId: string, action: 'archive' | 'settle' | 'unsettle' | 'delete'): Promise<void>
   updateThread?(threadId: string, change: EngineThreadChange): Promise<void>
@@ -200,6 +200,7 @@ export class T3EngineClient implements EngineReadClient {
   readonly #writeShims: typeof writeTerminalShims
   #accounts: AccountsStore = emptyAccountsStore()
   #providers: EngineProviderInstance[] = []
+  #models: EngineModelView[] = []
   #configFetchedAt = 0
   #configProblem: string | null = null
   readonly #listeners = new Set<(view: EngineView) => void>()
@@ -288,6 +289,7 @@ export class T3EngineClient implements EngineReadClient {
       id: project.id,
       title: project.title,
       workspaceRoot: project.workspaceRoot,
+      defaultModelSelection: project.defaultModelSelection ? { ...project.defaultModelSelection, options: publicOptions(project.defaultModelSelection.options) } : null,
       threads: (this.#shell?.threads ?? []).filter((thread) => thread.projectId === project.id).map((thread) => {
         const detailThread = this.#threads.get(thread.id)?.detail?.thread
         const messages = detailThread?.id === thread.id ? detailThread.messages.map((message) => ({
@@ -323,6 +325,8 @@ export class T3EngineClient implements EngineReadClient {
           title: thread.title,
           model: thread.modelSelection.model,
           providerInstanceId: thread.modelSelection.instanceId,
+          options: publicOptions(thread.modelSelection.options),
+          branch: thread.branch,
           effort: effortOf(thread),
           access: thread.runtimeMode,
           status: statusOf(thread),
@@ -355,6 +359,7 @@ export class T3EngineClient implements EngineReadClient {
       projects,
       activeThreadId: this.#reading.activeThreadId,
       accounts: this.#accountViews(),
+      models: this.#models,
       terminalDefaults: { ...this.#accounts.terminalDefaults },
       terminalShimDirectory: this.#shimDirectory,
     }
@@ -510,7 +515,7 @@ export class T3EngineClient implements EngineReadClient {
     })
   }
 
-  async startTurn(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access']; messageId?: string; commandId?: string; attachment?: { name: string; text: string } }): Promise<void> {
+  async startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string }): Promise<void> {
     const thread = this.#shell?.threads.find((candidate) => candidate.id === threadId)
     if (!thread) throw new Error(`Thread was not found: ${threadId}`)
     // A conversation Send carries the queued item replies as its attachment (§5.4), keyed by item id; the text stays the owner's note.
@@ -529,7 +534,7 @@ export class T3EngineClient implements EngineReadClient {
     const command = turnStartCommand.parse({
       type: 'thread.turn.start', commandId: input.commandId ?? (queued ? `strata-${messageId}` : randomUUID()), threadId, createdAt: new Date(this.#now()).toISOString(),
       message: { messageId, role: 'user', text, attachments },
-      modelSelection: { instanceId: thread.modelSelection.instanceId, model: input.model, options: input.effort ? [{ id: 'effort', value: input.effort }] : [] },
+      modelSelection: { instanceId: input.instanceId ? await this.#resolveInstance(thread.projectId, input.instanceId) : thread.modelSelection.instanceId, model: input.model, options: input.options ?? turnOptions(input, thread) },
       runtimeMode: input.access, interactionMode: thread.interactionMode,
     })
     await this.#dispatch(command, `turn:${command.message.messageId}`, command.message.messageId)
@@ -568,12 +573,18 @@ export class T3EngineClient implements EngineReadClient {
     return this.view().projects.flatMap((project) => project.threads).find((thread) => thread.id === threadId)?.items?.find((item) => item.id === itemId) ?? null
   }
 
-  async createThread(input: { projectId: string; title: string; model: string; effort: string | null; access: EngineThreadView['access']; instanceId?: string | null }): Promise<string> {
+  async createThread(input: StartThreadInput): Promise<string> {
     if (!this.#shell?.projects.some((project) => project.id === input.projectId)) throw new Error(`Project was not found: ${input.projectId}`)
-    const threadId = randomUUID()
+    const threadId = input.threadId ?? randomUUID()
+    const existing = this.#shell?.threads.find((thread) => thread.id === threadId)
+    if (existing) {
+      if (existing.projectId !== input.projectId) throw new Error(`Thread ${threadId} is not in project ${input.projectId}`)
+      await this.openThread(threadId)
+      return threadId
+    }
     const instanceId = await this.#resolveInstance(input.projectId, input.instanceId ?? null)
-    await this.#dispatch(threadCreateCommand.parse({ type: 'thread.create', commandId: randomUUID(), threadId, projectId: input.projectId, title: input.title,
-      modelSelection: { instanceId, model: input.model, options: input.effort ? [{ id: 'effort', value: input.effort }] : [] }, runtimeMode: input.access,
+    await this.#dispatch(threadCreateCommand.parse({ type: 'thread.create', commandId: `strata-create-${threadId}`, threadId, projectId: input.projectId, title: input.title,
+      modelSelection: { instanceId, model: input.model, options: input.options ?? (input.effort ? [{ id: 'effort', value: input.effort }] : []) }, runtimeMode: input.access,
       interactionMode: 'default', branch: null, worktreePath: null, createdAt: new Date(this.#now()).toISOString() }))
     await this.openThread(threadId)
     return threadId
@@ -917,6 +928,7 @@ export class T3EngineClient implements EngineReadClient {
     try {
       const config = serverConfigSlice.parse(await this.#rpcOrSocket(T3_RPC.getServerConfig, {}, 'provider report'))
       this.#providers = providerInstancesOf(config)
+      this.#models = config.providers.flatMap((provider) => (provider.models ?? []).map((model) => ({ instanceId: provider.instanceId, accountName: provider.displayName ?? provider.instanceId, driver: provider.driver, slug: model.slug, name: model.name, ...(model.isDefault !== undefined ? { isDefault: model.isDefault } : {}), options: model.capabilities?.optionDescriptors ?? [] })))
       const next = recordMeasurements(this.#accounts, this.#providers, new Date(this.#now()).toISOString())
       if (next !== this.#accounts) {
         this.#accounts = next
@@ -1183,3 +1195,15 @@ export class T3EngineClient implements EngineReadClient {
 }
 
 export { EMPTY_ENGINE }
+
+function publicOptions(options: Array<{ id: string; value?: unknown }> | undefined): ModelOption[] {
+  return (options ?? []).flatMap(({ id, value }) => typeof value === 'string' || typeof value === 'boolean' ? [{ id, value }] : [])
+}
+
+/** Document deliveries carry effort separately; keep context and other saved model options. */
+function turnOptions(input: ConversationInput, thread: T3ShellSnapshot['threads'][number]): ModelOption[] {
+  const previous = input.model === thread.modelSelection.model ? publicOptions(thread.modelSelection.options) : []
+  const effort = previous.find((option) => option.id === 'effort')?.value ?? null
+  if (effort === input.effort) return previous
+  return [...previous.filter((option) => option.id !== 'effort'), ...(input.effort ? [{ id: 'effort', value: input.effort }] : [])]
+}

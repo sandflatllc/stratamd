@@ -714,8 +714,9 @@ export class StrataApplication implements StrataApi {
     return this.#withSession(path, async () => {
       const session = this.#writable(path)
       if (!this.#engine.createThread) throw new Error('This engine cannot create threads')
-      const { comment, draftIds, ...picker } = input
-      const threadId = await this.#engine.createThread(picker)
+      const { comment, draftIds, threadId: existingThreadId, note, ...picker } = input
+      if (existingThreadId && !this.#engine.view().projects.find((project) => project.id === input.projectId)?.threads.some((thread) => thread.id === existingThreadId)) throw new Error(`Thread ${existingThreadId} is not in project ${input.projectId}`)
+      const threadId = existingThreadId ?? await this.#engine.createThread(picker)
       const attachment = this.#newThreadAttachment(session, threadId)
       if (!attachment) throw new Error('The engine did not list the new thread')
       session.attachments[threadId] = attachment
@@ -734,7 +735,7 @@ export class StrataApplication implements StrataApi {
           ...(comment.context ? { context: comment.context } : {}),
         }).log
       }
-      await this.#sendLocked(session, { recipients: [threadId], note: '', includeExternal: false, draftIds: draftIds ?? session.drafts.drafts.map((draft) => draft.id) }, annotations)
+      await this.#sendLocked(session, { recipients: [threadId], note: note ?? '', includeExternal: false, draftIds: draftIds ?? session.drafts.drafts.map((draft) => draft.id) }, annotations)
       return threadId
     })
   }

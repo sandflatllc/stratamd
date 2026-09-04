@@ -25,8 +25,8 @@ export interface FakeEngineOptions {
 
 const usageAt = '2026-09-03T11:59:00.000Z'
 export const DEFAULT_PROVIDERS: unknown[] = [
-  { instanceId: 'codex', driver: 'codex', displayName: 'Codex work', enabled: true, installed: true, version: '0.50.0', status: 'ready', auth: { status: 'authenticated', type: 'chatgpt', label: 'Pro', email: 'owner@example.com' }, checkedAt: usageAt, models: [], usage: { session: { usedPercent: 40, resetsAt: '2026-09-03T16:00:00.000Z', measuredAt: usageAt, source: 'session' }, weekly: { usedPercent: 20, resetsAt: '2026-09-08T00:00:00.000Z', measuredAt: usageAt, source: 'session' }, planLabel: 'Pro', applicable: true } },
-  { instanceId: 'claude-main', driver: 'claudeAgent', displayName: 'Claude', enabled: true, installed: true, version: '2.1.0', status: 'ready', auth: { status: 'authenticated', type: 'oauth', label: 'Max' }, checkedAt: usageAt, models: [] },
+  { instanceId: 'codex', driver: 'codex', displayName: 'Codex work', enabled: true, installed: true, version: '0.50.0', status: 'ready', auth: { status: 'authenticated', type: 'chatgpt', label: 'Pro', email: 'owner@example.com' }, checkedAt: usageAt, models: [{ slug: 'gpt-5.6', name: 'GPT-5.6', isDefault: true, capabilities: { optionDescriptors: [{ id: 'effort', label: 'Reasoning', type: 'select', options: [{ id: 'low', label: 'Low' }, { id: 'medium', label: 'Medium', isDefault: true }, { id: 'high', label: 'High' }] }] } }], usage: { session: { usedPercent: 40, resetsAt: '2026-09-03T16:00:00.000Z', measuredAt: usageAt, source: 'session' }, weekly: { usedPercent: 20, resetsAt: '2026-09-08T00:00:00.000Z', measuredAt: usageAt, source: 'session' }, planLabel: 'Pro', applicable: true } },
+  { instanceId: 'claude-main', driver: 'claudeAgent', displayName: 'Claude', enabled: true, installed: true, version: '2.1.0', status: 'ready', auth: { status: 'authenticated', type: 'oauth', label: 'Max' }, checkedAt: usageAt, models: [{ slug: 'claude-fable-5-1', name: 'Claude Fable 5.1', isDefault: true, capabilities: { optionDescriptors: [{ id: 'effort', label: 'Reasoning', type: 'select', options: [{ id: 'low', label: 'Low' }, { id: 'high', label: 'High', isDefault: true }, { id: 'max', label: 'Max' }] }, { id: 'contextWindow', label: 'Context window', type: 'select', options: [{ id: '200k', label: '200k' }, { id: '1m', label: '1M', isDefault: true }] }] } }] },
 ]
 
 /** One text frame, server to client (unmasked). */
@@ -77,6 +77,7 @@ export interface FakeEngine {
   tokenRequests: string[]
   rpcRequests: Array<{ tag: string; payload: unknown }>
   /** Offline refuses HTTP and drops every socket, as a stopped server would; online again accepts new connections. */
+  failNextTurn(): void
   setOnline(value: boolean): void
   setMessage(value: string): void
   setWorkspaceRoot(value: string): void
@@ -114,6 +115,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   const uploads: string[] = []
   const uploadsById = new Map<string, string>()
   let uploadCount = 0
+  let rejectNextTurn = false
   const createdThreads: CreatedThread[] = []
   const createdProjects: CreatedProject[] = []
   /** Pin, snooze, and rename state per thread, as T3 would project it (§5.2). */
@@ -253,6 +255,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
         const command = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>
         // T3 applies a command once per commandId; a retry after a dropped connection is a no-op.
         if (typeof command.commandId === 'string' && commands.some((known) => known.commandId === command.commandId)) { response.end(JSON.stringify({ sequence })); return }
+        if (command.type === 'thread.turn.start' && rejectNextTurn) { rejectNextTurn = false; response.statusCode = 400; response.end(JSON.stringify({ error: 'Test refusal' })); return }
         commands.push(command)
         if (command.type === 'thread.turn.start') status = 'running'
         if (command.type === 'thread.turn.interrupt') status = 'stopped'
@@ -338,6 +341,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     setOnline: (value) => { online = value; if (!value) dropSockets() },
     setMessage: (value) => { message = value; broadcast() },
     setWorkspaceRoot: (value) => { workspaceRoot = value; broadcast() },
+    failNextTurn: () => { rejectNextTurn = true },
     setProviders: (value) => { providers = value; broadcast() },
     finish: () => { status = 'stopped'; broadcast() },
     postAssistant: (threadId, text) => {

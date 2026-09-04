@@ -173,7 +173,7 @@ export class Scenario {
     })
     this.page = await this.app.firstWindow()
     await this.page.waitForLoadState('domcontentloaded')
-    await expect(this.page.getByRole('button', { name: /Add folder/i }).first()).toBeVisible()
+    await expect(this.page.locator('.app-shell')).toBeVisible()
     return this.page
   }
 
