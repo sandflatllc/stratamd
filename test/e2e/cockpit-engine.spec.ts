@@ -167,12 +167,32 @@ test('4 inference: seven prose questions queue four keyed replies in one deliver
       await row.getByRole('button', { name: 'Queue reply' }).click()
     }
     await expect(checklist.locator('.turn-item[data-status="drafted"]')).toHaveCount(4)
+    await expect(checklist.getByText('Drafted: Audience')).toBeVisible()
     await conversation.getByRole('button', { name: 'Send', exact: true }).click()
     await expect.poll(() => engine.commands.filter((command) => command.type === 'thread.turn.start').length).toBe(1)
-    const text = ((engine.commands.find((command) => command.type === 'thread.turn.start')!.message as { text: string }).text)
-    expect(text.match(/^- inferred_[^:]+:/gmu)).toHaveLength(4)
+    // One delivery: the message text is one line, and the four replies travel keyed by item id in its attachment (§5.4).
+    const turn = engine.commands.find((command) => command.type === 'thread.turn.start')!.message as { text: string; attachments: unknown[] }
+    expect(turn.text).toBe('Replies to 4 items.')
+    expect(turn.attachments).toHaveLength(1)
+    await expect.poll(() => engine.uploads.length).toBe(1)
+    expect(engine.uploads[0]!.match(/^inferred_[0-9a-f]+ ← user: /gmu)).toHaveLength(4)
+    expect(engine.uploads[0]).toContain('← user: Audience')
+    expect(engine.uploads[0]).toContain('about "Which audience should lead?"')
     engine.finish()
+    await expect(checklist.locator('.turn-item[data-status="done"]')).toHaveCount(4)
     await expect(checklist.locator('.turn-item[data-status="open"]')).toHaveCount(3)
+    // A dismissed inferred item stays dismissed for that message.
+    await checklist.locator('.turn-item[data-status="open"]').first().getByRole('button', { name: 'Dismiss' }).click()
+    await expect(checklist.locator('.turn-item[data-status="open"]')).toHaveCount(2)
+
+    // Reload: the answers, the open items, and the dismissal are main-process state, not the panel's.
+    await page.reload()
+    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
+    await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
+    const reopened = page.getByRole('region', { name: 'Conversation' }).getByRole('region', { name: 'Turn items' })
+    await expect(reopened.locator('.turn-item')).toHaveCount(6)
+    await expect(reopened.locator('.turn-item[data-status="done"]')).toHaveCount(4)
+    await expect(reopened.locator('.turn-item[data-status="open"]')).toHaveCount(2)
   } finally {
     await scenario.dispose()
     await engine.close()

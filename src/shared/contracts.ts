@@ -111,6 +111,8 @@ export interface ItemView {
   annotationId: string | null
   hunkId: string | null
   inferred: boolean
+  /** The reply queued for the next Send (§5.4 Drafted); absent once delivered or when none. */
+  draftReply?: string
 }
 
 export type DraftKind = 'comment' | 'question' | 'suggestion'
@@ -657,7 +659,13 @@ export interface StrataApi {
   pairEngine(request: PairEngineRequest): Promise<void>
   reconnectEngine(): Promise<void>
   openConversation(threadId: string): Promise<void>
+  /** Sends the owner's note plus every queued item reply as one delivery (§5.4); either may be empty, not both. */
   startConversationTurn(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access'] }): Promise<void>
+  /** Queues a reply to a message-anchored item; the row shows Drafted until the Send carrying it is acknowledged (§5.4). */
+  queueItemReply(threadId: string, itemId: string, text: string): Promise<void>
+  discardItemReply(threadId: string, itemId: string): Promise<void>
+  /** Hides an inferred item; remembered per message (§5.12). */
+  dismissItem(threadId: string, itemId: string): Promise<void>
   stopConversationTurn(threadId: string): Promise<void>
   answerEngineApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
   answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>

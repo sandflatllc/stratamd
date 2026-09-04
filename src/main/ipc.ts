@@ -13,7 +13,8 @@ const pathSchema = z.string().min(1).max(16_384)
 const idSchema = z.string().min(1).max(512)
 const textSchema = z.string().max(64 * 1_024)
 const conversationTurnSchema = z.object({
-  text: textSchema.refine((value) => value.trim().length > 0),
+  // Empty text is allowed: queued item replies alone make a Send (§5.4); the client refuses a turn with neither.
+  text: textSchema,
   model: idSchema,
   effort: idSchema.nullable(),
   access: z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access']),
@@ -138,6 +139,9 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.updateEngineThread]: z.tuple([idSchema, z.object({ pinned: z.boolean().optional(), snoozedUntil: z.iso.datetime({ offset: true }).nullable().optional(), title: z.string().trim().min(1).max(512).optional() }).strict()]),
   [IPC.setTerminalDefault]: z.tuple([idSchema, idSchema.nullable()]),
   [IPC.refreshAccounts]: z.tuple([]),
+  [IPC.queueItemReply]: z.tuple([idSchema, idSchema, z.string().max(20_000)]),
+  [IPC.discardItemReply]: z.tuple([idSchema, idSchema]),
+  [IPC.dismissItem]: z.tuple([idSchema, idSchema]),
   [IPC.startConversationTurn]: z.tuple([idSchema, conversationTurnSchema]),
   [IPC.stopConversationTurn]: z.tuple([idSchema]),
   [IPC.answerEngineApproval]: z.tuple([idSchema, idSchema, z.enum(['accept', 'acceptForSession', 'acceptAlways', 'decline', 'cancel'])]),
@@ -320,6 +324,9 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.updateEngineThread]: (threadId: string, change: Parameters<StrataApi['updateEngineThread']>[1]) => options.api.updateEngineThread(threadId, change),
     [IPC.setTerminalDefault]: (driver: string, selection: string | null) => options.api.setTerminalDefault(driver, selection),
     [IPC.refreshAccounts]: () => options.api.refreshAccounts(),
+    [IPC.queueItemReply]: (threadId: string, itemId: string, text: string) => options.api.queueItemReply(threadId, itemId, text),
+    [IPC.discardItemReply]: (threadId: string, itemId: string) => options.api.discardItemReply(threadId, itemId),
+    [IPC.dismissItem]: (threadId: string, itemId: string) => options.api.dismissItem(threadId, itemId),
     [IPC.startConversationTurn]: (threadId: string, input: Parameters<StrataApi['startConversationTurn']>[1]) => options.api.startConversationTurn(threadId, input),
     [IPC.stopConversationTurn]: (threadId: string) => options.api.stopConversationTurn(threadId),
     [IPC.answerEngineApproval]: (threadId: string, requestId: string, decision: Parameters<StrataApi['answerEngineApproval']>[2]) => options.api.answerEngineApproval(threadId, requestId, decision),

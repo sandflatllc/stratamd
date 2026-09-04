@@ -38,6 +38,7 @@ import {
 } from './t3-contract'
 import { EngineSocket, type EngineStream } from './socket'
 import { decideAttention } from './notifications'
+import { applyConversationState, emptyConversationState, readConversationsStore, renderItemReplies, writeConversationsStore, type ConversationsStore } from './conversation-state'
 import { accountViews, chooseInstance, emptyAccountsStore, providerInstancesOf, readAccountsStore, recordMeasurements, terminalShimTargets, writeAccountsStore, type AccountsStore, type EngineProviderInstance } from './accounts'
 import { writeTerminalShims } from '../account-shims'
 import { logError } from '../log'
@@ -105,6 +106,9 @@ export interface EngineReadClient {
   createProject?(input: { title: string; workspaceRoot: string }): Promise<string>
   actOnThread?(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void>
   updateThread?(threadId: string, change: EngineThreadChange): Promise<void>
+  queueItemReply?(threadId: string, itemId: string, text: string): Promise<void>
+  discardItemReply?(threadId: string, itemId: string): Promise<void>
+  dismissItem?(threadId: string, itemId: string): Promise<void>
   parkAccount?(instanceId: string, parked: boolean): Promise<void>
   setTerminalDefault?(driver: string, selection: string | null): Promise<void>
   refreshAccounts?(): Promise<void>
@@ -178,6 +182,8 @@ export class T3EngineClient implements EngineReadClient {
   readonly #readingPath: string
   readonly #commandsPath: string
   readonly #accountsPath: string
+  readonly #conversationsPath: string
+  #conversations: ConversationsStore = { formatVersion: 1, threads: {} }
   readonly #WebSocket: typeof WebSocket
   readonly #configRefreshMs: number
   readonly #shimDirectory: string | null
@@ -229,6 +235,7 @@ export class T3EngineClient implements EngineReadClient {
     this.#readingPath = join(options.dataDirectory, 'engine-reading.json')
     this.#commandsPath = join(options.dataDirectory, 'engine-commands.json')
     this.#accountsPath = join(options.dataDirectory, 'engine-accounts.json')
+    this.#conversationsPath = join(options.dataDirectory, 'engine-conversations.json')
     this.#WebSocket = options.webSocket ?? WebSocket
     this.#configRefreshMs = options.configRefreshMs ?? 30_000
     this.#shimDirectory = options.terminalShimDirectory ?? null
@@ -240,6 +247,7 @@ export class T3EngineClient implements EngineReadClient {
     this.#reading = await this.#readReading()
     this.#pendingCommands = await this.#readCommands()
     this.#accounts = await readAccountsStore(this.#accountsPath)
+    this.#conversations = await readConversationsStore(this.#conversationsPath)
     if (!this.#credential) return
     this.#running = true
     await this.reconnect()
@@ -319,7 +327,7 @@ export class T3EngineClient implements EngineReadClient {
             : typeof latestTurn?.requestedAt === 'string' ? latestTurn.requestedAt : null,
           messages,
           activities,
-          items: (() => { const explicit = postedMessageItems(messages, thread.id); return [...explicit, ...messages.flatMap((message) => inferredMessageItems(message, thread.id, explicit))] })(),
+          items: (() => { const explicit = postedMessageItems(messages, thread.id); return applyConversationState([...explicit, ...messages.flatMap((message) => inferredMessageItems(message, thread.id, explicit))], this.#conversations.threads[thread.id]) })(),
           documents,
         }
       }),
@@ -478,14 +486,59 @@ export class T3EngineClient implements EngineReadClient {
   async startTurn(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access']; messageId?: string; commandId?: string; attachment?: { name: string; text: string } }): Promise<void> {
     const thread = this.#shell?.threads.find((candidate) => candidate.id === threadId)
     if (!thread) throw new Error(`Thread was not found: ${threadId}`)
-    const attachments = input.attachment ? [await this.#uploadTextAttachment(input.attachment)] : []
+    // A conversation Send carries the queued item replies as its attachment (§5.4), keyed by item id; the text stays the owner's note.
+    const state = this.#conversations.threads[threadId]
+    const queued = !input.attachment && state && Object.keys(state.replies).length > 0 ? state.replies : null
+    const messageId = input.messageId ?? randomUUID()
+    const text = input.text.trim() || (queued ? `Replies to ${Object.keys(queued).length} item${Object.keys(queued).length === 1 ? '' : 's'}.` : '')
+    if (!text) throw new Error('Write a message or queue a reply before sending')
+    const attachment = input.attachment ?? (queued ? { name: `replies-${messageId}.md`, text: renderItemReplies(queued) } : undefined)
+    if (queued) {
+      this.#conversations.threads[threadId] = { ...state!, replies: {}, pending: [...state!.pending, { deliveryId: messageId, itemIds: Object.keys(queued), replies: queued }] }
+      await writeConversationsStore(this.#conversationsPath, this.#conversations)
+      this.#publish()
+    }
+    const attachments = attachment ? [await this.#uploadTextAttachment(attachment)] : []
     const command = turnStartCommand.parse({
-      type: 'thread.turn.start', commandId: input.commandId ?? randomUUID(), threadId, createdAt: new Date(this.#now()).toISOString(),
-      message: { messageId: input.messageId ?? randomUUID(), role: 'user', text: input.text.trim(), attachments },
+      type: 'thread.turn.start', commandId: input.commandId ?? (queued ? `strata-${messageId}` : randomUUID()), threadId, createdAt: new Date(this.#now()).toISOString(),
+      message: { messageId, role: 'user', text, attachments },
       modelSelection: { instanceId: thread.modelSelection.instanceId, model: input.model, options: input.effort ? { effort: input.effort } : {} },
       runtimeMode: input.access, interactionMode: thread.interactionMode,
     })
     await this.#dispatch(command, `turn:${command.message.messageId}`, command.message.messageId)
+  }
+
+  async queueItemReply(threadId: string, itemId: string, text: string): Promise<void> {
+    const item = this.#threadItem(threadId, itemId)
+    if (!item) throw new Error(`Item was not found: ${itemId}`)
+    if (!text.trim()) throw new Error('Write a reply before queueing it')
+    const state = this.#conversations.threads[threadId] ?? emptyConversationState()
+    this.#conversations.threads[threadId] = { ...state, replies: { ...state.replies, [itemId]: { text: text.trim(), kind: item.kind, quote: item.quote, messageId: item.messageId } } }
+    await writeConversationsStore(this.#conversationsPath, this.#conversations)
+    this.#publish()
+  }
+
+  async discardItemReply(threadId: string, itemId: string): Promise<void> {
+    const state = this.#conversations.threads[threadId]
+    if (!state?.replies[itemId]) return
+    const { [itemId]: _dropped, ...replies } = state.replies
+    this.#conversations.threads[threadId] = { ...state, replies }
+    await writeConversationsStore(this.#conversationsPath, this.#conversations)
+    this.#publish()
+  }
+
+  /** Dismissals are remembered per message (§5.12): the item id is derived from the message id and the sentence. */
+  async dismissItem(threadId: string, itemId: string): Promise<void> {
+    const state = this.#conversations.threads[threadId] ?? emptyConversationState()
+    if (state.dismissed.includes(itemId)) return
+    const { [itemId]: _dropped, ...replies } = state.replies
+    this.#conversations.threads[threadId] = { ...state, replies, dismissed: [...state.dismissed, itemId] }
+    await writeConversationsStore(this.#conversationsPath, this.#conversations)
+    this.#publish()
+  }
+
+  #threadItem(threadId: string, itemId: string) {
+    return this.view().projects.flatMap((project) => project.threads).find((thread) => thread.id === threadId)?.items?.find((item) => item.id === itemId) ?? null
   }
 
   async createThread(input: { projectId: string; title: string; model: string; effort: string | null; access: EngineThreadView['access']; instanceId?: string | null }): Promise<string> {
@@ -944,9 +997,24 @@ export class T3EngineClient implements EngineReadClient {
   async #settleAcknowledgedCommands(): Promise<void> {
     const ids = new Set(this.#detail?.thread.messages.map((message) => message.id) ?? [])
     const next = this.#pendingCommands.filter((pending) => !pending.messageId || !ids.has(pending.messageId))
-    if (next.length === this.#pendingCommands.length) return
-    this.#pendingCommands = next
-    await this.#writeCommands()
+    const commandsChanged = next.length !== this.#pendingCommands.length
+    if (commandsChanged) this.#pendingCommands = next
+    // Replies in flight become answered once the engine lists the message that carried them (§5.4).
+    const threadId = this.#detail?.thread.id
+    const state = threadId ? this.#conversations.threads[threadId] : undefined
+    const repliesChanged = threadId !== undefined && state !== undefined && state.pending.some((entry) => ids.has(entry.deliveryId))
+    if (repliesChanged) {
+      const acknowledged = state.pending.filter((entry) => ids.has(entry.deliveryId))
+      this.#conversations.threads[threadId] = {
+        ...state,
+        pending: state.pending.filter((entry) => !ids.has(entry.deliveryId)),
+        answered: [...new Set([...state.answered, ...acknowledged.flatMap((entry) => entry.itemIds)])],
+      }
+      this.#publishSoon()
+    }
+    // The in-memory state is already current; the files catch up.
+    if (commandsChanged) await this.#writeCommands()
+    if (repliesChanged) await writeConversationsStore(this.#conversationsPath, this.#conversations)
   }
 
   #publish(): void {

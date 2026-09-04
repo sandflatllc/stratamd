@@ -766,6 +766,21 @@ export class StrataApplication implements StrataApi {
     await this.#engine.startTurn(threadId, input)
   }
 
+  async queueItemReply(threadId: string, itemId: string, text: string): Promise<void> {
+    if (!this.#engine.queueItemReply) throw new Error('This engine cannot queue replies')
+    await this.#engine.queueItemReply(threadId, itemId, text)
+  }
+
+  async discardItemReply(threadId: string, itemId: string): Promise<void> {
+    if (!this.#engine.discardItemReply) throw new Error('This engine cannot queue replies')
+    await this.#engine.discardItemReply(threadId, itemId)
+  }
+
+  async dismissItem(threadId: string, itemId: string): Promise<void> {
+    if (!this.#engine.dismissItem) throw new Error('This engine cannot dismiss items')
+    await this.#engine.dismissItem(threadId, itemId)
+  }
+
   async stopConversationTurn(threadId: string): Promise<void> {
     await this.#engine.interrupt(threadId)
   }
