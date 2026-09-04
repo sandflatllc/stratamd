@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import type { AgentIdentity, AnnotationView } from '../../shared/contracts'
 import { absoluteTime, AGENT_COLORS, threadTime, USER_ANNOTATION_COLOR } from '../model'
+import { ConversationHistory } from './ConversationHistory'
 import { InlineMarkdown } from '../inlineMarkdown'
 import { useClock } from '../useClock'
 import { claimEscape, isEscapeClaimed } from '../escape'
@@ -109,26 +110,20 @@ export function ItemPanel({ annotation, documentPath, onReply, onResolve, onAnsw
         <ItemTime time={annotation.createdAt} now={now} />
         <button type="button" className="popover-close" aria-label="Close thread" onClick={onClose}>×</button>
       </header>
-      <div className="thread-panel-scroll">
-        {orphaned && (
-          <blockquote className="thread-panel-quote">
-            <InlineMarkdown text={annotation.quote} />
-          </blockquote>
-        )}
-        <p><InlineMarkdown text={annotation.text} /></p>
-        {annotation.replies.map((item) => (
-          <div className="reply" style={{ borderColor: authorColor(item.author) }} key={item.id}>
+      <ConversationHistory key={draftKey} className="thread-panel-scroll">
+        {[
+          ...annotation.replies.map((item) => ({ time: item.createdAt ?? 0, node: <div className="reply" data-history-row style={{ borderColor: authorColor(item.author) }} key={item.id}>
             <strong style={{ color: authorColor(item.author) }}>{authorName(item.author)}<ItemTime time={item.createdAt} now={now} /></strong>
             <span><InlineMarkdown text={item.text} /></span>
-          </div>
-        ))}
-        {decision?.answers.map((answer) => (
-          <div className="reply decision-answer" style={{ borderColor: USER_ANNOTATION_COLOR }} key={answer.seq}>
+          </div> })),
+          ...(decision?.answers ?? []).map((answer) => ({ time: answer.answeredAt, node: <div className="reply decision-answer" data-history-row style={{ borderColor: USER_ANNOTATION_COLOR }} key={`answer-${answer.seq}`}>
             <strong style={{ color: USER_ANNOTATION_COLOR }}>you<ItemTime time={answer.answeredAt} now={now} /></strong>
             <span>{answer.option === null ? <>answered Other: <InlineMarkdown text={answer.other ?? ''} /></> : <>chose “<InlineMarkdown text={answer.option} />”</>}</span>
-          </div>
-        ))}
-      </div>
+          </div> })),
+        ].sort((a, b) => a.time - b.time).reverse().map((entry) => entry.node)}
+        <p data-history-row><InlineMarkdown text={annotation.text} /></p>
+        {orphaned && <blockquote className="thread-panel-quote"><InlineMarkdown text={annotation.quote} /></blockquote>}
+      </ConversationHistory>
       {decision && annotation.status !== 'resolved' && (
         <fieldset className="decision-answer-form">
           <legend>Choose one</legend>

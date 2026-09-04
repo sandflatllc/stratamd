@@ -1386,6 +1386,7 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .conversation-scope button[aria-selected="true"] { background: var(--surfaces-inset); color: var(--text-primary); }
 .conversation-scope button:disabled { opacity: .45; cursor: default; }
 .conversation-messages, .conversation-passage { min-height: 0; flex: 1; overflow: auto; padding: 10px; }
+.conversation-passage { display: flex; flex-direction: column; overflow: hidden; }
 .conversation-turn { position: relative; padding: 8px 0 14px; }
 .conversation-message { margin: 0 0 12px; padding: 8px 10px; border-radius: 10px; }
 .conversation-message.user { margin-left: 28px; border: 1px solid var(--borders-subtle); background: var(--surfaces-inset); }

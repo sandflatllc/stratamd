@@ -224,7 +224,7 @@ test('4. an item pages below the fold opens in Conversation with the span center
     const leftWindow = page.locator('[data-pane="explorer"]')
     await expect(panel).toBeVisible()
     await expect(panel).toBeInViewport()
-    await expect(navigation.getByRole('tab', { name: 'Conversation', exact: true })).toHaveAttribute('aria-selected', 'true')
+    await expect(navigation.getByRole('tab', { name: /^Conversation(?: \d+)?$/ })).toHaveAttribute('aria-selected', 'true')
     await expect(page.locator('.strata-annotation.is-active').first()).toBeInViewport()
     await expect.poll(() => leftWindow.evaluate((element) => (element as HTMLElement).style.width)).toBe('660px')
 

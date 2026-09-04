@@ -1,0 +1,102 @@
+import { expect, test } from '@playwright/test'
+import { seededScenario, startEngine } from './cockpit-engine-harness'
+
+test('newest-first conversation reverses messages across turns in both placements', async ({}, testInfo) => {
+  const engine = await startEngine({ conversationParity: true })
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    const page = await scenario.launch()
+    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
+    await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
+    const expected = ['m1', 'live-user', 'old-agent-2', 'old-user-2', 'old-agent-1', 'old-user-1']
+    for (const placement of ['side', 'center']) {
+      const panel = page.locator(`.conversation-panel[data-placement="${placement}"]`)
+      await expect.poll(() => panel.locator('[data-message-id]').evaluateAll((rows) => rows.map((row) => row.getAttribute('data-message-id')))).toEqual(expected)
+      await expect(panel.getByRole('textbox', { name: 'Message conversation' })).toBeInViewport()
+      if (placement === 'side') await panel.getByRole('button', { name: 'Open in center' }).click()
+    }
+  } finally { await scenario.dispose(); await engine.close() }
+})
+
+test('long newest messages open at their beginning and arrivals preserve the reader', async ({}, testInfo) => {
+  const engine = await startEngine()
+  const scenario = await seededScenario(testInfo, engine.origin)
+  const longAnswer = '# Latest answer\n\n' + Array.from({ length: 35 }, (_, i) => `Paragraph ${i + 1}. Read this answer from its beginning, with older messages below it.`).join('\n\n')
+  const latest = engine.postAssistant('t1', longAnswer)
+  try {
+    const page = await scenario.launch()
+    await page.setViewportSize({ width: 1440, height: 900 })
+    const navigation = page.getByRole('tablist', { name: 'Document navigation' })
+    await navigation.getByRole('tab', { name: 'Projects' }).click()
+    await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
+    const panel = page.locator('.conversation-panel[data-placement="side"]')
+    const history = panel.locator('.conversation-messages')
+    await expect(panel.locator('[data-message-id]').first()).toBeInViewport()
+    await expect.poll(() => history.evaluate((el) => el.scrollTop)).toBe(0)
+    const atTop = engine.postAssistant('t1', 'This message arrived while you were at the top.')
+    await expect(panel.locator('[data-message-id]').first()).toHaveAttribute('data-message-id', atTop)
+    await expect.poll(() => history.evaluate((el) => el.scrollTop)).toBe(0)
+    await history.evaluate((el) => { el.scrollTop = 450 })
+    const anchor = panel.locator(`[data-message-id="${latest}"]`)
+    const top = await anchor.evaluate((el) => el.getBoundingClientRect().top)
+    const next = engine.postAssistant('t1', '# A newer answer\n\nThis arrived while you were reading.')
+    await expect(panel.locator('[data-message-id]').first()).toHaveAttribute('data-message-id', next)
+    await expect.poll(async () => Math.abs(await anchor.evaluate((el) => el.getBoundingClientRect().top) - top)).toBeLessThan(2)
+    await navigation.getByRole('tab', { name: 'Contents' }).click()
+    await navigation.getByRole('tab', { name: 'Conversation', exact: true }).click()
+    await expect.poll(() => history.evaluate((el) => el.scrollTop)).toBe(0)
+    await expect(panel.locator('[data-message-id]').first()).toBeInViewport()
+    await page.screenshot({ path: testInfo.outputPath('newest-first-side.png') })
+    await panel.getByRole('button', { name: 'Open in center' }).click()
+    const center = page.locator('.conversation-panel[data-placement="center"]')
+    await expect(center.locator('[data-message-id]').first()).toBeInViewport()
+    await expect.poll(() => center.locator('.conversation-messages').evaluate((el) => el.scrollTop)).toBe(0)
+    await page.screenshot({ path: testInfo.outputPath('newest-first-center.png') })
+  } finally { await scenario.dispose(); await engine.close() }
+})
+
+test('This passage opens newest first and preserves position when a reply arrives', async ({}, testInfo) => {
+  const engine = await startEngine()
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    const page = await scenario.launch()
+    await page.setViewportSize({ width: 1440, height: 900 })
+    const id = await page.evaluate(async (path) => {
+      const id = await window.strata.addAnnotation(path, { kind: 'decision', anchor: 'document', quote: '', from: 0, to: 0, text: 'Original question', options: ['Yes', 'No'] })
+      await window.strata.reply(path, id, 'Older reply')
+      await window.strata.answerDecision(path, id, { option: 'Yes' })
+      await window.strata.reopenDecision(path, id)
+      await window.strata.reply(path, id, 'Newest reply. ' + 'A long passage response to read from the start. '.repeat(100))
+      return id
+    }, scenario.file)
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
+    await page.locator('.annotations-panel .annotation-row').filter({ hasText: 'Original question' }).click()
+    const panel = page.getByRole('region', { name: 'decision thread' })
+    const history = panel.locator('.thread-panel-scroll')
+    const rows = history.locator('[data-history-row]')
+    await expect(rows.first()).toContainText('Newest reply.')
+    await expect(rows.nth(1)).toContainText('chose “Yes”')
+    await expect(rows.nth(2)).toContainText('Older reply')
+    await expect(rows.last()).toContainText('Original question')
+    await page.evaluate(() => document.fonts.ready)
+    await panel.evaluate(async (el) => { await Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished)) })
+    await expect.poll(() => history.evaluate((el) => el.scrollTop)).toBe(0)
+    await page.evaluate(async ({ path, id }) => { await window.strata.reply(path, id, 'Arrived at the top') }, { path: scenario.file, id })
+    await expect(rows.first()).toContainText('Arrived at the top')
+    await expect.poll(() => history.evaluate((el) => el.scrollTop)).toBe(0)
+    await panel.evaluate(async (el) => { await Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished)) })
+    await history.evaluate((el) => { el.scrollTop = 350 })
+    await expect.poll(() => history.evaluate((el) => el.scrollTop)).toBe(350)
+    const reading = history.locator('.reply').filter({ hasText: 'Newest reply.' })
+    const top = await reading.evaluate((el) => el.getBoundingClientRect().top)
+    await page.evaluate(async ({ path, id }) => { await window.strata.reply(path, id, 'Just arrived') }, { path: scenario.file, id })
+    await expect(rows.first()).toContainText('Just arrived')
+    await expect.poll(async () => Math.abs(await reading.evaluate((el) => el.getBoundingClientRect().top) - top)).toBeLessThan(2)
+    await panel.getByRole('button', { name: 'Close thread' }).click()
+    await page.locator('.annotations-panel .annotation-row').filter({ hasText: 'Original question' }).click()
+    await expect.poll(() => history.evaluate((el) => el.scrollTop)).toBe(0)
+    await expect(rows.first()).toBeInViewport()
+    await expect(panel.getByRole('textbox', { name: 'Reply', exact: true })).toBeInViewport()
+    await page.screenshot({ path: testInfo.outputPath('newest-first-passage.png') })
+  } finally { await scenario.dispose(); await engine.close() }
+})

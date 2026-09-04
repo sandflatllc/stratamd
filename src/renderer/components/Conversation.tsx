@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
 import type { EngineActivityView, EngineThreadView, EngineView, ItemView } from '../../shared/contracts'
 import { deriveWorkEntries, groupWorkRows, type WorkEntry } from '../../core/work-log'
+import { ConversationHistory } from './ConversationHistory'
 import { InlineMarkdown } from '../inlineMarkdown'
 
 function activeThread(engine: EngineView): { thread: EngineThreadView; project: string } | null {
@@ -188,13 +189,13 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
       <div className="conversation-status"><span>{thread.status}{running ? ` · ${elapsed(thread.turnStartedAt, now)}` : ''}</span>{running && <button type="button" className="stop-button" onClick={() => onStop(thread.id)}>Stop</button>}</div>
       <div className="conversation-scope" role="tablist" aria-label="Conversation scope"><button type="button" role="tab" aria-selected={scope === 'whole'} onClick={() => setScope('whole')}>Whole thread</button><button type="button" role="tab" aria-selected={scope === 'passage'} disabled={!passage} onClick={() => setScope('passage')}>This passage</button></div>
     </header>
-    {scope === 'passage' && passage ? <div className="conversation-passage">{passage}</div> : <div className="conversation-messages">
-      {turns.map((turn) => {
+    {scope === 'passage' && passage ? <div className="conversation-passage">{passage}</div> : <ConversationHistory key={thread.id} className="conversation-messages">
+      {turns.toReversed().map((turn) => {
         const groups = workGroups.filter((candidate) => candidate.turnId === turn.id)
         const timeline = [
           ...turn.messages.map((message) => ({ kind: 'message' as const, id: message.id, createdAt: message.createdAt, message })),
           ...groups.map((group) => ({ kind: 'work' as const, id: group.id, createdAt: group.createdAt, group })),
-        ].sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+        ].sort((left, right) => left.createdAt.localeCompare(right.createdAt)).reverse()
         const lastAssistant = turn.messages.findLast((message) => message.role === 'assistant')?.id
         const changedFiles = thread.documents?.filter((file) => file.turnId === turn.id) ?? []
         return <section className="conversation-turn" key={turn.id} data-running={groups.some((group) => group.live) || undefined}>
@@ -202,8 +203,8 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
             if (row.kind === 'work') {
               const group = row.group
               const expanded = expandedWork[group.id] ?? !group.foldedByDefault
-              if (group.live) return <div className="conversation-live-work" key={group.id}><div className="conversation-working-row"><span className="working-pulse" aria-hidden="true" />Working <time>{elapsed(thread.turnStartedAt, now)}</time></div>{group.entries.map((entry) => <WorkEntryRow entry={entry} key={entry.id} />)}{group.showThinking && <div className="conversation-thinking"><span aria-hidden="true" />Thinking</div>}</div>
-              return <div className="conversation-work-group" key={group.id}>
+              if (group.live) return <div className="conversation-live-work" data-history-row key={group.id}><div className="conversation-working-row"><span className="working-pulse" aria-hidden="true" />Working <time>{elapsed(thread.turnStartedAt, now)}</time></div>{group.entries.map((entry) => <WorkEntryRow entry={entry} key={entry.id} />)}{group.showThinking && <div className="conversation-thinking"><span aria-hidden="true" />Thinking</div>}</div>
+              return <div className="conversation-work-group" data-history-row key={group.id}>
                 <button type="button" className="conversation-work-toggle" aria-expanded={expanded} onClick={() => setExpandedWork((value) => ({ ...value, [group.id]: !expanded }))}>
                   <span className="conversation-work-icon" aria-hidden="true">{workIcons[group.summaryIcon]}</span><span>{group.summary}</span>{group.hasFailure && <b aria-label="Failed">!</b>}
                 </button>
@@ -215,7 +216,7 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
             const blocks = message.blocks ?? []
             const longUserMessage = message.role === 'user' && shouldCollapseUserMessage(prose)
             const messageExpanded = expandedMessages[message.id] ?? false
-            return <article className={`conversation-message ${message.role}`} key={message.id} data-message-id={message.id} data-streaming={message.streaming || undefined}>
+            return <article className={`conversation-message ${message.role}`} key={message.id} data-history-row data-message-id={message.id} data-streaming={message.streaming || undefined}>
               <small>{message.role === 'assistant' ? 'Agent' : message.role === 'user' ? 'You' : 'System'}{message.role === 'user' && <span className="conversation-chip">{message.attachmentCount > 0 ? `${message.attachmentCount} attached` : 'Message'}</span>}{message.role === 'assistant' && <button type="button" className="conversation-copy" aria-label="Copy assistant message" onClick={() => void navigator.clipboard.writeText(prose)}>Copy</button>}</small>
               <div className={longUserMessage && !messageExpanded ? 'conversation-user-collapsed' : undefined} data-annotatable={message.role === 'assistant' && !message.streaming || undefined} data-block-ids={blocks.map((block) => block.id).join(' ')}><InlineMarkdown text={prose} /></div>
               {longUserMessage && <button type="button" className="conversation-message-toggle" aria-expanded={messageExpanded} onClick={() => setExpandedMessages((value) => ({ ...value, [message.id]: !messageExpanded }))}>{messageExpanded ? 'Show less' : 'Show more'}</button>}
@@ -227,7 +228,7 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
           <TurnChecklist items={allItems.filter((item) => item.threadId === thread.id && item.turnId === turn.id)} onReply={(item, value) => { if (item.annotationId && onReplyItem) onReplyItem(item, value); else onQueueReply?.(thread.id, item, value) }} onDismiss={(item) => onDismissItem?.(thread.id, item)} {...(onOpenItem ? { onOpen: onOpenItem } : {})} {...(onActItem ? { onAct: onActItem } : {})} />
         </section>
       })}
-    </div>}
+    </ConversationHistory>}
     <footer className="conversation-composer">
       <div className="conversation-pills"><label>Model<input aria-label="Conversation model" value={model} onChange={(event) => setModel(event.target.value)} /></label><label>Effort<select aria-label="Conversation effort" value={effort ?? ''} onChange={(event) => setEffort(event.target.value || null)}><option value="">Default</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">Extra high</option></select></label><label>Access<select aria-label="Conversation access" value={access} onChange={(event) => setAccess(event.target.value as EngineThreadView['access'])}><option value="approval-required">Ask</option><option value="auto-accept-edits">Auto edits</option><option value="auto">Auto</option><option value="full-access">Full</option></select></label></div>
       {queuedCount > 0 && <small>{queuedCount} answer{queuedCount === 1 ? '' : 's'} queued</small>}
