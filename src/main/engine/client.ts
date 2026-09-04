@@ -13,6 +13,11 @@ import {
   threadCreateCommand,
   projectCreateCommand,
   threadActionCommand,
+  threadPinCommand,
+  threadUnpinCommand,
+  threadSnoozeCommand,
+  threadUnsnoozeCommand,
+  threadMetaUpdateCommand,
   approvalRespondCommand,
   userInputRespondCommand,
   dispatchResult,
@@ -32,10 +37,11 @@ import {
   type T3ThreadDetailSnapshot,
 } from './t3-contract'
 import { EngineSocket, type EngineStream } from './socket'
+import { decideAttention } from './notifications'
 import { accountViews, chooseInstance, emptyAccountsStore, providerInstancesOf, readAccountsStore, recordMeasurements, terminalShimTargets, writeAccountsStore, type AccountsStore, type EngineProviderInstance } from './accounts'
 import { writeTerminalShims } from '../account-shims'
 import { logError } from '../log'
-import type { EngineProjectView, EngineThreadView, EngineView } from '../../shared/contracts'
+import type { EngineProjectView, EngineThreadChange, EngineThreadView, EngineView } from '../../shared/contracts'
 import { assertSupportedPlatform } from '../../platform/runtime'
 import { mapMarkdownBlocks, parseStrataBlock } from '../../core/blocks'
 import { postedMessageItems } from '../../core/items'
@@ -54,7 +60,11 @@ interface EngineReadingState {
   formatVersion: 1
   activeThreadId: string | null
   lastVisited: Record<string, number>
+  /** Badge counts per thread (§5.2), cleared when the thread opens. */
+  attention: Record<string, number>
 }
+
+export interface EngineNotification { threadId: string; title: string; body: string }
 
 export interface EngineClientOptions {
   dataDirectory: string
@@ -68,6 +78,10 @@ export interface EngineClientOptions {
   pongTimeoutMs?: number
   /** Stream items publish coalesced after this many ms so a streaming reply does not republish per token. */
   publishDelayMs?: number
+  /** Whether the owner is looking at the window; decides badge versus OS notification (§5.2). */
+  isFocused?: () => boolean
+  /** Shows an OS notification; Electron supplies it, tests observe it. */
+  notify?: (notification: EngineNotification) => void
   /** How long a provider usage reading stays fresh before the next refresh asks the engine again (§5.13). */
   configRefreshMs?: number
   /** Where terminal launchers are written, or null to write none (§5.13: Linux only). */
@@ -90,6 +104,7 @@ export interface EngineReadClient {
   createThread?(input: { projectId: string; title: string; model: string; effort: string | null; access: EngineThreadView['access']; instanceId?: string | null }): Promise<string>
   createProject?(input: { title: string; workspaceRoot: string }): Promise<string>
   actOnThread?(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void>
+  updateThread?(threadId: string, change: EngineThreadChange): Promise<void>
   parkAccount?(instanceId: string, parked: boolean): Promise<void>
   setTerminalDefault?(driver: string, selection: string | null): Promise<void>
   refreshAccounts?(): Promise<void>
@@ -173,7 +188,10 @@ export class T3EngineClient implements EngineReadClient {
   #configProblem: string | null = null
   readonly #listeners = new Set<(view: EngineView) => void>()
   #credential: EngineCredential | null = null
-  #reading: EngineReadingState = { formatVersion: 1, activeThreadId: null, lastVisited: {} }
+  #reading: EngineReadingState = { formatVersion: 1, activeThreadId: null, lastVisited: {}, attention: {} }
+  #lastThreads: EngineThreadView[] = []
+  readonly #isFocused: () => boolean
+  readonly #notify: (notification: EngineNotification) => void
   #shell: T3ShellSnapshot | null = null
   #detail: T3ThreadDetailSnapshot | null = null
   #state: EngineView['state'] = 'unpaired'
@@ -205,6 +223,8 @@ export class T3EngineClient implements EngineReadClient {
     this.#pingMs = options.pingMs ?? 20_000
     this.#pongTimeoutMs = options.pongTimeoutMs ?? 10_000
     this.#publishDelayMs = options.publishDelayMs ?? 25
+    this.#isFocused = options.isFocused ?? (() => true)
+    this.#notify = options.notify ?? (() => undefined)
     this.#credentialPath = join(options.dataDirectory, 'engine-credential.json')
     this.#readingPath = join(options.dataDirectory, 'engine-reading.json')
     this.#commandsPath = join(options.dataDirectory, 'engine-commands.json')
@@ -287,6 +307,10 @@ export class T3EngineClient implements EngineReadClient {
           status: statusOf(thread),
           updatedAt: thread.updatedAt,
           unread: Date.parse(thread.updatedAt) > visited && thread.id !== this.#reading.activeThreadId,
+          pinnedAt: thread.pinnedAt ?? null,
+          snoozedUntil: thread.snoozedUntil ?? null,
+          attention: this.#reading.attention[thread.id] ?? 0,
+          pendingWork: 0,
           pendingApprovals: thread.hasPendingApprovals,
           pendingUserInput: thread.hasPendingUserInput,
           activeTurnId: thread.session?.activeTurnId ?? null,
@@ -433,6 +457,7 @@ export class T3EngineClient implements EngineReadClient {
     if (!this.#shell?.threads.some((thread) => thread.id === threadId)) throw new Error(`Thread was not found: ${threadId}`)
     this.#reading.activeThreadId = threadId
     this.#reading.lastVisited[threadId] = this.#now()
+    delete this.#reading.attention[threadId]
     await this.#writeReading()
     await this.#refreshThread(threadId)
     this.#publish()
@@ -511,6 +536,26 @@ export class T3EngineClient implements EngineReadClient {
 
   async actOnThread(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void> {
     await this.#dispatch(threadActionCommand.parse({ type: `thread.${action}`, commandId: randomUUID(), threadId }))
+  }
+
+  /** Pin, snooze, and rename are T3's own commands (§5.2); the shell stream reflects them. */
+  async updateThread(threadId: string, change: EngineThreadChange): Promise<void> {
+    if (!this.#shell?.threads.some((thread) => thread.id === threadId)) throw new Error(`Thread was not found: ${threadId}`)
+    if (change.pinned !== undefined) {
+      await this.#dispatch(change.pinned
+        ? threadPinCommand.parse({ type: 'thread.pin', commandId: randomUUID(), threadId })
+        : threadUnpinCommand.parse({ type: 'thread.unpin', commandId: randomUUID(), threadId }))
+    }
+    if (change.snoozedUntil !== undefined) {
+      await this.#dispatch(change.snoozedUntil
+        ? threadSnoozeCommand.parse({ type: 'thread.snooze', commandId: randomUUID(), threadId, snoozedUntil: change.snoozedUntil })
+        : threadUnsnoozeCommand.parse({ type: 'thread.unsnooze', commandId: randomUUID(), threadId, reason: 'user' }))
+    }
+    if (change.title !== undefined) {
+      const title = change.title.trim()
+      if (!title) throw new Error('A thread needs a name')
+      await this.#dispatch(threadMetaUpdateCommand.parse({ type: 'thread.meta.update', commandId: randomUUID(), threadId, title }))
+    }
   }
 
   async interrupt(threadId: string): Promise<void> {
@@ -905,7 +950,18 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   #publish(): void {
-    const view = this.view()
+    let view = this.view()
+    const threads = view.projects.flatMap((project) => project.threads)
+    if (this.#reachable() && this.#lastThreads.length) {
+      const decision = decideAttention({ previous: this.#lastThreads, next: threads, activeThreadId: this.#reading.activeThreadId, focused: this.#isFocused() })
+      if (decision.badges.length) {
+        for (const badge of decision.badges) this.#reading.attention[badge.threadId] = (this.#reading.attention[badge.threadId] ?? 0) + 1
+        void this.#writeReading().catch((error: unknown) => logError('engine', 'Attention counts could not be saved', error))
+        for (const notification of decision.notifications) this.#notify(notification)
+        view = this.view()
+      }
+    }
+    this.#lastThreads = threads
     for (const listener of this.#listeners) listener(view)
   }
 
@@ -923,7 +979,9 @@ export class T3EngineClient implements EngineReadClient {
     try {
       const value = JSON.parse(await readFile(this.#readingPath, 'utf8')) as Partial<EngineReadingState>
       if (value.formatVersion !== 1 || (value.activeThreadId !== null && typeof value.activeThreadId !== 'string') || !value.lastVisited || typeof value.lastVisited !== 'object') return this.#reading
-      return { formatVersion: 1, activeThreadId: value.activeThreadId ?? null, lastVisited: value.lastVisited as Record<string, number> }
+      const attention: Record<string, number> = {}
+      if (value.attention && typeof value.attention === 'object') for (const [threadId, count] of Object.entries(value.attention)) if (typeof count === 'number' && count > 0) attention[threadId] = count
+      return { formatVersion: 1, activeThreadId: value.activeThreadId ?? null, lastVisited: value.lastVisited as Record<string, number>, attention }
     } catch {
       return this.#reading
     }

@@ -19,6 +19,9 @@ interface NavigationRailProps {
   walkthrough: WalkthroughState
   /** The live Markdown, for the walkthrough card's section preview. */
   content: string
+  /** Badge counts for Projects and Conversation (§5.2 notifications); absent or zero shows none. */
+  projectsCount?: number
+  conversationCount?: number
   onSelect(tab: LeftTab): void
   onJumpHeading(id: string): void
   onWalkthrough(action: WalkthroughAction): void
@@ -31,8 +34,8 @@ export function NavigationRail(props: NavigationRailProps) {
       <RailTabs label="Document navigation" idPrefix="navigation" selected={props.selected} onSelect={props.onSelect} tabs={[
         { id: 'files', label: 'Files' },
         { id: 'contents', label: 'Contents' },
-        { id: 'projects', label: 'Projects' },
-        { id: 'conversation', label: 'Conversation' },
+        { id: 'projects', label: 'Projects', ...(props.projectsCount ? { count: props.projectsCount } : {}) },
+        { id: 'conversation', label: 'Conversation', ...(props.conversationCount ? { count: props.conversationCount } : {}) },
       ]} />
       <section role="tabpanel" id="navigation-panel-files" aria-labelledby="navigation-tab-files" hidden={props.selected !== 'files'}>
         {props.files}

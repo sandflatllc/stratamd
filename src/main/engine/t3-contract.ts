@@ -115,6 +115,8 @@ const orchestrationThreadBase = z.object({
 export const orchestrationThreadShell = orchestrationThreadBase.extend({
   latestUserMessageAt: isoDate.nullable(),
   hasPendingApprovals: z.boolean(), hasPendingUserInput: z.boolean(), hasActionableProposedPlan: z.boolean(),
+  pinnedAt: isoDate.nullable().optional(), snoozedUntil: isoDate.nullable().optional(),
+  archivedAt: isoDate.nullable().optional(), settledAt: isoDate.nullable().optional(),
 })
 export const orchestrationThread = orchestrationThreadBase.extend({
   deletedAt: isoDate.nullable(),
@@ -178,6 +180,11 @@ export const projectCreateCommand = z.object({
   createWorkspaceRootIfMissing: z.boolean().optional(), defaultModelSelection: modelSelection.nullable().optional(), createdAt: isoDate,
 }).passthrough()
 export const threadActionCommand = z.object({ type: z.enum(['thread.delete', 'thread.archive', 'thread.settle']), commandId: id, threadId: id }).passthrough()
+export const threadPinCommand = z.object({ type: z.literal('thread.pin'), commandId: id, threadId: id, orderKey: id.optional() }).strict()
+export const threadUnpinCommand = z.object({ type: z.literal('thread.unpin'), commandId: id, threadId: id }).strict()
+export const threadSnoozeCommand = z.object({ type: z.literal('thread.snooze'), commandId: id, threadId: id, snoozedUntil: isoDate }).strict()
+export const threadUnsnoozeCommand = z.object({ type: z.literal('thread.unsnooze'), commandId: id, threadId: id, reason: z.literal('user') }).strict()
+export const threadMetaUpdateCommand = z.object({ type: z.literal('thread.meta.update'), commandId: id, threadId: id, title: id.optional() }).strict()
 export const approvalRespondCommand = z.object({ type: z.literal('thread.approval.respond'), ...commandBase, requestId: id, decision: z.enum(['accept', 'acceptForSession', 'acceptAlways', 'decline', 'cancel']) }).passthrough()
 export const userInputRespondCommand = z.object({ type: z.literal('thread.user-input.respond'), ...commandBase, requestId: id, answers: z.record(z.string(), z.unknown()) }).passthrough()
 export const dispatchResult = z.object({ sequence: nonNegativeInt }).passthrough()

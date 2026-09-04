@@ -241,3 +241,52 @@ test('10 accounts: usage from the engine, parking from the top bar, and the park
     await engine.close()
   }
 })
+
+test('5.2 rows and notifications: pin, rename, and snooze go to T3, and a turn finishing elsewhere badges Projects and the thread until it opens', async ({}, testInfo) => {
+  const engine = await startEngine()
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    const page = await scenario.launch()
+    const navigation = page.getByRole('tablist', { name: 'Document navigation' })
+    await navigation.getByRole('tab', { name: 'Projects' }).click()
+    const rows = page.locator('.project-thread')
+    await expect(rows.first()).toHaveAttribute('data-thread', 't1')
+
+    await page.getByRole('button', { name: 'Pin Second engine thread' }).click()
+    await expect.poll(() => engine.commands.find((command) => command.type === 'thread.pin') ?? {}).toMatchObject({ threadId: 't2' })
+    await expect(rows.first()).toHaveAttribute('data-thread', 't2')
+    await expect(rows.first()).toHaveAttribute('data-pinned', 'true')
+
+    await page.getByRole('button', { name: 'Rename Second engine thread' }).click()
+    const rename = page.getByRole('dialog', { name: /Rename Second engine thread/ })
+    await rename.getByRole('textbox').fill('Renamed thread')
+    await rename.getByRole('button', { name: 'Rename' }).click()
+    await expect.poll(() => engine.commands.find((command) => command.type === 'thread.meta.update') ?? {}).toMatchObject({ threadId: 't2', title: 'Renamed thread' })
+    await expect(page.getByRole('button', { name: 'Open Renamed thread' })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Snooze Renamed thread' }).click()
+    await page.getByRole('menu', { name: 'Snooze Renamed thread until' }).getByRole('menuitem', { name: 'Tomorrow morning' }).click()
+    await expect.poll(() => engine.commands.find((command) => command.type === 'thread.snooze') ?? {}).toMatchObject({ threadId: 't2', snoozedUntil: expect.stringMatching(/T\d\d:00:00/) })
+    await expect(rows.first()).toHaveAttribute('data-snoozed', 'true')
+    await expect(rows.first()).toContainText('snoozed until')
+    await page.getByRole('button', { name: 'Unsnooze Renamed thread' }).click()
+    await expect.poll(() => engine.commands.some((command) => command.type === 'thread.unsnooze')).toBe(true)
+
+    // The owner reads the renamed thread; the live thread finishes its turn elsewhere.
+    await page.getByRole('button', { name: 'Open Renamed thread' }).click()
+    await expect(page.getByRole('region', { name: 'Conversation' })).toBeVisible()
+    await expect(navigation.getByRole('tab', { name: 'Projects' }).locator('.rail-tab-count')).toHaveCount(0)
+    engine.finish()
+    await expect(navigation.getByRole('tab', { name: 'Projects' }).locator('.rail-tab-count')).toHaveText('1')
+    await navigation.getByRole('tab', { name: 'Projects' }).click()
+    await expect(page.locator('.project-thread[data-thread="t1"] .attention-badge')).toHaveText('1')
+    await expect(page.locator('.project-thread[data-thread="t2"] .attention-badge')).toHaveCount(0)
+
+    await page.getByRole('button', { name: 'Open Live engine thread' }).click()
+    await expect(page.locator('.project-thread[data-thread="t1"] .attention-badge')).toHaveCount(0)
+    await expect(navigation.getByRole('tab', { name: 'Projects' }).locator('.rail-tab-count')).toHaveCount(0)
+  } finally {
+    await scenario.dispose()
+    await engine.close()
+  }
+})

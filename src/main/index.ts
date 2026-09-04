@@ -1,5 +1,5 @@
 import { join, dirname } from 'node:path'
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, Notification } from 'electron'
 import type { AppView, StrataApi } from '../shared/contracts'
 import { createStrataApplication } from './application'
 import { buildApplicationMenu } from './application-menu'
@@ -352,6 +352,11 @@ if (!process.env.VITEST) {
   installFailureLogging()
   installOpenFileQueue()
   void createStrataApplication({
+    // Badges when the owner is elsewhere, an OS notification when the window is not focused (§5.2).
+    notifications: {
+      isFocused: () => BrowserWindow.getAllWindows().some((window) => window.isFocused()),
+      notify: (notification) => { if (Notification.isSupported()) new Notification({ title: notification.title, body: notification.body }).show() },
+    },
     clipboardWrite: async (text) => clipboard.writeText(text),
     selectFolder: async () => {
       const result = await dialog.showOpenDialog({ properties: ['openDirectory'] })

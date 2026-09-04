@@ -27,7 +27,7 @@ class DeliveryEngine implements EngineReadClient {
       state: 'connected', server: 'http://engine.test', serverVersion: '0.0.33', supportedVersion: '0.0.33', problem: null, activeThreadId: 't1', accounts: [], terminalDefaults: {}, terminalShimDirectory: null,
       projects: [{ id: 'p1', title: 'Project', workspaceRoot: '/work', threads: [{
         id: 't1', projectId: 'p1', title: 'Reviewer', model: 'gpt-5.6', providerInstanceId: 'codex', effort: 'medium', access: 'full-access', status: 'idle',
-        updatedAt: new Date(0).toISOString(), unread: false, pendingApprovals: false, pendingUserInput: false, activeTurnId: null, turnStartedAt: null,
+        updatedAt: new Date(0).toISOString(), unread: false, pendingApprovals: false, pendingUserInput: false, activeTurnId: null, turnStartedAt: null, pinnedAt: null, snoozedUntil: null, attention: 0, pendingWork: 0,
         messages: this.#messages, activities: [],
       }] }],
     }
@@ -98,6 +98,8 @@ describe('cockpit delivery turns', () => {
     expect((await app.getState()).activeDocument!.items?.map((item) => [item.kind, item.turnId])).toEqual([
       ['decision', 'turn-1'], ['question', 'turn-1'], ['suggestion', 'turn-1'], ['edit', 'turn-1'],
     ])
+    // Projects shows the thread's pending work across its documents (§5.2): three open items plus the edit's pending hunk.
+    expect((await app.getState()).engine.projects[0]!.threads[0]!.pendingWork).toBe(4)
 
     await app.send(path, { recipients: ['t1'], note: 'Continue.', includeExternal: false })
     expect(engine.turns[1]!.attachment!.text).toContain('1. applied as a_')

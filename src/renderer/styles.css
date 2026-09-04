@@ -1293,11 +1293,12 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .project-group { display: grid; gap: 4px; padding: 8px 0 14px; }
 .project-group h3 { margin: 0; font-size: 0.9rem; }
 .project-group > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
-.project-thread { display: flex; align-items: center; gap: 5px; width: 100%; padding: 4px; }
-.project-thread > button:first-child { display: flex; min-width: 0; flex: 1; justify-content: space-between; gap: 8px; padding: 7px 8px; border: 0; background: none; color: inherit; text-align: left; }
+.project-thread { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; width: 100%; padding: 4px; }
+.project-thread > button:first-child { display: flex; min-width: 0; justify-content: space-between; align-items: baseline; gap: 8px; padding: 7px 8px; border: 0; background: none; color: inherit; text-align: left; }
+.project-thread > button:first-child > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-thread.active { background: var(--surfaces-raised); }
-.project-thread small { color: var(--text-muted); white-space: nowrap; }
-.project-row-actions { display: flex; gap: 2px; }
+.project-thread small { min-width: 0; overflow: hidden; color: var(--text-muted); text-overflow: ellipsis; white-space: nowrap; }
+.project-row-actions { display: flex; flex-wrap: wrap; gap: 2px; padding: 0 4px; }
 .project-row-actions button { border: 0; background: none; color: var(--text-muted); font-size: .65rem; }
 .thread-picker { display: grid; gap: 7px; margin: 8px 0; padding: 10px; border: 1px solid var(--borders-subtle); border-radius: 9px; }
 .thread-picker label { display: flex; justify-content: space-between; gap: 8px; }
@@ -1325,6 +1326,11 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .documents-panel > button { display: flex; width: 100%; justify-content: space-between; gap: 8px; padding: 7px 10px; border: 0; background: none; color: var(--text-primary); text-align: left; }
 .documents-panel > button small { color: var(--text-muted); }
 .unread-dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--accents-primary); }
+.pin-mark { margin-right: 4px; font-size: .75em; font-style: normal; }
+.project-thread[data-snoozed="true"] > button:first-child { opacity: .6; }
+.snooze-menu { display: flex; gap: 4px; width: 100%; padding: 2px 8px 4px; }
+.snooze-menu button { border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; background: var(--surfaces-inset); color: inherit; font-size: 12px; }
+.attention-badge { background: var(--controls-warning); color: var(--controls-selected-text); }
 .engine-mismatch { color: var(--semantic-caution); }
 .conversation-panel { display: flex; flex-direction: column; min-height: 0; height: 100%; }
 .conversation-panel > header { display: grid; gap: 6px; padding: 12px; border-bottom: 1px solid var(--borders-subtle); }

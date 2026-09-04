@@ -222,6 +222,21 @@ export interface EngineThreadView {
   activities: EngineActivityView[]
   items?: ItemView[]
   documents?: Array<{ path: string; turnId: string; additions: number; deletions: number; markdown: boolean }>
+  /** T3's pin and snooze states (§5.2). */
+  pinnedAt: string | null
+  snoozedUntil: string | null
+  /** Turns finished, items posted, and approvals that arrived while the owner was elsewhere, cleared when the thread opens (§5.2). */
+  attention: number
+  /** Pending hunks and open items across the thread's open documents (§5.2). */
+  pendingWork: number
+}
+
+/** T3's row actions beyond settle, archive, and delete (§5.2). */
+export interface EngineThreadChange {
+  pinned?: boolean
+  /** An ISO wake time, or null to unsnooze. */
+  snoozedUntil?: string | null
+  title?: string
 }
 
 export interface EngineProjectView {
@@ -652,6 +667,10 @@ export interface StrataApi {
   /** Creates the thread, attaches it to the document, and sends the pending comment and drafts as its first turn (§5.7, §5.14). */
   startThreadFromDocument(path: string, input: StartThreadFromDocumentInput): Promise<string>
   actOnEngineThread(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void>
+  /** Pin, snooze, or rename a thread through T3 (§5.2). */
+  updateEngineThread(threadId: string, change: EngineThreadChange): Promise<void>
+  /** Pin, snooze, or rename a thread through T3 (§5.2). */
+  updateEngineThread(threadId: string, change: EngineThreadChange): Promise<void>
   /** Parks or unparks a provider instance so Auto and the picker skip it (§5.13); persisted in the ghost store. */
   parkAccount(instanceId: string, parked: boolean): Promise<void>
   /** Sets which account a driver's terminal launcher uses: `auto`, an instance id, or null for none (§5.13). */

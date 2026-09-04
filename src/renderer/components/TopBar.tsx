@@ -26,8 +26,10 @@ interface TopBarProps {
   zoomed: boolean
   onResetZoom(): void
   onOpenTheme(): void
-  conversationTab?: { id: string; name: string }
-  onCloseConversation?(): void
+  /** Conversation tabs beside the documents (§5.2, §6); `active` is the one showing in the center. */
+  conversationTabs?: Array<{ id: string; name: string; attention: number; active: boolean }>
+  onOpenConversationTab?(id: string): void
+  onCloseConversation?(id: string): void
   /** The paired engine's state; the status control opens the engine dialog (§5.1, §5.13). */
   engine?: EngineView
   onOpenEngine?(): void
@@ -35,7 +37,8 @@ interface TopBarProps {
   onOpenAccounts?(): void
 }
 
-export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onSend, onStartThread, zoomed, onResetZoom, onOpenTheme, conversationTab, onCloseConversation, engine, onOpenEngine, onOpenAccounts }: TopBarProps) {
+export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onSend, onStartThread, zoomed, onResetZoom, onOpenTheme, conversationTabs = [], onOpenConversationTab, onCloseConversation, engine, onOpenEngine, onOpenAccounts }: TopBarProps) {
+  const conversationTab = conversationTabs.find((tab) => tab.active)
   const tabStrip = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState<PathContextMenuState | null>(null)
   const activePath = conversationTab ? `conversation:${conversationTab.id}` : tabs.find((tab) => tab.active)?.path
@@ -93,10 +96,11 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
             >×</span>
           </button>
         ))}
-        {conversationTab && <button type="button" role="tab" aria-selected className="tab tab-active conversation-tab" title={conversationTab.name}>
-          <span className="tab-name">{conversationTab.name}</span>
-          <span role="button" tabIndex={0} aria-label={`Close tab ${conversationTab.name}`} className="tab-close" onClick={(event) => { event.stopPropagation(); onCloseConversation?.() }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onCloseConversation?.() } }}>×</span>
-        </button>}
+        {conversationTabs.map((tab) => <button type="button" role="tab" aria-selected={tab.active} className={`tab conversation-tab ${tab.active ? 'tab-active' : ''}`} title={tab.name} key={tab.id} onClick={() => onOpenConversationTab?.(tab.id)}>
+          <span className="tab-name">{tab.name}</span>
+          {tab.attention > 0 && <span className="tab-badge attention-badge" aria-label={`${tab.attention} new`}>{tab.attention}</span>}
+          <span role="button" tabIndex={0} aria-label={`Close tab ${tab.name}`} className="tab-close" onClick={(event) => { event.stopPropagation(); onCloseConversation?.(tab.id) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onCloseConversation?.(tab.id) } }}>×</span>
+        </button>)}
       </div>
       {menu && <PathContextMenu menu={menu} onCopyPath={onCopyPath} onClose={closeMenu} {...(onCloseOthers ? { onCloseOthers } : {})} {...(onCloseAll ? { onCloseAll } : {})} {...(onCloseSaved ? { onCloseSaved } : {})} />}
       <div className="topbar-spacer" />

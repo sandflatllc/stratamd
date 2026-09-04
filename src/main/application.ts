@@ -3,6 +3,7 @@ import { basename, dirname, extname, join, resolve } from 'node:path'
 import { open, realpath, stat, type FileHandle } from 'node:fs/promises'
 import { pathForDescriptor } from '../platform/descriptor-path'
 import type {
+  EngineThreadChange,
   AgentIdentity,
   AnnotationView,
   AppSettingsView,
@@ -267,6 +268,8 @@ export interface ApplicationOptions {
   now?: () => number
   watch?: boolean
   engine?: EngineReadClient
+  /** Window focus and the OS notification, supplied by Electron (§5.2). */
+  notifications?: { isFocused(): boolean; notify(notification: { threadId: string; title: string; body: string }): void }
 }
 
 interface OpenDocumentsRecord {
@@ -322,6 +325,7 @@ export class StrataApplication implements StrataApi {
       dataDirectory: this.#store.dataDirectory, now: this.#now,
       // Terminal launchers are scripts Strata writes on Linux (§5.13); macOS gets none.
       terminalShimDirectory: isDarwin() ? null : join(this.#store.dataDirectory, 'bin'),
+      ...(options.notifications ? { isFocused: () => options.notifications!.isFocused(), notify: (notification) => options.notifications!.notify(notification) } : {}),
     })
     this.#tabs = new SessionRegistry({
       canonicalize: resolveDocumentPath,
@@ -736,6 +740,11 @@ export class StrataApplication implements StrataApi {
   async actOnEngineThread(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void> {
     if (!this.#engine.actOnThread) throw new Error('This engine cannot change threads')
     await this.#engine.actOnThread(threadId, action)
+  }
+
+  async updateEngineThread(threadId: string, change: EngineThreadChange): Promise<void> {
+    if (!this.#engine.updateThread) throw new Error('This engine cannot change threads')
+    await this.#engine.updateThread(threadId, change)
   }
 
   async parkAccount(instanceId: string, parked: boolean): Promise<void> {
@@ -2572,9 +2581,21 @@ export class StrataApplication implements StrataApi {
     return next
   }
 
+  /** The count of pending hunks and open items across the thread's open documents (§5.2). */
+  #pendingWork(threadId: string): number {
+    let count = 0
+    for (const session of this.#sessions.values()) {
+      if (!session.attachments[threadId]) continue
+      count += session.state.pendingHunks.filter((hunk) => hunk.author.agentId === threadId).length
+      count += Object.values(session.annotations.annotations).filter((annotation) => annotation.author === 'agent' && annotation.agent === threadId && annotation.status === 'open').length
+    }
+    return count
+  }
+
   #rawView(): AppView {
     const focused = this.#tabs.focusedPath
-    const engine = this.#engine.view()
+    const raw = this.#engine.view()
+    const engine: AppView['engine'] = { ...raw, projects: raw.projects.map((project) => ({ ...project, threads: project.threads.map((thread) => ({ ...thread, pendingWork: this.#pendingWork(thread.id) })) })) }
     return {
       tabs: this.#tabs.list().map((tab) => {
         const session = this.#sessions.get(tab.path)!

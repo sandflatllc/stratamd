@@ -98,6 +98,12 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   const uploads: string[] = []
   const createdThreads: CreatedThread[] = []
   const createdProjects: CreatedProject[] = []
+  /** Pin, snooze, and rename state per thread, as T3 would project it (§5.2). */
+  const threadMeta = new Map<string, { pinnedAt?: string | null; snoozedUntil?: string | null; title?: string }>()
+  const withMeta = <T extends { id: string; title: string }>(thread: T): T & { pinnedAt: string | null; snoozedUntil: string | null } => {
+    const meta = threadMeta.get(thread.id)
+    return { ...thread, title: meta?.title ?? thread.title, pinnedAt: meta?.pinnedAt ?? null, snoozedUntil: meta?.snoozedUntil ?? null }
+  }
   let workspaceRoot = options.workspaceRoot ?? '/tmp/cockpit'
   let providers = options.providers ?? DEFAULT_PROVIDERS
   const rpcRequests: Array<{ tag: string; payload: unknown }> = []
@@ -111,11 +117,11 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       { id: 'p1', title: 'Cockpit project', workspaceRoot, defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at },
       ...createdProjects.map((project) => ({ id: project.id, title: project.title, workspaceRoot: project.workspaceRoot, defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at })),
     ],
-    threads: [
+    threads: ([
       ...createdThreads.map(shellThread),
       { id: 't1', projectId: 'p1', title: 'Live engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: { turnId: 'turn-1', state: status === 'running' ? 'running' : 'interrupted', requestedAt: at, startedAt: at, completedAt: null, assistantMessageId: 'm1' }, createdAt: at, updatedAt: at, session: { threadId: 't1', status, providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: approvalOpen, hasPendingUserInput: inputOpen, hasActionableProposedPlan: false },
       { id: 't2', projectId: 'p1', title: 'Second engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: null, createdAt: at, updatedAt: at, session: { threadId: 't2', status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false },
-    ],
+    ] as Array<{ id: string; title: string }>).map(withMeta),
     updatedAt: at,
   })
   const sentMessages = (threadId: string, turnId: string, keepAttachments: boolean) => commands
@@ -202,6 +208,13 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
         if (command.type === 'thread.user-input.respond') inputOpen = false
         if (command.type === 'thread.create') createdThreads.push({ id: String(command.threadId), projectId: String(command.projectId), title: String(command.title), modelSelection: command.modelSelection, runtimeMode: String(command.runtimeMode) })
         if (command.type === 'project.create') createdProjects.push({ id: String(command.projectId), title: String(command.title), workspaceRoot: String(command.workspaceRoot) })
+        const threadId = String(command.threadId)
+        const meta = threadMeta.get(threadId) ?? {}
+        if (command.type === 'thread.pin') threadMeta.set(threadId, { ...meta, pinnedAt: new Date().toISOString() })
+        if (command.type === 'thread.unpin') threadMeta.set(threadId, { ...meta, pinnedAt: null })
+        if (command.type === 'thread.snooze') threadMeta.set(threadId, { ...meta, snoozedUntil: String(command.snoozedUntil) })
+        if (command.type === 'thread.unsnooze') threadMeta.set(threadId, { ...meta, snoozedUntil: null })
+        if (command.type === 'thread.meta.update' && typeof command.title === 'string') threadMeta.set(threadId, { ...meta, title: command.title })
         broadcast()
         response.end(JSON.stringify({ sequence }))
       })

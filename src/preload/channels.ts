@@ -9,6 +9,7 @@ export const IPC = {
   startThreadFromDocument: 'strata:start-thread-from-document',
   actOnEngineThread: 'strata:act-on-engine-thread',
   parkAccount: 'strata:park-account',
+  updateEngineThread: 'strata:update-engine-thread',
   setTerminalDefault: 'strata:set-terminal-default',
   refreshAccounts: 'strata:refresh-accounts',
   startConversationTurn: 'strata:start-conversation-turn',
