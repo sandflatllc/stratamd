@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
-import type { ItemView, EngineThreadView, AnnotationContext, AnnotationKind, AnnotationView, AppView, AttachmentView, BufferOrigin, CreateDraftRequest, DocumentTabView, DocumentView, HunkView, NavigationTab, PaneId, PanelSize, PaneZoom, PanelSizes, QuickSendRequest, RedoResult, ReviewTab, SendPreviewRequest, TableViewState, ThemePanelGeometry, UndoResult, WalkthroughAction } from '../shared/contracts'
+import type { ItemView, AnnotationContext, AnnotationKind, AnnotationView, AppView, AttachmentView, BufferOrigin, CreateDraftRequest, DocumentTabView, DocumentView, HunkView, NavigationTab, PaneId, PanelSize, PaneZoom, PanelSizes, QuickSendRequest, RedoResult, ReviewTab, SendPreviewRequest, TableViewState, ThemePanelGeometry, UndoResult, WalkthroughAction } from '../shared/contracts'
 import type { EditorHeading } from '../editor/headings'
 import type { RendererEditorFactory, RendererEditorHandle } from './editorAdapter'
 import { Explorer } from './components/Explorer'
@@ -57,10 +57,11 @@ export function App({ createEditor }: AppProps) {
   const [selectedAnnotation, setSelectedAnnotation] = useState<AnnotationView | null>(null)
   /** Engine tabs are session state; Files and Contents retain their document preference. */
   const [engineTab, setEngineTab] = useState<'projects' | 'conversation' | null>(null)
+  const engineNavigationIntent = useRef(0)
+  const engineNavigationTimer = useRef<number | null>(null)
   const [centerConversationId, setCenterConversationId] = useState<string | null>(null)
   /** Conversation tabs open in the center, in opening order; they stay listed while a document shows (§5.2). */
   const [conversationTabs, setConversationTabs] = useState<string[]>([])
-  const [renamingThread, setRenamingThread] = useState<EngineThreadView | null>(null)
   const [confirmResolve, setConfirmResolve] = useState(false)
   /** The engine dialog: pairing, server, version, connection state (§5.1). */
   const [engineDialog, setEngineDialog] = useState(false)
@@ -116,6 +117,12 @@ export function App({ createEditor }: AppProps) {
     try { await job(); if (message) report(message) }
     catch (error) { reportError(error instanceof Error ? error.message : 'The action failed') }
   }, [report, reportError])
+  const cancelEngineNavigation = useCallback(() => {
+    engineNavigationIntent.current += 1
+    if (engineNavigationTimer.current !== null) window.clearTimeout(engineNavigationTimer.current)
+    engineNavigationTimer.current = null
+  }, [])
+  useEffect(() => () => { if (engineNavigationTimer.current !== null) window.clearTimeout(engineNavigationTimer.current) }, [])
   const selectNavigationTab = useCallback((tab: NavigationTab) => {
     if (!document) return
     void perform(() => window.strata.updateReadingState(document.path, { navigationTab: tab }))
@@ -127,10 +134,11 @@ export function App({ createEditor }: AppProps) {
     setConfirmResolve(false)
   }, [])
   const selectLeftTab = useCallback((tab: LeftTab) => {
+    cancelEngineNavigation()
     if (tab === 'projects' || tab === 'conversation') { setEngineTab(tab); return }
     setEngineTab(null)
     selectNavigationTab(tab)
-  }, [selectNavigationTab])
+  }, [cancelEngineNavigation, selectNavigationTab])
   const selectReviewTab = useCallback((tab: ReviewTab) => {
     if (!document) return
     void perform(() => window.strata.updateReadingState(document.path, { reviewTab: tab }))
@@ -361,17 +369,24 @@ export function App({ createEditor }: AppProps) {
     if (centerConversationId === threadId) setCenterConversationId(null)
   }
   const openEngineThread = (threadId: string) => void perform(async () => {
+    cancelEngineNavigation()
+    const intent = engineNavigationIntent.current
     await window.strata.openConversation(threadId)
-    // Selecting a thread: an open center tab for it follows; otherwise Conversation shows it (§5.2).
-    if (conversationTabs.includes(threadId) || centerConversationId) showCenterConversation(threadId)
-    else setEngineTab('conversation')
+    if (engineNavigationIntent.current !== intent) return
+    // Leave one double-click window before navigating so the same title can enter inline rename.
+    engineNavigationTimer.current = window.setTimeout(() => {
+      engineNavigationTimer.current = null
+      if (engineNavigationIntent.current !== intent) return
+      // Selecting a thread: an open center tab for it follows; otherwise Conversation shows it (§5.2).
+      if (conversationTabs.includes(threadId) || centerConversationId) showCenterConversation(threadId)
+      else setEngineTab('conversation')
+    }, 180)
   })
   const engineThreads = view.engine.projects.flatMap((project) => project.threads)
   const attentionTotal = engineThreads.reduce((sum, thread) => sum + thread.attention, 0)
   const conversationTabViews = conversationTabs.flatMap((id) => { const thread = engineThreads.find((candidate) => candidate.id === id); return thread ? [{ id, name: thread.title, attention: thread.attention, active: centerConversationId === id }] : [] })
   const topBarConversations = { conversationTabs: conversationTabViews, onOpenConversationTab: (id: string) => void perform(async () => { await window.strata.openConversation(id); showCenterConversation(id) }), onCloseConversation: closeConversationTab }
-  const renameThreadNode = renamingThread && <FileNameDialog title={`Rename ${renamingThread.title}`} action="Rename" initial={renamingThread.title} onCancel={() => setRenamingThread(null)} onConfirm={(name) => { const thread = renamingThread; setRenamingThread(null); void perform(() => window.strata.updateEngineThread(thread.id, { title: name }), 'Thread renamed.') }} />
-  const projectsNode = <ProjectsPanel engine={view.engine} onReconnect={reconnectEngine} onOpenThread={openEngineThread} onNewThread={() => setDocumentPicker({ path: null })} onAction={(id, action) => void perform(() => window.strata.actOnEngineThread(id, action))} onUpdate={(id, change) => void perform(() => window.strata.updateEngineThread(id, change))} onRename={setRenamingThread} onOpenEngine={() => setEngineDialog(true)} onOpenAccounts={openAccounts} />
+  const projectsNode = <ProjectsPanel engine={view.engine} onReconnect={reconnectEngine} onOpenThread={openEngineThread} onBeginRename={cancelEngineNavigation} onNewThread={() => setDocumentPicker({ path: null })} onAddProject={(input) => void perform(() => window.strata.createEngineProject(input), 'Project added.')} onAction={(id, action) => void perform(() => window.strata.actOnEngineThread(id, action))} onUpdate={(id, change) => void perform(() => window.strata.updateEngineThread(id, change))} onOpenEngine={() => setEngineDialog(true)} onOpenAccounts={openAccounts} attachedThreadIds={new Set(document?.attachments.map((attachment) => attachment.agent.id) ?? [])} />
   const conversationItems = document?.items ?? []
   const itemActions = document ? {
     items: conversationItems,
@@ -728,7 +743,6 @@ export function App({ createEditor }: AppProps) {
       {documentPickerNode}
       {engineDialogNode}
       {accountsDialogNode}
-      {renameThreadNode}
       {themePanel}
       {fileDialogs}
       <Toast toast={toast} onDone={dismissToast} />
@@ -775,7 +789,6 @@ export function App({ createEditor }: AppProps) {
       {documentPickerNode}
       {engineDialogNode}
       {accountsDialogNode}
-      {renameThreadNode}
       {themePanel}
       {fileDialogs}
       <Toast toast={toast} onDone={dismissToast} />

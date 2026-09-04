@@ -18,6 +18,7 @@ const conversationTurnSchema = z.object({
   model: idSchema,
   effort: idSchema.nullable(),
   access: z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access']),
+  attachment: z.object({ name: idSchema, text: z.string().max(2 * 1_024 * 1_024) }).strict().optional(),
 }).strict()
 const sendRequestSchema = z.object({
   recipients: z.array(idSchema).max(128),
@@ -134,9 +135,9 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.createEngineThread]: z.tuple([startThreadSchema]),
   [IPC.createEngineProject]: z.tuple([z.object({ title: z.string().trim().min(1).max(512), workspaceRoot: pathSchema }).strict()]),
   [IPC.startThreadFromDocument]: z.tuple([pathSchema, startThreadSchema.extend({ comment: draftRequestSchema.optional(), draftIds: z.array(idSchema).max(4_096).optional() }).strict()]),
-  [IPC.actOnEngineThread]: z.tuple([idSchema, z.enum(['archive', 'settle', 'delete'])]),
+  [IPC.actOnEngineThread]: z.tuple([idSchema, z.enum(['archive', 'settle', 'unsettle', 'delete'])]),
   [IPC.parkAccount]: z.tuple([idSchema, z.boolean()]),
-  [IPC.updateEngineThread]: z.tuple([idSchema, z.object({ pinned: z.boolean().optional(), snoozedUntil: z.iso.datetime({ offset: true }).nullable().optional(), title: z.string().trim().min(1).max(512).optional() }).strict()]),
+  [IPC.updateEngineThread]: z.tuple([idSchema, z.object({ pinned: z.boolean().optional(), snoozedUntil: z.iso.datetime({ offset: true }).nullable().optional(), title: z.string().trim().min(1).max(512).optional(), unread: z.boolean().optional() }).strict()]),
   [IPC.setTerminalDefault]: z.tuple([idSchema, idSchema.nullable()]),
   [IPC.refreshAccounts]: z.tuple([]),
   [IPC.queueItemReply]: z.tuple([idSchema, idSchema, z.string().max(20_000)]),

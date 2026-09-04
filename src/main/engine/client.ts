@@ -111,7 +111,7 @@ export interface EngineReadClient {
   respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
   createThread?(input: { projectId: string; title: string; model: string; effort: string | null; access: EngineThreadView['access']; instanceId?: string | null }): Promise<string>
   createProject?(input: { title: string; workspaceRoot: string }): Promise<string>
-  actOnThread?(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void>
+  actOnThread?(threadId: string, action: 'archive' | 'settle' | 'unsettle' | 'delete'): Promise<void>
   updateThread?(threadId: string, change: EngineThreadChange): Promise<void>
   queueItemReply?(threadId: string, itemId: string, text: string): Promise<void>
   discardItemReply?(threadId: string, itemId: string): Promise<void>
@@ -311,6 +311,7 @@ export class T3EngineClient implements EngineReadClient {
         })) : []
         const latestTurn = thread.latestTurn && typeof thread.latestTurn === 'object' ? thread.latestTurn as Record<string, unknown> : null
         const visited = this.#reading.lastVisited[thread.id] ?? 0
+        const snoozed = thread.snoozedUntil !== null && thread.snoozedUntil !== undefined && Date.parse(thread.snoozedUntil) > this.#now()
         const workingRoot = detailThread?.id === thread.id ? detailThread.worktreePath ?? project.workspaceRoot : project.workspaceRoot
         const documents = detailThread?.id === thread.id ? detailThread.checkpoints.flatMap((checkpoint) => checkpoint.files.map((file) => {
           const path = isAbsolute(file.path) ? file.path : resolve(workingRoot, file.path)
@@ -329,6 +330,8 @@ export class T3EngineClient implements EngineReadClient {
           unread: Date.parse(thread.updatedAt) > visited && thread.id !== this.#reading.activeThreadId,
           pinnedAt: thread.pinnedAt ?? null,
           snoozedUntil: thread.snoozedUntil ?? null,
+          lifecycle: snoozed ? 'snoozed' : thread.settledOverride === 'settled' ? 'settled' : 'active',
+          archived: thread.archivedAt != null,
           attention: this.#reading.attention[thread.id] ?? 0,
           pendingWork: 0,
           pendingApprovals: thread.hasPendingApprovals,
@@ -512,17 +515,17 @@ export class T3EngineClient implements EngineReadClient {
     if (!thread) throw new Error(`Thread was not found: ${threadId}`)
     // A conversation Send carries the queued item replies as its attachment (§5.4), keyed by item id; the text stays the owner's note.
     const state = this.#conversations.threads[threadId]
-    const queued = !input.attachment && state && Object.keys(state.replies).length > 0 ? state.replies : null
+    const queued = state && Object.keys(state.replies).length > 0 ? state.replies : null
     const messageId = input.messageId ?? randomUUID()
-    const text = input.text.trim() || (queued ? `Replies to ${Object.keys(queued).length} item${Object.keys(queued).length === 1 ? '' : 's'}.` : '')
-    if (!text) throw new Error('Write a message or queue a reply before sending')
-    const attachment = input.attachment ?? (queued ? { name: `replies-${messageId}.md`, text: renderItemReplies(queued) } : undefined)
+    const text = input.text.trim() || (queued ? `Replies to ${Object.keys(queued).length} item${Object.keys(queued).length === 1 ? '' : 's'}.` : input.attachment ? `Attached ${input.attachment.name}.` : '')
+    if (!text) throw new Error('Write a message or queue a reply, or attach a file before sending')
+    const attachmentInputs = [input.attachment, queued ? { name: `replies-${messageId}.md`, text: renderItemReplies(queued) } : undefined].filter((value): value is { name: string; text: string } => value !== undefined)
     if (queued) {
       this.#conversations.threads[threadId] = { ...state!, replies: {}, pending: [...state!.pending, { deliveryId: messageId, itemIds: Object.keys(queued), replies: queued }] }
       await writeConversationsStore(this.#conversationsPath, this.#conversations)
       this.#publish()
     }
-    const attachments = attachment ? [await this.#uploadTextAttachment(attachment)] : []
+    const attachments = await Promise.all(attachmentInputs.map((attachment) => this.#uploadTextAttachment(attachment)))
     const command = turnStartCommand.parse({
       type: 'thread.turn.start', commandId: input.commandId ?? (queued ? `strata-${messageId}` : randomUUID()), threadId, createdAt: new Date(this.#now()).toISOString(),
       message: { messageId, role: 'user', text, attachments },
@@ -611,13 +614,19 @@ export class T3EngineClient implements EngineReadClient {
     return projectId
   }
 
-  async actOnThread(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void> {
+  async actOnThread(threadId: string, action: 'archive' | 'settle' | 'unsettle' | 'delete'): Promise<void> {
     await this.#dispatch(threadActionCommand.parse({ type: `thread.${action}`, commandId: randomUUID(), threadId }))
   }
 
   /** Pin, snooze, and rename are T3's own commands (§5.2); the shell stream reflects them. */
   async updateThread(threadId: string, change: EngineThreadChange): Promise<void> {
     if (!this.#shell?.threads.some((thread) => thread.id === threadId)) throw new Error(`Thread was not found: ${threadId}`)
+    if (change.unread !== undefined) {
+      if (change.unread) this.#reading.lastVisited[threadId] = 0
+      else this.#reading.lastVisited[threadId] = this.#now()
+      await this.#writeReading()
+      this.#publish()
+    }
     if (change.pinned !== undefined) {
       await this.#dispatch(change.pinned
         ? threadPinCommand.parse({ type: 'thread.pin', commandId: randomUUID(), threadId })

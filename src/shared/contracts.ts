@@ -227,6 +227,10 @@ export interface EngineThreadView {
   /** T3's pin and snooze states (§5.2). */
   pinnedAt: string | null
   snoozedUntil: string | null
+  /** Server-owned lifecycle classification; snooze takes precedence over explicit settlement. */
+  lifecycle: 'active' | 'snoozed' | 'settled'
+  /** Archived threads remain in snapshots but never render in the Projects rail. */
+  archived: boolean
   /** Turns finished, items posted, and approvals that arrived while the owner was elsewhere, cleared when the thread opens (§5.2). */
   attention: number
   /** Pending hunks and open items across the thread's open documents (§5.2). */
@@ -239,6 +243,8 @@ export interface EngineThreadChange {
   /** An ISO wake time, or null to unsnooze. */
   snoozedUntil?: string | null
   title?: string
+  /** Strata-local reading state used by the Projects context menu. */
+  unread?: boolean
 }
 
 export interface EngineProjectView {
@@ -660,7 +666,7 @@ export interface StrataApi {
   reconnectEngine(): Promise<void>
   openConversation(threadId: string): Promise<void>
   /** Sends the owner's note plus every queued item reply as one delivery (§5.4); either may be empty, not both. */
-  startConversationTurn(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access'] }): Promise<void>
+  startConversationTurn(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access']; attachment?: { name: string; text: string } }): Promise<void>
   /** Queues a reply to a message-anchored item; the row shows Drafted until the Send carrying it is acknowledged (§5.4). */
   queueItemReply(threadId: string, itemId: string, text: string): Promise<void>
   discardItemReply(threadId: string, itemId: string): Promise<void>
@@ -674,10 +680,8 @@ export interface StrataApi {
   createEngineProject(input: { title: string; workspaceRoot: string }): Promise<string>
   /** Creates the thread, attaches it to the document, and sends the pending comment and drafts as its first turn (§5.7, §5.14). */
   startThreadFromDocument(path: string, input: StartThreadFromDocumentInput): Promise<string>
-  actOnEngineThread(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void>
-  /** Pin, snooze, or rename a thread through T3 (§5.2). */
-  updateEngineThread(threadId: string, change: EngineThreadChange): Promise<void>
-  /** Pin, snooze, or rename a thread through T3 (§5.2). */
+  actOnEngineThread(threadId: string, action: 'archive' | 'settle' | 'unsettle' | 'delete'): Promise<void>
+  /** Pin, snooze, rename, or mark a thread unread (§5.2). */
   updateEngineThread(threadId: string, change: EngineThreadChange): Promise<void>
   /** Parks or unparks a provider instance so Auto and the picker skip it (§5.13); persisted in the ghost store. */
   parkAccount(instanceId: string, parked: boolean): Promise<void>

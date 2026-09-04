@@ -17,6 +17,10 @@ export interface FakeEngineOptions {
   providers?: unknown[]
   /** Titles for the seeded threads `t1` and `t2`, when a test reads better with agent names. */
   titles?: Partial<Record<'t1' | 't2', string>>
+  /** Seeds two projects and active, pinned, settled, and snoozed rows for the Projects parity scenario. */
+  projectsParity?: boolean
+  /** Seeds two completed turns before the running turn for the Conversation parity scenario. */
+  conversationParity?: boolean
 }
 
 const usageAt = '2026-09-03T11:59:00.000Z'
@@ -97,6 +101,7 @@ export interface FakeEngine {
  * only learns of changes the way it would from T3, never by polling.
  */
 export async function startEngine(options: FakeEngineOptions = {}): Promise<FakeEngine> {
+  const liveAt = new Date().toISOString()
   let online = true
   const pairingCodes = new Set(options.pairingCodes ?? ['pair-code-1'])
   const tokenRequests: string[] = []
@@ -112,15 +117,20 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   const createdThreads: CreatedThread[] = []
   const createdProjects: CreatedProject[] = []
   /** Pin, snooze, and rename state per thread, as T3 would project it (§5.2). */
-  const threadMeta = new Map<string, { pinnedAt?: string | null; snoozedUntil?: string | null; title?: string }>()
+  const threadMeta = new Map<string, { pinnedAt?: string | null; snoozedUntil?: string | null; settledOverride?: 'settled' | 'unsettled' | null; archivedAt?: string | null; title?: string }>()
   for (const [id, title] of Object.entries(options.titles ?? {})) if (title) threadMeta.set(id, { title })
+  if (options.projectsParity) {
+    threadMeta.set('t2', { ...threadMeta.get('t2'), pinnedAt: '2026-09-03T08:00:00.000Z' })
+    threadMeta.set('t3', { settledOverride: 'settled' })
+    threadMeta.set('t4', { snoozedUntil: '2099-09-04T13:00:00.000Z', settledOverride: 'settled' })
+  }
   /** Assistant messages posted by tests, per thread, after the seeded transcript. */
   const posted = new Map<string, Array<Record<string, unknown>>>()
   let postedCount = 0
   const postedMessages = (threadId: string) => posted.get(threadId) ?? []
-  const withMeta = <T extends { id: string; title: string }>(thread: T): T & { pinnedAt: string | null; snoozedUntil: string | null } => {
+  const withMeta = <T extends { id: string; title: string }>(thread: T): T & { pinnedAt: string | null; snoozedUntil: string | null; settledOverride: 'settled' | 'unsettled' | null; archivedAt: string | null } => {
     const meta = threadMeta.get(thread.id)
-    return { ...thread, title: meta?.title ?? thread.title, pinnedAt: meta?.pinnedAt ?? null, snoozedUntil: meta?.snoozedUntil ?? null }
+    return { ...thread, title: meta?.title ?? thread.title, pinnedAt: meta?.pinnedAt ?? null, snoozedUntil: meta?.snoozedUntil ?? null, settledOverride: meta?.settledOverride ?? null, archivedAt: meta?.archivedAt ?? null }
   }
   let workspaceRoot = options.workspaceRoot ?? '/tmp/cockpit'
   let providers = options.providers ?? DEFAULT_PROVIDERS
@@ -133,12 +143,17 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     snapshotSequence: sequence,
     projects: [
       { id: 'p1', title: 'Cockpit project', workspaceRoot, defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at },
+      ...(options.projectsParity ? [{ id: 'p2', title: 'Second project', workspaceRoot: '/tmp/second', defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at }] : []),
       ...createdProjects.map((project) => ({ id: project.id, title: project.title, workspaceRoot: project.workspaceRoot, defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at })),
     ],
     threads: ([
       ...createdThreads.map(shellThread),
-      { id: 't1', projectId: 'p1', title: 'Live engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: { turnId: 'turn-1', state: status === 'running' ? 'running' : 'interrupted', requestedAt: at, startedAt: at, completedAt: null, assistantMessageId: 'm1' }, createdAt: at, updatedAt: at, session: { threadId: 't1', status, providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: approvalOpen, hasPendingUserInput: inputOpen, hasActionableProposedPlan: false },
+      { id: 't1', projectId: 'p1', title: 'Live engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: { turnId: 'turn-1', state: status === 'running' ? 'running' : 'interrupted', requestedAt: options.conversationParity ? liveAt : at, startedAt: options.conversationParity ? liveAt : at, completedAt: null, assistantMessageId: 'm1' }, createdAt: at, updatedAt: at, session: { threadId: 't1', status, providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: approvalOpen, hasPendingUserInput: inputOpen, hasActionableProposedPlan: false },
       { id: 't2', projectId: 'p1', title: 'Second engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: null, createdAt: at, updatedAt: at, session: { threadId: 't2', status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false },
+      ...(options.projectsParity ? [
+        { id: 't3', projectId: 'p1', title: 'Settled engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: null, createdAt: at, updatedAt: '2026-09-02T12:00:00.000Z', session: { threadId: 't3', status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false },
+        { id: 't4', projectId: 'p2', title: 'Snoozed engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: null, createdAt: at, updatedAt: '2026-09-01T12:00:00.000Z', session: { threadId: 't4', status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false },
+      ] : []),
     ] as Array<{ id: string; title: string }>).map(withMeta),
     updatedAt: at,
   })
@@ -151,15 +166,31 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     if (created) {
       return { snapshotSequence: sequence, thread: { ...shellThread(created), deletedAt: null, messages: [...sentMessages(created.id, `turn-${created.id}`, true), ...postedMessages(created.id)], activities: [], checkpoints: [] }, page }
     }
-    if (threadId !== 't1' && threadId !== 't2') return null
+    if (!['t1', 't2', 't3', 't4'].includes(threadId)) return null
     const threadTitle = threadMeta.get(threadId)?.title ?? (threadId === 't2' ? 'Second engine thread' : 'Live engine thread')
     const messageId = threadId === 't2' ? 'm2' : 'm1'
-    const activities = [
+    const activities = options.conversationParity && threadId === 't1' ? [
+      { id: 'old-start-1', tone: 'tool', kind: 'tool.started', summary: 'Started command', payload: { itemType: 'command_execution', detail: 'pnpm test', toolCallId: 'call-old-1', status: 'inProgress' }, turnId: 'turn-old-1', createdAt: '2026-09-03T09:00:01.000Z' },
+      { id: 'old-update-1', tone: 'tool', kind: 'tool.updated', summary: 'Running command', payload: { itemType: 'command_execution', detail: 'pnpm test', toolCallId: 'call-old-1', status: 'inProgress' }, turnId: 'turn-old-1', createdAt: '2026-09-03T09:00:02.000Z' },
+      { id: 'old-complete-1', tone: 'tool', kind: 'tool.completed', summary: 'Ran command', payload: { itemType: 'command_execution', detail: 'pnpm test', toolCallId: 'call-old-1', status: 'completed' }, turnId: 'turn-old-1', createdAt: '2026-09-03T09:00:03.000Z' },
+      { id: 'old-start-2', tone: 'tool', kind: 'tool.started', summary: 'Started search', payload: { itemType: 'web_search', detail: 'T3 timeline rules', toolCallId: 'call-old-2', status: 'inProgress' }, turnId: 'turn-old-2', createdAt: '2026-09-03T10:00:01.000Z' },
+      { id: 'old-update-2', tone: 'tool', kind: 'tool.updated', summary: 'Searching', payload: { itemType: 'web_search', detail: 'T3 timeline rules', toolCallId: 'call-old-2', status: 'inProgress' }, turnId: 'turn-old-2', createdAt: '2026-09-03T10:00:02.000Z' },
+      { id: 'old-complete-2', tone: 'tool', kind: 'tool.completed', summary: 'Searched web', payload: { itemType: 'web_search', detail: 'T3 timeline rules', toolCallId: 'call-old-2', status: 'completed' }, turnId: 'turn-old-2', createdAt: '2026-09-03T10:00:03.000Z' },
+      { id: 'live-update', tone: 'tool', kind: 'tool.updated', summary: 'Running build', payload: { itemType: 'command_execution', detail: 'electron-vite build', toolCallId: 'call-live', status: 'inProgress' }, turnId: 'turn-1', createdAt: at },
+    ] : [
       ...(approvalOpen ? [{ id: 'a1', tone: 'approval', kind: 'approval.requested', summary: 'Command approval requested', payload: { requestId: 'approval-1', detail: 'Run the cockpit verification?' }, turnId: 'turn-1', createdAt: at }] : [{ id: 'a2', tone: 'approval', kind: 'approval.resolved', summary: 'Approval resolved', payload: { requestId: 'approval-1' }, turnId: 'turn-1', createdAt: at }]),
       ...(inputOpen ? [{ id: 'u1', tone: 'info', kind: 'user-input.requested', summary: 'User input requested', payload: { requestId: 'input-1', questions: [{ id: 'release', question: 'Which release?', options: [{ label: 'Version one' }] }] }, turnId: 'turn-1', createdAt: at }] : [{ id: 'u2', tone: 'info', kind: 'user-input.resolved', summary: 'User input submitted', payload: { requestId: 'input-1' }, turnId: 'turn-1', createdAt: at }]),
       { id: 'tool-1', tone: 'tool', kind: 'tool.completed', summary: 'Updated cockpit files', payload: {}, turnId: 'turn-1', createdAt: at },
     ]
-    return { snapshotSequence: sequence, thread: { id: threadId, projectId: 'p1', title: threadTitle, modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: threadId === 't1' ? { turnId: 'turn-1', state: status === 'running' ? 'running' : 'interrupted', requestedAt: at, startedAt: at, completedAt: null, assistantMessageId: messageId } : null, createdAt: at, updatedAt: at, session: { threadId, status: threadId === 't1' ? status : 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: threadId === 't1' && status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, deletedAt: null, messages: threadId === 't1' ? [...sentMessages('t1', 'turn-1', false), { id: messageId, role: 'assistant', text: message, attachments: [], turnId: 'turn-1', streaming: status === 'running', createdAt: at, updatedAt: at }, ...postedMessages('t1')] : [...sentMessages('t2', 'turn-1', false), ...postedMessages('t2')], activities: threadId === 't1' ? activities : [], checkpoints: threadId === 't1' ? [{ turnId: 'turn-1', checkpointTurnCount: 1, checkpointRef: 'ref', status: 'ready', files: [{ path: 'notes/one.md', kind: 'created', additions: 4, deletions: 0 }, { path: 'src/two.ts', kind: 'created', additions: 8, deletions: 0 }], assistantMessageId: messageId, completedAt: at }] : [] }, page }
+    const parityMessages = options.conversationParity && threadId === 't1' ? [
+      { id: 'old-user-1', role: 'user', text: 'Inspect the timeline.', attachments: [], turnId: 'turn-old-1', streaming: false, createdAt: '2026-09-03T09:00:00.000Z', updatedAt: '2026-09-03T09:00:00.000Z' },
+      { id: 'old-agent-1', role: 'assistant', text: 'First finished answer stays fully visible in the narrow placement.', attachments: [], turnId: 'turn-old-1', streaming: false, createdAt: '2026-09-03T09:00:04.000Z', updatedAt: '2026-09-03T09:00:04.000Z' },
+      { id: 'old-user-2', role: 'user', text: 'Check the grouping.', attachments: [], turnId: 'turn-old-2', streaming: false, createdAt: '2026-09-03T10:00:00.000Z', updatedAt: '2026-09-03T10:00:00.000Z' },
+      { id: 'old-agent-2', role: 'assistant', text: 'Second finished answer also stays visible.', attachments: [], turnId: 'turn-old-2', streaming: false, createdAt: '2026-09-03T10:00:04.000Z', updatedAt: '2026-09-03T10:00:04.000Z' },
+      { id: 'live-user', role: 'user', text: 'Run the build.', attachments: [], turnId: 'turn-1', streaming: false, createdAt: at, updatedAt: at },
+      { id: messageId, role: 'assistant', text: message, attachments: [], turnId: 'turn-1', streaming: status === 'running', createdAt: at, updatedAt: at },
+    ] : null
+    return { snapshotSequence: sequence, thread: { id: threadId, projectId: threadId === 't4' ? 'p2' : 'p1', title: threadTitle, modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: threadId === 't1' ? { turnId: 'turn-1', state: status === 'running' ? 'running' : 'interrupted', requestedAt: options.conversationParity ? liveAt : at, startedAt: options.conversationParity ? liveAt : at, completedAt: null, assistantMessageId: messageId } : null, createdAt: at, updatedAt: at, session: { threadId, status: threadId === 't1' ? status : 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: threadId === 't1' && status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, deletedAt: null, messages: parityMessages ?? (threadId === 't1' ? [...sentMessages('t1', 'turn-1', false), { id: messageId, role: 'assistant', text: message, attachments: [], turnId: 'turn-1', streaming: status === 'running', createdAt: at, updatedAt: at }, ...postedMessages('t1')] : [...sentMessages(threadId, 'turn-1', false), ...postedMessages(threadId)]), activities: threadId === 't1' ? activities : [], checkpoints: threadId === 't1' ? [{ turnId: 'turn-1', checkpointTurnCount: 1, checkpointRef: 'ref', status: 'ready', files: [{ path: 'notes/one.md', kind: 'created', additions: 4, deletions: 0 }, { path: 'src/two.ts', kind: 'created', additions: 8, deletions: 0 }], assistantMessageId: messageId, completedAt: at }] : [] }, page }
   }
 
   const send = (socket: Socket, frame: unknown) => { if (!socket.destroyed) socket.write(textFrame(JSON.stringify(frame))) }
@@ -235,6 +266,9 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
         if (command.type === 'thread.unpin') threadMeta.set(threadId, { ...meta, pinnedAt: null })
         if (command.type === 'thread.snooze') threadMeta.set(threadId, { ...meta, snoozedUntil: String(command.snoozedUntil) })
         if (command.type === 'thread.unsnooze') threadMeta.set(threadId, { ...meta, snoozedUntil: null })
+        if (command.type === 'thread.settle') threadMeta.set(threadId, { ...meta, settledOverride: 'settled' })
+        if (command.type === 'thread.unsettle') threadMeta.set(threadId, { ...meta, settledOverride: 'unsettled' })
+        if (command.type === 'thread.archive') threadMeta.set(threadId, { ...meta, archivedAt: new Date().toISOString() })
         if (command.type === 'thread.meta.update' && typeof command.title === 'string') threadMeta.set(threadId, { ...meta, title: command.title })
         broadcast()
         response.end(JSON.stringify({ sequence }))

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
 import type { EngineActivityView, EngineThreadView, EngineView, ItemView } from '../../shared/contracts'
+import { deriveWorkEntries, groupWorkRows, type WorkEntry } from '../../core/work-log'
 import { InlineMarkdown } from '../inlineMarkdown'
 
 function activeThread(engine: EngineView): { thread: EngineThreadView; project: string } | null {
@@ -60,7 +61,7 @@ interface ConversationProps {
   passage?: ReactNode
   onReconnect(): void
   onMove(): void
-  onStart(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access'] }): void
+  onStart(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access']; attachment?: { name: string; text: string } }): void
   onStop(threadId: string): void
   onApproval(threadId: string, requestId: string, decision: 'accept' | 'decline'): void
   onUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): void
@@ -73,6 +74,24 @@ interface ConversationProps {
   onActItem?(item: ItemView, action: 'accept' | 'reject' | 'keep' | 'revert', option?: string): void
 }
 
+const workIcons = { terminal: '›_', search: '⌕', wrench: '⌘', hammer: '◆', bot: '◇', tone: '•' } as const
+
+function shouldCollapseUserMessage(text: string): boolean {
+  return text.length > 420 || text.split('\n').length > 7
+}
+
+function WorkEntryRow({ entry }: { entry: WorkEntry }) {
+  const [expanded, setExpanded] = useState(false)
+  return <article className="conversation-work-entry" data-tone={entry.failed ? 'error' : entry.tone} data-icon={entry.icon} data-active={entry.active || undefined}>
+    <button type="button" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+      <span className="conversation-work-icon" aria-hidden="true">{workIcons[entry.icon]}</span>
+      <span className="conversation-work-copy"><strong>{entry.heading}</strong>{entry.preview && <small>{entry.preview}</small>}</span>
+      <span className="conversation-work-chevron" aria-hidden="true">{expanded ? '⌄' : '›'}</span>
+    </button>
+    {expanded && entry.expandedBody && <pre>{entry.expandedBody}</pre>}
+  </article>
+}
+
 function TurnChecklist({ items, onReply, onOpen, onAct, onDismiss }: { items: readonly ItemView[]; onReply?(item: ItemView, text: string): void; onOpen?(item: ItemView): void; onAct?(item: ItemView, action: 'accept' | 'reject' | 'keep' | 'revert', option?: string): void; onDismiss?(item: ItemView): void }) {
   const [replies, setReplies] = useState<Record<string, string>>({})
   const done = items.filter((item) => item.status === 'done').length
@@ -82,8 +101,8 @@ function TurnChecklist({ items, onReply, onOpen, onAct, onDismiss }: { items: re
     {items.map((item) => <div className="turn-item" data-kind={item.kind} data-status={item.status} key={item.id}>
       <button type="button" className="turn-item-open" onClick={() => onOpen?.(item)}><span>{item.status === 'done' ? '✓' : item.status === 'drafted' ? '◌' : '○'}</span><strong>{item.kind}</strong><span>{item.text || item.quote}</span>{item.inferred && <em>inferred</em>}{item.status === 'drafted' && <em>Drafted{item.draftReply ? `: ${item.draftReply}` : ''}</em>}</button>
       <div className="turn-item-actions">
-        {item.kind === 'suggestion' && <><button type="button" onClick={() => onAct?.(item, 'accept')}>Accept</button><button type="button" onClick={() => onAct?.(item, 'reject')}>Reject</button></>}
-        {item.kind === 'edit' && <><button type="button" onClick={() => onAct?.(item, 'keep')}>Keep</button><button type="button" onClick={() => onAct?.(item, 'revert')}>Revert</button></>}
+        {item.kind === 'suggestion' && <><button type="button" aria-label="Conversation item: Accept" onClick={() => onAct?.(item, 'accept')}>Accept</button><button type="button" aria-label="Conversation item: Reject" onClick={() => onAct?.(item, 'reject')}>Reject</button></>}
+        {item.kind === 'edit' && <><button type="button" aria-label="Conversation item: Keep" onClick={() => onAct?.(item, 'keep')}>Keep</button><button type="button" aria-label="Conversation item: Revert" onClick={() => onAct?.(item, 'revert')}>Revert</button></>}
         <input aria-label={`Reply to ${item.kind}`} value={replies[item.id] ?? ''} onChange={(event) => setReplies((value) => ({ ...value, [item.id]: event.target.value }))} placeholder="Reply" />
         <button type="button" disabled={!(replies[item.id] ?? '').trim()} onClick={() => { const text = (replies[item.id] ?? '').trim(); if (text) { onReply?.(item, text); setReplies((value) => ({ ...value, [item.id]: '' })) } }}>Queue reply</button>
         {item.inferred && <button type="button" onClick={() => onDismiss?.(item)}>Dismiss</button>}
@@ -95,8 +114,11 @@ function TurnChecklist({ items, onReply, onOpen, onAct, onDismiss }: { items: re
 export function Conversation({ engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput, items = [], onReplyItem, onQueueReply, onDismissItem, onOpenItem, onActItem }: ConversationProps) {
   const selected = activeThread(engine)
   const [scope, setScope] = useState<'whole' | 'passage'>(passage ? 'passage' : 'whole')
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [expandedWork, setExpandedWork] = useState<Record<string, boolean>>({})
+  const [expandedMessages, setExpandedMessages] = useState<Record<string, boolean>>({})
   const [text, setText] = useState('')
+  const [attachment, setAttachment] = useState<{ name: string; text: string } | null>(null)
+  const attachmentInput = useRef<HTMLInputElement>(null)
   const [model, setModel] = useState('')
   const [effort, setEffort] = useState<string | null>(null)
   const [access, setAccess] = useState<EngineThreadView['access']>('approval-required')
@@ -127,6 +149,12 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
     }
     return ids.map((id) => ({ id, messages: thread.messages.filter((message) => (message.turnId ?? 'thread') === id), activities: thread.activities.filter((activity) => (activity.turnId ?? 'thread') === id) }))
   }, [thread])
+  const workEntries = useMemo(() => deriveWorkEntries(thread?.activities ?? []), [thread?.activities])
+  const workGroups = useMemo(() => groupWorkRows(
+    workEntries,
+    turns.map((turn) => ({ id: turn.id, running: Boolean(thread && (thread.status === 'running' || thread.status === 'starting') && (thread.activeTurnId === null || thread.activeTurnId === turn.id)), finished: thread?.activeTurnId !== turn.id })),
+    thread?.messages ?? [],
+  ), [workEntries, turns, thread?.status, thread?.activeTurnId, thread?.messages])
   const allItems = useMemo(() => thread ? [...items, ...(thread.items ?? [])] : [...items], [items, thread])
   /** Replies queued in the main process for this thread's message items; they ride the next Send. */
   const queuedCount = thread ? (thread.items ?? []).filter((item) => item.draftReply !== undefined).length : 0
@@ -139,27 +167,61 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
   if (!thread || !selected) return <div className="engine-empty">No conversation open.<small>Choose a thread under Projects.</small></div>
   const running = thread.status === 'running' || thread.status === 'starting'
   const send = () => {
-    if (!text.trim() && queuedCount === 0) return
-    onStart(thread.id, { text: text.trim(), model, effort, access })
+    if (!text.trim() && queuedCount === 0 && attachment === null) return
+    onStart(thread.id, { text: text.trim(), model, effort, access, ...(attachment ? { attachment } : {}) })
     setText('')
+    setAttachment(null)
+  }
+  const attach = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setAttachment({ name: file.name, text: await file.text() })
   }
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send() }
   }
   return <section className="conversation-panel" aria-label="Conversation" data-placement={placement}>
     <header>
-      <div className="conversation-title"><strong>{thread.title}</strong><button type="button" onClick={onMove}>{placement === 'side' ? 'Open in center' : 'Move to side'}</button></div>
-      <small>{selected.project} · {thread.model}{thread.effort ? ` · ${thread.effort}` : ''} · {thread.access}</small>
+      <div className="conversation-title"><strong><span>{selected.project}</span><i aria-hidden="true">/</i>{thread.title}</strong><button type="button" onClick={onMove}>{placement === 'side' ? 'Open in center' : 'Move to side'}</button></div>
+      <small>{thread.model}{thread.effort ? ` · ${thread.effort}` : ''} · {thread.access}</small>
       <div className="conversation-status"><span>{thread.status}{running ? ` · ${elapsed(thread.turnStartedAt, now)}` : ''}</span>{running && <button type="button" className="stop-button" onClick={() => onStop(thread.id)}>Stop</button>}</div>
       <div className="conversation-scope" role="tablist" aria-label="Conversation scope"><button type="button" role="tab" aria-selected={scope === 'whole'} onClick={() => setScope('whole')}>Whole thread</button><button type="button" role="tab" aria-selected={scope === 'passage'} disabled={!passage} onClick={() => setScope('passage')}>This passage</button></div>
     </header>
     {scope === 'passage' && passage ? <div className="conversation-passage">{passage}</div> : <div className="conversation-messages">
       {turns.map((turn) => {
-        const folded = collapsed[turn.id] ?? placement === 'side'
-        return <section className="conversation-turn" key={turn.id} data-folded={folded || undefined}>
-          <button type="button" className="conversation-fold" aria-expanded={!folded} onClick={() => setCollapsed((value) => ({ ...value, [turn.id]: !folded }))}>{folded ? 'Expand turn' : 'Collapse turn'}</button>
-          {turn.messages.map((message) => { const prose = message.prose ?? message.text; const blocks = message.blocks ?? []; return <article className={`conversation-message ${message.role}`} key={message.id} data-message-id={message.id} data-streaming={message.streaming || undefined}><small>{message.role === 'assistant' ? 'Agent' : message.role === 'user' ? 'You' : 'System'}{message.role === 'user' && <span className="conversation-chip">{message.attachmentCount > 0 ? `${message.attachmentCount} attached` : 'Message'}</span>}</small><div className={message.role === 'assistant' && folded ? 'conversation-prose-folded' : undefined} data-annotatable={message.role === 'assistant' && !message.streaming || undefined} data-block-ids={blocks.map((block) => block.id).join(' ')}><InlineMarkdown text={prose} /></div></article> })}
-          {turn.activities.filter((activity) => !activity.kind.endsWith('.requested') && !activity.kind.endsWith('.resolved')).map((activity) => <article className="conversation-tool" key={activity.id} data-tone={activity.tone}><strong>{activity.summary}</strong></article>)}
+        const groups = workGroups.filter((candidate) => candidate.turnId === turn.id)
+        const timeline = [
+          ...turn.messages.map((message) => ({ kind: 'message' as const, id: message.id, createdAt: message.createdAt, message })),
+          ...groups.map((group) => ({ kind: 'work' as const, id: group.id, createdAt: group.createdAt, group })),
+        ].sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+        const lastAssistant = turn.messages.findLast((message) => message.role === 'assistant')?.id
+        const changedFiles = thread.documents?.filter((file) => file.turnId === turn.id) ?? []
+        return <section className="conversation-turn" key={turn.id} data-running={groups.some((group) => group.live) || undefined}>
+          {timeline.map((row) => {
+            if (row.kind === 'work') {
+              const group = row.group
+              const expanded = expandedWork[group.id] ?? !group.foldedByDefault
+              if (group.live) return <div className="conversation-live-work" key={group.id}><div className="conversation-working-row"><span className="working-pulse" aria-hidden="true" />Working <time>{elapsed(thread.turnStartedAt, now)}</time></div>{group.entries.map((entry) => <WorkEntryRow entry={entry} key={entry.id} />)}{group.showThinking && <div className="conversation-thinking"><span aria-hidden="true" />Thinking</div>}</div>
+              return <div className="conversation-work-group" key={group.id}>
+                <button type="button" className="conversation-work-toggle" aria-expanded={expanded} onClick={() => setExpandedWork((value) => ({ ...value, [group.id]: !expanded }))}>
+                  <span className="conversation-work-icon" aria-hidden="true">{workIcons[group.summaryIcon]}</span><span>{group.summary}</span>{group.hasFailure && <b aria-label="Failed">!</b>}
+                </button>
+                {expanded && <div className="conversation-work-list">{group.entries.map((entry) => <WorkEntryRow entry={entry} key={entry.id} />)}</div>}
+              </div>
+            }
+            const message = row.message
+            const prose = message.prose ?? message.text
+            const blocks = message.blocks ?? []
+            const longUserMessage = message.role === 'user' && shouldCollapseUserMessage(prose)
+            const messageExpanded = expandedMessages[message.id] ?? false
+            return <article className={`conversation-message ${message.role}`} key={message.id} data-message-id={message.id} data-streaming={message.streaming || undefined}>
+              <small>{message.role === 'assistant' ? 'Agent' : message.role === 'user' ? 'You' : 'System'}{message.role === 'user' && <span className="conversation-chip">{message.attachmentCount > 0 ? `${message.attachmentCount} attached` : 'Message'}</span>}{message.role === 'assistant' && <button type="button" className="conversation-copy" aria-label="Copy assistant message" onClick={() => void navigator.clipboard.writeText(prose)}>Copy</button>}</small>
+              <div className={longUserMessage && !messageExpanded ? 'conversation-user-collapsed' : undefined} data-annotatable={message.role === 'assistant' && !message.streaming || undefined} data-block-ids={blocks.map((block) => block.id).join(' ')}><InlineMarkdown text={prose} /></div>
+              {longUserMessage && <button type="button" className="conversation-message-toggle" aria-expanded={messageExpanded} onClick={() => setExpandedMessages((value) => ({ ...value, [message.id]: !messageExpanded }))}>{messageExpanded ? 'Show less' : 'Show more'}</button>}
+              {message.id === lastAssistant && changedFiles.length > 0 && <section className="conversation-changed-files" aria-label="Changed files"><strong>Changed files</strong>{changedFiles.map((file) => <span key={`${file.turnId}:${file.path}`}>{file.path}<small>+{file.additions} −{file.deletions}</small></span>)}</section>}
+            </article>
+          })}
           {approvals.filter((activity) => (activity.turnId ?? 'thread') === turn.id).map((activity) => { const payload = record(activity.payload); const requestId = String(payload.requestId ?? ''); return <section className="conversation-request" data-kind="approval" key={activity.id}><strong>{typeof payload.detail === 'string' ? payload.detail : activity.summary}</strong><div className="conversation-actions"><button type="button" onClick={() => onApproval(thread.id, requestId, 'accept')}>Approve</button><button type="button" onClick={() => onApproval(thread.id, requestId, 'decline')}>Decline</button></div></section> })}
           {userInputs.filter((activity) => (activity.turnId ?? 'thread') === turn.id).map((activity) => <UserInputCard key={activity.id} activity={activity} onAnswer={(requestId, answers) => onUserInput(thread.id, requestId, answers)} />)}
           <TurnChecklist items={allItems.filter((item) => item.threadId === thread.id && item.turnId === turn.id)} onReply={(item, value) => { if (item.annotationId && onReplyItem) onReplyItem(item, value); else onQueueReply?.(thread.id, item, value) }} onDismiss={(item) => onDismissItem?.(thread.id, item)} {...(onOpenItem ? { onOpen: onOpenItem } : {})} {...(onActItem ? { onAct: onActItem } : {})} />
@@ -169,7 +231,8 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
     <footer className="conversation-composer">
       <div className="conversation-pills"><label>Model<input aria-label="Conversation model" value={model} onChange={(event) => setModel(event.target.value)} /></label><label>Effort<select aria-label="Conversation effort" value={effort ?? ''} onChange={(event) => setEffort(event.target.value || null)}><option value="">Default</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">Extra high</option></select></label><label>Access<select aria-label="Conversation access" value={access} onChange={(event) => setAccess(event.target.value as EngineThreadView['access'])}><option value="approval-required">Ask</option><option value="auto-accept-edits">Auto edits</option><option value="auto">Auto</option><option value="full-access">Full</option></select></label></div>
       {queuedCount > 0 && <small>{queuedCount} answer{queuedCount === 1 ? '' : 's'} queued</small>}
-      <div className="conversation-compose-row"><textarea aria-label="Message conversation" value={text} onChange={(event) => setText(event.target.value)} onKeyDown={keyDown} placeholder="Message this thread" /><button type="button" onClick={send} disabled={!text.trim() && queuedCount === 0}>Send</button></div>
+      {attachment && <div className="conversation-attachment-preview"><span aria-hidden="true">▤</span><strong>{attachment.name}</strong><button type="button" aria-label={`Remove ${attachment.name}`} onClick={() => setAttachment(null)}>×</button></div>}
+      <div className="conversation-compose-row"><input ref={attachmentInput} className="conversation-attachment-input" type="file" onChange={(event) => void attach(event)} /><button type="button" className="conversation-attach" aria-label="Attach file" onClick={() => attachmentInput.current?.click()}>＋</button><textarea aria-label="Message conversation" value={text} onChange={(event) => setText(event.target.value)} onKeyDown={keyDown} placeholder="Message this thread" /><button type="button" onClick={send} disabled={!text.trim() && queuedCount === 0 && attachment === null}>Send</button></div>
     </footer>
   </section>
 }

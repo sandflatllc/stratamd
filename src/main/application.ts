@@ -739,7 +739,7 @@ export class StrataApplication implements StrataApi {
     })
   }
 
-  async actOnEngineThread(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void> {
+  async actOnEngineThread(threadId: string, action: 'archive' | 'settle' | 'unsettle' | 'delete'): Promise<void> {
     if (!this.#engine.actOnThread) throw new Error('This engine cannot change threads')
     await this.#engine.actOnThread(threadId, action)
   }
