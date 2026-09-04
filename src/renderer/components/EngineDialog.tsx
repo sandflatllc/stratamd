@@ -19,13 +19,12 @@ export function engineStateLabel(engine: EngineView): string {
     case 'connecting': return 'Connecting'
     case 'connected': return 'Connected'
     case 'disconnected': return 'Disconnected'
-    case 'mismatch': return 'Connected · version mismatch'
   }
 }
 
 /**
  * Pairing and connection settings (§5.1): a pairing link or a host plus code,
- * the paired server, its version, and Connected or Disconnected. Pairing again
+ * the paired server, and Connected or Disconnected. Pairing again
  * replaces the stored credential.
  */
 export function EngineDialog({ engine, onPair, onReconnect, onClose, onOpenAccounts, children }: EngineDialogProps) {
@@ -58,14 +57,14 @@ export function EngineDialog({ engine, onPair, onReconnect, onClose, onOpenAccou
         <p className="modal-subtitle">The T3 server that runs your agents. Strata connects to exactly one.</p>
         <dl className="engine-facts">
           <div><dt>Server</dt><dd data-testid="engine-server">{engine.server ?? 'None'}</dd></div>
-          <div><dt>Version</dt><dd data-testid="engine-version">{engine.serverVersion ?? (paired ? 'Unknown' : '—')}{engine.state === 'mismatch' ? ` (tested against ${engine.supportedVersion})` : ''}</dd></div>
           <div><dt>Status</dt><dd data-testid="engine-status" data-state={engine.state}>{engineStateLabel(engine)}</dd></div>
+          {engine.credential && <div><dt>Session</dt><dd data-testid="engine-session">{engine.credential.renews ? 'Renews itself' : `Ends ${new Date(engine.credential.expiresAt).toLocaleDateString()}. Pair again with Manage access and it renews itself.`}</dd></div>}
         </dl>
         {engine.problem && engine.state !== 'unpaired' && <p className="engine-problem">{engine.problem}</p>}
-        {(engine.state === 'disconnected' || engine.state === 'mismatch') && <div className="engine-dialog-row"><button type="button" className="quiet-button" onClick={onReconnect}>Reconnect</button></div>}
+        {engine.state === 'disconnected' && <div className="engine-dialog-row"><button type="button" className="quiet-button" onClick={onReconnect}>Reconnect</button></div>}
         <form className="engine-pairing" onSubmit={(event) => { event.preventDefault(); void pair() }}>
           <h3>{paired ? 'Pair again' : 'Pair'}</h3>
-          <p className="engine-hint">{paired ? 'Pairing again replaces the stored credential.' : 'Paste the pairing link from T3, or type the host and the code shown beside it.'}</p>
+          <p className="engine-hint">{paired ? 'Pairing again replaces the stored credential.' : 'Paste the pairing link from T3, or type the host and the code shown beside it. Give the link the Manage access permission so Strata can renew the session itself.'}</p>
           <label>Pairing link<input data-dialog-initial-focus value={link} onChange={(event) => setLink(event.target.value)} placeholder="http://host:3774/pair?token=…" autoComplete="off" spellCheck={false} /></label>
           <div className="engine-or">or</div>
           <label>Host<input value={host} onChange={(event) => setHost(event.target.value)} placeholder="127.0.0.1:3774" autoComplete="off" spellCheck={false} /></label>

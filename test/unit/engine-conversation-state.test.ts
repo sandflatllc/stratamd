@@ -27,7 +27,7 @@ function engine() {
     if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
     if (url.endsWith('/upload/next')) { uploads.push(new TextDecoder().decode(init?.body as Uint8Array)); return new Response('', { status: 200 }) }
     if (url.endsWith('/api/orchestration/dispatch')) { commands.push(JSON.parse(String(init?.body)) as Record<string, unknown>); return Response.json({ sequence: 10 + commands.length }) }
-    if (url.endsWith('/api/orchestration/shell')) return Response.json(shell, { headers: { 'x-t3-version': '0.0.33' } })
+    if (url.endsWith('/api/orchestration/shell')) return Response.json(shell)
     if (url.endsWith('/api/orchestration/threads/t1')) return Response.json({ snapshotSequence: 10, thread: { ...thread, deletedAt: null, messages, activities: [], checkpoints: [] }, page: { beforeCursor: null, hasMore: false, snapshotSequence: 10, threadSequence: 10 } })
     return new Response('{}', { status: 404 })
   }) as typeof globalThis.fetch

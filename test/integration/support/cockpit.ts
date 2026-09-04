@@ -40,7 +40,7 @@ export class FakeEngine implements EngineReadClient {
 
   view(): EngineView {
     return {
-      state: 'connected', server: 'http://engine.test', serverVersion: '0.0.33', supportedVersion: '0.0.33', problem: null, activeThreadId: this.#activeThreadId, accounts: [], terminalDefaults: {}, terminalShimDirectory: null,
+      state: 'connected', server: 'http://engine.test', problem: null, credential: null, activeThreadId: this.#activeThreadId, accounts: [], terminalDefaults: {}, terminalShimDirectory: null,
       projects: [{ id: 'p1', title: 'Project', workspaceRoot: '/work', threads: [...this.#threads.entries()].map(([id, thread]) => ({
         id, projectId: 'p1', title: thread.title, model: 'gpt-5.6', providerInstanceId: 'codex', effort: 'medium', access: 'full-access', status: thread.status,
         updatedAt: new Date(0).toISOString(), unread: false, pendingApprovals: false, pendingUserInput: false, activeTurnId: null, turnStartedAt: null, pinnedAt: null, snoozedUntil: null, attention: 0, pendingWork: 0,

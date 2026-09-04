@@ -69,7 +69,6 @@ export function ProjectsPanel({ engine, onOpenThread, onReconnect, onNewThread, 
   return <div className="projects-panel">
     <button type="button" onClick={onNewThread}>New thread</button>
     {onOpenAccounts && <button type="button" onClick={onOpenAccounts}>Accounts</button>}
-    {engine.state === 'mismatch' && <p className="engine-mismatch">{engine.problem}</p>}
     {engine.projects.map((project) => <section className="project-group" key={project.id}>
       <h3>{project.title}</h3>
       <small>{project.workspaceRoot}</small>

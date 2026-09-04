@@ -54,7 +54,7 @@ export function AccountsDialog({ engine, onPark, onTerminalDefault, onClose, onO
       <section ref={dialogRef} tabIndex={-1} className="modal accounts-dialog" role="dialog" aria-modal="true" aria-labelledby="accounts-title">
         <h2 id="accounts-title">Accounts</h2>
         <p className="modal-subtitle">Provider logins on {engine.server ?? 'the engine'}. Auto picks the least loaded account that can take a thread.</p>
-        {engine.state !== 'connected' && engine.state !== 'mismatch' && <p className="engine-problem">The engine is {engine.state === 'unpaired' ? 'not paired' : engine.state}. Showing what Strata last measured.</p>}
+        {engine.state !== 'connected' && <p className="engine-problem">The engine is {engine.state === 'unpaired' ? 'not paired' : engine.state}. Showing what Strata last measured.</p>}
         {engine.accounts.length === 0 && <div className="empty-subtle">No provider accounts reported yet.</div>}
         {drivers.map((driver) => {
           const accounts = engine.accounts.filter((account) => account.driver === driver)

@@ -192,7 +192,6 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       return
     }
     response.setHeader('content-type', 'application/json')
-    response.setHeader('x-t3-version', '0.0.33')
     if (request.url === '/oauth/token' && request.method === 'POST') {
       const chunks: Buffer[] = []
       request.on('data', (piece) => chunks.push(Buffer.from(piece)))

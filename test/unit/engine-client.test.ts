@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -48,7 +48,7 @@ describe('T3 engine read client', () => {
     const fetch = vi.fn(async (input: string | URL | Request) => String(input).endsWith('/oauth/token')
       ? Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
       : String(input).endsWith('/api/auth/websocket-ticket') ? Response.json({ ticket: 'ticket-1', expiresAt: at })
-      : String(input).endsWith('/api/orchestration/shell') ? Response.json(shell(), { headers: { 'x-t3-version': '0.0.33' } }) : Response.json(detail('Done', [checkpoint]))) as typeof globalThis.fetch
+      : String(input).endsWith('/api/orchestration/shell') ? Response.json(shell()) : Response.json(detail('Done', [checkpoint]))) as typeof globalThis.fetch
     const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
     await client.pair('http://engine.test', 'code')
     await client.openThread('t1')
@@ -76,7 +76,7 @@ describe('T3 engine read client', () => {
         return Response.json({ sequence: 5 })
       }
       if (created) base.threads.push(listed(created as Parameters<typeof listed>[0]))
-      if (url.endsWith('/api/orchestration/shell')) return Response.json(base, { headers: { 'x-t3-version': '0.0.33' } })
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(base)
       const id = url.split('/').pop()!
       return Response.json({ ...detail(''), thread: { ...detail('').thread, ...base.threads.find((thread) => thread.id === id), id } })
     }) as typeof globalThis.fetch
@@ -96,7 +96,7 @@ describe('T3 engine read client', () => {
       requests.push({ url, ...(init ? { init } : {}) })
       if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'session-secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
       if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
-      if (url.endsWith('/api/orchestration/shell')) return Response.json(shell(), { headers: { 'x-t3-version': '0.0.33' } })
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(shell())
       if (url.endsWith('/api/orchestration/threads/t1')) return Response.json(detail())
       return new Response('', { status: 404 })
     }) as typeof globalThis.fetch
@@ -105,7 +105,7 @@ describe('T3 engine read client', () => {
     expect(client.view().state).toBe('unpaired')
 
     await client.pair('http://engine.test:3774/path-is-ignored', 'one-time-code')
-    expect(client.view()).toMatchObject({ state: 'connected', server: 'http://engine.test:3774', serverVersion: '0.0.33' })
+    expect(client.view()).toMatchObject({ state: 'connected', server: 'http://engine.test:3774' })
     expect(client.view().projects[0]?.threads[0]).toMatchObject({ id: 't1', title: 'First thread', model: 'gpt-5.6', effort: 'medium', access: 'full-access' })
     expect(requests[0]?.init?.body?.toString()).toContain('subject_token=one-time-code')
     expect(requests[1]?.init?.headers).toEqual({ authorization: 'Bearer session-secret' })
@@ -129,7 +129,7 @@ describe('T3 engine read client', () => {
       if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
       if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
       if (!online) throw new TypeError('fetch failed')
-      if (url.endsWith('/api/orchestration/shell')) return Response.json(shell(), { headers: { 'x-t3-version': '0.0.33' } })
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(shell())
       return Response.json(detail(transcript))
     }) as typeof globalThis.fetch
     const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
@@ -159,7 +159,7 @@ describe('T3 engine read client', () => {
         commands.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
         return Response.json({ sequence: commands.length })
       }
-      if (url.endsWith('/api/orchestration/shell')) return Response.json(shell('First thread', 'running'), { headers: { 'x-t3-version': '0.0.33' } })
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(shell('First thread', 'running'))
       return Response.json(detail())
     }) as typeof globalThis.fetch
     const client = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), webSocket: server.WebSocket })
@@ -201,7 +201,7 @@ describe('T3 engine read client', () => {
         commands.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
         return Response.json({ sequence: commands.length })
       }
-      if (url.endsWith('/api/orchestration/shell')) return Response.json(shell(), { headers: { 'x-t3-version': '0.0.33' } })
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(shell())
       const snapshot = detail()
       snapshot.thread.messages = acknowledged
         ? [{ id: 'delivery-1', role: 'user', text: 'Delivery delivery-1', attachments: [], turnId: 'turn-1', streaming: false, createdAt: at, updatedAt: at }]
@@ -237,7 +237,7 @@ describe('T3 engine read client', () => {
       if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
       if (url.endsWith('/upload/signed')) { uploads.push({ url, body: new TextDecoder().decode(init?.body as Uint8Array) }); return new Response('', { status: 200 }) }
       if (url.endsWith('/api/orchestration/dispatch')) { commands.push(JSON.parse(String(init?.body)) as Record<string, unknown>); return Response.json({ sequence: 1 }) }
-      if (url.endsWith('/api/orchestration/shell')) return Response.json(shell(), { headers: { 'x-t3-version': '0.0.33' } })
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(shell())
       return Response.json(detail())
     }) as typeof globalThis.fetch
     const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
@@ -246,6 +246,110 @@ describe('T3 engine read client', () => {
     expect(uploads).toEqual([{ url: 'http://engine.test/upload/signed', body: '# Delivery' }])
     expect(server.requests.find((request) => request.tag === 'attachments.createUploadUrl')).toMatchObject({ payload: { type: 'file', name: 'delivery.md', mimeType: 'text/markdown' } })
     expect(commands[0]).toMatchObject({ message: { text: 'Delivery d1.', attachments: [{ type: 'file', id: 'pending-upload', name: 'delivery.md', mimeType: 'text/markdown', sizeBytes: 10 }] } })
+    await client.shutdown()
+  })
+})
+
+describe('session renewal (§5.1)', () => {
+  const day = 24 * 60 * 60 * 1_000
+  const exchange = (accessToken: string, scope: string, expiresIn = 30 * 24 * 60 * 60) => Response.json({ access_token: accessToken, issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: expiresIn, scope })
+
+  async function seeded(expiresInMs: number, scopes: string[]) {
+    const directory = await mkdtemp(join(tmpdir(), 'strata-engine-renew-'))
+    await writeFile(join(directory, 'engine-credential.json'), JSON.stringify({ formatVersion: 1, server: 'http://engine.test', accessToken: 'old-secret', expiresAt: Date.parse(at) + expiresInMs, scopes }), { mode: 0o600 })
+    return directory
+  }
+
+  function engineFetch(options: { issue?: (init?: RequestInit) => Response; onExchange?: (form: URLSearchParams) => void; renewed?: string } = {}) {
+    const requests: Array<{ url: string; init?: RequestInit }> = []
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input)
+      requests.push({ url, ...(init ? { init } : {}) })
+      if (url.endsWith('/api/auth/pairing-token')) return options.issue ? options.issue(init) : Response.json({ id: 'link-1', credential: 'renewal-code', expiresAt: at })
+      if (url.endsWith('/oauth/token')) {
+        const form = new URLSearchParams(String(init?.body))
+        options.onExchange?.(form)
+        return form.get('subject_token') === 'renewal-code' ? exchange(options.renewed ?? 'new-secret', 'orchestration:read orchestration:operate access:write') : new Response('', { status: 401 })
+      }
+      if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(shell())
+      if (url.endsWith('/api/orchestration/threads/t1')) return Response.json(detail())
+      return new Response('', { status: 404 })
+    }) as typeof globalThis.fetch
+    return { fetch, requests }
+  }
+
+  it('renews a session that ends within the week by issuing itself a pairing credential, and every later call uses the new bearer', async () => {
+    const directory = await seeded(2 * day, ['orchestration:read', 'orchestration:operate', 'access:write'])
+    const server = liveServer()
+    let exchanged: URLSearchParams | null = null
+    const { fetch, requests } = engineFetch({ onExchange: (form) => { exchanged = form } })
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), webSocket: server.WebSocket })
+    await client.initialize()
+    expect(client.view()).toMatchObject({ state: 'connected', credential: { renews: true, expiresAt: new Date(Date.parse(at) + 30 * day).toISOString() } })
+
+    const issue = requests.find((request) => request.url.endsWith('/api/auth/pairing-token'))!
+    expect(issue.init?.headers).toMatchObject({ authorization: 'Bearer old-secret' })
+    expect(JSON.parse(String(issue.init?.body))).toEqual({ label: 'StrataMD', scopes: ['orchestration:read', 'orchestration:operate', 'access:write'] })
+    // The exchange names no scope, so the new session keeps every scope the link granted, including the one that allows the next renewal.
+    expect(exchanged!.get('subject_token')).toBe('renewal-code')
+    expect(exchanged!.has('scope')).toBe(false)
+    expect(JSON.parse(await readFile(join(directory, 'engine-credential.json'), 'utf8'))).toMatchObject({ accessToken: 'new-secret', scopes: ['orchestration:read', 'orchestration:operate', 'access:write'] })
+
+    await client.openThread('t1')
+    const threadRead = requests.filter((request) => request.url.endsWith('/api/orchestration/threads/t1')).at(-1)!
+    expect(threadRead.init?.headers).toEqual({ authorization: 'Bearer new-secret' })
+    await client.shutdown()
+  })
+
+  it('leaves a session with more than a week left alone, and never renews without Manage access', async () => {
+    const server = liveServer()
+    const early = await seeded(20 * day, ['orchestration:read', 'orchestration:operate', 'access:write'])
+    const earlyFetch = engineFetch()
+    const earlyClient = new T3EngineClient({ dataDirectory: early, fetch: earlyFetch.fetch, now: () => Date.parse(at), webSocket: server.WebSocket })
+    await earlyClient.initialize()
+    expect(earlyFetch.requests.some((request) => request.url.endsWith('/api/auth/pairing-token'))).toBe(false)
+    expect(earlyClient.view().credential).toEqual({ expiresAt: new Date(Date.parse(at) + 20 * day).toISOString(), renews: true })
+    await earlyClient.shutdown()
+
+    const standard = await seeded(2 * day, ['orchestration:read', 'orchestration:operate'])
+    const standardFetch = engineFetch()
+    const standardClient = new T3EngineClient({ dataDirectory: standard, fetch: standardFetch.fetch, now: () => Date.parse(at), webSocket: server.WebSocket })
+    await standardClient.initialize()
+    expect(standardFetch.requests.some((request) => request.url.endsWith('/api/auth/pairing-token'))).toBe(false)
+    expect(standardClient.view().credential).toEqual({ expiresAt: new Date(Date.parse(at) + 2 * day).toISOString(), renews: false })
+    expect(JSON.parse(await readFile(join(standard, 'engine-credential.json'), 'utf8')).accessToken).toBe('old-secret')
+    await standardClient.shutdown()
+  })
+
+  it('a refused renewal keeps the working session and reports nothing', async () => {
+    const directory = await seeded(2 * day, ['orchestration:read', 'orchestration:operate', 'access:write'])
+    const server = liveServer()
+    const { fetch, requests } = engineFetch({ issue: () => new Response('{"error":"insufficient_scope"}', { status: 403 }) })
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), webSocket: server.WebSocket })
+    await client.initialize()
+    expect(client.view()).toMatchObject({ state: 'connected', problem: null })
+    expect(requests.filter((request) => request.url.endsWith('/oauth/token'))).toHaveLength(0)
+    expect(JSON.parse(await readFile(join(directory, 'engine-credential.json'), 'utf8')).accessToken).toBe('old-secret')
+    await client.openThread('t1')
+    expect(client.view().projects[0]?.threads[0]?.messages[0]?.text).toBe('Engine transcript')
+    await client.shutdown()
+  })
+
+  it('a fresh pairing stores the scopes the link granted so the session can say whether it renews', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'strata-engine-pair-scopes-'))
+    const server = liveServer()
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/oauth/token')) { expect(new URLSearchParams(String(init?.body)).has('scope')).toBe(false); return exchange('secret', 'orchestration:read orchestration:operate access:read access:write') }
+      if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(shell())
+      return Response.json(detail())
+    }) as typeof globalThis.fetch
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), webSocket: server.WebSocket })
+    await client.pair('http://engine.test', 'code')
+    expect(client.view().credential).toEqual({ expiresAt: new Date(Date.parse(at) + 30 * day).toISOString(), renews: true })
+    expect(JSON.parse(await readFile(join(directory, 'engine-credential.json'), 'utf8')).scopes).toEqual(['orchestration:read', 'orchestration:operate', 'access:read', 'access:write'])
     await client.shutdown()
   })
 })

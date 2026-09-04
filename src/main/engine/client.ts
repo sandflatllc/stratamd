@@ -6,6 +6,7 @@ import {
   shellSnapshot,
   threadDetailSnapshot,
   tokenExchangeResult,
+  pairingCredentialResult,
   websocketTicketResult,
   attachmentUploadResult,
   turnStartCommand,
@@ -21,7 +22,6 @@ import {
   approvalRespondCommand,
   userInputRespondCommand,
   dispatchResult,
-  T3_CONTRACT_REVISION,
   T3_HTTP,
   T3_RPC,
   serverConfigSlice,
@@ -48,14 +48,19 @@ import { mapMarkdownBlocks, parseStrataBlock } from '../../core/blocks'
 import { postedMessageItems } from '../../core/items'
 import { inferredMessageItems } from '../../core/inference'
 
-export const T3_SUPPORTED_VERSION = '0.0.33'
-
 interface EngineCredential {
   formatVersion: 1
   server: string
   accessToken: string
   expiresAt: number
+  /** Scopes the session holds; `access:write` lets Strata renew it (§5.1). */
+  scopes: string[]
 }
+
+/** A session is renewed once it has less than this left, so a machine that is off for a few days still comes back paired. */
+const RENEWAL_WINDOW_MS = 7 * 24 * 60 * 60 * 1_000
+const RENEWAL_CHECK_MS = 6 * 60 * 60 * 1_000
+const RENEWAL_SCOPE = 'access:write'
 
 interface EngineReadingState {
   formatVersion: 1
@@ -119,9 +124,8 @@ export interface EngineReadClient {
 const EMPTY_ENGINE: EngineView = {
   state: 'unpaired',
   server: null,
-  serverVersion: null,
-  supportedVersion: T3_SUPPORTED_VERSION,
   problem: null,
+  credential: null,
   projects: [],
   activeThreadId: null,
   accounts: [],
@@ -206,7 +210,6 @@ export class T3EngineClient implements EngineReadClient {
   #watched = new Set<string>()
   #state: EngineView['state'] = 'unpaired'
   #problem: string | null = null
-  #serverVersion: string | null = null
   #running = false
   #refreshing: Promise<void> | null = null
   #pendingCommands: Array<{ key: string; command: unknown; messageId?: string }> = []
@@ -217,6 +220,7 @@ export class T3EngineClient implements EngineReadClient {
   #socket: EngineSocket | null = null
   #shellStream: EngineStream | null = null
   #shellSequence = 0
+  #renewalTimer: ReturnType<typeof setTimeout> | null = null
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null
   #reconnectAttempt = 0
   #publishTimer: ReturnType<typeof setTimeout> | null = null
@@ -259,6 +263,8 @@ export class T3EngineClient implements EngineReadClient {
   async shutdown(): Promise<void> {
     this.#running = false
     this.#clearReconnect()
+    if (this.#renewalTimer) clearTimeout(this.#renewalTimer)
+    this.#renewalTimer = null
     if (this.#publishTimer) clearTimeout(this.#publishTimer)
     this.#publishTimer = null
     if (this.#configTimer) clearTimeout(this.#configTimer)
@@ -337,9 +343,8 @@ export class T3EngineClient implements EngineReadClient {
     return {
       state: this.#state,
       server: this.#credential?.server ?? null,
-      serverVersion: this.#serverVersion,
-      supportedVersion: T3_SUPPORTED_VERSION,
       problem: this.#problem,
+      credential: this.#credential ? { expiresAt: new Date(this.#credential.expiresAt).toISOString(), renews: this.#credential.scopes.includes(RENEWAL_SCOPE) } : null,
       projects,
       activeThreadId: this.#reading.activeThreadId,
       accounts: this.#accountViews(),
@@ -396,7 +401,6 @@ export class T3EngineClient implements EngineReadClient {
       subject_token: pairingCode,
       subject_token_type: 'urn:t3:params:oauth:token-type:environment-bootstrap',
       requested_token_type: 'urn:ietf:params:oauth:token-type:access_token',
-      scope: 'orchestration:read orchestration:operate',
       client_label: 'StrataMD',
       client_device_type: 'desktop',
       client_os: assertSupportedPlatform(),
@@ -412,15 +416,7 @@ export class T3EngineClient implements EngineReadClient {
       this.#publish()
       throw new Error(this.#problem)
     }
-    const token = tokenExchangeResult.parse(await response.json())
-    this.#credential = {
-      formatVersion: 1,
-      server: origin,
-      accessToken: token.access_token,
-      expiresAt: this.#now() + token.expires_in * 1_000,
-    }
-    await atomicWriteFile(this.#credentialPath, `${JSON.stringify(this.#credential, null, 2)}\n`, { mode: PRIVATE_FILE_MODE })
-    await chmod(this.#credentialPath, PRIVATE_FILE_MODE)
+    await this.#writeCredential(origin, await response.json())
     this.#running = true
     await this.reconnect()
   }
@@ -446,9 +442,11 @@ export class T3EngineClient implements EngineReadClient {
       this.#publish()
       await this.#refresh()
       if (!this.#reachable()) { this.#scheduleReconnect(); return }
+      await this.#renewIfDue()
       try {
         await this.#subscribe()
         this.#reconnectAttempt = 0
+        this.#scheduleRenewal()
         // Accounts (§5.13) read over the same socket once it is up; a failure keeps the last measurement.
         await this.#refreshConfig()
         this.#publish()
@@ -665,7 +663,6 @@ export class T3EngineClient implements EngineReadClient {
     this.#refreshing = (async () => {
       try {
         const response = await this.#request(T3_HTTP.shell)
-        this.#serverVersion = response.headers.get('x-t3-version') ?? response.headers.get('server-version')
         this.#shell = shellSnapshot.parse(await response.json())
         this.#shellSequence = this.#shell.snapshotSequence
         const active = this.#reading.activeThreadId
@@ -675,10 +672,8 @@ export class T3EngineClient implements EngineReadClient {
           await this.#writeReading()
         }
         for (const id of this.#followedThreadIds()) await this.#refreshThread(id)
-        this.#state = this.#serverVersion && this.#serverVersion !== T3_SUPPORTED_VERSION ? 'mismatch' : 'connected'
-        this.#problem = this.#state === 'mismatch'
-          ? `Server ${this.#serverVersion} is outside the tested ${T3_SUPPORTED_VERSION} contract (${T3_CONTRACT_REVISION.slice(0, 8)}).`
-          : null
+        this.#state = 'connected'
+        this.#problem = null
       } catch (error) {
         this.#state = 'disconnected'
         this.#problem = error instanceof Error ? error.message : 'The engine is unreachable'
@@ -841,7 +836,7 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   #reachable(): boolean {
-    return this.#state === 'connected' || this.#state === 'mismatch'
+    return this.#state === 'connected'
   }
 
   #onSocketClosed(socket: EngineSocket, reason: string): void {
@@ -1071,11 +1066,76 @@ export class T3EngineClient implements EngineReadClient {
     for (const listener of this.#listeners) listener(view)
   }
 
+  async #writeCredential(server: string, exchange: unknown): Promise<void> {
+    const token = tokenExchangeResult.parse(exchange)
+    this.#credential = {
+      formatVersion: 1,
+      server,
+      accessToken: token.access_token,
+      expiresAt: this.#now() + token.expires_in * 1_000,
+      scopes: token.scope.split(' ').filter(Boolean),
+    }
+    await atomicWriteFile(this.#credentialPath, `${JSON.stringify(this.#credential, null, 2)}\n`, { mode: PRIVATE_FILE_MODE })
+    await chmod(this.#credentialPath, PRIVATE_FILE_MODE)
+  }
+
+  /**
+   * Session renewal (§5.1). T3 sessions last a fixed term with no refresh grant,
+   * so a client that holds `access:write` issues itself a one-time pairing
+   * credential and exchanges it, exactly as the owner's link was exchanged.
+   * A failure changes nothing: the current session keeps working and the next
+   * check tries again. Without `access:write` the dialog says when to pair again.
+   */
+  async #renewIfDue(): Promise<void> {
+    const credential = this.#credential
+    if (!credential || !credential.scopes.includes(RENEWAL_SCOPE) || credential.expiresAt - this.#now() > RENEWAL_WINDOW_MS) return
+    try {
+      const issued = await this.#fetch(`${credential.server}${T3_HTTP.pairingToken}`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${credential.accessToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ label: 'StrataMD', scopes: credential.scopes }),
+        signal: AbortSignal.timeout(3_000),
+      })
+      if (!issued.ok) return
+      const pairing = pairingCredentialResult.parse(await issued.json())
+      const body = new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
+        subject_token: pairing.credential,
+        subject_token_type: 'urn:t3:params:oauth:token-type:environment-bootstrap',
+        requested_token_type: 'urn:ietf:params:oauth:token-type:access_token',
+        client_label: 'StrataMD',
+        client_device_type: 'desktop',
+        client_os: assertSupportedPlatform(),
+      })
+      const response = await this.#fetch(`${credential.server}${T3_HTTP.token}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body,
+        signal: AbortSignal.timeout(3_000),
+      })
+      if (!response.ok) return
+      await this.#writeCredential(credential.server, await response.json())
+      this.#publish()
+    } catch {
+      // The current session is still valid; the next check retries.
+    }
+  }
+
+  #scheduleRenewal(): void {
+    if (this.#renewalTimer) clearTimeout(this.#renewalTimer)
+    if (!this.#running) return
+    this.#renewalTimer = setTimeout(() => {
+      this.#renewalTimer = null
+      void this.#renewIfDue().finally(() => this.#scheduleRenewal())
+    }, RENEWAL_CHECK_MS)
+    this.#renewalTimer.unref?.()
+  }
+
   async #readCredential(): Promise<EngineCredential | null> {
     try {
       const value = JSON.parse(await readFile(this.#credentialPath, 'utf8')) as Partial<EngineCredential>
       if (value.formatVersion !== 1 || typeof value.server !== 'string' || typeof value.accessToken !== 'string' || typeof value.expiresAt !== 'number') return null
-      return { formatVersion: 1, server: cleanServer(value.server), accessToken: value.accessToken, expiresAt: value.expiresAt }
+      return { formatVersion: 1, server: cleanServer(value.server), accessToken: value.accessToken, expiresAt: value.expiresAt, scopes: Array.isArray(value.scopes) ? value.scopes.filter((scope): scope is string => typeof scope === 'string') : [] }
     } catch {
       return null
     }

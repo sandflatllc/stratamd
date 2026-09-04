@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  T3_CONTRACT_REVISION, T3_HTTP, T3_RPC, dispatchResult, messageSentEvent,
+  T3_HTTP, T3_RPC, dispatchResult, messageSentEvent,
   providerUsage, shellSnapshot, subscribeThreadInput, turnDiffCompletedEvent, turnStartCommand,
 } from '../../src/main/engine/t3-contract'
 
@@ -8,8 +8,7 @@ const now = '2026-09-03T20:00:00.000Z'
 const eventBase = { sequence: 4, eventId: 'event-4', aggregateKind: 'thread', aggregateId: 'thread-1', occurredAt: now, commandId: 'command-1', causationEventId: null, correlationId: 'command-1', metadata: {} }
 
 describe('vendored T3 cockpit contract', () => {
-  it('pins the checked engine and its HTTP and RPC paths', () => {
-    expect(T3_CONTRACT_REVISION).toMatch(/^[0-9a-f]{40}$/u)
+  it('names the HTTP and RPC paths', () => {
     expect(T3_HTTP.thread('thread:a/b')).toBe('/api/orchestration/threads/thread%3Aa%2Fb')
     expect(T3_HTTP.dispatch).toBe('/api/orchestration/dispatch')
     expect(T3_RPC.subscribeThread).toBe('orchestration.subscribeThread')

@@ -106,7 +106,7 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
       <div className="topbar-spacer" />
       {engine && onOpenEngine && (
         <button type="button" className="text-action engine-status" data-state={engine.state} aria-label="Engine status" title={engine.server ?? 'No engine paired'} onClick={onOpenEngine}>
-          <i className={`state-dot state-${engine.state === 'connected' || engine.state === 'mismatch' ? 'ready' : engine.state === 'connecting' ? 'starting' : 'disconnected'}`} aria-hidden="true" />
+          <i className={`state-dot state-${engine.state === 'connected' ? 'ready' : engine.state === 'connecting' ? 'starting' : 'disconnected'}`} aria-hidden="true" />
           {engine.state === 'unpaired' ? 'Pair engine' : engineStateLabel(engine)}
         </button>
       )}

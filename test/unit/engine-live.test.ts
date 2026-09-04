@@ -33,7 +33,7 @@ function engineFetch() {
     const url = String(input)
     if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
     if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
-    if (url.endsWith('/api/orchestration/shell')) { snapshots += 1; return Response.json(shell, { headers: { 'x-t3-version': '0.0.33' } }) }
+    if (url.endsWith('/api/orchestration/shell')) { snapshots += 1; return Response.json(shell) }
     if (url.endsWith('/api/orchestration/threads/t1')) return Response.json(detail)
     return new Response('{}', { status: 404 })
   }) as typeof globalThis.fetch
@@ -50,7 +50,7 @@ describe('live engine subscriptions (§5.1)', () => {
       const url = String(input)
       if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
       if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
-      if (url.endsWith('/api/orchestration/shell')) return Response.json(shellWithTwo, { headers: { 'x-t3-version': '0.0.33' } })
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(shellWithTwo)
       if (url.endsWith('/api/orchestration/threads/t1')) return Response.json(detail)
       if (url.endsWith('/api/orchestration/threads/t2')) return Response.json({ ...detail, thread: { ...detail.thread, ...second, messages: [] } })
       return new Response('{}', { status: 404 })

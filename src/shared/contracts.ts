@@ -180,7 +180,7 @@ export interface DocumentTabView {
 export type NavigationTab = 'files' | 'contents'
 export type ReviewTab = 'changes' | 'annotations'
 
-export type EngineConnectionState = 'unpaired' | 'connecting' | 'connected' | 'disconnected' | 'mismatch'
+export type EngineConnectionState = 'unpaired' | 'connecting' | 'connected' | 'disconnected'
 
 export interface EngineMessageView {
   id: string
@@ -285,9 +285,9 @@ export interface AccountView {
 export interface EngineView {
   state: EngineConnectionState
   server: string | null
-  serverVersion: string | null
-  supportedVersion: string
   problem: string | null
+  /** The paired session: when it ends, and whether Strata renews it itself (needs the Manage access permission on the pairing link). */
+  credential: { expiresAt: string; renews: boolean } | null
   projects: EngineProjectView[]
   activeThreadId: string | null
   /** Provider accounts on the engine, with Strata's persisted measurements and parking (§5.13). */

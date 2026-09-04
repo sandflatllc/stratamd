@@ -22,7 +22,7 @@ Verification keys:
 | 6.7 | Delivery-as-turn, file attachment, persisted command id, message-sent acknowledgment, quick send, and first-delivery selection. | `U` `test/unit/engine-client.test.ts`, `test/unit/engine-live.test.ts` (every attached thread streams); `I` `test/integration/cockpit-delivery.test.ts`, `test/integration/session-serialization.test.ts`, `test/integration/main-application.test.ts`; `E` `test/e2e/prd-6.12.spec.ts` 1 and 12, `test/e2e/send-composer.spec.ts` |
 | 6.8, 7 | File-only tool plus the one-page strata-block agent contract. | `U` `test/unit/cli.test.ts` byte comparison; packaged CLI test |
 | 6.9 | Projects and Conversation, center tabs, Items and Documents, Attached, picker, notifications, shared disconnected state, Accounts modal. | `E` `test/e2e/cockpit-engine.spec.ts` (pairing, conversation, projects rows and notifications, accounts), `test/e2e/review-actions.spec.ts`, `test/e2e/decision-annotations.spec.ts`, `test/e2e/shell-round2.spec.ts`; `U` `test/unit/engine-accounts.test.ts`, `test/unit/engine-attention.test.ts`, `test/unit/engine-notifications.test.ts` |
-| 6.11 | One paired T3 server over HTTP/WebSocket with an owner-only credential and no other app network. | `U` engine-client credential/mismatch/reconnect tests; renderer network-denial E2E |
+| 6.11 | One paired T3 server over HTTP/WebSocket with an owner-only credential and no other app network. | `U` engine-client credential/reconnect tests and `test/unit/engine-client.test.ts` "session renewal (§5.1)" (renews in the last week with `access:write`, never without it, a refusal changes nothing); renderer network-denial E2E |
 | 13 | Cockpit rationale and rejected alternatives. | PRD review plus removal audit |
 
 ## §6.12 scenarios

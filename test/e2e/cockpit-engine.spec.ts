@@ -20,7 +20,6 @@ test('1 pairing: host plus code pairs through the dialog, shows the server, and 
     await dialog.getByRole('button', { name: 'Pair', exact: true }).click()
     await expect(dialog.getByTestId('engine-status')).toHaveText('Connected')
     await expect(dialog.getByTestId('engine-server')).toHaveText(engine.origin)
-    await expect(dialog.getByTestId('engine-version')).toHaveText('0.0.33')
     await expect(JSON.parse(await readFile(credentialPath(scenario), 'utf8'))).toMatchObject({ server: engine.origin, accessToken: 'session-for-first-code' })
 
     await dialog.getByLabel('Pairing link').fill(`${engine.origin}/pair?token=second-code`)

@@ -37,7 +37,7 @@ function fetchFor(shellSnapshot: ReturnType<typeof shell>, commands: Array<Recor
       if (command.type === 'thread.create') server?.push('orchestration.subscribeShell', [{ kind: 'thread-upserted', sequence: 100 + commands.length, thread: { ...shellSnapshot.threads[0]!, id: String(command.threadId), title: String(command.title), modelSelection: command.modelSelection } }])
       return Response.json({ sequence: commands.length })
     }
-    if (url.endsWith('/api/orchestration/shell')) return Response.json({ ...shellSnapshot, threads }, { headers: { 'x-t3-version': '0.0.33' } })
+    if (url.endsWith('/api/orchestration/shell')) return Response.json({ ...shellSnapshot, threads })
     const thread = threads.find((candidate) => url.endsWith(`/api/orchestration/threads/${candidate.id}`))
     if (thread) return Response.json({ snapshotSequence: 1, thread: { ...thread, deletedAt: null, messages: [], activities: [], checkpoints: [] }, page: { beforeCursor: null, hasMore: false, snapshotSequence: 1, threadSequence: 1 } })
     return new Response('{}', { status: 404 })

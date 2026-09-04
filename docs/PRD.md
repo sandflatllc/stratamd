@@ -247,7 +247,7 @@ StrataMD runs on the owner's Linux workstation or a Mac on macOS 13 or newer. It
 
 ### 6.11 State model
 
-Per document: disk, shadow, ghost, pending hunks, segments, save history, annotation log, and drafts. Per attachment: thread id, baseline, delivery queue, cursor, block maps, and command receipts. Per engine: paired credential, server version, shell snapshot/stream cursor, thread snapshots/stream cursors, and last-visited times.
+Per document: disk, shadow, ghost, pending hunks, segments, save history, annotation log, and drafts. Per attachment: thread id, baseline, delivery queue, cursor, block maps, and command receipts. Per engine: paired credential, shell snapshot/stream cursor, thread snapshots/stream cursors, and last-visited times.
 
 | Event | Document effect | Attachment / engine effect |
 |---|---|---|
@@ -384,7 +384,7 @@ Config, in `$XDG_CONFIG_HOME/stratamd` (fallback `~/.config/stratamd`) on both p
 - **Main process** owns file I/O, the shadow, ghost storage, engine HTTP/WebSocket traffic, explorer scanning, diffing, file watching, single-instance routing, and config.
 - **Renderer** owns the editor, projects, conversations, item/review overlays, rails, tabs, picker, and composer. It is context-isolated and sandboxed behind validated IPC.
 - **Editor** is built directly on the ProseMirror toolkit (document model, transactions, selection, undo, IME, DOM reconciliation, position mapping). The markdown schema, the source-span-tracking parser, and the byte-preserving serializer are StrataMD's own and must satisfy §6.1. No prebuilt markdown editor layer.
-- **Engine client:** `src/main/engine/` alone owns the vendored T3 schemas, paired credential, version check, snapshots, stream cursors, reconnect, and retry-safe dispatch.
+- **Engine client:** `src/main/engine/` alone owns the vendored T3 schemas, paired credential, snapshots, stream cursors, reconnect, and retry-safe dispatch.
 - **Diff:** Myers line diff between snapshots. Block-level byte preservation on serialize keeps diffs minimal.
 
 ### 10.1 Stack
@@ -405,7 +405,7 @@ Config, in `$XDG_CONFIG_HOME/stratamd` (fallback `~/.config/stratamd`) on both p
 ## 11. Environment and security
 
 - Targets are the owner's Linux workstation and Macs on macOS 13 or newer, on local filesystems.
-- Strata talks to exactly one paired T3 server over HTTP and WebSocket. The paired session credential has owner-only permissions in the ghost store, never `settings.json`.
+- Strata talks to exactly one paired T3 server over HTTP and WebSocket. The paired session credential has owner-only permissions in the ghost store, never `settings.json`. T3 sessions end after a fixed term; when the pairing link carried Manage access, Strata renews its session in the last week by issuing itself a one-time pairing credential and exchanging it, so the owner pairs once per machine. Without that permission the engine dialog says when to pair again.
 - Strata makes no other network calls. The renderer never fetches remote document resources.
 - The renderer stays context-isolated and sandboxed; IPC arguments and sender are validated; navigation and new windows are denied except safe OS-opened external links.
 - Agent output is untrusted data. Strata blocks are strict JSON, validated entry by entry, and a failed or stale anchor never lands elsewhere.

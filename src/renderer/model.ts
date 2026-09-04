@@ -124,7 +124,7 @@ export const EMPTY_VIEW: AppView = {
   tabs: [],
   activeDocument: null,
   explorer: [],
-  engine: { state: 'unpaired', server: null, serverVersion: null, supportedVersion: '0.0.33', problem: null, projects: [], activeThreadId: null, accounts: [], terminalDefaults: {}, terminalShimDirectory: null },
+  engine: { state: 'unpaired', server: null, problem: null, credential: null, projects: [], activeThreadId: null, accounts: [], terminalDefaults: {}, terminalShimDirectory: null },
   settings: {
     animatedBackground: true,
     panelSizes: {

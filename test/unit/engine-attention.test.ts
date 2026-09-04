@@ -25,7 +25,7 @@ function engineFetch(commands: Array<Record<string, unknown>>) {
     if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
     if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
     if (url.endsWith('/api/orchestration/dispatch')) { commands.push(JSON.parse(String(init?.body)) as Record<string, unknown>); return Response.json({ sequence: 11 + commands.length }) }
-    if (url.endsWith('/api/orchestration/shell')) return Response.json(shell, { headers: { 'x-t3-version': '0.0.33' } })
+    if (url.endsWith('/api/orchestration/shell')) return Response.json(shell)
     const id = url.split('/').pop()!
     return shell.threads.some((thread) => thread.id === id) ? Response.json(detail(id)) : new Response('{}', { status: 404 })
   }) as typeof globalThis.fetch

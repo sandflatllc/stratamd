@@ -1,8 +1,5 @@
 import { z } from 'zod'
 
-/** T3 contract revision verified for cockpit v1. See docs/internals/t3-engine-contract.md. */
-export const T3_CONTRACT_REVISION = 'fe96f7f2b7cb07da4fc7585f5869d58d2e592fd3'
-
 export const T3_HTTP = {
   pairingToken: '/api/auth/pairing-token',
   token: '/oauth/token',
