@@ -267,7 +267,7 @@ Per document: disk, shadow, ghost, pending hunks, segments, save history, annota
 
 ### 6.12 Acceptance scenarios
 
-Each must hold before the product is done.
+Each must hold before the product is done. `docs/PRD_CONFORMANCE.md` §6.12 names the test that proves each one, or records it as open with the reason; as of 2026-09-04, 11 and the server half of 13 are open because they need unchanged T3 mobile and a controlled restart of the owner's server.
 
 1. With the engine disconnected, every document feature works and every engine surface shows the same disconnected line. Reconnecting restores conversation without losing drafts or scroll.
 2. Selecting a thread in Projects shows its transcript in Conversation within one second, with live trace and working Stop.

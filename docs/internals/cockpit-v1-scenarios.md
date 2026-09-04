@@ -1,6 +1,6 @@
 # Cockpit v1 external scenario record
 
-Recorded 2026-09-03 on the owner's workstation. These scenarios deliberately distinguish observed evidence from evidence that still needs an unchanged external client or a controlled server restart.
+Recorded 2026-09-03 on the owner's workstation, cross-checked 2026-09-04 after the test restoration. The full map from every §6.12 scenario to its test is `docs/PRD_CONFORMANCE.md` §6.12. These scenarios deliberately distinguish observed evidence from evidence that still needs an unchanged external client or a controlled server restart.
 
 ## Scenario 11 — mobile and the published server
 
@@ -22,7 +22,9 @@ Result: **automated evidence recorded**.
 - The vendored client tests prove stable thread identity, interrupt dispatch, persisted stream state, and command-id deduplication against recorded server behavior.
 - A real localhost continuation/Stop/restart run requires a paired credential and intentionally restarting the owner's active T3 process. Neither condition was available to this run.
 
-Result: **open external evidence**. With the owner-controlled restart window, continue an existing thread, measure Stop acknowledgment under two seconds, restart the published server, and confirm one resubscribed copy of the same thread.
+- Strata's half is automated: `test/unit/engine-live.test.ts` proves that a dropped socket shows Disconnected and that reconnect resubscribes once with no duplicate messages, and that every thread attached to an open document streams alongside the active one; `test/unit/engine-client.test.ts` proves one disconnected state and recovery of the same active conversation; `test/e2e/cockpit-engine.spec.ts` "1 and 2 read side" proves it against a real WebSocket server.
+
+Result: **open external evidence** for the server half. With the owner-controlled restart window, continue an existing thread, measure Stop acknowledgment under two seconds, restart the published server, and confirm one resubscribed copy of the same thread.
 
 ## Fork removal
 
