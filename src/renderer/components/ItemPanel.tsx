@@ -6,35 +6,32 @@ import { useClock } from '../useClock'
 import { claimEscape, isEscapeClaimed } from '../escape'
 import { hasPrimaryModifier } from '../../shared/primary-modifier'
 
-// The one thread surface (PRD §6.9): the Thread tab of the left window, filled
-// by rail rows and in-editor highlight clicks alike. The left window widens to
-// the thread width while the tab is selected; the span it belongs to is
-// centered and highlighted in the editor, so the thread needs no position.
+// Anchored item detail shown inside Conversation when a document item is active.
 
-interface ThreadPanelProps {
+interface ItemPanelProps {
   annotation: AnnotationView
-  /** Keys the reply draft, so a draft survives closing and reopening the thread while the app runs. */
+  /** Keys the reply draft, so a draft survives closing and reopening the item while the app runs. */
   documentPath: string
   onReply(text: string): void
   onResolve(): void
   onAnswer(answer: { option: string | null; other?: string }): void
   onReopen(): void
-  /** Accept or reject an open suggestion from the thread (PRD §6.5). */
+  /** Accept or reject an open suggestion item (PRD §6.5). */
   onAccept(): void
   onReject(): void
   onClose(): void
-  /** What opened the thread (a rail row, a key), captured before the jump moved focus into the editor (§5.11). */
+  /** What opened the item, captured before the jump moved focus into the editor. */
   opener?: RefObject<HTMLElement | null>
 }
 
-/** Unsent replies per thread, kept while the app runs (PRD §6.9 drafts). */
+/** Unsent replies per item, kept while the app runs (PRD §6.9 drafts). */
 const replyDrafts = new Map<string, string>()
 
 export function replyDraftKey(documentPath: string, annotationId: string): string {
   return `${documentPath}\n${annotationId}`
 }
 
-/** Drop reply drafts for documents that are no longer open (§5.16). */
+/** Drop item reply drafts for documents that are no longer open (§5.16). */
 export function forgetReplyDrafts(openPaths: ReadonlySet<string>): void {
   for (const key of replyDrafts.keys()) if (!openPaths.has(key.split('\n')[0]!)) replyDrafts.delete(key)
 }
@@ -47,13 +44,13 @@ function authorColor(author: 'user' | AgentIdentity): string {
   return author === 'user' ? USER_ANNOTATION_COLOR : AGENT_COLORS[author.color]
 }
 
-function ThreadTime({ time, now }: { time: number | undefined; now: number }) {
+function ItemTime({ time, now }: { time: number | undefined; now: number }) {
   const relative = threadTime(time, now)
   if (!relative) return null
   return <time className="thread-time" dateTime={new Date(time!).toISOString()} title={absoluteTime(time!)}>{relative}</time>
 }
 
-export function ThreadPanel({ annotation, documentPath, onReply, onResolve, onAnswer, onReopen, onAccept, onReject, onClose, opener }: ThreadPanelProps) {
+export function ItemPanel({ annotation, documentPath, onReply, onResolve, onAnswer, onReopen, onAccept, onReject, onClose, opener }: ItemPanelProps) {
   const draftKey = replyDraftKey(documentPath, annotation.id)
   const [reply, setReply] = useState(() => replyDrafts.get(draftKey) ?? '')
   const [choice, setChoice] = useState('')
@@ -61,7 +58,7 @@ export function ThreadPanel({ annotation, documentPath, onReply, onResolve, onAn
   const replyBox = useRef<HTMLTextAreaElement>(null)
   const now = useClock()
 
-  // The reply box takes focus on open; whatever opened the thread gets it back
+  // The reply box takes focus on open; whatever opened the item gets it back
   // on close (§5.11). The focus waits a frame: the editor's jump to the span
   // runs in the same commit, after this effect, and would otherwise win.
   useEffect(() => {
@@ -72,7 +69,7 @@ export function ThreadPanel({ annotation, documentPath, onReply, onResolve, onAn
       window.cancelAnimationFrame(frame)
       if (restoreTo?.isConnected) restoreTo.focus({ preventScroll: true })
     }
-    // Captured once per thread; the opener is fixed at open time.
+    // Captured once per item; the opener is fixed at open time.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -109,7 +106,7 @@ export function ThreadPanel({ annotation, documentPath, onReply, onResolve, onAn
         <span className={`annotation-chip chip-${orphaned ? 'orphaned' : annotation.kind}`} title={orphaned ? 'The text this was attached to was removed' : undefined}>
           {orphaned ? 'text removed' : annotation.kind} · {authorName(annotation.author)}
         </span>
-        <ThreadTime time={annotation.createdAt} now={now} />
+        <ItemTime time={annotation.createdAt} now={now} />
         <button type="button" className="popover-close" aria-label="Close thread" onClick={onClose}>×</button>
       </header>
       <div className="thread-panel-scroll">
@@ -121,13 +118,13 @@ export function ThreadPanel({ annotation, documentPath, onReply, onResolve, onAn
         <p><InlineMarkdown text={annotation.text} /></p>
         {annotation.replies.map((item) => (
           <div className="reply" style={{ borderColor: authorColor(item.author) }} key={item.id}>
-            <strong style={{ color: authorColor(item.author) }}>{authorName(item.author)}<ThreadTime time={item.createdAt} now={now} /></strong>
+            <strong style={{ color: authorColor(item.author) }}>{authorName(item.author)}<ItemTime time={item.createdAt} now={now} /></strong>
             <span><InlineMarkdown text={item.text} /></span>
           </div>
         ))}
         {decision?.answers.map((answer) => (
           <div className="reply decision-answer" style={{ borderColor: USER_ANNOTATION_COLOR }} key={answer.seq}>
-            <strong style={{ color: USER_ANNOTATION_COLOR }}>you<ThreadTime time={answer.answeredAt} now={now} /></strong>
+            <strong style={{ color: USER_ANNOTATION_COLOR }}>you<ItemTime time={answer.answeredAt} now={now} /></strong>
             <span>{answer.option === null ? <>answered Other: <InlineMarkdown text={answer.other ?? ''} /></> : <>chose “<InlineMarkdown text={answer.option} />”</>}</span>
           </div>
         ))}

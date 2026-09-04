@@ -2,70 +2,16 @@
 #define _GNU_SOURCE
 #endif
 
-#include <errno.h>
 #include <node_api.h>
-#include <string.h>
-#include <sys/socket.h>
 
 #if defined(__APPLE__)
+#include <errno.h>
 #include <fcntl.h>
+#include <string.h>
 #include <sys/param.h>
 #include <sys/un.h>
-/* getpeereid is declared in unistd.h on Darwin. */
 #include <unistd.h>
 #endif
-
-static napi_value get_peer_uid(napi_env env, napi_callback_info info) {
-  size_t argc = 1;
-  napi_value argv[1];
-  int32_t descriptor;
-
-  if (napi_get_cb_info(env, info, &argc, argv, NULL, NULL) != napi_ok || argc != 1) {
-    napi_throw_type_error(env, NULL, "getPeerUid requires one socket descriptor");
-    return NULL;
-  }
-  if (napi_get_value_int32(env, argv[0], &descriptor) != napi_ok || descriptor < 0) {
-    napi_throw_type_error(env, NULL, "Socket descriptor must be a non-negative integer");
-    return NULL;
-  }
-
-#if defined(__APPLE__)
-  uid_t peer_uid;
-  gid_t peer_gid;
-  int result;
-  do {
-    result = getpeereid(descriptor, &peer_uid, &peer_gid);
-  } while (result != 0 && errno == EINTR);
-  if (result != 0) {
-    napi_throw_error(env, NULL, strerror(errno));
-    return NULL;
-  }
-#else
-  struct ucred credentials;
-  socklen_t length;
-  int result;
-  do {
-    length = sizeof(credentials);
-    result = getsockopt(descriptor, SOL_SOCKET, SO_PEERCRED, &credentials, &length);
-  } while (result != 0 && errno == EINTR);
-  if (result != 0) {
-    napi_throw_error(env, NULL, strerror(errno));
-    return NULL;
-  }
-  if (length != sizeof(credentials)) {
-    napi_throw_error(env, NULL, "Peer credentials had an unexpected size");
-    return NULL;
-  }
-  uid_t peer_uid = credentials.uid;
-#endif
-
-  napi_value uid;
-  if (napi_create_uint32(env, peer_uid, &uid) != napi_ok) {
-    napi_throw_error(env, NULL, "Could not return the peer uid");
-    return NULL;
-  }
-  return uid;
-}
 
 #if defined(__APPLE__)
 /* Linux resolves open descriptors through /proc/self/fd; Darwin uses F_GETPATH
@@ -104,13 +50,8 @@ static napi_value get_path_for_fd(napi_env env, napi_callback_info info) {
 #endif
 
 static napi_value initialize(napi_env env, napi_value exports) {
-  napi_value function;
-  if (napi_create_function(env, "getPeerUid", NAPI_AUTO_LENGTH, get_peer_uid, NULL, &function) != napi_ok ||
-      napi_set_named_property(env, exports, "getPeerUid", function) != napi_ok) {
-    napi_throw_error(env, NULL, "Could not export getPeerUid");
-    return NULL;
-  }
 #if defined(__APPLE__)
+  napi_value function;
   if (napi_create_function(env, "getPathForFd", NAPI_AUTO_LENGTH, get_path_for_fd, NULL, &function) != napi_ok ||
       napi_set_named_property(env, exports, "getPathForFd", function) != napi_ok) {
     napi_throw_error(env, NULL, "Could not export getPathForFd");

@@ -101,7 +101,7 @@ test('extended visuals remain editable, accessible, document-safe, and collabora
     await expect(matrix).toHaveAttribute('data-focused-alternative', '3')
     await expect(matrix.locator('tbody td:nth-child(2)').first()).toHaveCSS('opacity', '0.28')
     await expect(matrix.locator('tbody td:nth-child(3)').first()).toHaveCSS('opacity', '1')
-    expect((await scenario.state()).document).toBe(original)
+    expect((await scenario.inspectDocument()).document).toBe(original)
     await matrix.getByRole('button', { name: 'Show all' }).click()
     await expect(matrix).not.toHaveAttribute('data-focused-alternative')
 
@@ -136,7 +136,7 @@ test('extended visuals remain editable, accessible, document-safe, and collabora
     await expect(composer.locator('blockquote')).toContainText('Long rows need a clearer boundary.')
     await composer.locator('textarea').fill('Should this boundary be stronger?')
     await page.evaluate(() => (document.querySelector('.annotation-composer') as HTMLFormElement).requestSubmit())
-    await expect.poll(async () => (await scenario.state()).annotations?.some((annotation) => annotation.text === 'Should this boundary be stronger?')).toBe(true)
+    await expect.poll(async () => (await scenario.inspectDocument()).annotations?.some((annotation) => annotation.text === 'Should this boundary be stronger?')).toBe(true)
     await page.getByRole('button', { name: 'Close thread' }).click()
 
     await screenshot.getByRole('button', { name: 'Place pin' }).click()
@@ -149,17 +149,8 @@ test('extended visuals remain editable, accessible, document-safe, and collabora
     await page.keyboard.press('Escape')
     expect(await readFile(scenario.file, 'utf8')).toBe(original)
 
-    expect((await scenario.attach('agent-a', 'Agent A')).event).toBe('initial')
-    const pinned = await scenario.cli([
-      'pin', scenario.file, '--component', '40', '--x', '75', '--y', '20',
-      '--note', 'Agent pin', '--as', 'agent-a',
-    ])
-    expect(pinned.code, `${pinned.stderr}${pinned.stdout}`).toBe(0)
-    expect(JSON.parse(pinned.stdout)).toMatchObject({ pinned: 3, component: 40, x: 75, y: 20, note: 'Agent pin' })
-    await expect(screenshot.getByRole('button', { name: 'Pin 3: Agent pin' })).toBeVisible()
-    expect(await readFile(scenario.file, 'utf8')).toBe(original)
     await save(page)
-    expect(await readFile(scenario.file, 'utf8')).toContain('| 3 | 75.0 | 20.0 |')
+    expect(await readFile(scenario.file, 'utf8')).toContain('| 2 |')
 
     const externalResources = await page.evaluate(() => performance.getEntriesByType('resource')
       .map((entry) => entry.name)

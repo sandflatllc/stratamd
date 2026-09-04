@@ -5,7 +5,7 @@ import { AmbientDecor } from './AmbientDecor'
 import { Contents } from './Contents'
 import { RailTabs } from './RailTabs'
 
-/** The left window's tabs: the two persisted navigation tabs plus the session-only Thread tab (PRD §6.9). */
+/** The left window's Files, Contents, Projects, and Conversation tabs. */
 export type LeftTab = NavigationTab | 'projects' | 'conversation'
 
 interface NavigationRailProps {

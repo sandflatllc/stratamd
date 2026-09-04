@@ -14,12 +14,12 @@ import {
   persistPendingHunkAnchors,
   prepareSave,
   recordMirrorWrite,
+  relocatePendingHunkAnchors,
   resolveExternalConflict,
   revertHunk,
   restoreReviewFrame,
   reviewFrame,
   segmentSnapshotIds,
-  setExternalTag,
 } from '../../src/core/state.js'
 
 function externalBuffer(state: ReturnType<typeof createDocumentState>, incoming: string) {
@@ -78,41 +78,6 @@ describe('document state and external merges', () => {
     expect(choseIncoming.pendingHunks).toHaveLength(1)
   })
 
-  it('a tag covers the whole burst, sliding its window, and expires unused', () => {
-    const original = 'one\n'
-    let tagged = setExternalTag(createDocumentState(original, original), 'agent-1', 'Ada', 1_000)
-    const ignored = applyExternalChange(tagged, 'buffer', original, { now: 2_000 })
-    expect(ignored.state.pendingTag?.name).toBe('Ada')
-
-    tagged = applyExternalChange(tagged, 'buffer', 'two\n', { now: 2_000 }).state
-    expect(tagged.pendingHunks[0]?.author).toEqual({ agentId: 'agent-1', name: 'Ada' })
-    // The window slid on use: a later write past the tag's original expiry
-    // still carries the name, and the merged hunk keeps it.
-    tagged = applyExternalChange(tagged, 'buffer', 'two three\n', { now: 301_500 }).state
-    expect(tagged.pendingHunks[0]?.author).toEqual({ agentId: 'agent-1', name: 'Ada' })
-    expect(tagged.pendingTag?.expiresAt).toBe(601_500)
-
-    // Idle past the window: the write is external and the tag clears.
-    const idle = applyExternalChange(tagged, 'buffer', 'two three four\n', { now: 602_000 }).state
-    expect(idle.pendingHunks[0]?.author).toEqual({ agentId: null, name: 'external' })
-    expect(idle.pendingTag).toBeNull()
-
-    // Another agent's tag replaces the running one from its next write.
-    const handedOff = applyExternalChange(
-      setExternalTag(tagged, 'agent-2', 'Grace', 302_000),
-      'buffer',
-      'two three four\n',
-      { now: 302_500 },
-    ).state
-    expect(handedOff.pendingHunks[0]?.author).toEqual({ agentId: 'agent-2', name: 'Grace' })
-
-    // A tag never used expires and attributes nothing.
-    let unused = setExternalTag(createDocumentState(original, original), 'agent-1', 'Ada', 1_000)
-    unused = applyExternalChange(unused, 'buffer', 'two\n', { now: 301_001 }).state
-    expect(unused.pendingHunks[0]?.author).toEqual({ agentId: null, name: 'external' })
-    expect(unused.pendingTag).toBeNull()
-  })
-
   it('collapses consecutive writes to the same region into one pending hunk', () => {
     let state = externalBuffer(createDocumentState('one\n', 'one\n'), 'agent one\n')
     state = applyExternalChange(state, 'buffer', 'agent two\n', { now: 2_000 }).state
@@ -137,14 +102,14 @@ describe('document state and external merges', () => {
     }
   })
 
-  it('restores pending attribution and mixed status from close-time text anchors', () => {
+  it('restores pending attribution from close-time text anchors', () => {
     const original = 'one\ntwo\n'
-    let state = setExternalTag(createDocumentState(original, original), 'agent-1', 'Ada', 1_000)
-    state = applyExternalChange(state, 'buffer', 'ONE\ntwo\n', { now: 2_000 }).state
-    state = applyUserEdit(state, { from: 1, to: 1, insert: '!' })
+    let state = acceptAgentReplacement(createDocumentState(original, original), { from: 0, to: 3, insert: 'ONE' }, { agentId: 'agent-1', name: 'Ada' })
     const persisted = persistPendingHunkAnchors(state)
     const originalId = state.pendingHunks[0]!.id
-
+    expect(relocatePendingHunkAnchors(state.ghost, state.shadow, persisted)).toMatchObject([
+      { id: originalId, author: { agentId: 'agent-1', name: 'Ada' } },
+    ])
     const reopened = createDocumentState(original, state.ghost, {
       shadow: state.shadow,
       persistedPendingAnchors: persisted,
@@ -153,7 +118,7 @@ describe('document state and external merges', () => {
     expect(reopened.pendingHunks).toHaveLength(1)
     expect(reopened.pendingHunks[0]).toMatchObject({
       id: originalId,
-      status: 'mixed',
+      status: 'pending',
       author: { agentId: 'agent-1', name: 'Ada' },
     })
   })
@@ -439,8 +404,7 @@ describe('attribution through review actions', () => {
   const claude = { agentId: 'ag_x', name: 'Claude' }
 
   function agentHunkState() {
-    let state = setExternalTag(createDocumentState('one\n', 'one\n'), claude.agentId, claude.name, 500)
-    state = externalBuffer(state, 'agent\n')
+    const state = acceptAgentReplacement(createDocumentState('one\n', 'one\n'), { from: 0, to: 3, insert: 'agent' }, claude)
     expect(state.pendingHunks[0]).toMatchObject({ author: claude })
     return state
   }

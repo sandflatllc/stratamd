@@ -88,9 +88,9 @@ describe('visual selection markdown spans', () => {
   it('maps a selection inside a table cell to its exact source slice', () => {
     // The header row matters: consuming a source newline for the virtual
     // separator between its cells used to strand every later cell of the row.
-    const source = '| Part | Behavior |\n|---|---|\n| Attach | Multiple agents can attach without sharing. |\n'
+    const source = '| Part | Behavior |\n|---|---|\n| Attach | Multiple T3 threads can be attached without sharing. |\n'
     const parsed = parseMarkdownForEditor(source)
-    const target = 'Multiple agents can attach'
+    const target = 'Multiple T3 threads can be attached'
     const from = textPosition(parsed, target)
     const selection = sourceSelectionForEditor(parsed, parsed.doc, from, from + target.length)
 

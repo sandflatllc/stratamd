@@ -34,10 +34,9 @@ test('a pane crash shows the pane card, leaves the rest working, logs once, and 
     const page = await scenario.launch()
 
     // A pending hunk before the crash: the card's promise covers review state.
-    const attach = await scenario.attach('ag_crash', 'Prober')
-    await scenario.tag('ag_crash', 'Prober')
-    const buffer = await readFile(attach.buffer!, 'utf8')
-    await writeFile(attach.buffer!, buffer.replace('lazy dog', 'patient dog'))
+    const inspection = await scenario.inspectDocument()
+    const buffer = await readFile(inspection.buffer!, 'utf8')
+    await writeFile(inspection.buffer!, buffer.replace('lazy dog', 'patient dog'))
     await expect(page.locator('.changes-panel .change-row').first()).toBeVisible()
 
     await crash(page, 'editor')

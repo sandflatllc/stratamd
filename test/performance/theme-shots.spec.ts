@@ -7,8 +7,8 @@ import { THEME_SAMPLE_MARKDOWN } from '../../src/shared/theme-sample'
 
 /**
  * Full-window screenshots of every stock theme for the owner's palette-pass
- * review (theme-restructure-plan.md §7.3): the sample document plus an attached
- * agent, a pending change, an annotation, and the theme panel. Review evidence,
+ * review (theme-restructure-plan.md §7.3): the sample document plus a pending
+ * change, an annotation, and the theme panel. Review evidence,
  * never a checked-in gate. STRATAMD_SHOTS_DIR names the output subdirectory.
  */
 
@@ -23,10 +23,8 @@ test('stock theme screenshots', async ({}, testInfo) => {
       const page = await value.launch()
       await expect(page.getByRole('textbox', { name: /document editor/i })).toBeVisible({ timeout: 30_000 })
 
-      // Attribution, a pending change, and an annotation, so review and people colors show.
-      expect((await value.attach('agent-a', 'Agent A')).event).toBe('initial')
-      const state = await value.state()
-      await value.tag('agent-a', 'Agent A')
+      // A pending change and an annotation, so review colors show.
+      const state = await value.inspectDocument()
       await value.atomicWrite(state.buffer!, THEME_SAMPLE_MARKDOWN.replace('level-one heading', 'level-one heading, revised'))
       await expect(page.getByRole('button', { name: /^Keep change /i }).first()).toBeVisible()
       const quote = 'Paragraphs'

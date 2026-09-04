@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { basename, dirname, join } from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
-import { Scenario, save, send } from '../e2e/harness'
+import { Scenario, save } from '../e2e/harness'
 import { interactionViolations } from './budgets'
 import { generateCorpus, writeCorpusAssets } from './corpus'
 import { aggregateRendererSnapshots, installRendererProbe, measureAction, ProcessSampler } from './metrics'
@@ -9,48 +9,6 @@ import { attachReport, environmentDetails } from './report'
 import type { ActionMeasurement, CorpusShape, PerformanceRunReport } from './types'
 
 const profile = process.env.STRATAMD_PERF_PROFILE === 'stress' ? 'stress' : 'smoke'
-
-interface SendDiagnosticRecord {
-  at: number
-  type: string
-  disabled: boolean | null
-  text: string
-}
-
-async function installSendDiagnostics(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const target = window as Window & { __strataSendDiagnostics?: SendDiagnosticRecord[] }
-    const records: SendDiagnosticRecord[] = []
-    target.__strataSendDiagnostics = records
-    const record = (type: string, element: Element | null) => {
-      const button = element?.closest<HTMLButtonElement>('.composer-send') ?? document.querySelector<HTMLButtonElement>('.composer-send')
-      records.push({
-        at: performance.now(),
-        type,
-        disabled: button?.disabled ?? null,
-        text: button?.textContent?.trim() ?? '',
-      })
-    }
-    for (const type of ['pointerdown', 'pointerup', 'click'] as const) {
-      document.addEventListener(type, (event) => {
-        const element = event.target instanceof Element ? event.target : null
-        if (element?.closest('.composer-send')) record(type, element)
-      }, true)
-    }
-    window.addEventListener('unhandledrejection', (event) => {
-      const message = event.reason instanceof Error ? event.reason.message : String(event.reason)
-      record(`unhandledrejection:${message}`, null)
-    })
-    new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        const element = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement
-        const button = element?.closest<HTMLButtonElement>('.composer-send')
-          ?? (element instanceof HTMLElement ? element.querySelector<HTMLButtonElement>('.composer-send') : null)
-        if (button) record(`mutation:${mutation.type}:${mutation.attributeName ?? ''}`, button)
-      }
-    }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['disabled'] })
-  })
-}
 
 function requestedCases(): Array<{ shape: CorpusShape; bytes: number }> {
   const explicitSizes = process.env.STRATAMD_PERF_SIZES?.split(',').map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value > 0)
@@ -138,7 +96,7 @@ for (const performanceCase of requestedCases()) {
       }))
 
       const edited = corpus.markdown.replace(`# ${corpus.firstHeading}`, `# ${corpus.firstHeading} measured`)
-      const buffer = (await value.state()).buffer!
+      const buffer = (await value.inspectDocument()).buffer!
       await editor.focus()
       await editor.evaluate((root) => {
         const heading = root.querySelector('h1')
@@ -187,25 +145,11 @@ for (const performanceCase of requestedCases()) {
         await expect.poll(() => page.locator('[data-annotation-id]').count(), { timeout: actionTimeout }).toBeGreaterThan(0)
       }))
 
-      const initialDelivery = await value.attach('performance-agent', 'Performance Agent')
-      expect(initialDelivery.event).toBe('initial')
-      expect(initialDelivery.text).toContain('measured')
-      await value.tag('performance-agent', 'Performance Agent')
       const externallyEdited = edited.replace(annotationQuote, `${annotationQuote} Agent-observed.`)
       activeStage = 'external-edit-to-review'
       actions.push(await measureAction(page, 'external-edit-to-review', async () => {
         await value.atomicWrite(buffer, externallyEdited)
         await expect(page.getByRole('button', { name: /^Keep change /i }).first()).toBeVisible({ timeout: actionTimeout })
-      }))
-
-      await installSendDiagnostics(page)
-      activeStage = 'send-delivery'
-      actions.push(await measureAction(page, 'send-delivery', async () => {
-        await send(page, { note: 'Performance workload delivery.' })
-        const delivery = await value.attach('performance-agent', 'Performance Agent')
-        expect(delivery.event).toBe('send')
-        expect(delivery.text).toContain('Performance workload delivery.')
-        expect(delivery.text).toContain('Agent-observed')
       }))
 
       activeStage = 'save-document'
@@ -219,13 +163,6 @@ for (const performanceCase of requestedCases()) {
     } finally {
       if (sampler) processSummary = await sampler.stop().catch(() => processSummary)
       if (environment && value.page) {
-        const sendDiagnostics = await value.page.evaluate(() => (window as Window & { __strataSendDiagnostics?: SendDiagnosticRecord[] }).__strataSendDiagnostics ?? []).catch(() => [])
-        const sendDiagnosticsPath = testInfo.outputPath('send-diagnostics.json')
-        await writeFile(sendDiagnosticsPath, `${JSON.stringify(sendDiagnostics, null, 2)}\n`)
-        await testInfo.attach('send-diagnostics.json', {
-          path: sendDiagnosticsPath,
-          contentType: 'application/json',
-        })
         const renderer = aggregateRendererSnapshots(actions)
         const violations = failure ? [] : interactionViolations(readyMs, actions, renderer)
         const report: PerformanceRunReport = {

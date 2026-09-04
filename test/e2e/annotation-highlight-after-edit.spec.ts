@@ -47,12 +47,12 @@ async function run(testInfo: import('@playwright/test').TestInfo, typeFirst: str
       log(`typed ${typeFirst.length} chars at the start of the first paragraph`)
     }
 
-    // Drag from the start of "StrataMD itself makes no network calls..." to the start of the "Project status" heading.
+    // Drag from the start of the network-policy paragraph to the Project status heading.
     const { from, to } = await page.evaluate(() => {
       const blocks = [...document.querySelectorAll('.strata-prosemirror > *')].map((block) =>
         block.matches('.strata-fold-heading') ? block.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6')! : block,
       )
-      const start = blocks.find((el) => el.textContent?.startsWith('StrataMD itself makes no network calls'))!
+      const start = blocks.find((el) => el.textContent?.startsWith('Other than the paired T3 engine'))!
       const heading = blocks.find((el) => el.tagName === 'H2' && el.textContent === 'Project status')!
       start.scrollIntoView({ block: 'center' })
       const point = (block: Element) => {
@@ -87,7 +87,7 @@ async function run(testInfo: import('@playwright/test').TestInfo, typeFirst: str
     log('submitted comment')
 
     const highlight = await page.evaluate(() => [...document.querySelectorAll('.strata-annotation[data-annotation-author="user"]')].map((el) => el.textContent).join(''))
-    const state = await value.state()
+    const state = await value.inspectDocument()
     const stored = state.annotations?.find((a) => a.text === 'probe comment')
     const result = { typeFirst: typeFirst?.length ?? 0, selected: clip(selected), composerQuote: clip(composerQuote), storedQuote: clip(stored?.quote), highlight: clip(highlight) }
     console.log(JSON.stringify(result, null, 1))
@@ -136,12 +136,12 @@ test('dragging the end handle moves the stored quote to the new span', async ({}
     await page.waitForTimeout(1000)
     log('dragged the end handle to the end of the Project status paragraph')
     highlightAfter = await page.evaluate(() => [...document.querySelectorAll('.strata-annotation[data-annotation-author="user"]')].map((el) => el.textContent).join(''))
-    const state = await value.state()
+    const state = await value.inspectDocument()
     storedAfter = state.annotations?.find((a) => a.text === 'probe comment')?.quote
     console.log(JSON.stringify({ storedAfter: clip(storedAfter), highlightAfter: clip(highlightAfter) }, null, 1))
     await page.screenshot({ path: testInfo.outputPath('after-drag.png') })
   })
-  expect(storedAfter).toMatch(/^StrataMD itself makes no network calls/)
+  expect(storedAfter).toMatch(/^Other than the paired T3 engine/)
   expect(storedAfter).toMatch(/Windows build yet\.$/)
-  expect(norm(highlightAfter)).toMatch(/^StrataMD itself makes no network calls.*Windows build yet\.$/)
+  expect(norm(highlightAfter)).toMatch(/^Other than the paired T3 engine.*Windows build yet\.$/)
 })

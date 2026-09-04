@@ -10,7 +10,7 @@ import { join } from 'node:path'
 process.env.TMPDIR = realpathSync(tmpdir())
 
 // Anything that derives a location from the environment (the failure log,
-// the default ghost store, the socket) lands in a per-file scratch directory
+// the default ghost store) lands in a per-file scratch directory
 // instead of the developer's real ~/.local/share, ~/.config, or runtime dir.
 // Tests that need a specific environment still pass it explicitly.
 const scratch = mkdtempSync(join(process.env.TMPDIR, 'stratamd-test-env-'))

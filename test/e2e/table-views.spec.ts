@@ -74,7 +74,7 @@ test('table views stay read-only, return to the selected source cell, and separa
   await expect(block.getByRole('table', { name: 'Table view' }).getByRole('columnheader')).toHaveCount(2)
   await showTableOptions(block)
   await block.getByRole('button', { name: 'Wider' }).click()
-  const unchanged = await value.state()
+  const unchanged = await value.inspectDocument()
   expect(unchanged.document).toBe(DOCUMENT)
   expect(await readFile(unchanged.buffer!, 'utf8')).toBe(DOCUMENT)
   expect(await readFile(value.file, 'utf8')).toBe(DOCUMENT)
@@ -138,13 +138,8 @@ test('cell discussion uses the exact row and hidden review targets reveal tempor
   })
   await page.getByRole('button', { name: 'Close thread' }).click()
 
-  const initial = await value.attach('agent-table', 'Table Agent')
-  expect(initial.annotations?.[0]).toMatchObject({ id: annotation?.id, quote: '| Alpha | Unprotected | 12 |' })
-  expect(initial.annotations?.[0]?.context).toEqual(annotation?.context)
-  expect(initial.text).toContain('[Table under Islands; columns Name, Verdict, Score; column 2 Verdict]')
-
   const changed = DOCUMENT.replace('| Beta | Ready | 3 |', '| Beta | Needs review | 3 |')
-  const state = await value.state()
+  const state = await value.inspectDocument()
   await value.atomicWrite(state.buffer!, changed)
   await expect(page.getByRole('tab', { name: /^Changes/ }).locator('.rail-tab-count')).toHaveText('1')
   await showTableOptions(block)

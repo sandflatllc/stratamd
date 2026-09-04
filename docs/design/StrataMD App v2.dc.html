@@ -67,7 +67,7 @@ a{color:#7fb0ff}a:hover{color:#a8c8ff}
     <span style="font-size:13px;font-weight:600;color:var(--dim)">{{ statusLeft }}</span>
     <span style="font-size:12px;font-weight:600;color:#8b8994;font-family:'JetBrains Mono',monospace">Ctrl+Enter</span>
     <sc-if value="{{ attachedOn }}" hint-placeholder-val="{{ true }}"><span onClick="{{ openComposer }}" title="{{ sendTitle }}" style="{{ sendBtnStyle }}" style-hover="{{ sendHover }}" style-active="transform:scale(.93)">Send ↗</span></sc-if>
-    <sc-if value="{{ detachedOn }}" hint-placeholder-val="{{ false }}"><span onClick="{{ copyForAgent }}" title="No agent attached — renders a delivery for the clipboard recipient" style="font-size:16px;font-weight:800;color:var(--pink);border:2px solid var(--pink);padding:7px 22px;border-radius:999px;cursor:pointer;transition:all .2s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(255,92,138,.15);transform:scale(1.06)" style-active="transform:scale(.9)">Copy for agent ⧉</span></sc-if>
+    <sc-if value="{{ detachedOn }}" hint-placeholder-val="{{ false }}"><span onClick="{{ startThread }}" title="Start a T3 thread for this document" style="font-size:16px;font-weight:800;color:var(--pink);border:2px solid var(--pink);padding:7px 22px;border-radius:999px;cursor:pointer;transition:all .2s cubic-bezier(.34,1.56,.64,1)" style-hover="background:rgba(255,92,138,.15);transform:scale(1.06)" style-active="transform:scale(.9)">Start thread</span></sc-if>
     <span style="width:1px;height:22px;background:var(--line);margin:0 4px"></span>
     <span style="display:flex;gap:8px">
       <span title="Minimize" style="width:26px;height:26px;border-radius:50%;background:var(--card2);color:var(--dim);display:grid;place-items:center;font-size:13px;font-weight:800;cursor:pointer;line-height:1;transition:all .15s" style-hover="background:#3d3563;color:var(--text)" style-active="transform:scale(.88)">–</span>
@@ -154,11 +154,11 @@ a{color:#7fb0ff}a:hover{color:#a8c8ff}
           <div onClick="{{ toggleFm }}" style="font-size:13px;font-family:'JetBrains Mono',monospace;color:#8b8994;background:var(--card2);border-radius:12px;padding:8px 16px;margin-bottom:24px;cursor:pointer;transition:all .15s;display:inline-block" style-hover="color:var(--dim)" title="YAML frontmatter — raw block, byte-preserved, editable in source view">{{ fmLabel }}</div>
           <h1 style="font-size:40px;font-weight:800;color:var(--text);margin:0 0 20px;letter-spacing:-.02em">Rollout plan</h1>
 
-          <p style="font-size:21px;line-height:1.7;color:#dbdade;font-weight:500;margin:0 0 18px">We ship the importer first, <span style="{{ h1Wrap }}"><span style="{{ h1Del }}">then the sync layer</span><span> </span><span style="{{ h1Ins }}">then the export path</span><sc-if value="{{ h1Pending }}" hint-placeholder-val="{{ true }}"><span style="display:inline-flex;gap:6px;align-items:center;margin:0 6px;vertical-align:4px"><span style="font-size:12px;font-weight:800;background:var(--grape);color:#fff;border-radius:999px;padding:2px 11px">Claude</span><span onClick="{{ keepH1 }}" title="Keep — advance the ghost for this hunk" style="font-size:12px;font-weight:800;color:#0e2418;background:var(--mint);border-radius:999px;padding:2px 12px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15);box-shadow:0 4px 14px -2px rgba(61,201,124,.6)" style-active="transform:scale(.85)">Keep</span><span onClick="{{ revertH1 }}" title="Revert — restore the ghost's text" style="font-size:12px;font-weight:800;color:var(--pink);border:2px solid var(--pink);border-radius:999px;padding:0 11px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15);background:rgba(255,92,138,.15)" style-active="transform:scale(.85)">Revert</span></span></sc-if></span> keeping the CLI stable across both. Agents attach with one command and collect deliveries whenever they call back.</p>
+          <p style="font-size:21px;line-height:1.7;color:#dbdade;font-weight:500;margin:0 0 18px">We ship the importer first, <span style="{{ h1Wrap }}"><span style="{{ h1Del }}">then the sync layer</span><span> </span><span style="{{ h1Ins }}">then the export path</span><sc-if value="{{ h1Pending }}" hint-placeholder-val="{{ true }}"><span style="display:inline-flex;gap:6px;align-items:center;margin:0 6px;vertical-align:4px"><span style="font-size:12px;font-weight:800;background:var(--grape);color:#fff;border-radius:999px;padding:2px 11px">Claude</span><span onClick="{{ keepH1 }}" title="Keep — advance the ghost for this hunk" style="font-size:12px;font-weight:800;color:#0e2418;background:var(--mint);border-radius:999px;padding:2px 12px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15);box-shadow:0 4px 14px -2px rgba(61,201,124,.6)" style-active="transform:scale(.85)">Keep</span><span onClick="{{ revertH1 }}" title="Revert — restore the ghost's text" style="font-size:12px;font-weight:800;color:var(--pink);border:2px solid var(--pink);border-radius:999px;padding:0 11px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15);background:rgba(255,92,138,.15)" style-active="transform:scale(.85)">Revert</span></span></sc-if></span> keeping the CLI stable across both. Threads run in T3 and receive document deliveries as turns.</p>
 
           <p style="font-size:21px;line-height:1.7;color:#dbdade;font-weight:500;margin:0 0 18px">The test corpus covers <span style="{{ sugWrap }}"><span style="{{ sugDel }}">every construct</span><span> </span><span style="{{ sugIns }}">each construct</span><sc-if value="{{ sugPending }}" hint-placeholder-val="{{ true }}"><span style="display:inline-flex;gap:6px;align-items:center;margin:0 6px;vertical-align:4px"><span style="font-size:12px;font-weight:800;background:var(--grape);color:#fff;border-radius:999px;padding:2px 11px">Claude · suggestion</span><span onClick="{{ acceptSug }}" title="Accept — replaces the span, author gets an accepted event" style="font-size:12px;font-weight:800;color:#0e2418;background:var(--mint);border-radius:999px;padding:2px 12px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15);box-shadow:0 4px 14px -2px rgba(61,201,124,.6)" style-active="transform:scale(.85)">Accept</span><span onClick="{{ rejectSug }}" style="font-size:12px;font-weight:800;color:var(--pink);border:2px solid var(--pink);border-radius:999px;padding:0 11px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15);background:rgba(255,92,138,.15)" style-active="transform:scale(.85)">Reject</span></span></sc-if></span> in §6.1 plus real documents that round-tripped badly.</p>
 
-          <p style="font-size:21px;line-height:1.7;color:#dbdade;font-weight:500;margin:0 0 22px">While attached, agents write only to the buffer file; <span onClick="{{ toggleQ }}" style="{{ qStyle }}" style-hover="filter:brightness(1.15)">the document on disk is yours to save</span>. A save never marks their pending edits as reviewed.</p>
+          <p style="font-size:21px;line-height:1.7;color:#dbdade;font-weight:500;margin:0 0 22px">While the owner is in the loop, agents return document actions in their final strata block; <span onClick="{{ toggleQ }}" style="{{ qStyle }}" style-hover="filter:brightness(1.15)">the document on disk is yours to save</span>. A save never marks their pending edits as reviewed.</p>
 
           <div style="font-size:24px;font-weight:800;color:var(--text);margin:26px 0 12px">Next steps</div>
           <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:26px">
@@ -169,7 +169,7 @@ a{color:#7fb0ff}a:hover{color:#a8c8ff}
             </sc-if>
           </div>
 
-          <div style="font-family:'JetBrains Mono',monospace;font-size:15px;background:#1d1731;border:1px solid var(--line);border-radius:14px;padding:16px 22px;color:#bebcc6">stratamd attach plan.md --as ag_7f3k</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:15px;background:#1d1731;border:1px solid var(--line);border-radius:14px;padding:16px 22px;color:#bebcc6">Start thread from this document</div>
         </div>
       </sc-if>
 
@@ -199,7 +199,7 @@ that round-tripped badly.
           <div onMouseDown="{{ dragDoc }}" title="Drag to set text width — wider for tables" style="position:absolute;right:-26px;top:6px;width:18px;height:70px;cursor:col-resize;display:grid;place-items:center"><div style="width:4px;height:46px;border-radius:2px;background:var(--line)"></div></div>
           <h1 style="font-size:40px;font-weight:800;color:var(--text);margin:0 0 20px;letter-spacing:-.02em">Meeting notes</h1>
           <p style="font-size:21px;line-height:1.7;color:#dbdade;font-weight:500;margin:0 0 18px">Agreed to keep the delivery queue per attachment. <span style="{{ n1Wrap }}"><span style="{{ n1Ins }}">Haru will draft the resync flow before Friday.</span><sc-if value="{{ n1Pending }}" hint-placeholder-val="{{ true }}"><span style="display:inline-flex;gap:6px;align-items:center;margin:0 6px;vertical-align:4px"><span style="font-size:12px;font-weight:800;background:var(--sky);color:#fff;border-radius:999px;padding:2px 11px">Haru</span><span onClick="{{ keepN1 }}" style="font-size:12px;font-weight:800;color:#0e2418;background:var(--mint);border-radius:999px;padding:2px 12px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15)" style-active="transform:scale(.85)">Keep</span><span onClick="{{ revertN1 }}" style="font-size:12px;font-weight:800;color:var(--pink);border:2px solid var(--pink);border-radius:999px;padding:0 11px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15);background:rgba(255,92,138,.15)" style-active="transform:scale(.85)">Revert</span></span></sc-if></span></p>
-          <p style="font-size:21px;line-height:1.7;color:#dbdade;font-weight:500;margin:0">Open question on idle expiry: <span style="{{ n2Wrap }}"><span style="{{ n2Del }}">default should be 8 hours</span><span> </span><span style="{{ n2Ins }}">default stays 24 hours; attachments with unacked deliveries never expire</span><sc-if value="{{ n2Pending }}" hint-placeholder-val="{{ true }}"><span style="display:inline-flex;gap:6px;align-items:center;margin:0 6px;vertical-align:4px"><span style="font-size:12px;font-weight:800;background:var(--sky);color:#fff;border-radius:999px;padding:2px 11px">Haru · mixed</span><span onClick="{{ keepN2 }}" style="font-size:12px;font-weight:800;color:#0e2418;background:var(--mint);border-radius:999px;padding:2px 12px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15)" style-active="transform:scale(.85)">Keep</span><span onClick="{{ revertN2 }}" style="font-size:12px;font-weight:800;color:var(--pink);border:2px solid var(--pink);border-radius:999px;padding:0 11px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15);background:rgba(255,92,138,.15)" style-active="transform:scale(.85)">Revert</span></span></sc-if></span>.</p>
+          <p style="font-size:21px;line-height:1.7;color:#dbdade;font-weight:500;margin:0">Attachment lifecycle: <span style="{{ n2Wrap }}"><span style="{{ n2Del }}">default follows the T3 thread</span><span> </span><span style="{{ n2Ins }}">document links persist until Detach</span><sc-if value="{{ n2Pending }}" hint-placeholder-val="{{ true }}"><span style="display:inline-flex;gap:6px;align-items:center;margin:0 6px;vertical-align:4px"><span style="font-size:12px;font-weight:800;background:var(--sky);color:#fff;border-radius:999px;padding:2px 11px">Haru · mixed</span><span onClick="{{ keepN2 }}" style="font-size:12px;font-weight:800;color:#0e2418;background:var(--mint);border-radius:999px;padding:2px 12px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15)" style-active="transform:scale(.85)">Keep</span><span onClick="{{ revertN2 }}" style="font-size:12px;font-weight:800;color:var(--pink);border:2px solid var(--pink);border-radius:999px;padding:0 11px;cursor:pointer;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:scale(1.15);background:rgba(255,92,138,.15)" style-active="transform:scale(.85)">Revert</span></span></sc-if></span>.</p>
         </div>
       </sc-if>
       </div>
@@ -305,7 +305,7 @@ that round-tripped badly.
           <div style="position:absolute;bottom:18px;right:30px;width:6px;height:6px;border-radius:50%;background:rgba(61,201,124,.28);animation:moteWander 21s ease-in-out 7s infinite"></div>
         </div>
         </sc-if>
-        <div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:10px">Attached agents</div>
+        <div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:10px">Attached</div>
         <sc-for list="{{ agents }}" as="g" hint-placeholder-count="2">
           <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:14px;margin-bottom:4px;transition:all .15s" style-hover="background:var(--card2)">
             <span style="{{ g.avatarStyle }}">{{ g.initial }}</span>
@@ -313,11 +313,10 @@ that round-tripped badly.
               <div style="font-size:15px;font-weight:800;color:var(--text)">{{ g.name }} <span style="font-size:11px;font-weight:600;color:#8b8994">{{ g.since }}</span></div>
               <div style="display:flex;align-items:center;gap:5px"><span style="{{ g.stateDot }}"></span><span style="font-size:12px;font-weight:600;color:var(--dim)">{{ g.stateLabel }}</span></div>
             </div>
-            <span onClick="{{ g.nudge }}" title="Nudge — copies a re-attach prompt to the clipboard" style="font-size:12px;font-weight:800;cursor:pointer;color:var(--dim);padding:4px 10px;border-radius:999px;transition:all .18s cubic-bezier(.34,1.56,.64,1)" style-hover="color:#fff;background:var(--grape);animation:wobble .4s ease-in-out" style-active="transform:scale(.85)">nudge</span>
+            <span style="font-size:12px;font-weight:800;color:var(--dim);padding:4px 10px">{{ g.action }}</span>
           </div>
         </sc-for>
-        <sc-if value="{{ noAgents }}" hint-placeholder-val="{{ false }}"><div style="font-size:13px;font-weight:600;color:#8b8994;text-align:center;padding:8px 4px;line-height:1.5">No agents attached.<br>Send becomes Copy for agent.</div></sc-if>
-        <div style="font-size:11px;font-weight:600;color:#8b8994;padding:6px 10px 0;line-height:1.5">idle expiry 24h · unacked deliveries never expire</div>
+        <sc-if value="{{ noAgents }}" hint-placeholder-val="{{ false }}"><div style="font-size:13px;font-weight:600;color:#8b8994;text-align:center;padding:8px 4px;line-height:1.5">No threads attached.<br>Start a thread to send this document.</div></sc-if>
       </div>
 
       <div style="border:1.5px dashed var(--line);border-radius:22px;padding:12px 14px;flex:none;margin-top:14px">
@@ -578,11 +577,11 @@ class Component extends DCLogic {
     const stDot = (st) => st === 'waiting' ? { width: 9, height: 9, borderRadius: '50%', background: '#9B5CFF', animation: 'pulseDot 1.6s ease-in-out infinite' }
       : st === 'pending' ? { width: 9, height: 9, borderRadius: '50%', background: '#FFB03A' }
       : { width: 9, height: 9, borderRadius: '50%', background: '#8b8994' };
-    const stLabel = (st) => st === 'waiting' ? 'waiting — attach call open' : st === 'pending' ? 'delivery queued, unacked' : 'working — nothing queued';
+    const stLabel = (st) => st === 'waiting' ? 'running' : st === 'pending' ? 'delivery queued' : 'idle';
     const av = (bg) => ({ width: 34, height: 34, borderRadius: 12, background: bg, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 15, fontWeight: 800, flex: 'none' });
     const agents = !s.attached ? [] : [
-      { name: 'Claude', since: '32m', initial: 'C', avatarStyle: av('#9B5CFF'), stateDot: stDot(s.claudeState), stateLabel: stLabel(s.claudeState), nudge: () => this.say('Copied: Run `stratamd attach --as ag_7f3k` and continue.') },
-      { name: 'Haru', since: '9m', initial: 'H', avatarStyle: av('#4F8DFF'), stateDot: stDot(s.haruState), stateLabel: stLabel(s.haruState), nudge: () => this.say('Copied: Run `stratamd attach --as ag_2b9x` and continue.') }
+      { name: 'Claude', since: '32m', initial: 'C', avatarStyle: av('#9B5CFF'), stateDot: stDot(s.claudeState), stateLabel: stLabel(s.claudeState), action: 'Stop' },
+      { name: 'Haru', since: '9m', initial: 'H', avatarStyle: av('#4F8DFF'), stateDot: stDot(s.haruState), stateLabel: stLabel(s.haruState), action: 'Open' }
     ];
     const chip = (on, color, glow) => ({ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 800, padding: '8px 18px', borderRadius: 999, cursor: 'pointer', transition: 'all .18s cubic-bezier(.34,1.56,.64,1)', border: '2px solid ' + (on ? color : 'var(--line)'), background: on ? 'rgba(255,255,255,.04)' : 'transparent', color: on ? '#fff' : 'var(--dim)', boxShadow: on ? '0 6px 18px -6px ' + glow : 'none' });
     const recipients = [
@@ -595,7 +594,7 @@ class Component extends DCLogic {
     const noteLine = s.note.trim() ? '\nnote: ' + s.note.trim() + '\n' : '';
     const previewText = 'While attached, write only to the buffer file:\n~/.local/share/stratamd/docs/9f2c…/buffer.md.\nThe document /home/u/work/strata/plan.md is the user\'s to save.\n' + noteLine +
       '\n--- you (baseline s41 → s44) ---\n@@ -12,3 +12,2 @@\n- The importer needs a long preamble before it can\n- be trusted with real files.\n+ The importer is ready for real files.' +
-      (prevName === 'Haru' ? '\n\n@@ -30,1 +29,2 @@\n+ Open question logged on idle expiry.' : '') +
+      (prevName === 'Haru' ? '\n\n@@ -30,1 +29,2 @@\n+ Attachment lifecycle follows the engine.' : '') +
       (s.incExt ? '\n\n--- external (included by you) ---\n@@ -22,0 +22,1 @@\n+ - [ ] Write the corpus README' : '');
     const selMenu = s.selMenu, compose = s.compose;
     return {
@@ -710,7 +709,7 @@ class Component extends DCLogic {
       hasResolved: s.qResolved && !s.resolvedCleared,
       clearResolved: () => { this.setState({ resolvedCleared: true }); this.say('Resolved annotations cleared from the store'); },
       attachedOn: s.attached, detachedOn: !s.attached, noAgents: !s.attached,
-      copyForAgent: () => this.say('Copied for agent — first copy is the whole buffer; later copies are changes since the previous copy'),
+      startThread: () => this.say('Thread picker opened'),
       queuedNotice: s.claudeState === 'pending' && s.recClaude,
       conflictOn: s.conflictOn, recoveryOn: s.recoveryOn, revertConfirmOn: s.revertConfirmOn,
       pickMine: () => { this.setState({ conflictOn: false }); this.say('Kept your block — the incoming hunk was discarded'); },
@@ -721,8 +720,8 @@ class Component extends DCLogic {
       confirmRevertN2: () => { this.setState({ revertConfirmOn: false }); this.flashHunk('n2'); setTimeout(() => this.setState({ n2: 'reverted' }), 260); this.say('Reverted — your edits inside the hunk were discarded'); },
       demoConflict: set({ conflictOn: true }), demoRecovery: set({ recoveryOn: true }),
       demoDeleted: set({ banner: 'deleted' }), demoUtf8: set({ banner: 'utf8' }), demoCeiling: set({ banner: 'ceiling' }),
-      demoDetach: () => { this.setState({ attached: !s.attached }); this.say(s.attached ? 'All agents detached — Send becomes Copy for agent' : 'Agents re-attached'); },
-      detachLabel: s.attached ? 'detach agents' : 're-attach agents',
+      demoDetach: () => { this.setState({ attached: !s.attached }); this.say(s.attached ? 'All threads detached' : 'Threads re-attached'); },
+      detachLabel: s.attached ? 'detach threads' : 're-attach threads',
       exStyle: { width: s.exW, flex: 'none', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 22, padding: '16px 12px 14px', display: 'flex', flexDirection: 'column', boxShadow: '0 16px 40px -18px rgba(0,0,0,.55)', position: 'relative', isolation: 'isolate', overflow: 'hidden' },
       railStyle: { width: s.railW, flex: 'none', display: 'flex', flexDirection: 'column', overflowY: 'auto', paddingBottom: 4 },
       chIslStyle: { background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 22, padding: '16px 15px', boxShadow: '0 16px 40px -18px rgba(0,0,0,.55)', position: 'relative', isolation: 'isolate', flex: 'none', height: s.chH == null ? 'auto' : s.chH, overflowY: s.chH == null ? 'hidden' : 'auto', overflowX: 'hidden' },

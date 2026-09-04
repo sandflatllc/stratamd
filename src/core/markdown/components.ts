@@ -114,7 +114,7 @@ export const COMPONENT_REGISTRY: Readonly<Record<ComponentName, ComponentSchema>
   AnnotatedScreenshot: {
     name: 'AnnotatedScreenshot',
     purpose: 'Connect numbered positions on one local image to durable Markdown notes.',
-    body: 'Exactly one local Markdown image followed by a Pin/X/Y/Image version/Note GFM table. Add coordinates with stratamd pin or Place pin.',
+    body: 'Exactly one local Markdown image followed by a Pin/X/Y/Image version/Note GFM table. Add coordinates with a strata edit or Place pin.',
     properties: {},
     example: '<AnnotatedScreenshot>\n![Review table](./review-table.png)\n\n| Pin | X | Y | Image version | Note |\n|---:|---:|---:|---|---|\n| 1 | 24.0 | 31.5 | 48211:1788372000000000000 | Long rows need a clearer boundary. |\n</AnnotatedScreenshot>',
   },

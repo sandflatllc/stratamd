@@ -4,11 +4,11 @@
 
 ![StrataMD mark](../../resources/stratamd-icon.svg)
 
-StrataMD is a visual Markdown editor for people who write plans, specs, documentation, and other `.md` files with AI agents. Your agent can read the draft you have open, respond inside the document, and continue from the changes you choose to send.
+StrataMD is a visual Markdown editor and desktop cockpit for people who write plans, specs, documentation, and other `.md` files with AI agents. T3 runs the agents; Strata keeps their conversations, document work, and questions together.
 
-> Attach to the document I have open in Strata.
+> Start a thread for the document I have open in Strata.
 
-That one instruction is the whole handoff. You do not need to paste a path, install a StrataMD-specific plugin, or move the conversation into another app. Claude Code, Codex, T3 Code, and any other agent that can run a shell command can join.
+Choose the project, model, effort, and access, then Strata starts the T3 thread and sends the first delivery. The conversation stays beside the document while T3 owns execution.
 
 ![StrataMD reviewing agent changes](../screenshots/review.png)
 
@@ -20,15 +20,15 @@ Agents are good at producing a lot of Markdown. Reviewing it is still awkward. C
 
 StrataMD lets agents work with the live document while you keep approval. They can read, comment, suggest, and edit. You decide what stays and when the file is saved.
 
-### Bring the agent you already use
+### Keep the conversation beside the work
 
-StrataMD is not another chat client. Keep talking to your agent where you already work, then ask it to join the document open in StrataMD.
+Projects and Conversation expose the T3 threads used at the desk. Agent prose, approvals, user-input requests, and document items stay in the same cockpit.
 
-Attach more than one when the work calls for it. One agent can draft while another checks technical claims or leaves questions. Their replies stay attributed, and you choose what each agent receives.
+Send to more than one thread when the work calls for it. One thread can draft while another checks technical claims or leaves questions. Their replies stay attributed, and you choose what each thread receives.
 
 ### Send only what changed
 
-The first time an agent attaches, it sees the complete live draft, including unsaved edits and annotations. After that, StrataMD remembers what that agent has already seen. Each Send contains only the new changes, notes, and annotation activity meant for that recipient.
+The first delivery carries the whole live draft unless Strata can prove the thread already wrote that version. After that, StrataMD remembers what the thread has seen. Each Send contains only the new changes, notes, and item activity meant for that recipient.
 
 Before anything leaves the editor, the Send preview shows the exact text prepared for each agent. If two agents joined at different times, each gets the context it needs.
 
@@ -36,7 +36,7 @@ Before anything leaves the editor, the Send preview shows the exact text prepare
 
 ### Review the answer where it belongs
 
-Agents can leave comments, ask questions, propose a replacement, or edit a larger section directly. Suggestions come back with Accept and Reject. Direct edits come back with Keep and Revert. Both appear in the document and the Changes panel, with the agent's name attached.
+Agents post comments, questions, replacements, and edits in the final `strata` block of their reply. Suggestions come back with Accept and Reject. Direct edits come back with Keep and Revert. Both appear in the document and the Changes panel, with the thread's identity attached.
 
 You do not have to reconstruct the review from a chat transcript, and nothing is saved because an agent decided it was finished. Comments, questions, and suggestions live beside the document instead of adding metadata to the Markdown file.
 
@@ -67,13 +67,13 @@ Themes are plain JSON, so an agent can inspect the active theme and help finish 
 ```text
 Open a file
     ↓
-Agent attaches
+Start or open a T3 thread
     ↓
 You edit and annotate
     ↓
-Send freezes a delivery
+Send starts a turn with a frozen delivery
     ↓
-Agent comments or edits the buffer
+Agent replies with prose and a strata block
     ↓
 You review in StrataMD
     ├── Continue editing, then Send again
@@ -81,7 +81,7 @@ You review in StrataMD
 ```
 
 1. Open a `.md` file in StrataMD.
-2. Ask an agent to attach. The agent runs `stratamd attach` and receives the focused document without needing its path.
+2. Start a thread from the document or open one from Projects.
 3. Edit, annotate, and press **Send** when you want the agent to continue.
 4. Review suggestions with Accept or Reject and direct edits with Keep or Revert.
 5. Save when the document is ready. Send never saves.
@@ -90,14 +90,14 @@ You review in StrataMD
 
 | Part | Behavior |
 |---|---|
-| Working buffer | StrataMD mirrors the live editor state to a private `buffer.md`. Attached agents read and edit that buffer, including unsaved work. |
-| Agent attachment | Each agent has an independent baseline, delivery queue, and annotation cursor. Multiple agents can attach without sharing each other's changes by default. |
+| Working buffer | StrataMD mirrors live editor state to a private `buffer.md`. A delivery names it so the thread can read unsaved work; in-loop writes return through the final strata block. |
+| Thread attachment | Each attached T3 thread has an independent baseline, delivery queue, and annotation cursor. |
 | Send | StrataMD freezes one delivery per selected recipient. Later edits cannot enter that delivery, and the preview shows its exact text. |
 | Suggestions | An agent anchors replacement Markdown to quoted text. Accept applies it; Reject dismisses it. Neither action saves the file. |
 | Direct edits | A larger buffer edit appears as an attributed pending hunk. Keep advances the reviewed copy; Revert restores the earlier text. |
 | Ghost | The ghost is the last version you reviewed. It lets StrataMD show outside file edits as track changes, including edits made while the document was closed. |
 
-StrataMD instructs attached agents to edit the private buffer. If another tool writes to the document itself, StrataMD detects the change and brings it into the same review flow. Save rechecks the document before writing and stops for conflict resolution if the file changed on disk.
+StrataMD instructs in-loop agents to return structured document actions in their final strata block. If an unattended tool writes to the document itself, the T3 turn diff and Strata's reconciler bring it into the same review flow. Save rechecks the document before writing and stops for conflict resolution if the file changed on disk.
 
 ### Markdown engine
 
@@ -121,41 +121,24 @@ pnpm build:linux
 stratamd open README.md
 ```
 
-Then ask your agent to attach to the document you have open. If it needs the protocol, `stratamd --agent-help` prints the current instructions.
+Pair Strata with the T3 server, then start a thread from a document or Projects. `stratamd --agent-help` prints the thread contract.
 
 For development, run `pnpm dev`. The setup command is safe to repeat, and `stratamd setup --remove` removes the PATH link and desktop integration.
 
-<details>
-<summary>Agent CLI reference</summary>
-
-| Command | What it does |
-|---|---|
-| `stratamd attach [file]` | Joins the focused or named document and waits for your next Send |
-| `stratamd annotate` | Leaves a comment, question, or suggestion on quoted text |
-| `stratamd reply` | Answers a question or continues an annotation thread |
-| `stratamd changes` | Lists every change you have not reviewed |
-| `stratamd changed` | Attributes the agent's next direct edit |
-| `stratamd open` | Opens a file with outside edits marked for review |
-| `stratamd checkpoint` | Creates the reviewed baseline for a file or directory |
-| `stratamd theme` | Describes the active theme so an agent can edit it |
-| `stratamd detach` | Leaves the document session |
-
-Commands write one JSON object to stdout. The attachment payload includes a complete rendered `text` field, so an agent that reads nothing else still receives the full delivery.
-
-</details>
+The file-only command has four jobs: `open`, `theme`, `setup`, and `doctor`. Agent traffic stays in T3 messages and final strata blocks.
 
 ## Local by design
 
-StrataMD has no accounts or telemetry. It stores working buffers, reviewed copies, annotations, and queued deliveries on your machine. The app and CLI communicate through a local Unix socket that checks the caller's user ID.
+StrataMD has no account of its own and no telemetry. It stores working buffers, reviewed copies, annotations, and queued deliveries locally. One paired credential connects it to the T3 server over HTTP and WebSocket.
 
-StrataMD itself makes no network calls. An attached agent may send document content to its model provider according to that agent's own configuration and privacy policy.
+Other than the paired T3 engine, Strata makes no network calls. A thread may send document content to its model provider according to that provider's configuration and privacy policy.
 
 ## Project status
 
 StrataMD is an early-stage personal Linux tool. There is no public package, installer, auto-updater, macOS build, or Windows build yet.
 
-Read the [product specification](../PRD.md) for the full behavior and edge cases. The bundled [agent skill](../../skills/stratamd/SKILL.md) shows how an agent attaches and stays in the editing loop.
+Read the [product specification](../PRD.md) for the full behavior and edge cases. The bundled [agent skill](../../skills/stratamd/SKILL.md) defines the T3 thread contract.
 
 Bug reports go to <dillonc@sandflatllc.com>.[^1]
 
-[^1]: Or leave a question on this paragraph and attach an agent to it.
+[^1]: Or leave a question on this paragraph and send it to a thread.

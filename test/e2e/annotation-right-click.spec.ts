@@ -54,7 +54,7 @@ test('right-click selects the word under the cursor and opens the annotate menu'
     await composer.waitFor({ state: 'hidden', timeout: 10_000 })
 
     await expect.poll(async () => {
-      const state = await scenario.state()
+      const state = await scenario.inspectDocument()
       return state.annotations?.find((a) => a.text === 'right-click comment')?.quote ?? ''
     }, { timeout: 10_000 }).toBe(target)
     expect(pageErrors, pageErrors.join('\n')).toEqual([])

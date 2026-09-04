@@ -10,7 +10,7 @@ import { Scenario, projectRoot } from './harness'
 test('a comment lands on text selected inside a table cell', async ({}, testInfo) => {
   test.setTimeout(120_000)
   const sample = await readFile(join(projectRoot, 'test/corpus/real/strata-product-page.md'), 'utf8')
-  const target = 'Multiple agents can attach'
+  const target = 'Each attached T3 thread has an independent baseline'
   expect(sample.includes(target)).toBe(true)
 
   const scenario = await Scenario.create(testInfo, sample, 'strata.md')
@@ -59,7 +59,7 @@ test('a comment lands on text selected inside a table cell', async ({}, testInfo
     await composer.waitFor({ state: 'hidden', timeout: 10_000 })
 
     await expect.poll(async () => {
-      const state = await scenario.state()
+      const state = await scenario.inspectDocument()
       return state.annotations?.find((a) => a.text === 'table cell comment')?.quote ?? ''
     }, { timeout: 10_000 }).toContain(target)
     expect(pageErrors, pageErrors.join('\n')).toEqual([])

@@ -59,7 +59,7 @@ export const THEME_KEYS: readonly ThemeKeyEntry[] = Object.freeze([
   { key: 'fonts.code', group: 'fonts', variable: '--font-code', label: 'Code and keyboard font', description: 'Code, source view, and keyboard hints', kind: 'font', sample: 'fonts-code' },
 
   color('surfaces.window', 'Window background', 'The window itself, behind all panels'),
-  color('surfaces.panel', 'Panel background', 'Explorer, editor, right rail, dialogs, theme panel, thread panel, and ordinary menus'),
+  color('surfaces.panel', 'Panel background', 'Explorer, editor, right rail, dialogs, theme panel, Conversation, and ordinary menus'),
   color('surfaces.inset', 'Inset and hover background', 'Hovered rows, chips, table header cells, notices, and nested panel areas'),
   color('surfaces.field', 'Text field background', 'Annotation, reply, send, rename, and other text-entry fields'),
   color('surfaces.code', 'Code and preview background', 'Boxes behind code, source previews, image placeholders, and delivery previews'),

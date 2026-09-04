@@ -28,7 +28,7 @@ ${filler('Beta')}
 let value: Scenario
 test.afterEach(async () => { await value?.dispose() })
 
-test('tab hosts preserve the shell, expose counts, and keep Agents visible while Changes is pinned', async ({}, testInfo) => {
+test('tab hosts preserve the shell and expose counts while Changes is pinned', async ({}, testInfo) => {
   value = await Scenario.create(testInfo, '# Review\n\nOriginal sentence.\n')
   await value.writeSettings({ panels: { upperReviewHeight: 954 } })
   const page = await value.launch()
@@ -40,11 +40,10 @@ test('tab hosts preserve the shell, expose counts, and keep Agents visible while
   await expect(page.getByRole('heading', { name: 'Attached' })).toBeVisible()
   await expect(page.getByText('None attached', { exact: true })).toBeVisible()
 
-  expect((await value.attach('agent-a', 'Agent A')).event).toBe('initial')
-  const state = await value.state()
+  const state = await value.inspectDocument()
   await value.atomicWrite(state.buffer!, '# Review\n\nAgent proposal.\n')
   await expect(review.getByRole('tab', { name: /^Changes/ }).locator('.rail-tab-count')).toHaveText('1')
-  await expect(page.getByText('1 attached', { exact: true })).toBeVisible()
+  await expect(page.getByText('None attached', { exact: true })).toBeVisible()
 
   const annotations = review.getByRole('tab', { name: /^Items/ })
   await annotations.focus()
@@ -93,7 +92,7 @@ test('Contents follows the live document, centers jumps, and restores each docum
   await expect(page.getByRole('heading', { name: 'Alpha detail', exact: true })).toBeVisible()
   await expect(alphaFold).toContainText('Temporarily open')
 
-  const before = await value.state()
+  const before = await value.inspectDocument()
   const deep = page.getByRole('button', { name: /Deep note/ })
   await deep.click()
   await expect(deep).toHaveAttribute('aria-current', 'location')
@@ -104,7 +103,7 @@ test('Contents follows the live document, centers jumps, and restores each docum
     return Math.abs(heading.getBoundingClientRect().top - (bounds.top + bounds.height / 2))
   })
   expect(centered).toBeLessThan(36)
-  expect((await value.state()).buffer).toBe(before.buffer)
+  expect((await value.inspectDocument()).buffer).toBe(before.buffer)
 
   const edited = DOCUMENT.replace('#### Deep note', '#### Live heading')
   await setSource(page, edited)

@@ -83,7 +83,6 @@ const quickSendRequestSchema = draftRequestSchema.extend({
 }).strict()
 const settingsSchema = z.object({
   animatedBackground: z.boolean().optional(),
-  attachmentIdleHours: z.number().positive().finite().optional(),
   panelSizes: z.object({
     explorerWidth: z.number().positive().finite(),
     rightRailWidth: z.number().positive().finite(),
@@ -196,11 +195,9 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.resolveConflict]: z.tuple([pathSchema, idSchema, z.enum(['mine', 'incoming'])]),
   [IPC.previewSend]: z.tuple([pathSchema, sendRequestSchema]),
   [IPC.send]: z.tuple([pathSchema, sendRequestSchema]),
-  [IPC.copyForAgent]: z.tuple([pathSchema, textSchema, z.boolean()]),
   [IPC.copyText]: z.tuple([textSchema]),
-  [IPC.nudge]: z.tuple([pathSchema, idSchema]),
   [IPC.setLead]: z.tuple([pathSchema, idSchema.nullable()]),
-  [IPC.disconnectAgent]: z.tuple([pathSchema, idSchema]),
+  [IPC.detachThread]: z.tuple([pathSchema, idSchema]),
   [IPC.addFolder]: z.tuple([]),
   [IPC.removeFolder]: z.tuple([pathSchema]),
   [IPC.scanFolder]: z.tuple([pathSchema]),
@@ -338,11 +335,9 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.resolveConflict]: (path: string, conflictId: string, decision: 'mine' | 'incoming') => options.api.resolveConflict(path, conflictId, decision),
     [IPC.previewSend]: (path: string, request: Parameters<StrataApi['previewSend']>[1]) => options.api.previewSend(path, request),
     [IPC.send]: (path: string, request: Parameters<StrataApi['send']>[1]) => options.api.send(path, request),
-    [IPC.copyForAgent]: (path: string, note: string, includeExternal: boolean) => options.api.copyForAgent(path, note, includeExternal),
     [IPC.copyText]: (text: string) => options.api.copyText(text),
-    [IPC.nudge]: (path: string, agentId: string) => options.api.nudge(path, agentId),
     [IPC.setLead]: (path: string, agentId: string | null) => options.api.setLead(path, agentId),
-    [IPC.disconnectAgent]: (path: string, agentId: string) => options.api.disconnectAgent(path, agentId),
+    [IPC.detachThread]: (path: string, threadId: string) => options.api.detachThread(path, threadId),
     [IPC.addFolder]: () => options.api.addFolder(),
     [IPC.removeFolder]: (path: string) => options.api.removeFolder(path),
     [IPC.scanFolder]: (path: string) => options.api.scanFolder(path),

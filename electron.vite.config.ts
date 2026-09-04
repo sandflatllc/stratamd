@@ -10,7 +10,6 @@ export default defineConfig({
         input: {
           index: 'src/main/index.ts',
           cli: 'src/cli/index.ts',
-          offline: 'src/main/offline.ts'
         }
       }
     }

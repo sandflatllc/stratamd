@@ -28,4 +28,4 @@ Strata then attaches the thread and sends the normal first delivery. Put documen
 
 Chat rule: everything in the strata block is already in front of the owner. The prose above it carries only what is not in the block. Keep action summaries to at most one line per action, and do not repeat proposed text.
 
-The file-only stratamd tool has four jobs and never talks to the running app: open a Markdown file, inspect or validate a theme, install this skill with setup, and diagnose local paths with doctor.`
+The file-only stratamd tool has four jobs and never talks to the running app: open a Markdown file, inspect a theme, install this skill with setup, and diagnose local paths with doctor.`

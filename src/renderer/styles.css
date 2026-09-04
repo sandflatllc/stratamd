@@ -583,9 +583,6 @@ kbd { color: var(--muted); font-family: var(--font-code), "JetBrains Mono", mono
 .state-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
 .state-pending { background: var(--controls-warning); }
 .state-waiting { animation: pulse-dot 1.6s ease-in-out infinite; }
-.nudge { border: 0; border-radius: 999px; padding: 4px 10px; background: transparent; color: var(--dim); font-size: calc(12px * var(--zoom, 1)); font-weight: 800; cursor: pointer; transition: all .18s cubic-bezier(.34,1.56,.64,1); }
-.nudge:hover { color: var(--controls-primary-text); background: var(--controls-primary); animation: wobble .4s ease-in-out; }
-.nudge:active { transform: scale(.85); }
 .agent-actions { display: flex; flex: none; align-items: center; gap: 2px; }
 .agent-icon { border: 0; border-radius: 999px; padding: 3px 7px; background: transparent; color: var(--muted); font-size: calc(13px * var(--zoom, 1)); cursor: pointer; transition: all .18s cubic-bezier(.34,1.56,.64,1); }
 .agent-icon:hover { color: var(--text); background: var(--card-2); transform: scale(1.12); }
@@ -845,7 +842,7 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .rail-decision-form > div { display: flex; align-items: center; justify-content: space-between; gap: 7px; }
 .rail-decision-form small { color: var(--muted); }
 
-/* Explorer folder menu and the empty agents panel. */
+/* Explorer folder menu and the empty Attached panel. */
 .context-menu button.menu-danger:hover, .context-menu button.menu-danger:focus-visible { color: var(--controls-danger); background: color-mix(in srgb, var(--controls-danger) 15%, transparent); }
 .agent-prompt { display: block; margin: 8px auto 0; }
 

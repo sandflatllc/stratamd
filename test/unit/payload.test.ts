@@ -4,11 +4,8 @@ import {
   guardrailLine,
   MESSAGE_GUIDANCE_LINE,
   PAYLOAD_VERSION,
-  SUPERSEDED_GUIDANCE_LINE,
-  TIMEOUT_GUIDANCE_LINE,
   writeOnlyLine,
   serializePayload,
-  trimPayload,
   type PayloadEvent,
 } from '../../src/core/payload'
 
@@ -16,39 +13,25 @@ const file = '/docs/plan.md'
 const buffer = '/data/stratamd/buffer.md'
 
 describe('payload v13', () => {
-  it.each<PayloadEvent>(['initial', 'resync'])('starts %s text with the full write guardrail', (event) => {
+  it.each<PayloadEvent>(['initial', 'resync'])('starts %s text with the in-loop buffer guardrail', (event) => {
     const payload = createPayload({ file, buffer, agent: 'ag_1', event })
     expect(payload.text.split('\n')[0]).toBe(
-      "While attached, write only to the buffer file: /data/stratamd/buffer.md. The document /docs/plan.md is the user's to save.",
+      'Read the live buffer at /data/stratamd/buffer.md. While the owner is in the loop, do not write it or /docs/plan.md; return document actions in the final strata block.',
     )
     expect(payload.text.startsWith(guardrailLine(file, buffer))).toBe(true)
   })
 
   it.each<PayloadEvent>([
-    'send', 'message', 'closed', 'timeout', 'superseded', 'state', 'changes',
-  ])('starts %s text with only the buffer path the agent must write to', (event) => {
+    'send', 'message',
+  ])('starts %s text with the live buffer and strata-block direction', (event) => {
     const payload = createPayload({ file, buffer, agent: 'ag_1', event })
-    expect(payload.text.split('\n')[0]).toBe('Write only to /data/stratamd/buffer.md.')
+    expect(payload.text.split('\n')[0]).toBe('Read the live buffer at /data/stratamd/buffer.md. Return document actions in the final strata block.')
     expect(payload.text.startsWith(writeOnlyLine(buffer))).toBe(true)
     expect(payload.text.split('\n')[0]).not.toContain(file)
   })
 
-  it('tells the agent to listen again silently on timeout and superseded, and nowhere else', () => {
-    const timeout = createPayload({ file, buffer, agent: 'ag_1', event: 'timeout' })
-    expect(timeout.text).toBe(`${writeOnlyLine(buffer)}\n\n${TIMEOUT_GUIDANCE_LINE}`)
-    expect(TIMEOUT_GUIDANCE_LINE).toContain('say nothing about it in chat')
-    const superseded = createPayload({ file, buffer, agent: 'ag_1', event: 'superseded' })
-    expect(superseded.text).toBe(`${writeOnlyLine(buffer)}\n\n${SUPERSEDED_GUIDANCE_LINE}`)
-    expect(SUPERSEDED_GUIDANCE_LINE).toContain('say nothing about it in chat')
-    for (const event of ['send', 'closed', 'initial', 'state'] as const) {
-      const other = createPayload({ file, buffer, agent: 'ag_1', event, notes: ['a note'] })
-      expect(other.text).not.toContain(TIMEOUT_GUIDANCE_LINE)
-      expect(other.text).not.toContain(SUPERSEDED_GUIDANCE_LINE)
-    }
-  })
-
   it('serializes documented fields as version 13 and omits absent fields', () => {
-    const payload = createPayload({ file, buffer, agent: 'ag_1', event: 'timeout' })
+    const payload = createPayload({ file, buffer, agent: 'ag_1', event: 'send' })
     const json = JSON.parse(serializePayload(payload)) as Record<string, unknown>
     expect(json.version).toBe(PAYLOAD_VERSION)
     expect(json).not.toHaveProperty('deliveryId')
@@ -112,7 +95,7 @@ describe('payload v13', () => {
     expect(payload.text).toContain('decision: How should this ship? (line 8); choices: Now | Later | Other')
 
     const state = createPayload({
-      file, buffer, agent: 'ag_1', event: 'state', document: 'Body\n', cursor: 3,
+      file, buffer, agent: 'ag_1', event: 'initial', document: 'Body\n', cursor: 3,
       annotations: payload.annotations!,
     })
     expect(state.text).toContain('Open decisions:\n- d1 (whole document): Which gate?\n  choices: CI | Manual | Other')
@@ -133,9 +116,7 @@ describe('payload v13', () => {
       'Message from GPT (ag_2):\nReady for your pass.',
       MESSAGE_GUIDANCE_LINE,
     ].join('\n\n'))
-    expect(MESSAGE_GUIDANCE_LINE).toContain('stratamd state --brief')
-    expect(MESSAGE_GUIDANCE_LINE).toContain('stratamd state')
-    expect(MESSAGE_GUIDANCE_LINE).toContain('stratamd changes')
+    expect(MESSAGE_GUIDANCE_LINE).toContain('final strata block')
 
     const json = JSON.parse(serializePayload(payload)) as Record<string, unknown>
     expect(json).toMatchObject({
@@ -147,30 +128,6 @@ describe('payload v13', () => {
     })
     expect(json).not.toHaveProperty('document')
     expect(json).not.toHaveProperty('segments')
-  })
-
-  it('trims a payload to the brief or text-only view without touching the original', () => {
-    const payload = createPayload({
-      file, buffer, agent: 'ag_1', event: 'state', open: true, cursor: 3,
-      document: 'Body.\n', annotations: [],
-      attachments: [{ agent: 'ag_2', name: 'GPT', state: 'waiting', lead: true }],
-    })
-    expect(trimPayload(payload, {})).toBe(payload)
-
-    const textOnly = trimPayload(payload, { textOnly: true })
-    expect(textOnly).not.toHaveProperty('document')
-    expect(textOnly).toMatchObject({ text: payload.text, annotations: [], open: true, cursor: 3 })
-
-    const brief = trimPayload(payload, { brief: true })
-    expect(brief).not.toHaveProperty('document')
-    expect(brief).not.toHaveProperty('text')
-    expect(brief).not.toHaveProperty('annotations')
-    expect(brief).toMatchObject({
-      version: PAYLOAD_VERSION, event: 'state', file, buffer, open: true, cursor: 3,
-      attachments: [{ agent: 'ag_2', name: 'GPT', state: 'waiting', lead: true }],
-    })
-    expect(payload.document).toBe('Body.\n')
-    expect(JSON.parse(serializePayload(payload))).toMatchObject({ open: true })
   })
 
   it('renders the whole annotated document and open questions for initial payloads', () => {
@@ -253,7 +210,7 @@ describe('payload v13', () => {
 
   it('renders nested annotation highlights as a stack', () => {
     const payload = createPayload({
-      file, buffer, agent: 'ag_1', event: 'state', document: 'abcdef',
+      file, buffer, agent: 'ag_1', event: 'initial', document: 'abcdef',
       annotations: [
         { id: 'outer', seq: 1, kind: 'comment', author: 'user', agent: null, status: 'open', quote: 'bcde', text: 'outer', line: 1, replies: [] },
         { id: 'inner', seq: 2, kind: 'comment', author: 'user', agent: null, status: 'open', quote: 'cd', text: 'inner', line: 1, replies: [] },
@@ -271,7 +228,7 @@ describe('payload v13', () => {
       replies: [{ id: 'r1', seq: 3, author: 'user' as const, text: 'Why?' }],
     }
     const state = createPayload({
-      file, buffer, agent: 'ag_1', event: 'state', document: 'present', annotations: [annotation],
+      file, buffer, agent: 'ag_1', event: 'initial', document: 'present', annotations: [annotation],
     })
     expect(state.text).toContain('present')
     expect(state.text).toContain('Annotations not shown inline:')
@@ -280,7 +237,7 @@ describe('payload v13', () => {
     expect(state.text).toContain('↳ user: Why?')
 
     const changes = createPayload({
-      file, buffer, agent: 'ag_1', event: 'changes',
+      file, buffer, agent: 'ag_1', event: 'send',
       annotations: [annotation],
       segments: [{
         author: 'external',
@@ -291,8 +248,8 @@ describe('payload v13', () => {
       }],
     })
     expect(changes.text).toContain('Changes by external:')
-    expect(changes.text).not.toContain('Changes by user:')
-    expect(changes.segments).toHaveLength(1)
+    expect(changes.text).toContain('Changes by user:')
+    expect(changes.segments).toHaveLength(2)
     expect(changes.text).toContain('~~missing~~ replacement⟦/a1⟧\n  ↳ user: Why?')
     expect(changes.text).toContain('@@ -0,0 +1 @@')
   })
@@ -301,7 +258,7 @@ describe('payload v13', () => {
 describe('payload markers and delivery context', () => {
   it('escapes annotation text in markers, collapses heading newlines, and names the agent', () => {
     const payload = createPayload({
-      file, buffer, agent: 'ag_1', event: 'state', document: 'alpha beta',
+      file, buffer, agent: 'ag_1', event: 'initial', document: 'alpha beta',
       annotations: [{
         id: 'a1', seq: 1, kind: 'comment', author: 'agent', agent: 'ag_2', name: 'GPT', label: 'Tone',
         status: 'open', quote: 'beta', text: 'first ⟦line⟧\nsecond line', line: 1, replies: [],
@@ -312,7 +269,7 @@ describe('payload markers and delivery context', () => {
 
   it('renders a suggestion replacement once, escaped, after the struck quote', () => {
     const payload = createPayload({
-      file, buffer, agent: 'ag_1', event: 'state', document: 'keep old text here',
+      file, buffer, agent: 'ag_1', event: 'initial', document: 'keep old text here',
       annotations: [{
         id: 's1', seq: 1, kind: 'suggestion', author: 'agent', agent: 'ag_2',
         status: 'open', quote: 'old text', text: 'new ⟦text⟧', line: 1, replies: [],
@@ -348,26 +305,4 @@ describe('payload markers and delivery context', () => {
     expect(payload.text).toContain('@@ -1 +1,2 @@\n+top\n first')
   })
 
-  it('trims to the annotations view: no document, text is the open questions', () => {
-    const payload = createPayload({
-      file, buffer, agent: 'ag_1', event: 'state', open: true, cursor: 2, document: 'Why now?\n',
-      annotations: [
-        { id: 'a1', seq: 1, kind: 'question', author: 'user', agent: null, status: 'open', quote: 'Why now?', text: 'Justify\nthis', line: 1, replies: [] },
-        { id: 'a2', seq: 2, kind: 'comment', author: 'user', agent: null, status: 'open', quote: 'now', text: 'note', line: 1, replies: [] },
-      ],
-    })
-    const view = trimPayload(payload, { annotationsOnly: true })
-    expect(view).not.toHaveProperty('document')
-    expect(view.annotations).toHaveLength(2)
-    expect(view.text).toBe('Open questions:\n- a1 on line 1: Justify this')
-    expect(payload.document).toBe('Why now?\n')
-  })
-
-  it('includes open decisions in the annotations-only text view', () => {
-    const payload = createPayload({
-      file, buffer, agent: 'ag_1', event: 'state', document: 'Body',
-      annotations: [{ id: 'd1', seq: 1, kind: 'decision', author: 'user', agent: null, status: 'open', anchor: 'document', quote: '', text: 'Choose?', line: 1, replies: [], decision: { options: ['A', 'B'], answers: [] } }],
-    })
-    expect(trimPayload(payload, { annotationsOnly: true }).text).toBe('Open decisions:\n- d1 (whole document): Choose?\n  choices: A | B | Other')
-  })
 })

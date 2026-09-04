@@ -35,7 +35,7 @@ export const PANEL_LIMITS = {
 
 export const THEME_PANEL_LIMITS = { minWidth: 300, maxWidth: 900, minHeight: 320, maxHeight: 1600 } as const
 
-/** The left window's width while the Thread tab is selected: never below the old popover's 330px (PRD §6.9). */
+/** The left window's width while Conversation is selected. */
 export const THREAD_PANEL_LIMITS = { minWidth: 330, maxWidth: SIDE_WINDOW_MAX } as const
 
 /** The editor never drops below this width because a side window grew; the side window yields instead. */
@@ -55,7 +55,7 @@ export function sideWindowCeiling(minimum: number, windowWidth: number, otherSid
 
 /**
  * The left window carries two widths: one for Files and Contents, one for the
- * Thread tab, so navigation can stay narrow while a conversation gets room.
+ * Conversation, so navigation can stay narrow while the transcript gets room.
  * The stored width is what the owner chose; what shows is that width clamped
  * to the window so the editor never collapses.
  */
@@ -85,7 +85,6 @@ export const EMPTY_VIEW: AppView = {
   engine: { state: 'unpaired', server: null, serverVersion: null, supportedVersion: '0.0.33', problem: null, projects: [], activeThreadId: null },
   settings: {
     animatedBackground: true,
-    attachmentIdleHours: 24,
     panelSizes: {
       explorerWidth: 212,
       rightRailWidth: 300,
@@ -241,9 +240,14 @@ export function hunkSourceTooltip(hunk: HunkView): string {
 }
 
 export function attachmentStateLabel(state: AttachmentState): string {
-  if (state === 'waiting') return 'waiting for changes'
-  if (state === 'pending') return 'has an update waiting'
-  return 'working'
+  if (state === 'starting') return 'starting'
+  if (state === 'running') return 'running'
+  if (state === 'ready') return 'ready'
+  if (state === 'interrupted') return 'interrupted'
+  if (state === 'stopped') return 'stopped'
+  if (state === 'error') return 'error'
+  if (state === 'disconnected') return 'disconnected'
+  return 'idle'
 }
 
 export function timeAgo(ms: number): string {
@@ -274,42 +278,11 @@ export function timeAgoShort(ms: number): string {
   return days === 1 ? 'yesterday' : `${days} days ago`
 }
 
-/** An agent that has not called in for this long while "working" is not listening. */
-export const NOT_LISTENING_AFTER_MS = 10 * 60_000
-
-/** The compact duration for a wait in progress: "3 min", "2 h"; nothing under a minute. */
-export function durationShort(ms: number): string | null {
-  const minutes = Math.floor(Math.max(0, ms) / 60_000)
-  if (minutes < 1) return null
-  if (minutes < 60) return `${minutes} min`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours} h`
-  const days = Math.floor(hours / 24)
-  return `${days} day${days === 1 ? '' : 's'}`
-}
-
-/**
- * The attachment row's state line: the state, then when the agent last called
- * in. A working agent that has gone quiet reads as not listening instead, so
- * the row does not promise attention the agent is not paying. A waiting agent
- * is inside one long attach call, so its line says how long it has listened
- * rather than when it was last heard, which would read as staleness (PRD §7).
- */
 export function attachmentStatusLine(
-  attachment: Pick<AttachmentView, 'state' | 'lastCallAt' | 'queuedSendCount'>,
-  now = Date.now(),
+  attachment: Pick<AttachmentView, 'state' | 'queuedSendCount'>,
 ): string {
-  const { state, lastCallAt, queuedSendCount } = attachment
-  const parts: string[] = []
-  if (state === 'waiting') {
-    parts.push('listening')
-    const duration = lastCallAt === null ? null : durationShort(now - lastCallAt)
-    if (duration !== null) parts.push(`for ${duration}`)
-  } else {
-    const quiet = state === 'working' && lastCallAt !== null && now - lastCallAt > NOT_LISTENING_AFTER_MS
-    parts.push(quiet ? 'not listening' : attachmentStateLabel(state))
-    if (lastCallAt !== null) parts.push(`last heard ${timeAgoShort(now - lastCallAt)}`)
-  }
+  const { state, queuedSendCount } = attachment
+  const parts = [attachmentStateLabel(state)]
   if (queuedSendCount > 0) parts.push(`${queuedSendCount} update${queuedSendCount === 1 ? '' : 's'} waiting for it`)
   return parts.join(' · ')
 }
@@ -469,9 +442,6 @@ export function bulkRevertGroups(document: DocumentView): Array<{ key: string; n
   }
   return [...groups.values()].filter((group) => group.hunks.length > 1)
 }
-
-/** What a new user pastes to an agent so it attaches to the open document. */
-export const AGENT_PROMPT = 'Attach to the document I have open in StrataMD: run `stratamd --agent-help` to learn how it works, then `stratamd attach --name "<your name>"` and follow what it returns.'
 
 /** A quiet relative time for a thread entry; empty when the record carries no time. */
 export function threadTime(time: number | undefined, now = Date.now()): string {

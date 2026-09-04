@@ -1,23 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
-  acknowledgeClipboardWrite,
   acknowledgeDelivery,
-  attachmentDisplayState,
   collectOldest,
   createAttachment,
-  createClipboardRecipient,
   createInitialPayload,
   deliveryStart,
   enqueueDelivery,
-  expireIdleAttachments,
   freezeDelivery,
   freezeQuickSend,
   freezeMessage,
   isMessageDelivery,
-  mayExpireAttachment,
-  noteAttachCall,
-  prepareClipboardDelivery,
-  queueClosed,
   sendToRecipients,
   type Attachment,
   type DeliverySnapshot,
@@ -79,16 +71,6 @@ function quickSendSource(overrides: Partial<QuickSendSource> = {}): QuickSendSou
 }
 
 describe('immutable delivery queue', () => {
-  it('derives attachment panel state and updates last-call time immutably', () => {
-    const current = attachment()
-    expect(attachmentDisplayState(current)).toBe('working')
-    expect(attachmentDisplayState(current, true)).toBe('waiting')
-    const touched = noteAttachCall(current, 30)
-    expect(touched.lastCallAt).toBe(30)
-    expect(current.lastCallAt).toBe(10)
-    expect(mayExpireAttachment(current, 10 + 24 * 60 * 60 * 1000)).toBe(true)
-  })
-
   it('freezes Send-time content so later edits never enter a collected delivery', () => {
     const current = attachment()
     const mutableSegments: IndexedSegment[] = [...source().segments]
@@ -193,23 +175,6 @@ describe('immutable delivery queue', () => {
     expect(second.deliveries[1]?.payload.segments?.[0]?.hunks[0]?.added).toEqual(['latest'])
   })
 
-  it('never expires an attachment with an unacknowledged delivery and queues closed after it', () => {
-    const sent = sendToRecipients({ ag_1: attachment() }, source()).attachments.ag_1!
-    expect(mayExpireAttachment(sent, 1_000_000, 100)).toBe(false)
-    expect(expireIdleAttachments({ ag_1: sent }, 1_000_000, 100)).toHaveProperty('ag_1')
-
-    const closed = queueClosed({ ag_1: sent }, {
-      ...source({ id: 'd_closed' }),
-      snapshot: { snapshotId: 'snap_2', segmentIndex: 2, cursor: 4, document: 'after\n' },
-    }).attachments.ag_1!
-    expect(attachmentDisplayState(closed, true)).toBe('pending')
-    expect(closed.deliveries.map((delivery) => delivery.payload.event)).toEqual(['send', 'closed'])
-    expect(collectOldest(closed)?.id).toBe('d_1')
-
-    const afterSendAck = acknowledgeDelivery(closed, 'd_1').attachment
-    expect(collectOldest(afterSendAck)?.payload.event).toBe('closed')
-  })
-
   it('falls back to a full resync when the baseline is unavailable', () => {
     const delivery = freezeDelivery(attachment(), source({ baselineAvailable: false }))
     expect(delivery.payload.event).toBe('resync')
@@ -294,18 +259,6 @@ describe('agent-to-agent messages', () => {
     expect(afterMessage.attachment.deliveries).toEqual([])
   })
 
-  it('never blocks expiry with a queued message while a Send delivery still does', () => {
-    const idle = 100
-    const late = 1_000_000
-    const messageOnly = enqueueDelivery(attachment(), freezeMessage(attachment(), messageSource()))
-    expect(mayExpireAttachment(messageOnly, late, idle)).toBe(true)
-    expect(expireIdleAttachments({ ag_1: messageOnly }, late, idle)).toEqual({})
-
-    const withSend = sendToRecipients({ ag_1: messageOnly }, source()).attachments.ag_1!
-    expect(mayExpireAttachment(withSend, late, idle)).toBe(false)
-    expect(expireIdleAttachments({ ag_1: withSend }, late, idle)).toHaveProperty('ag_1')
-  })
-
   it('accepts a 4096-byte note and rejects 4097 bytes', () => {
     expect(freezeMessage(attachment(), messageSource({ note: 'x'.repeat(4096) })).payload.notes).toEqual(['x'.repeat(4096)])
     expect(() => freezeMessage(attachment(), messageSource({ note: 'x'.repeat(4097) }))).toThrow('4 KB')
@@ -364,45 +317,6 @@ describe('quick sends', () => {
   })
 })
 
-describe('clipboard recipient', () => {
-  it('copies the whole buffer first and advances only after a successful clipboard write', () => {
-    const state = createClipboardRecipient()
-    const prepared = prepareClipboardDelivery(state, source())
-    expect(prepared.delivery.payload.event).toBe('initial')
-    expect(prepared.delivery.payload.document).toBe('after\n')
-
-    const retryState = acknowledgeClipboardWrite(prepared.recipient, prepared.delivery.id, false)
-    const retry = prepareClipboardDelivery(retryState, source({
-      id: 'd_later',
-      snapshot: { snapshotId: 'snap_3', segmentIndex: 3, cursor: 5, document: 'later\n' },
-    }))
-    expect(retry.delivery).toBe(prepared.delivery)
-
-    const acknowledged = acknowledgeClipboardWrite(retry.recipient, prepared.delivery.id, true)
-    expect(acknowledged.baseline).toEqual({ snapshotId: 'snap_2', segmentIndex: 2 })
-    expect(acknowledged.pending).toBeNull()
-  })
-
-  it('includes edits saved since the previous copy because Save does not move its baseline', () => {
-    const first = prepareClipboardDelivery(createClipboardRecipient(), source())
-    const afterCopy = acknowledgeClipboardWrite(first.recipient, first.delivery.id, true)
-
-    // A Save has no delivery-state transition. The next copy still starts at snap_2.
-    const next = prepareClipboardDelivery(afterCopy, source({
-      id: 'd_2',
-      snapshot: { snapshotId: 'snap_3', segmentIndex: 3, cursor: 5, document: 'saved edit\n' },
-      segments: [{
-        index: 3,
-        id: 'segment-3',
-        author: 'user',
-        hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, removed: ['after'], added: ['saved edit'] }],
-      }],
-    }))
-    expect(next.delivery.payload.event).toBe('send')
-    expect(next.delivery.payload.segments?.[0]?.hunks[0]?.added).toEqual(['saved edit'])
-  })
-})
-
 describe('recipient filtering and item selection', () => {
   const hunk = (added: string) => ({ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, removed: ['x'], added: [added] })
   const authored: IndexedSegment[] = [
@@ -421,11 +335,6 @@ describe('recipient filtering and item selection', () => {
     // An accepted suggestion reaches other agents as a plain user hunk: no tag on user segments.
     expect(toOther.payload.segments?.[1]).toEqual({ author: 'user', hunks: [hunk('their accepted text')] })
     expect(toOther.payload.partial).toBeUndefined()
-  })
-
-  it('leaves the clipboard recipient unfiltered', () => {
-    const clipboard = freezeDelivery(attachment('clipboard'), source({ segments: authored, includeExternal: true }))
-    expect(clipboard.payload.segments).toHaveLength(3)
   })
 
   it('drops excluded hunks, marks the delivery partial, and still advances to the snapshot', () => {

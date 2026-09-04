@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, readdir, readlink, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readlink, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -112,16 +112,6 @@ describePackaged('packaged CLI', () => {
     const installed = join(home, '.local', 'bin', 'stratamd')
     expect(await readlink(installed)).toBe(layout.cli)
     expect((await executeFile(installed, ['--agent-help'], { env: environment })).stdout).toBe(`${AGENT_HELP}\n`)
-
-    const document = join(home, 'offline.md')
-    await writeFile(document, '# Packaged CLI\n\nOffline state.\n')
-    const state = await executeFile(installed, ['state', document], { env: environment })
-    expect(JSON.parse(state.stdout)).toMatchObject({
-      version: 13,
-      event: 'state',
-      file: document,
-      document: '# Packaged CLI\n\nOffline state.\n'
-    })
 
     await executeFile(layout.cli, ['setup', '--remove'], { env: environment })
     await expect(stat(installed)).rejects.toMatchObject({ code: 'ENOENT' })

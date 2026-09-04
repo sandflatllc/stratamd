@@ -90,8 +90,7 @@ test('the active document is revealed by opening its ancestor folders', async ({
     // Subfolders start collapsed.
     await expect(explorer.getByRole('button', { name: /^deep\.md$/i })).toHaveCount(0)
 
-    const opened = await scenario.cli(['open', deep])
-    expect(opened.code, opened.stderr).toBe(0)
+    await page.evaluate((path) => window.strata.openDocument(path), deep)
     await expect(page.getByRole('tab', { name: /deep\.md/i })).toHaveAttribute('aria-selected', 'true')
     const row = explorer.getByRole('button', { name: /^deep\.md$/i })
     await expect(row).toBeVisible()

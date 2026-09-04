@@ -867,7 +867,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
         } else {
           chain.observeGroupContinue(after)
         }
-        if (!mirrored) console.error('StrataMD undo: the splice chain diverged from the editor history and was dropped')
+      if (!mirrored) console.error('StrataMD undo: the splice chain diverged from the editor history and was dropped')
       }
       if (suppressChange) return
       currentMarkdown = after

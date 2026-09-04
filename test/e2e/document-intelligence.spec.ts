@@ -208,11 +208,13 @@ test('diagrams, trees, images, local previews, and durable folds remain document
     await expect(page.getByRole('dialog', { name: 'Inspect Tiny sample' }).locator('img')).toHaveAttribute('style', /translate\(0px, 0px\) scale\(1\)/)
     await page.keyboard.press('Escape')
 
-    expect((await scenario.attach('agent-a', 'Agent A')).event).toBe('initial')
-    const annotation = await scenario.cli(['annotate', scenario.file, '--kind', 'question', '--quote', 'Hidden review sentence.', '--text', 'Check this?', '--as', 'agent-a'])
-    expect(annotation.code, annotation.stderr).toBe(0)
+    const hiddenQuote = 'Hidden review sentence.'
+    const hiddenFrom = markdown.indexOf(hiddenQuote)
+    await page.evaluate(async ({ path, quote, from }) => window.strata.addAnnotation(path, {
+      kind: 'question', quote, text: 'Check this?', from, to: from + quote.length,
+    }), { path: scenario.file, quote: hiddenQuote, from: hiddenFrom })
     const changed = markdown.replace('Hidden review sentence.\n', 'Hidden review sentence.\n\nAgent-added sentence.\n')
-    const state = await scenario.state()
+    const state = await scenario.inspectDocument()
     await scenario.atomicWrite(state.buffer!, changed)
     await expect(page.getByRole('tab', { name: /^Changes/ }).locator('.rail-tab-count')).toHaveText('1')
     const foldHeading = page.locator('.strata-fold-heading').filter({ hasText: 'Fold this section' })

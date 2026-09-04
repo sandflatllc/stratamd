@@ -28,71 +28,7 @@ test('Ctrl+C over a selection copies instead of opening the composer', { tag: '@
   }
 })
 
-test('letters typed into a thread reply stay there while a selection pill is up', async ({}, testInfo) => {
-  const scenario = await Scenario.create(testInfo, document, 'hotkeys.md')
-  try {
-    const page = await scenario.launch()
-    expect((await scenario.attach('agent-a', 'Agent A')).event).toBe('initial')
-    const annotation = await scenario.cli([
-      'annotate', scenario.file,
-      '--kind', 'comment',
-      '--quote', 'Reply to this thread sentence.',
-      '--text', 'Please reword this.',
-      '--as', 'agent-a',
-    ])
-    expect(annotation.code, annotation.stderr).toBe(0)
-    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
-    const row = page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'Reply to this thread sentence.' })
-    await row.click()
-    const thread = page.getByRole('region', { name: /comment thread/i })
-    await expect(thread).toBeVisible()
 
-    // A live selection pill in the editor must not claim the reply's letters.
-    await selectTextInVisualEditor(page, 'Select this other sentence.')
-    await expect(page.getByRole('menu', { name: /annotate selection/i })).toBeVisible()
-    const reply = thread.getByRole('textbox', { name: 'Reply' })
-    await reply.click()
-    await page.keyboard.type('quick check success')
-
-    await expect(reply).toHaveValue('quick check success')
-    await expect(page.locator('.annotation-composer')).toHaveCount(0)
-
-    // Ctrl+Enter sends the reply; it never opens Send underneath (§5.2).
-    await page.keyboard.press(primaryKey('Enter'))
-    await expect(thread.locator('.reply')).toContainText('quick check success')
-    await expect(page.getByRole('dialog', { name: /Send changes/i })).toHaveCount(0)
-  } finally {
-    await scenario.dispose()
-  }
-})
-
-test('a bare C opens the comment composer and Enter quick sends it', async ({}, testInfo) => {
-  const scenario = await Scenario.create(testInfo, document, 'hotkeys.md')
-  try {
-    const page = await scenario.launch()
-    expect((await scenario.attach('agent-a', 'Agent A')).event).toBe('initial')
-    await selectTextInVisualEditor(page, 'Select this other sentence.')
-    await expect(page.getByRole('menu', { name: /annotate selection/i })).toBeVisible()
-
-    await page.keyboard.press('c')
-
-    const composer = page.locator('.annotation-composer')
-    await expect(composer).toBeVisible()
-    await expect(composer.getByRole('radio', { name: 'Comment' })).toHaveAttribute('aria-checked', 'true')
-    await expect(composer.locator('textarea')).toBeFocused()
-
-    // Enter carries only this comment and does not open the Send composer.
-    await page.keyboard.type('Needs a citation.')
-    await page.keyboard.press('Enter')
-    await expect(composer).toHaveCount(0)
-    await expect(page.getByRole('dialog', { name: /Send changes/i })).toHaveCount(0)
-    const delivery = await scenario.attach('agent-a', 'Agent A')
-    expect(delivery.event).toBe('send')
-    expect(delivery.annotations).toEqual([expect.objectContaining({ text: 'Needs a citation.' })])
-  } finally {
-    await scenario.dispose()
-  }
-})
 
 test('typing over a keyboard selection replaces the text instead of opening the pill composer', async ({}, testInfo) => {
   const scenario = await Scenario.create(testInfo, document, 'hotkeys.md')

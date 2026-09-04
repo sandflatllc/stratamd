@@ -4,7 +4,7 @@ These prototypes are the approved visual targets for StrataMD's structured-docum
 
 | File | Authority for |
 |---|---|
-| `dense-review-faithful-shell.html` | The shell, Contents, walkthrough card and center-bottom walkthrough bar, review tabs, Pin Changes, the persistent Agents window, table header and table views, section hierarchy, and the overall reading experience. When prose and this file disagree about appearance, this file wins. |
+| `dense-review-faithful-shell.html` | The shell, Contents, walkthrough card and center-bottom walkthrough bar, review tabs, Pin Changes, the persistent Attached panel, table header and table views, section hierarchy, and the overall reading experience. When prose and this file disagree about appearance, this file wins. |
 | `dense-review-walkthrough.html` | Supporting evidence for dense-document hierarchy and interaction. |
 | `widget-vivid-showcase.html` | The visual quality of registered components: Callout, Verdict, MetricStrip, PhaseBoard, BeforeAfter, and the shared card grammar. |
 | `high-value-visual-candidates.html` | DecisionMatrix, BeforeAfter, Chart, EvidenceChain, and AnnotatedScreenshot. |

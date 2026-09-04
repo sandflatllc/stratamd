@@ -8,11 +8,8 @@ import { isAllowedExternalUrl, openExternalUrl, registerStrataIpc, spellingConte
 import { IPC } from '../preload/channels'
 import { documentPathsFromArgv } from './session'
 import { APP_HOST, installAppProtocol, installLocalImageProtocol, registerPrivilegedSchemes } from './protocols'
-import { createCommandSocketServer, type CommandSocketServer } from './socket'
-import type { SocketCommandHandler } from '../cli/protocol'
 
 export interface MainApplication extends StrataApi {
-  commandHandler?(): SocketCommandHandler
   recheckFocused?(): Promise<void>
   shutdown?(): Promise<void>
   /** Reopen the tabs the previous run left open; returns what came back. */
@@ -105,7 +102,7 @@ function adoptOpenFileHandler(handler: (path: string) => void): void {
  */
 export function installFailureLogging(): void {
   process.on('uncaughtException', (error) => {
-    // Main owns the socket, watchers, and save path; it must not limp on
+    // Main owns engine traffic, watchers, and the save path; it must not limp on
     // unknown state. The write is synchronous, so the record lands first.
     logError('main', 'Uncaught exception', error)
     process.exit(1)
@@ -149,7 +146,6 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
   let quitting = false
   let registeredIpc: RegisteredIpc | null = null
   let unsubscribeState: (() => void) | null = null
-  let commandServer: CommandSocketServer | null = null
   let windowCreation: Promise<BrowserWindow> | null = null
   const rendererRoot = options.rendererRoot ?? join(__dirname, '../renderer')
   const preloadPath = options.preloadPath ?? join(__dirname, '../preload/index.js')
@@ -292,19 +288,6 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
     void openLaunchDocuments(argv, workingDirectory).then(showAndFocus)
   })
 
-  if (options.api.commandHandler) {
-    const handleCommand = options.api.commandHandler()
-    commandServer = await createCommandSocketServer({
-      handler: async (request, context) => {
-        const response = await handleCommand(request, context)
-        // The CLI returns once the session exists; painting the replacement
-        // window continues independently as required by the agent contract.
-        if (request.command === 'open') void showAndFocus()
-        return response
-      }
-    })
-  }
-
   mainWindow = await ensureWindow()
   // Last run's tabs come back first; anything named on the command line opens after them and takes focus.
   await options.api.restoreOpenDocuments?.()
@@ -326,11 +309,6 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
     void (async () => {
       registeredIpc?.dispose()
       unsubscribeState?.()
-      try {
-        await commandServer?.close()
-      } catch (error) {
-        logError('main', 'Closing the command socket failed during quit', error)
-      }
       try {
         await options.api.shutdown?.()
       } catch (error) {

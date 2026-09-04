@@ -43,7 +43,7 @@ interface EditorPaneProps {
   onReject(id: string): void
   /** The open thread; its span is highlighted and offered drag handles in the editor. */
   selectedAnnotation: AnnotationView | null
-  /** An in-editor highlight click opens its thread in the left window's Thread tab (§6.9). */
+  /** An in-editor item highlight opens that item inside Conversation. */
   onSelectAnnotation(annotation: AnnotationView | null): void
   jumpHunkId: string | null
   jumpAnnotationId: string | null

@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   SessionRegistry,
-  attachmentState,
   documentPathsFromArgv
 } from '../../src/main/session'
 
@@ -52,13 +51,5 @@ describe('launch path parsing', () => {
       'file:///tmp/space%20name.markdown',
       '/tmp/no.txt'
     ])).toEqual(['/tmp/a.md', '/tmp/space name.markdown'])
-  })
-})
-
-describe('attachment orchestration', () => {
-  it('labels an attachment waiting, pending, or working from its call and queue state', () => {
-    expect(attachmentState({ waiting: true, queuedDeliveries: ['d1'] })).toBe('waiting')
-    expect(attachmentState({ waiting: false, queuedDeliveries: ['d1'] })).toBe('pending')
-    expect(attachmentState({ waiting: false, queuedDeliveries: [] })).toBe('working')
   })
 })

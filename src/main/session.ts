@@ -165,15 +165,3 @@ export function documentPathsFromArgv(argv: readonly string[], cwd = process.cwd
   }
   return [...new Set(paths)]
 }
-
-export interface ExpirableAttachment {
-  lastCallAt: number
-  queuedDeliveries: readonly unknown[]
-  waiting: boolean
-}
-
-export function attachmentState(attachment: Pick<ExpirableAttachment, 'waiting' | 'queuedDeliveries'>): 'waiting' | 'working' | 'pending' {
-  if (attachment.waiting) return 'waiting'
-  if (attachment.queuedDeliveries.length > 0) return 'pending'
-  return 'working'
-}

@@ -121,46 +121,7 @@ test('explorer and document tabs copy full paths from a right-click menu', { tag
   }
 })
 
-test('send composer traps focus and Escape restores the trigger', async ({}, testInfo) => {
-  const value = await Scenario.create(testInfo, '# Focus\n\nOriginal.\n', 'focus.md')
 
-  try {
-    const page = await value.launch()
-    expect((await value.attach('agent-a', 'Agent A')).event).toBe('initial')
-    await setSource(page, '# Focus\n\nUser edit.\n')
-    await value.waitForBuffer('# Focus\n\nUser edit.\n')
-
-    const trigger = page.getByRole('button', { name: /^Send(?:\b|$)/i }).first()
-    await trigger.click()
-    const dialog = page.getByRole('dialog', { name: /Send changes/i })
-    await expect(dialog.getByRole('textbox', { name: /Note for recipients/i })).toBeFocused()
-    await expect(dialog.getByRole('button', { name: /^Send$/i })).toBeEnabled()
-
-    await page.keyboard.press('Shift+Tab')
-    await expect(dialog.getByRole('button', { name: /^Send$/i })).toBeFocused()
-    await page.keyboard.press('Escape')
-    await expect(dialog).toBeHidden()
-    await expect(trigger).toBeFocused()
-  } finally {
-    await value.dispose()
-  }
-})
-
-test('closing the last window quits the app and the CLI answers offline', async ({}, testInfo) => {
-  const value = await Scenario.create(testInfo, '# First\n', 'first.md')
-  try {
-    const page = await value.launch()
-    const child = value.app!.process()
-    await page.close()
-    await expect.poll(() => child.exitCode !== null || child.signalCode !== null, { timeout: 15_000 }).toBe(true)
-    expect(child.exitCode).toBe(0)
-    const result = await value.cli(['state', value.file])
-    expect(result.code, result.stderr).toBe(0)
-    expect(JSON.parse(result.stdout)).toMatchObject({ open: false })
-  } finally {
-    await value.dispose()
-  }
-})
 
 test('second-instance path launch opens a tab in the running instance', async ({}, testInfo) => {
   test.setTimeout(60_000)

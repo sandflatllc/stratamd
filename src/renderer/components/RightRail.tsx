@@ -57,7 +57,7 @@ interface RightRailProps {
   onStop(agentId: string): void
   onOpenConversation(agentId: string): void
   onSetLead(agentId: string | null): void
-  onDisconnect(attachment: AttachmentView): void
+  onDetach(attachment: AttachmentView): void
   onSaveRound(index: number): Promise<{ hunks: RoundHunkView[] }>
   conversationDocuments?: Array<{ path: string; turnId: string; additions: number; deletions: number; markdown: boolean }>
   onOpenDocument?(path: string): void
@@ -381,7 +381,7 @@ function ItemsPanel(props: RightRailProps & { pinChanges: boolean; onPinChanges(
   )
 }
 
-function AttachmentsPanel({ document, now, onStop, onOpenConversation, onSetLead, onDisconnect }: Pick<RightRailProps, 'document' | 'onStop' | 'onOpenConversation' | 'onSetLead' | 'onDisconnect'> & { now: number }) {
+function AttachmentsPanel({ document, now, onStop, onOpenConversation, onSetLead, onDetach }: Pick<RightRailProps, 'document' | 'onStop' | 'onOpenConversation' | 'onSetLead' | 'onDetach'> & { now: number }) {
   return (
     <section className="island rail-panel agents-panel" aria-labelledby="attached-heading">
       <AmbientDecor variant="agents" />
@@ -401,7 +401,7 @@ function AttachmentsPanel({ document, now, onStop, onOpenConversation, onSetLead
             <span className="agent-avatar" style={{ background: color, color: textColorFor(color) }}>{initials(attachment.agent.name)}</span>
             <span className="agent-detail">
               <strong>{attachment.agent.name} <small title={absoluteTime(attachment.attachedAt)}>{attachedAgo(attachment.attachedAt, now)}</small></strong>
-              <span><i className={`state-dot state-${attachment.state}`} style={attachment.state === 'waiting' ? { background: color } : undefined} />{attachmentStatusLine(attachment, now)}</span>
+              <span><i className={`state-dot state-${attachment.state}`} />{attachmentStatusLine(attachment)}</span>
             </span>
             <span className="agent-actions">
               <button
@@ -415,10 +415,10 @@ function AttachmentsPanel({ document, now, onStop, onOpenConversation, onSetLead
               <button type="button" className="agent-icon" title={`Stop ${attachment.agent.name}`} aria-label={`Stop ${attachment.agent.name}`} onClick={() => onStop(attachment.agent.id)}>■</button>
               <button
                 type="button"
-                className="agent-icon disconnect"
+                className="agent-icon detach"
                 title={`Detach ${attachment.agent.name}`}
                 aria-label={`Detach ${attachment.agent.name}`}
-                onClick={() => onDisconnect(attachment)}
+                onClick={() => onDetach(attachment)}
               >⏻</button>
             </span>
           </div>
@@ -466,7 +466,7 @@ export function RightRail(props: RightRailProps) {
         </section>
       </section>
       <Resizer axis="horizontal" label="Resize review window" value={props.upperReviewHeight} min={180} max={954} onChange={(value) => props.onHeight(value, false)} onCommit={(value) => props.onHeight(value, true)} />
-      <AttachmentsPanel document={props.document} now={now} onStop={props.onStop} onOpenConversation={props.onOpenConversation} onSetLead={props.onSetLead} onDisconnect={props.onDisconnect} />
+      <AttachmentsPanel document={props.document} now={now} onStop={props.onStop} onOpenConversation={props.onOpenConversation} onSetLead={props.onSetLead} onDetach={props.onDetach} />
       {props.conversationDocuments && <section className="island rail-panel documents-panel" aria-labelledby="documents-heading"><div className="panel-heading"><h2 id="documents-heading">Documents</h2><span className="panel-counts">{props.conversationDocuments.length}</span></div>{props.conversationDocuments.map((entry) => <button type="button" key={`${entry.turnId}:${entry.path}`} onClick={() => props.onOpenDocument?.(entry.path)}><strong>{entry.path.split('/').pop()}</strong><small>{entry.markdown ? 'Markdown' : 'Code diff'} · +{entry.additions} −{entry.deletions}</small></button>)}{props.conversationDocuments.length === 0 && <div className="empty-subtle">This thread has not changed any files.</div>}</section>}
       <div className="save-state-footer">{saveStateSentence(props.document.dirty, props.document.lastSavedAt, now)}</div>
     </aside>

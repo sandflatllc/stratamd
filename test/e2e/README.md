@@ -11,7 +11,7 @@ The UI contract used by the suite is semantic:
 - source textbox: `Source editor`
 - visual contenteditable: `Document editor`
 - dialogs named by their visible headings
-- real buttons for Save, Send, Copy for agent, Keep, Revert, Accept, close-tab, recovery, and conflict actions
+- real buttons for Save, Send, Start thread, Keep, Revert, Accept, close-tab, recovery, and conflict actions
 - per-item checkboxes under the heading `Changes not made by you`
 
 These names follow the PRD and design handoff and make the same controls available to keyboard and assistive-technology users.
@@ -23,7 +23,7 @@ These names follow the PRD and design handoff and make the same controls availab
 - `ordinary` runs every untagged test, in parallel at the individual-test level, on four workers locally and two in CI.
 - `clipboard` runs the tests tagged `@clipboard` one at a time on a single worker.
 
-Every Electron app on the display shares one operating-system clipboard; separate profiles do not isolate it. Any test that reads or writes the native clipboard carries the tag, including a test that only copies and never reads the result: Electron's `clipboard` module, `copyForAgent`, Ctrl/Command+C, X, or V, the editor's Copy, Cut, and Paste menu items, Copy full path, and the attach-prompt copy button. Put it next to the title:
+Every Electron app on the display shares one operating-system clipboard; separate profiles do not isolate it. Any test that reads or writes the native clipboard carries the tag, including Electron's `clipboard` module, Ctrl/Command+C, X, or V, the editor's Copy, Cut, and Paste menu items, and Copy full path. Put it next to the title:
 
 ```ts
 test('explorer tabs copy full paths', { tag: '@clipboard' }, async ({}, testInfo) => {

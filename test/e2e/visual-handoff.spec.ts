@@ -10,11 +10,11 @@ status: draft
 
 # Rollout plan
 
-We ship the importer first, then the sync layer while keeping the CLI stable.
+We ship the importer first, then the sync layer while keeping the cockpit stable.
 
 The test corpus covers every construct in section 6.1 plus real documents that round-tripped badly.
 
-While attached, agents write only to the buffer file; the document on disk is yours to save.
+In-loop agent edits arrive through the strata block; the document on disk is yours to save.
 
 ## Next steps
 
@@ -44,35 +44,25 @@ test('populated renderer preserves the handoff tokens, controls, and motion poli
   try {
     const page = await value.launch()
     await page.setViewportSize({ width: 1600, height: 900 })
-    expect((await value.attach('claude', 'Claude')).event).toBe('initial')
-    expect((await value.attach('haru', 'Haru')).event).toBe('initial')
-
     await page.evaluate(async (path) => window.strata.openDocument(path), notes)
     await expect(page.getByRole('tab', { name: /notes\.md/i })).toBeVisible()
     await page.evaluate(async (path) => window.strata.openDocument(path), value.file)
 
-    const state = await value.state()
+    const state = await value.inspectDocument()
     const proposed = DOCUMENT.replace('then the sync layer', 'then the export path')
-    await value.tag('claude', 'Claude')
     await value.atomicWrite(state.buffer!, proposed)
     await expect(page.getByRole('button', { name: /^Keep(?:\b|$)/i }).first()).toBeVisible()
 
-    const suggestion = await value.cli([
-      'annotate', value.file,
-      '--kind', 'suggestion',
-      '--quote', 'every construct',
-      '--text', 'each construct',
-      '--as', 'claude'
-    ])
-    expect(suggestion.code, suggestion.stderr).toBe(0)
-    const question = await value.cli([
-      'annotate', value.file,
-      '--kind', 'question',
-      '--quote', 'the document on disk is yours to save',
-      '--text', 'Confirm Save remains the only document write.',
-      '--as', 'claude'
-    ])
-    expect(question.code, question.stderr).toBe(0)
+    const suggestionQuote = 'every construct'
+    const suggestionFrom = proposed.indexOf(suggestionQuote)
+    await page.evaluate(async ({ path, quote, from }) => window.strata.addAnnotation(path, {
+      kind: 'suggestion', quote, text: 'each construct', from, to: from + quote.length,
+    }), { path: value.file, quote: suggestionQuote, from: suggestionFrom })
+    const questionQuote = 'the document on disk is yours to save'
+    const questionFrom = proposed.indexOf(questionQuote)
+    await page.evaluate(async ({ path, quote, from }) => window.strata.addAnnotation(path, {
+      kind: 'question', quote, text: 'Confirm Save remains the only document write.', from, to: from + quote.length,
+    }), { path: value.file, quote: questionQuote, from: questionFrom })
     await expect(page.getByRole('button', { name: /^Accept suggestion /i })).toBeVisible()
     await expect(page.locator('.annotation-row')).toHaveCount(2)
 
@@ -91,7 +81,7 @@ test('populated renderer preserves the handoff tokens, controls, and motion poli
     await page.keyboard.press(primaryKey('/'))
     await expect(page.getByRole('textbox', { name: /source editor/i })).toBeHidden()
     await expect(page.locator('.ProseMirror')).toBeVisible()
-    await expect(page.getByRole('button', { name: /^Send(?:\b|$)/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^Start thread$/i })).toBeVisible()
 
     const visual = await page.evaluate(() => {
       const style = (selector: string) => {
@@ -185,22 +175,14 @@ test('populated renderer preserves the handoff tokens, controls, and motion poli
     await expect(page.locator('[data-task-content="true"]').filter({ hasText: 'Land the byte-preserving save' })).toHaveCSS('text-decoration-line', 'line-through')
     await expect(page.locator('.strata-review-deletion')).toHaveText('sync layer')
     await expect(page.locator('.strata-review-change')).toHaveText('export path')
-    await expect(page.locator('.strata-review-author').first()).toContainText('Claude')
-    await page.getByRole('button', { name: /^Send(?:\b|$)/i }).click()
-    const recipients = page.locator('.recipients label[data-selected="true"]')
-    await expect(recipients).toHaveCount(1)
-    // Selected-recipient text derives from the theme's bright interface text, not fixed white.
-    await expect(recipients.first()).toHaveCSS('color', 'rgb(244, 243, 246)')
-    await expect(recipients.first()).not.toHaveCSS('box-shadow', 'none')
-    await expect(page.locator('.composer-send')).toHaveCSS('font-size', '15px')
-    await page.keyboard.press('Escape')
+    await expect(page.locator('.strata-review-author').first()).toContainText('external')
     await page.mouse.move(800, 760)
     await expect(page.locator('.strata-suggestion-deletion')).toContainText('every construct')
     await expect(page.locator('.strata-suggestion-replacement')).toHaveText('each construct')
-    await expect(page.locator('.strata-suggestion-author')).toHaveText('Claude · suggestion')
+    await expect(page.locator('.strata-suggestion-author')).toHaveText('user · suggestion')
     await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(2)
     await expect(page.locator('.file-row')).toHaveCount(4)
-    await expect(page.locator('.agent-row')).toHaveCount(2)
+    await expect(page.locator('.agent-row')).toHaveCount(0)
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
     await page.screenshot({ path: testInfo.outputPath('handoff-populated.png'), fullPage: true })
     await page.setViewportSize({ width: 2048, height: 821 })

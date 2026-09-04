@@ -21,10 +21,10 @@ test.afterEach(async () => {
 
 const BASE = '# Probe\n\nBase.\n'
 /** Longer than prosemirror-history's 500 ms group delay, so each burst is its own undo event. */
-const GROUP_GAP = 600
+const GROUP_GAP = 800
 
 async function bufferText(value: Scenario): Promise<string> {
-  return readFile((await value.state()).buffer!, 'utf8')
+  return readFile((await value.inspectDocument()).buffer!, 'utf8')
 }
 function editorOf(page: Page) {
   return page.getByRole('textbox', { name: /document editor/i })
@@ -49,8 +49,13 @@ async function redo(page: Page): Promise<void> {
 async function stepUntilBuffer(value: Scenario, direction: 'undo' | 'redo', expected: string): Promise<void> {
   const step = direction === 'undo' ? undo : redo
   for (let presses = 0; presses < 6 && (await bufferText(value)) !== expected; presses += 1) {
+    const before = await bufferText(value)
     await step(value.page!)
-    await value.page!.waitForTimeout(150)
+    // Buffer publication is debounced by 180 ms and can take longer on a busy
+    // gate worker. Do not issue the next keypress until this step is observable.
+    for (let poll = 0; poll < 30 && (await bufferText(value)) === before; poll += 1) {
+      await value.page!.waitForTimeout(100)
+    }
   }
   await value.waitForBuffer(expected)
 }
@@ -59,7 +64,11 @@ async function coldSwitchAway(value: Scenario): Promise<void> {
   const page = value.page!
   const second = join(dirname(value.file), 'second.md')
   await writeFile(second, '# Second\n')
-  expect((await value.cli(['open', second])).code).toBe(0)
+  // Let the editor publish its final history frame before the active document
+  // changes and a zero-sized cache destroys the view.
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+  await page.waitForTimeout(250)
+  await page.evaluate((path) => window.strata.openDocument(path), second)
   await expect(page.getByRole('tab', { name: /second\.md/i })).toHaveAttribute('aria-selected', 'true')
   await page.getByRole('tab', { name: /scenario\.md/i }).click()
   await expect(page.getByRole('tab', { name: /scenario\.md/i })).toHaveAttribute('aria-selected', 'true')
@@ -74,7 +83,6 @@ test.describe('cold tabs (STRATAMD_EDITOR_CACHE=0)', () => {
     const afterFirst = await bufferText(value)
     await typeLineAfter(page, 'First burst.', 'Second burst.')
     await expect.poll(() => bufferText(value)).toContain('Second burst.')
-
     await coldSwitchAway(value)
 
     // The intermediate revision must be reachable: one entry per burst, not one blob.

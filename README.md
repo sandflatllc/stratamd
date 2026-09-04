@@ -67,7 +67,7 @@ The agent joins the live document, including unsaved edits. The command details 
 
 When you skim a plan and find the point where the agent went wrong, select the relevant text. Leave a comment, ask a question, suggest a replacement, or make the small edit yourself. The agent receives your thought attached to the exact part of the document you meant. You do not have to spend context explaining which heading, paragraph, or bullet you are talking about.
 
-Agents can answer with the same tools. Comments and questions stay attached to the text. Small proposed replacements return as suggestions with **Accept** and **Reject**. Larger edits appear as changes with **Keep** and **Revert**. Everything remains attributed, and none of this adds annotation data to the Markdown file itself.
+Agents answer through their T3 reply and its final `strata` block. Comments and questions stay attached to the text. Small proposed replacements return as suggestions with **Accept** and **Reject**. Larger edits appear as changes with **Keep** and **Revert**. Everything remains attributed, and none of this adds item data to the Markdown file itself.
 
 ### Send the change, not the whole conversation
 
@@ -83,7 +83,7 @@ When you press **Send**, the preview shows the exact changes, notes, and annotat
 
 More than one agent can join the same document. Have Codex draft a plan and Claude review it, or the other way around. The reviewer can question an assumption, leave comments, and propose replacements directly where the problem appears. You decide which agents see one another's work, and their contributions stay separate and attributed.
 
-Agents can also pass short notes to each other. When you want them to continue without waiting for you to referee every exchange, give one of them **Lead**. Only one agent can lead a document at a time. The Lead can accept or reject suggestions, resolve finished threads, coordinate the other agents, and save.
+When you want work to continue without waiting for you to referee every action, give one attached thread **Lead**. Only one thread can lead a document at a time. The Lead can accept or reject suggestions, resolve finished items, coordinate the work, and save.
 
 Lead does not make the work invisible. Decisions made by the Lead still appear as pending changes for you to review when you return. You can transfer Lead to another agent or take it back at any time.
 
@@ -128,22 +128,22 @@ The agent attaches to the focused document, so you do not need to find and paste
 
 ### The buffer protects the document
 
-While a document is open, StrataMD mirrors the live editor into a private working buffer. Attached agents read and edit that buffer, including work you have not saved yet. The actual `.md` file does not change until you press **Save**.
+While a document is open, StrataMD mirrors the live editor into a private working buffer. Deliveries give attached T3 threads the relevant document state, including work you have not saved yet. The actual `.md` file does not change until you press **Save**.
 
 StrataMD also keeps a **ghost**, which is the last version of the document you reviewed. It compares new work against that ghost to produce Keep and Revert changes. If an agent or another tool edits the Markdown file directly, StrataMD brings that edit into the same review flow, even when the file changed while StrataMD was closed.
 
-The buffer, ghost, annotations, and pending deliveries live in StrataMD's local app-data folder. They do not appear beside the Markdown files in your project. StrataMD itself makes no network requests. Attached agents handle document content according to the model provider and configuration you already use.
+The buffer, ghost, items, drafts, and pending deliveries live in StrataMD's local app-data folder. They do not appear beside the Markdown files in your project. StrataMD connects only to the paired T3 server; T3 handles model-provider traffic according to the account and thread configuration you choose.
 
 ### Each kind of response has its own review path
 
 | Agent response | What you see | Your choices |
 |---|---|---|
-| Comment or question | A thread attached to the quoted text | Reply or resolve |
+| Comment or question | An item attached to the quoted text | Reply or resolve |
 | Suggested replacement | The original text and proposed Markdown | Accept or Reject |
 | Direct buffer or file edit | An attributed change in the document and Changes panel | Keep or Revert |
 | Lead decision | A change made during an agent-led round | Review when you return |
 
-Annotations stay in StrataMD rather than being written into or beside the document. If the quoted text no longer exists and StrataMD cannot place an annotation safely, it refuses to guess.
+Items stay in StrataMD rather than being written into or beside the document. If the quoted text no longer exists and StrataMD cannot place an item safely, it refuses to guess.
 
 ### Untouched Markdown stays untouched
 
@@ -151,48 +151,27 @@ StrataMD edits CommonMark and GitHub Flavored Markdown in a rendered view, but i
 
 Markdown that the visual editor cannot safely represent, such as frontmatter, HTML, or reference definitions, remains protected as raw content and can be edited in source view. When something else changes the file on disk, StrataMD checks for conflicts before saving over it.
 
-[![Source view beside the Changes, Annotations, and Attached agents panels](docs/screenshots/product/states/source-review--workspace.png)](docs/screenshots/product/states/source-review--workspace.png)
+[![Source view beside the Changes, Items, and Attached panels](docs/screenshots/product/states/source-review--workspace.png)](docs/screenshots/product/states/source-review--workspace.png)
 
-### Agent CLI reference
+### File-only command reference
 
 <details>
-<summary>Show every agent command</summary>
+<summary>Show every command</summary>
 
 | Command | What it does |
 |---|---|
-| `stratamd attach [file]` | Joins the focused or named document and waits for the next delivery |
-| `stratamd annotate` | Leaves a comment, question, or suggested replacement on quoted text |
-| `stratamd edit` | Replaces one exactly matched passage as a change left for review |
-| `stratamd reply` | Replies to an annotation thread |
-| `stratamd send` | Sends a short note from one attached agent to another |
-| `stratamd lead` | Claims Lead when the user puts that agent in charge |
-| `stratamd accept` | Accepts a suggestion while acting as Lead |
-| `stratamd reject` | Rejects a suggestion while acting as Lead |
-| `stratamd resolve` | Closes a finished annotation thread |
-| `stratamd save` | Saves while acting as Lead, with the result left pending for user review |
-| `stratamd state` | Reads the current document, theme, attached agents, and Lead |
-| `stratamd docs` | Lists the open documents, which is focused, and who is attached |
-| `stratamd theme` | Describes a theme and its editable values |
-| `stratamd changes` | Lists changes the user has not reviewed |
-| `stratamd changed` | Attributes the agent's next direct edit |
-| `stratamd open` | Opens a Markdown file with outside edits shown for review |
-| `stratamd checkpoint` | Creates a reviewed baseline for a file or directory |
-| `stratamd detach` | Leaves the document session |
-
-`stratamd --agent-help` is the complete and current reference. The table above is the human-readable map, not a replacement for the instructions agents receive.
-
-Commands for you rather than the agent:
-
-| Command | What it does |
-|---|---|
-| `stratamd` | With no arguments, launches the app |
-| `stratamd forget <file>` | Deletes StrataMD's stored ghost, buffer, and history for a file |
+| `stratamd` | Launches the app |
+| `stratamd open [file]` | Opens the app, optionally with one Markdown file |
+| `stratamd theme [id] [--json]` | Inspects the active or named theme |
 | `stratamd setup` | Puts `stratamd` on PATH and, on Linux, installs the desktop entry and MIME association |
 | `stratamd setup --default` | Makes StrataMD the default Markdown app on Linux; on macOS it prints the Finder steps |
 | `stratamd setup --skill <where>` | Copies the agent skill into a harness ([details](#giving-your-agent-the-skill)) |
 | `stratamd setup --remove` | Undoes setup on that platform; skill copies stay |
-| `stratamd doctor` | Reports the socket, data and log paths, lock files, and versions |
-| `stratamd --version` | Prints the app, protocol, and CLI versions |
+| `stratamd doctor` | Reports local paths and readable configuration problems |
+| `stratamd --agent-help` | Prints the T3 thread contract |
+| `stratamd --version` | Prints the build and launcher paths |
+
+The tool never carries conversation or document-edit traffic. Agents work through T3 replies and the final fenced `strata` block described by `stratamd --agent-help`.
 
 </details>
 

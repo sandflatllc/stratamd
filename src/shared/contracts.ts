@@ -1,7 +1,7 @@
 export type AnnotationKind = 'comment' | 'question' | 'suggestion' | 'decision'
 export type AnnotationStatus = 'open' | 'resolved' | 'orphaned'
 export type AnnotationAnchorKind = 'quote' | 'heading' | 'document'
-export type AttachmentState = 'waiting' | 'working' | 'pending'
+export type AttachmentState = 'idle' | 'starting' | 'running' | 'ready' | 'interrupted' | 'stopped' | 'error' | 'disconnected'
 export type PendingHunkStatus = 'pending' | 'mixed'
 
 export interface TableAnnotationContext {
@@ -135,10 +135,8 @@ export interface AttachmentView {
   attachedAt: number
   state: AttachmentState
   queuedDeliveries: string[]
-  /** Queued non-message deliveries: what a disconnect would discard (PRD §6.6). */
+  /** Deliveries still awaiting an engine message-sent acknowledgment. */
   queuedSendCount: number
-  /** When the agent last called in (ms epoch); null when no call has been recorded. */
-  lastCallAt: number | null
   cursor?: number
 }
 
@@ -438,7 +436,6 @@ export type PaneZoom = Record<PaneId, number>
 
 export interface AppSettingsView {
   animatedBackground: boolean
-  attachmentIdleHours: number
   panelSizes: PanelSizes
   zoom: PaneZoom
   theme: ThemeView
@@ -527,7 +524,7 @@ export interface SendItems {
 }
 
 export interface SendPreview {
-  recipient: AgentIdentity | { id: 'clipboard'; name: 'Clipboard'; color: 'grape' }
+  recipient: AgentIdentity
   text: string
   token: SendDocumentToken
   /** Everything this recipient could receive, independent of the current selection. */
@@ -634,13 +631,11 @@ export interface StrataApi {
   resolveConflict(path: string, conflictId: string, decision: ConflictDecision): Promise<void>
   previewSend(path: string, request: SendPreviewRequest): Promise<SendPreview[]>
   send(path: string, request: SendPreviewRequest): Promise<string[]>
-  copyForAgent(path: string, note: string, includeExternal: boolean): Promise<void>
   copyText(text: string): Promise<void>
-  nudge(path: string, agentId: string): Promise<void>
   /** Grants, transfers, or revokes (null) the Lead; user actions are authoritative (PRD §6.6). */
   setLead(path: string, agentId: string | null): Promise<void>
-  /** Ends an attachment from the panel, the same path as agent detach. */
-  disconnectAgent(path: string, agentId: string): Promise<void>
+  /** Ends this document/thread link without changing the thread. */
+  detachThread(path: string, threadId: string): Promise<void>
   addFolder(): Promise<void>
   /** Removes an explorer folder; ghost entries under it stay until forgotten (PRD §6.4). */
   removeFolder(path: string): Promise<void>

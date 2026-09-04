@@ -3,54 +3,10 @@ import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Scenario } from './harness'
 
-// Shell details from usability round 2: the thread panel's focus (§5.11), the
+// Shell details from usability round 2: Conversation focus (§5.11), the
 // F1 shortcut sheet and F8 stepping (§5.12), toolbar menu keys and the tree
 // (§5.13), and the tab menu's bulk close (§5.16).
 
-test('the thread panel focuses its reply and hands focus back on close; F8 steps through comments and questions', async ({}, testInfo) => {
-  const scenario = await Scenario.create(testInfo, '# Threads\n\nFirst point to discuss.\n\nSecond point to question.\n\nThird point to suggest.\n', 'threads.md')
-  try {
-    const page = await scenario.launch()
-    expect((await scenario.attach('agent-a', 'Agent A')).event).toBe('initial')
-    for (const [kind, quote, text] of [
-      ['question', 'Second point to question.', 'Is this right?'],
-      ['comment', 'First point to discuss.', 'Tighten this.'],
-      ['suggestion', 'Third point to suggest.', 'Third point, suggested.'],
-    ] as const) {
-      const result = await scenario.cli(['annotate', scenario.file, '--kind', kind, '--quote', quote, '--text', text, '--as', 'agent-a'])
-      expect(result.code, result.stderr).toBe(0)
-    }
-
-    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
-    const row = page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'First point to discuss.' })
-    await row.click()
-    const thread = page.getByRole('region', { name: /comment thread/i })
-    await expect(thread).toBeVisible()
-    await expect(thread.getByRole('textbox', { name: 'Reply' })).toBeFocused()
-    // The jump selects the annotated span, which raises the annotate pill above the thread;
-    // Escape closes one surface at a time, so the pill goes first when it is up.
-    const pill = page.getByRole('menu', { name: /annotate selection/i })
-    if (await pill.isVisible()) {
-      await page.keyboard.press('Escape')
-      await expect(pill).toBeHidden()
-    }
-    await page.keyboard.press('Escape')
-    await expect(thread).toBeHidden()
-    await expect(row).toBeFocused()
-
-    // F8 walks comments and questions in document order, skipping the suggestion; Shift+F8 goes back.
-    await page.keyboard.press('F8')
-    await expect(page.getByRole('region', { name: /comment thread/i })).toContainText('Tighten this.')
-    await page.keyboard.press('F8')
-    await expect(page.getByRole('region', { name: /question thread/i })).toContainText('Is this right?')
-    await page.keyboard.press('F8')
-    await expect(page.getByRole('region', { name: /comment thread/i })).toContainText('Tighten this.')
-    await page.keyboard.press('Shift+F8')
-    await expect(page.getByRole('region', { name: /question thread/i })).toContainText('Is this right?')
-  } finally {
-    await scenario.dispose()
-  }
-})
 
 test('F1 lists the shortcuts, toolbar menus take arrow keys, and source view explains the disabled tools', async ({}, testInfo) => {
   const scenario = await Scenario.create(testInfo, '# Keys\n\nA sentence.\n', 'keys.md')

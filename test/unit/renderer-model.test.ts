@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DocumentView, HunkView } from '../../src/shared/contracts'
-import { activeAnnotations, activitySnapshot, agentActivity, agentActivityMessage, AGENT_PROMPT, annotationCounts, attachmentStatusLine, bannerFor, bulkRevertGroups, changeGroups, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, explorerTree, filteredAnnotations, hasResolvedAnnotations, hasUnsavedCounted, hunkAction, hunkAuthor, hunkSnippet, leftWindowWidth, nextReviewTarget, NOT_LISTENING_AFTER_MS, pendingCount, previewTabIndex, rendererThemeStyle, reviewTargets, saveStateSentence, shouldAdoptPushed, sideWindowCeiling, spellingForSelection, tabsToClose, threadTargets, threadTime, timeAgoShort } from '../../src/renderer/model'
+import { activeAnnotations, activitySnapshot, agentActivity, agentActivityMessage, annotationCounts, attachmentStatusLine, bannerFor, bulkRevertGroups, changeGroups, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, explorerTree, filteredAnnotations, hasResolvedAnnotations, hasUnsavedCounted, hunkAction, hunkAuthor, hunkSnippet, leftWindowWidth, nextReviewTarget, pendingCount, previewTabIndex, rendererThemeStyle, reviewTargets, saveStateSentence, shouldAdoptPushed, sideWindowCeiling, spellingForSelection, tabsToClose, threadTargets, threadTime, timeAgoShort } from '../../src/renderer/model'
 import { INFO_TOAST_MS, nextToast, toastLifetime } from '../../src/renderer/toasts'
 import { formatKeys, shortcutGroups } from '../../src/renderer/shortcuts'
 import { ancestorFolders } from '../../src/renderer/components/Explorer'
@@ -276,11 +276,6 @@ describe('shell keyboard helpers (PRD §6.1, §6.9)', () => {
     expect(threadTime(now - 5 * 60_000, now)).toBe('5 minutes ago')
   })
 
-  it('tells a new user how to attach an agent in one plain line', () => {
-    expect(AGENT_PROMPT).toContain('stratamd --agent-help')
-    expect(AGENT_PROMPT).toContain('stratamd attach --name')
-    expect(AGENT_PROMPT).not.toMatch(/ghost|buffer|shadow|mirror/i)
-  })
 })
 
 describe('toast policy (PRD §6.9)', () => {
@@ -410,37 +405,9 @@ describe('rail relative time and attachment status (plan 5.5, 5.6)', () => {
     expect(timeAgoShort(-5_000)).toBe('just now')
   })
 
-  it('says when the agent was last heard beside its state', () => {
-    const now = 100 * MINUTE
-    expect(attachmentStatusLine({ state: 'working', lastCallAt: now - 2 * MINUTE, queuedSendCount: 0 }, now))
-      .toBe('working · last heard 2 min ago')
-    // A waiting agent is inside one long attach call: how long it has listened, not when it was last heard.
-    expect(attachmentStatusLine({ state: 'waiting', lastCallAt: now - 30_000, queuedSendCount: 0 }, now))
-      .toBe('listening')
-    expect(attachmentStatusLine({ state: 'waiting', lastCallAt: now - 8 * MINUTE, queuedSendCount: 0 }, now))
-      .toBe('listening · for 8 min')
-    expect(attachmentStatusLine({ state: 'waiting', lastCallAt: now - 90 * MINUTE, queuedSendCount: 1 }, now))
-      .toBe('listening · for 1 h · 1 update waiting for it')
-    expect(attachmentStatusLine({ state: 'waiting', lastCallAt: null, queuedSendCount: 0 }, now))
-      .toBe('listening')
-    expect(attachmentStatusLine({ state: 'pending', lastCallAt: now - MINUTE, queuedSendCount: 2 }, now))
-      .toBe('has an update waiting · last heard 1 min ago · 2 updates waiting for it')
-    // No recorded call: the state alone, as before.
-    expect(attachmentStatusLine({ state: 'working', lastCallAt: null, queuedSendCount: 1 }, now))
-      .toBe('working · 1 update waiting for it')
-  })
-
-  it('reads "not listening" once a working agent has been quiet past the threshold', () => {
-    const now = 100 * MINUTE
-    expect(NOT_LISTENING_AFTER_MS).toBe(10 * MINUTE)
-    expect(attachmentStatusLine({ state: 'working', lastCallAt: now - 10 * MINUTE, queuedSendCount: 0 }, now))
-      .toBe('working · last heard 10 min ago')
-    expect(attachmentStatusLine({ state: 'working', lastCallAt: now - 12 * MINUTE, queuedSendCount: 0 }, now))
-      .toBe('not listening · last heard 12 min ago')
-    // A waiting agent is listening by definition; a pending one is judged by its queue.
-    expect(attachmentStatusLine({ state: 'waiting', lastCallAt: now - 12 * MINUTE, queuedSendCount: 0 }, now))
-      .toBe('listening · for 12 min')
-    expect(attachmentStatusLine({ state: 'pending', lastCallAt: now - 12 * MINUTE, queuedSendCount: 0 }, now))
-      .toBe('has an update waiting · last heard 12 min ago')
+  it('shows engine state and a pending delivery count', () => {
+    expect(attachmentStatusLine({ state: 'running', queuedSendCount: 0 })).toBe('running')
+    expect(attachmentStatusLine({ state: 'idle', queuedSendCount: 2 })).toBe('idle · 2 updates waiting for it')
+    expect(attachmentStatusLine({ state: 'disconnected', queuedSendCount: 1 })).toBe('disconnected · 1 update waiting for it')
   })
 })

@@ -17,7 +17,7 @@ async function openDocuments(testInfo: TestInfo, count: number): Promise<Page> {
   for (let i = 2; i <= count; i += 1) {
     const file = join(dirname(value.file), `meeting-notes-${String(i).padStart(2, '0')}.md`)
     await writeFile(file, `# Doc ${i}\n`)
-    expect((await value.cli(['open', file])).code).toBe(0)
+    await page.evaluate((path) => window.strata.openDocument(path), file)
   }
   await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(count)
   return page
@@ -49,7 +49,7 @@ test('the active tab is scrolled into view when it changes', async ({}, testInfo
   expect(await visible(lastTab)).toBe(true)
 
   // Reactivating the first document scrolls its tab back into view.
-  expect((await value.cli(['open', value.file])).code).toBe(0)
+  await page.evaluate((path) => window.strata.openDocument(path), value.file)
   const firstTab = page.getByRole('tab', { name: /scenario\.md/i })
   await expect(firstTab).toHaveAttribute('aria-selected', 'true')
   expect(await visible(firstTab)).toBe(true)
@@ -57,7 +57,7 @@ test('the active tab is scrolled into view when it changes', async ({}, testInfo
 
 test('a vertical wheel over the strip scrolls it sideways', async ({}, testInfo) => {
   const page = await openDocuments(testInfo, 12)
-  expect((await value.cli(['open', value.file])).code).toBe(0)
+  await page.evaluate((path) => window.strata.openDocument(path), value.file)
   await expect(page.getByRole('tab', { name: /scenario\.md/i })).toHaveAttribute('aria-selected', 'true')
   await strip(page).hover()
   await page.mouse.wheel(0, 120)
@@ -69,7 +69,7 @@ test('one long file name is capped with an ellipsis instead of eating the strip'
   const page = await value.launch()
   const file = join(dirname(value.file), 'quarterly-planning-meeting-notes-with-follow-ups-and-decisions.md')
   await writeFile(file, '# Long\n')
-  expect((await value.cli(['open', file])).code).toBe(0)
+  await page.evaluate((path) => window.strata.openDocument(path), file)
   const tab = page.getByRole('tab', { name: /quarterly-planning/i })
   await expect(tab).toHaveAttribute('aria-selected', 'true')
   expect((await tab.boundingBox())!.width).toBeLessThanOrEqual(222)

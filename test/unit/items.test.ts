@@ -22,7 +22,7 @@ describe('items', () => {
 
   it('keeps an inline reply Drafted until the source attachment acknowledges its sequence', () => {
     const replied: AnnotationView = { ...base, replies: [{ id: 'r', author: 'user', text: 'Because' }], replySeqs: [8] }
-    const attachment = (cursor: number): AttachmentView => ({ agent: author, attachedAt: 1, state: 'waiting', queuedDeliveries: [], queuedSendCount: 0, lastCallAt: null, cursor })
+    const attachment = (cursor: number): AttachmentView => ({ agent: author, attachedAt: 1, state: 'idle', queuedDeliveries: [], queuedSendCount: 0, cursor })
     expect(deriveItems({ annotations: [replied], attachments: [attachment(7)] })[0]!.status).toBe('drafted')
     expect(deriveItems({ annotations: [replied], attachments: [attachment(8)] })[0]!.status).toBe('done')
   })

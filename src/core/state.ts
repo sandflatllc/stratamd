@@ -27,11 +27,6 @@ export interface ExternalAttribution {
   name: string
 }
 
-export interface ExternalTag extends ExternalAttribution {
-  setAt: number
-  expiresAt: number
-}
-
 export interface Snapshot {
   id: string
   content: string
@@ -80,7 +75,6 @@ export interface DocumentFrame {
   conflicts: ExternalConflict[]
   segments: Segment[]
   snapshots: Record<string, string>
-  pendingTag: ExternalTag | null
   nextId: number
   forceNewUserSegment: boolean
 }
@@ -128,7 +122,6 @@ export type SaveResult =
   | { status: 'external-change'; state: DocumentState; observedDisk: string }
 
 const EXTERNAL: ExternalAttribution = { agentId: null, name: 'external' }
-export const EXTERNAL_TAG_TTL_MS = 5 * 60 * 1000
 
 function cloneAttribution(author: ExternalAttribution): ExternalAttribution {
   return { ...author }
@@ -228,14 +221,19 @@ function pendingFromDiff(
   const pendingHunks: PendingHunk[] = []
   const matchedIds = new Set<string>()
   for (const hunk of computeHunks(state.ghost, state.shadow)) {
-    const match = persisted.find(
+    const candidates = persisted.filter(
       (candidate) =>
         !matchedIds.has(candidate.id) &&
-        state.ghost.slice(candidate.ghost.from, candidate.ghost.to) === hunk.removed &&
-        state.shadow.slice(candidate.shadow.from, candidate.shadow.to) === hunk.added &&
-        candidate.ghost.from === hunk.before.from &&
-        candidate.shadow.from === hunk.after.from,
+        hunk.before.from <= candidate.ghost.from &&
+        candidate.ghost.to <= hunk.before.to &&
+        hunk.after.from <= candidate.shadow.from &&
+        candidate.shadow.to <= hunk.after.to,
     )
+    // The line-oriented diff deliberately expands a precise edit to its whole
+    // line. A relocated persisted anchor remains authoritative only when it is
+    // the sole edit inside that recomputed hunk; competing authors fall back to
+    // external rather than assigning the merged line to either one.
+    const match = candidates.length === 1 ? candidates[0] : undefined
     let id: string
     if (match === undefined) {
       ;[next, id] = allocateId(next, 'pending')
@@ -272,7 +270,6 @@ export function createDocumentState(
     conflicts: [],
     segments: [],
     snapshots: { [initialSnapshot]: shadow },
-    pendingTag: null,
     nextId: 1,
     forceNewUserSegment: false,
   }
@@ -423,25 +420,6 @@ export function recordMirrorWrite(state: DocumentState, content = state.shadow):
   return { ...state, mirror: content }
 }
 
-export function setExternalTag(
-  state: DocumentState,
-  agentId: string,
-  name: string,
-  now: number,
-): DocumentState {
-  return {
-    ...state,
-    pendingTag: { agentId, name, setAt: now, expiresAt: now + EXTERNAL_TAG_TTL_MS },
-  }
-}
-
-function authorForExternal(state: DocumentState, now: number): ExternalAttribution {
-  if (state.pendingTag !== null && state.pendingTag.expiresAt >= now) {
-    return { agentId: state.pendingTag.agentId, name: state.pendingTag.name }
-  }
-  return { ...EXTERNAL }
-}
-
 function conflictArea(hunk: TextHunk, blocks: readonly TextRange[] | undefined): TextRange {
   if (blocks === undefined) return hunk.before
   const touched = blocks.filter((block) => rangesTouch(block, hunk.before))
@@ -521,22 +499,14 @@ export function applyExternalChange(
     return { status: 'ignored', state, appliedHunkIds: [], conflictIds: [] }
   }
 
-  const now = options.now ?? Date.now()
-  const author = authorForExternal(state, now)
+  const author = { ...EXTERNAL }
   const incomingHunks = computeHunks(known, incoming)
   const localHunks = computeHunks(known, state.shadow)
   const userEditedRanges = options.userEditedRanges ?? localHunks.map((hunk) => hunk.before)
-  // A tag covers the whole burst: using it slides its window forward instead of
-  // consuming it, so every write of a multi-write edit keeps the agent's name.
-  // An expired or absent tag clears; an unused one still times out (PRD §6.2).
-  const tagUsed = state.pendingTag !== null && state.pendingTag.expiresAt >= now
   let next: DocumentState = {
     ...state,
     disk: source === 'disk' ? incoming : state.disk,
     mirror: source === 'buffer' ? incoming : state.mirror,
-    pendingTag: tagUsed && state.pendingTag !== null
-      ? { ...state.pendingTag, expiresAt: now + EXTERNAL_TAG_TTL_MS }
-      : null,
   }
   const beforeMergeShadow = next.shadow
   const editsApplied: TextEdit[] = []

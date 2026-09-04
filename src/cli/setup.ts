@@ -21,7 +21,16 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getCliLinkPath } from '../platform/paths.js'
 import { isDarwin } from '../platform/runtime.js'
-import { CommandFailure } from './protocol.js'
+class CommandFailure extends Error {
+  constructor(
+    message: string,
+    readonly exitCode: number,
+    readonly code: string,
+    readonly detail?: unknown,
+  ) {
+    super(message)
+  }
+}
 
 const MANAGED_MARKER = 'Managed by StrataMD setup'
 const DESKTOP_ID = 'stratamd.desktop'

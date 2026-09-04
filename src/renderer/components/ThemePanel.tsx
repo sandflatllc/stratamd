@@ -133,7 +133,7 @@ export function ThemePanel({ theme, geometry, onGeometry, onClose, onHighlight, 
     window.addEventListener('pointerup', finish, { once: true })
   }
 
-  const nudge = (event: React.KeyboardEvent<HTMLElement>) => {
+  const moveByKey = (event: React.KeyboardEvent<HTMLElement>) => {
     const delta = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] }[event.key]
     if (!delta) return
     event.preventDefault()
@@ -159,7 +159,7 @@ export function ThemePanel({ theme, geometry, onGeometry, onClose, onHighlight, 
   return (
     <div ref={root} className="theme-panel" role="dialog" aria-label="Theme" aria-modal="false" style={style}>
       <header className="theme-panel-header" onPointerDown={startDrag}>
-        <button type="button" className="theme-panel-grip" aria-label="Move theme panel (arrow keys)" onKeyDown={nudge}>⋮⋮</button>
+        <button type="button" className="theme-panel-grip" aria-label="Move theme panel (arrow keys)" onKeyDown={moveByKey}>⋮⋮</button>
         {locked
           ? <strong className="theme-panel-name">{active.name}</strong>
           : <input className="theme-panel-name" aria-label="Theme name" defaultValue={active.name} key={active.id} onBlur={(event) => { const name = event.currentTarget.value.trim(); if (name && name !== active.name) run(() => window.strata.renameTheme(name)) }} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }} />}

@@ -13,7 +13,6 @@ const view: AppView = {
   engine: { state: 'unpaired', server: null, serverVersion: null, supportedVersion: '0.0.33', problem: null, projects: [], activeThreadId: null },
   settings: {
     animatedBackground: false,
-    attachmentIdleHours: 24,
     panelSizes: {
       explorerWidth: 260,
       rightRailWidth: 320,
@@ -79,7 +78,6 @@ function fakeApi(): StrataApi {
     resolveConflict: vi.fn(async () => undefined),
     previewSend: vi.fn(async () => []),
     send: vi.fn(async () => []),
-    copyForAgent: vi.fn(async () => undefined),
     copyText: vi.fn(async () => undefined),
     selectTheme: vi.fn(async () => undefined),
     createTheme: vi.fn(async () => 'copy'),
@@ -89,9 +87,8 @@ function fakeApi(): StrataApi {
     deleteTheme: vi.fn(async () => undefined),
     listFonts: vi.fn(async () => []),
     openThemeSample: vi.fn(async () => undefined),
-    nudge: vi.fn(async () => undefined),
     setLead: vi.fn(async () => undefined),
-    disconnectAgent: vi.fn(async () => undefined),
+    detachThread: vi.fn(async () => undefined),
     addFolder: vi.fn(async () => undefined),
     removeFolder: vi.fn(async () => undefined),
     scanFolder: vi.fn(async () => undefined),

@@ -128,7 +128,7 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
     if (!selection) return
     const key = (event: KeyboardEvent) => {
       if (isAnnotationDismissKey(event.key)) {
-        // One surface per Escape (PRD §6.9): a thread panel that already took
+        // One surface per Escape (PRD §6.9): Conversation that already took
         // this key keeps the pill up for the next one.
         if (isEscapeClaimed(event)) return
         claimEscape(event)
@@ -148,7 +148,7 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
         setKind(next === 'c' ? 'comment' : next === 'q' ? 'question' : next === 's' ? 'suggestion' : 'decision')
       }
     }
-    // Capture phase: the pill sits above the thread panel and the toast, which
+    // Capture phase: the pill sits above Conversation and the toast, which
     // both yield when Escape is already claimed.
     window.addEventListener('keydown', key, true)
     return () => window.removeEventListener('keydown', key, true)

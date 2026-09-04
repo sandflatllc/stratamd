@@ -1,14 +1,8 @@
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
-import type { Socket } from 'node:net'
 import { fileURLToPath } from 'node:url'
 
-interface SocketWithDescriptor extends Socket {
-  _handle?: { fd?: number }
-}
-
 interface UnixSupportBinding {
-  getPeerUid(descriptor: number): number
   /** Darwin only: Linux resolves descriptors through /proc instead. */
   getPathForFd?(descriptor: number): string
 }
@@ -30,23 +24,11 @@ export function unixSupportBinding(): UnixSupportBinding {
   for (const candidate of bindingCandidates()) {
     try {
       const binding = require(candidate) as Partial<UnixSupportBinding>
-      if (typeof binding.getPeerUid !== 'function') throw new Error('getPeerUid export is missing')
       loadedBinding = binding as UnixSupportBinding
       return loadedBinding
     } catch (error) {
       failures.push(`${candidate}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
-  throw new Error(`The peer-credentials binding is unavailable. ${failures.join('; ')}`)
-}
-
-/** Reads the kernel-supplied peer uid for an accepted Unix-domain socket. */
-export function peerUidFromSocket(socket: Socket): number {
-  const descriptor = (socket as SocketWithDescriptor)._handle?.fd
-  if (!Number.isSafeInteger(descriptor) || descriptor! < 0) {
-    throw new Error('The accepted socket descriptor is unavailable')
-  }
-  const uid = unixSupportBinding().getPeerUid(descriptor!)
-  if (!Number.isSafeInteger(uid) || uid < 0) throw new Error('Peer credentials returned an invalid uid')
-  return uid
+  throw new Error(`The descriptor-path binding is unavailable. ${failures.join('; ')}`)
 }

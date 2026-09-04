@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { chmod, readFile, readdir, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario, documentStartKey, lineEndKey, primaryKey, save, send, setSource } from './harness'
+import { Scenario, documentStartKey, lineEndKey, primaryKey, save, setSource, sourceEditor } from './harness'
 
 test('Save permission failure keeps disk and shadow unchanged and shows the error', async ({}, testInfo) => {
   const original = '# Permission\n\nSaved on disk.\n'
@@ -30,18 +30,14 @@ test('Save permission failure keeps disk and shadow unchanged and shows the erro
   }
 })
 
-test('deleted while open keeps the tab and attachment, then Save recreates the exact shadow', async ({}, testInfo) => {
+test('deleted while open keeps the tab, then Save recreates the exact shadow', async ({}, testInfo) => {
   const original = '# Deleted document\n\nSaved on disk.\n'
   const shadow = '# Deleted document\n\nUnsaved shadow survives deletion.\n'
   const value = await Scenario.create(testInfo, original, 'deleted.md')
 
   try {
     const page = await value.launch()
-    expect((await value.attach('agent-a', 'Agent A')).event).toBe('initial')
-
-    const source = page.getByRole('textbox', { name: /source editor/i })
-    await page.keyboard.press(primaryKey('/'))
-    await expect(source).toBeVisible()
+    const source = await sourceEditor(page)
     await source.fill(shadow)
     await value.waitForBuffer(shadow)
 
@@ -49,13 +45,11 @@ test('deleted while open keeps the tab and attachment, then Save recreates the e
     const banner = page.getByRole('status').filter({ hasText: /was deleted/i })
     await expect(banner).toContainText(/tab stays open; Save will recreate it/i, { timeout: 10_000 })
     await expect(page.getByRole('tab', { name: /deleted\.md/i })).toBeVisible()
-    await expect(page.locator('.agents-panel .agent-row')).toContainText('Agent A')
 
     await save(page)
     expect(await readFile(value.file, 'utf8')).toBe(shadow)
     await expect(banner).toHaveCount(0)
     await expect(page.getByRole('tab', { name: /deleted\.md/i })).toBeVisible()
-    await expect(page.locator('.agents-panel .agent-row')).toContainText('Agent A')
   } finally {
     await value.dispose()
   }
@@ -107,7 +101,7 @@ test('a missing ghost stays struck through in the explorer until Forget', async 
   }
 })
 
-test('a document over 2 MB opens in the full visual editor while review and Send still work', async ({}, testInfo) => {
+test('a document over 2 MB opens in the full visual editor while review still works', async ({}, testInfo) => {
   test.slow()
   const filler = 'x'.repeat(2 * 1024 * 1024)
   const original = `# Oversized\n\nOriginal proposal.\n\n${filler}\n`
@@ -129,9 +123,7 @@ test('a document over 2 MB opens in the full visual editor while review and Send
     await expect(page.getByRole('button', { name: /source/i })).toBeEnabled()
     await expect(page.getByRole('status').filter({ hasText: /size ceiling|source view only/i })).toHaveCount(0)
 
-    expect((await value.attach('agent-a', 'Agent A')).event).toBe('initial')
-    await value.tag('agent-a', 'Agent A')
-    const state = await value.state()
+    const state = await value.inspectDocument()
     expect(state.buffer).toBeTruthy()
     await value.atomicWrite(state.buffer!, proposed)
     await expect(page.getByRole('button', { name: /^Keep change /i }).first()).toBeVisible({ timeout: 10_000 })
@@ -141,13 +133,7 @@ test('a document over 2 MB opens in the full visual editor while review and Send
     await page.keyboard.press(lineEndKey)
     await page.keyboard.insertText(' updated')
     await value.waitForBuffer(withOwnerEdit)
-    await expect(page.getByRole('button', { name: /^Send(?:\b|$)/i })).toBeEnabled()
-
-    await send(page, { note: 'Review the oversized document.' })
-    const delivery = await value.attach('agent-a', 'Agent A')
-    expect(delivery.event).toBe('send')
-    expect(delivery.notes).toEqual(['Review the oversized document.'])
-    expect(delivery.text).toContain('Oversized updated')
+    await expect(page.getByRole('button', { name: /^Keep change /i }).first()).toBeVisible()
     expect(await readFile(value.file, 'utf8')).toBe(original)
   } finally {
     await value.dispose()

@@ -73,31 +73,24 @@ import {
   type LogEvent,
   type AnnotationLog
 } from '../core/annotations'
+import { toDeliveredAnnotation } from '../core/annotations'
 import {
   acknowledgeDelivery,
-  acknowledgeClipboardWrite,
-  attachmentDisplayState,
   collectOldest,
   createAttachment,
-  createClipboardRecipient,
   createInitialPayload,
   deliveryStart,
   enqueueDelivery,
-  expireIdleAttachments,
-  finishAttachCall,
   freezeDelivery,
   freezeQuickSend,
   freezeMessage,
   isMessageDelivery,
-  noteAttachCall,
-  prepareClipboardDelivery,
   type Attachment,
-  type ClipboardRecipient,
   type DeliverySource,
   type FrozenDelivery,
   type IndexedSegment
 } from '../core/delivery'
-import { createPayload, PAYLOAD_VERSION, trimPayload, type PayloadAttachment, type PayloadSegment } from '../core/payload'
+import { createPayload, PAYLOAD_VERSION, type PayloadSegment } from '../core/payload'
 import { computeHunks, contentHash, contextHunks, mapOldPositionToNew, mapOldRangeToNew, rangesTouch, type TextRange } from '../core/diff'
 import {
   acceptAgentReplacement,
@@ -119,7 +112,6 @@ import {
   restoreReviewFrame,
   reviewFrame,
   segmentSnapshotIds,
-  setExternalTag,
   type ExternalAttribution,
   type ExternalChangeResult,
   type ExternalSource,
@@ -147,36 +139,11 @@ import { reconcileTableViews } from './tables'
 import { upsertTableView } from '../shared/tables'
 import { CURRENT_META_VERSION, DEFAULT_LOCK_TIMEOUT_MS, GhostStore, type AttachmentMeta, type DeliveryMeta, type DocumentLock, type DocumentMeta, type PendingHunkMeta, type SaveAuthorMeta, type SaveMeta, type SegmentMeta } from './storage'
 import { DebouncedMirror, HashReconciler, WatchCoordinator, watchDirectory, type DirectorySubscription } from './watcher'
-import { AttachWaitRegistry } from './socket'
-import { CommandFailure, type CommandArguments, type CommandRequest, type SocketCommandHandler } from '../cli/protocol'
-import { toDeliveredAnnotation } from '../core/annotations'
 import { T3EngineClient, type EngineReadClient } from './engine/client'
 
-/** One QUOTE_INVALID entry: the unified failure plus which input it was (PRD §6.8). */
-interface QuoteFailureEntry extends QuoteFailure {
-  index: number
-  quote: string
-}
-
-/** One failure's message is the top-level error; several get the summary. */
-function quoteFailureCommand(failures: readonly QuoteFailureEntry[], noun: 'quote' | 'match'): CommandFailure {
-  const message = failures.length === 1
-    ? failures[0]!.message
-    : noun === 'match' ? 'One or more matches are invalid' : 'One or more quotes are invalid'
-  return new CommandFailure(message, 3, 'QUOTE_INVALID', failures)
-}
-
-function attachmentNotFound(agent: string, file: string, hint = 'run stratamd attach first'): CommandFailure {
-  return new CommandFailure(`Attachment ${agent} is not attached to ${file}; ${hint}`, 2, 'ATTACHMENT_NOT_FOUND', { agent, file })
-}
-
-function annotationNotFound(annotation: string, file: string): CommandFailure {
-  return new CommandFailure(`Annotation ${annotation} was not found in ${file}`, 2, 'ANNOTATION_NOT_FOUND', { annotation, file })
-}
 /** The theme problem key under which a failed file write is reported (plan 4.14). */
 const THEME_WRITE_PROBLEM_KEY = 'write'
 /** The longest delay a Node timer represents faithfully. */
-const MAX_TIMER_DELAY_MS = 2 ** 31 - 1
 /** How long typing may go on before its meta reaches disk; the buffer mirror (80 ms) carries the text itself. */
 const META_WRITE_DEBOUNCE_MS = 1_000
 
@@ -184,7 +151,6 @@ interface PersistedApplicationState {
   state: DocumentState
   annotations: AnnotationLog
   attachments: Record<string, Attachment>
-  clipboardRecipient: ClipboardRecipient
   sourceMode: boolean
   lastSavedAt: number | null
   lastSentSegmentIndex: number
@@ -202,7 +168,6 @@ interface OpenDocumentSession {
   attachments: Record<string, Attachment>
   /** The at-most-one attachment holding the Lead (PRD §6.6); dies with it. */
   leadAgentId: string | null
-  clipboardRecipient: ClipboardRecipient
   sourceMode: boolean
   reading: ReadingState
   walkthroughIndex: WalkthroughIndex
@@ -331,10 +296,8 @@ export class StrataApplication implements StrataApi {
   readonly #sessionTurns = new Map<string, Promise<void>>()
   readonly #listeners = new Set<(state: AppView) => void>()
   readonly #tabs: SessionRegistry
-  readonly #attachWaits = new AttachWaitRegistry<ReturnType<typeof createPayload>>()
   #settings: Settings = structuredClone(DEFAULT_SETTINGS)
   #explorer: ExplorerScanResult = { roots: [], files: [] }
-  #idleTimer: ReturnType<typeof setTimeout> | null = null
   #shutdown: Promise<void> | null = null
   #lastView: AppView | null = null
 
@@ -657,15 +620,12 @@ export class StrataApplication implements StrataApi {
   }
 
   async #shutdownOnce(): Promise<void> {
-    if (this.#idleTimer) clearTimeout(this.#idleTimer)
-    this.#idleTimer = null
     if (this.#themeRelistTimer) clearTimeout(this.#themeRelistTimer)
     this.#themeRelistTimer = null
     this.#flushThemeWrite()
     await this.#themeWriteQueue
     await this.#themeSubscription?.unsubscribe()
     this.#themeSubscription = null
-    this.#attachWaits.rejectAll(new Error('StrataMD is shutting down'))
     this.#unsubscribeEngine?.()
     this.#unsubscribeEngine = null
     await this.#engine.shutdown()
@@ -845,8 +805,8 @@ export class StrataApplication implements StrataApi {
           if (relative < 0 || quote.indexOf(entry.match, relative + Math.max(1, entry.match.length)) >= 0) throw new Error('edit match is missing or ambiguous in the block')
           const from = start + relative
           const beforeHunks = new Set(session.state.pendingHunks.map((hunk) => hunk.id))
-          session.state = setExternalTag(session.state, threadId, attachment.name, this.#now())
-          await this.#mergeExternalText(session, 'buffer', session.state.shadow.slice(0, from) + entry.replace + session.state.shadow.slice(from + entry.match.length))
+          session.state = acceptAgentReplacement(session.state, { from, to: from + entry.match.length, insert: entry.replace }, { agentId: threadId, name: attachment.name })
+          session.mirror?.schedule(session.state.shadow)
           for (const hunk of session.state.pendingHunks) {
             if (!beforeHunks.has(hunk.id)) session.hunkItemSources.set(hunk.id, { threadId, turnId, messageId })
           }
@@ -950,7 +910,6 @@ export class StrataApplication implements StrataApi {
         drafts: createDraftStore(),
         attachments: {},
         leadAgentId: null,
-        clipboardRecipient: createClipboardRecipient(),
         sourceMode: true,
         reading: { ...DEFAULT_READING_STATE },
         walkthroughIndex: { markdown: state.shadow, headings: [], sections: [], nextId: 1 },
@@ -1017,14 +976,8 @@ export class StrataApplication implements StrataApi {
       mirror,
     )
     const annotations = restoredAnnotationLog(meta)
-    // The expiry filter runs before the Lead is restored, so a holder that aged
-    // past the idle timeout while the app was closed comes back with no Lead.
     const payloadBlobs = new WeakMap<object, string>()
-    const attachments = { ...expireIdleAttachments(
-      await restoreAttachments(meta, saved?.attachments, this.#store, payloadBlobs),
-      this.#now(),
-      this.#settings.attachmentIdleTimeoutMs
-    ) }
+    const attachments = { ...await restoreAttachments(meta, saved?.attachments, this.#store, payloadBlobs) }
     const storedReading = await readReadingState(this.#store.pathsForDocument(canonical).reading)
     const draftPath = this.#store.pathsForDocument(canonical).drafts
     let drafts = await readDraftStore(draftPath)
@@ -1059,7 +1012,6 @@ export class StrataApplication implements StrataApi {
       leadAgentId: typeof meta.leadAgentId === 'string' && attachments[meta.leadAgentId] !== undefined
         ? meta.leadAgentId
         : null,
-      clipboardRecipient: restoreClipboardRecipient(meta.clipboardRecipient, saved?.clipboardRecipient),
       sourceMode: persistedBoolean(meta.sourceMode) ?? saved?.sourceMode ?? false,
       reading: { ...storedReading, walkthrough: reconciledWalkthrough, tables: reconciledTables, foldedHeadings: reconciledFolds },
       walkthroughIndex,
@@ -1113,7 +1065,6 @@ export class StrataApplication implements StrataApi {
     this.#installMirrorAndWatcher(session)
     await session.reconciler?.initialize('open')
     await this.#persist(session)
-    this.#scheduleIdleExpiry()
     this.#publish()
   }
 
@@ -1131,27 +1082,10 @@ export class StrataApplication implements StrataApi {
         await this.#store.writeBuffer(path, session.state.disk)
         await this.#persist(session)
       }
-      if (Object.keys(session.attachments).length > 0) {
-        await this.#enqueueDeliveries(
-          session,
-          { recipients: Object.keys(session.attachments), note: '', includeExternal: false },
-          Object.keys(session.attachments),
-          'closed'
-        )
-        // Persist before waking any blocked attach: a delivery handed out
-        // before it is durable could be acknowledged against a store that never
-        // held it.
-        await this.#persist(session)
-        for (const [agent, attachment] of Object.entries(session.attachments)) {
-          const delivery = collectOldest(attachment)
-          if (delivery) this.#attachWaits.deliver(attachKey(path, agent), delivery.payload)
-        }
-      }
       session.mirror?.cancel()
       await releaseSessionResources(session)
       this.#sessions.delete(path)
       this.#tabs.close(path)
-      this.#scheduleIdleExpiry()
       return 'closed'
     })
   }
@@ -1174,7 +1108,6 @@ export class StrataApplication implements StrataApi {
       }
       session.mirror?.schedule(session.state.shadow)
       await this.#persist(session, { debounce: true })
-      this.#scheduleIdleExpiry()
       this.#publish()
     })
   }
@@ -1504,7 +1437,6 @@ export class StrataApplication implements StrataApi {
       }))
       await this.#persist(session)
       for (const recipient of recipients) void this.#dispatchEngineDelivery(session, recipient)
-      this.#scheduleIdleExpiry()
       this.#publish()
       return deliveries.map((delivery) => delivery.id)
     })
@@ -1808,7 +1740,6 @@ export class StrataApplication implements StrataApi {
           : []),
       ])
       for (const id of request.recipients) void this.#dispatchEngineDelivery(session, id)
-      this.#scheduleIdleExpiry()
       this.#publish()
       return deliveries.map((delivery) => delivery.id)
     })
@@ -1816,40 +1747,6 @@ export class StrataApplication implements StrataApi {
 
   async copyText(text: string): Promise<void> {
     await this.#clipboardWrite(text)
-  }
-
-  copyForAgent(path: string, note: string, includeExternal: boolean): Promise<void> {
-    return this.#withSession(path, async () => {
-      const session = this.#require(path)
-      await session.mirror?.flush()
-      session.state = markSendBoundary(session.state)
-      const prepared = prepareClipboardDelivery(
-        session.clipboardRecipient,
-        await this.#deliverySource(session, { recipients: [], note, includeExternal }, 'clipboard'),
-      )
-      session.clipboardRecipient = prepared.recipient
-      await this.#persist(session)
-      try {
-        await this.#clipboardWrite(prepared.delivery.payload.text)
-        session.clipboardRecipient = acknowledgeClipboardWrite(session.clipboardRecipient, prepared.delivery.id, true)
-        session.lastSentSegmentIndex = currentSegmentIndex(session)
-        session.lastSentAnnotationSeq = session.annotations.nextSeq - 1
-        session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
-        this.#clearApplicationHistory(session)
-      } catch (error) {
-        session.clipboardRecipient = acknowledgeClipboardWrite(session.clipboardRecipient, prepared.delivery.id, false)
-        throw error
-      } finally {
-        await this.#persist(session)
-        this.#publish()
-      }
-    })
-  }
-
-  async nudge(path: string, agentId: string): Promise<void> {
-    const session = this.#require(path)
-    if (!session.attachments[agentId]) throw new Error(`Attachment ${agentId} was not found`)
-    await this.#clipboardWrite(`Run \`stratamd attach --as ${agentId}\` and continue.`)
   }
 
   async addFolder(): Promise<void> {
@@ -1895,11 +1792,9 @@ export class StrataApplication implements StrataApi {
   async updateSettings(settings: Partial<Omit<AppSettingsView, 'theme'>>): Promise<void> {
     this.#settings = await this.#settingsStore.update({
       ...(settings.animatedBackground === undefined ? {} : { ambientMotion: settings.animatedBackground }),
-      ...(settings.attachmentIdleHours === undefined ? {} : { attachmentIdleTimeoutMs: Math.round(settings.attachmentIdleHours * 60 * 60 * 1_000) }),
       ...(settings.panelSizes === undefined ? {} : { panels: settings.panelSizes }),
       ...(settings.zoom === undefined ? {} : { zoom: settings.zoom })
     })
-    this.#scheduleIdleExpiry()
     this.#publish()
   }
 
@@ -1961,552 +1856,6 @@ export class StrataApplication implements StrataApi {
     })
   }
 
-  commandHandler(): SocketCommandHandler {
-    return async (request, context) => {
-      try {
-        return await this.#handleCommand(request, context.signal)
-      } catch (error) {
-        if (error instanceof CommandFailure) throw error
-        if (error instanceof AnnotationAnchorError) {
-          throw quoteFailureCommand([{ index: 0, quote: '', ...describeQuoteFailure('', '', error) }], 'quote')
-        }
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-          const file = (request.args as { file?: unknown }).file
-          throw new CommandFailure(
-            typeof file === 'string' ? `Document not found: ${file}` : 'Document not found',
-            2,
-            'NOT_FOUND',
-            typeof file === 'string' ? { file } : undefined,
-          )
-        }
-        throw error
-      }
-    }
-  }
-
-  async #handleCommand(request: CommandRequest, signal: AbortSignal): Promise<unknown> {
-    if (request.command === 'docs') return this.#docsPayload()
-    const args = request.args as Record<string, unknown>
-    const requestedFile = typeof args.file === 'string'
-      ? (this.#sessions.has(args.file) ? args.file : await resolveDocumentPath(args.file))
-      : this.#tabs.focusedPath
-    if ((request.command === 'attach' || request.command === 'state') && !requestedFile) {
-      throw new CommandFailure('No document is focused', 2, 'DOCUMENT_NOT_FOUND')
-    }
-    if (request.command === 'open') {
-      await this.openDocument((request.args as { file: string }).file)
-      return { opened: await resolveDocumentPath((request.args as { file: string }).file) }
-    }
-    if (request.command === 'checkpoint') {
-      const file = await resolveDocumentPath((request.args as { file: string }).file)
-      const fileStat = await stat(file)
-      if (fileStat.isDirectory()) {
-        const result = await scanAndSeedExplorer([file], this.#store)
-        return { checkpointed: result.seeded }
-      }
-      const disk = await readDocument(file)
-      if (!disk.validUtf8) throw new CommandFailure('Invalid UTF-8 cannot be checkpointed', 1, 'INVALID_UTF8')
-      const seed = await seedGhostFromGit(file, disk.bytes)
-      const open = this.#sessions.get(file)
-      if (open) {
-        await this.#withSession(file, async () => {
-          // The offline handler leaves every difference between the new ghost
-          // and the text as a pending hunk, so `changes` agrees online and off.
-          open.state = recomputePendingHunks({
-            ...open.state,
-            ghost: seed.content.toString('utf8'),
-            pendingHunks: [],
-            conflicts: [],
-          })
-          await this.#persist(open)
-          this.#publish()
-        })
-      } else if (await this.#store.hasDocument(file)) {
-        const existing = await this.#store.loadMeta(file)
-        const ghostBlob = await this.#store.putObject(seed.content)
-        await this.#store.saveMeta({ ...existing, ghostBlob, pendingHunks: [] })
-      } else {
-        await this.#store.createDocument(file, seed.content)
-      }
-      return { checkpointed: file }
-    }
-    if (request.command === 'forget') {
-      await this.forgetDocument((request.args as { file: string }).file)
-      return { forgotten: true }
-    }
-    const file = requestedFile!
-    if (request.command === 'state' && !this.#sessions.has(file)) {
-      return trimPayload(await this.#closedStatePayload(file), request.args)
-    }
-    if ((request.command === 'ack' || request.command === 'detach') && !this.#sessions.has(file)) {
-      return this.#withSession(file, () => this.#closedAttachmentCommand(request, file, signal))
-    }
-    if (request.command === 'attach') return this.#attachCommand(request.args, file, signal)
-    return this.#withSession(file, async () => {
-      if (!this.#sessions.has(file)) await this.#openLocked(file)
-      const session = this.#require(file)
-      try {
-        return await this.#dispatch(request, session, file, signal)
-      } catch (error) {
-        if (error instanceof AnnotationAnchorError) throw this.#anchorFailure(session, error)
-        throw error
-      }
-    })
-  }
-
-  /**
-   * `ack` and `detach` for a document that is not open work on the stored
-   * attachment alone (plan 2.7). Opening the document to acknowledge its own
-   * `closed` delivery would put the tab straight back; the CLI's final ack
-   * after the user closed a document must leave it closed.
-   */
-  async #closedAttachmentCommand(
-    request: CommandRequest<'ack'> | CommandRequest<'detach'>,
-    file: string,
-    signal: AbortSignal,
-  ): Promise<unknown> {
-    // An open that was queued ahead of this turn may have finished by now.
-    if (this.#sessions.has(file)) return this.#dispatch(request, this.#require(file), file, signal)
-    const agent = request.args.agent
-    const notAttached = new CommandFailure(`Attachment ${agent} was not found for ${file}`, 2, 'ATTACHMENT_NOT_FOUND', { agent, file })
-    if (!await this.#store.hasDocument(file)) throw notAttached
-    return this.#store.withLock(file, async () => {
-      const meta = await this.#store.loadMeta(file)
-      const payloadBlobs = new WeakMap<object, string>()
-      const attachment = (await restoreAttachments(meta, persistedApplication(meta)?.attachments, this.#store, payloadBlobs))[agent]
-      if (!attachment) throw notAttached
-      if (request.command === 'ack') {
-        const result = acknowledgeDelivery(attachment, request.args.deliveryId)
-        if (!result.acknowledged) throw unknownDeliveryFailure(attachment, request.args.deliveryId)
-        await this.#store.saveMeta({
-          ...meta,
-          attachments: { ...meta.attachments, [agent]: await persistAttachment(this.#store, payloadBlobs, result.attachment) },
-        })
-        return { acknowledged: true }
-      }
-      const { [agent]: _removed, ...remaining } = meta.attachments
-      await this.#store.saveMeta({
-        ...meta,
-        attachments: remaining,
-        leadAgentId: meta.leadAgentId === agent ? null : meta.leadAgentId ?? null,
-      })
-      this.#attachWaits.cancel(attachKey(file, agent), new Error('Attachment detached'))
-      return { detached: true }
-    }, DEFAULT_LOCK_TIMEOUT_MS)
-  }
-
-  /**
-   * `attach` blocks until a delivery arrives, and that delivery comes from
-   * another turn on the same document (a Send, a close). The wait therefore
-   * sits between two locked phases instead of inside one.
-   */
-  async #attachCommand(
-    attach: CommandArguments['attach'],
-    file: string,
-    signal: AbortSignal,
-  ): Promise<unknown> {
-    const trim = { textOnly: attach.textOnly === true }
-    const registered = await this.#withSession(file, async () => {
-      if (!this.#sessions.has(file)) await this.#openLocked(file)
-      const session = this.#require(file)
-      let attachment = session.attachments[attach.agent]
-      if (!attachment) {
-        const snapshot = deliverySnapshot(session)
-        attachment = createAttachment({ id: attach.agent, name: attach.name, now: this.#now(), snapshot })
-        session.attachments[attach.agent] = attachment
-        await this.#persist(session)
-        this.#scheduleIdleExpiry()
-        this.#publish()
-        return { payload: trimPayload(createInitialPayload(
-          attachment,
-          file,
-          this.#store.pathsForDocument(file).buffer,
-          snapshot,
-          withAttachmentNames(Object.values(session.annotations.annotations).map(toDeliveredAnnotation), this.#attachmentName(session))
-        ), trim) }
-      }
-      attachment = noteAttachCall(attachment, this.#now())
-      session.attachments[attach.agent] = attachment
-      const queued = collectOldest(attachment)
-      if (queued) {
-        session.attachments[attach.agent] = finishAttachCall(attachment, this.#now())
-        await this.#persist(session)
-        this.#scheduleIdleExpiry()
-        this.#publish()
-        return { payload: trimPayload(queued.payload, trim) }
-      }
-      const waitVersion = (session.attachWaitVersions[attach.agent] ?? 0) + 1
-      session.attachWaitVersions[attach.agent] = waitVersion
-      // The wait must be registered before this handler yields: a delivery
-      // enqueued during the persist below would call deliver() against an
-      // empty registry and the attach would sit blind until its timeout.
-      const wait = this.#attachWaits.wait(attachKey(file, attach.agent), attach.timeout * 1_000, signal)
-      try {
-        await this.#persist(session)
-      } catch (error) {
-        this.#attachWaits.cancel(attachKey(file, attach.agent), error)
-        wait.catch(() => {})
-        throw error
-      }
-      this.#scheduleIdleExpiry()
-      this.#publish()
-      return { wait, waitVersion, session }
-    })
-    if ('payload' in registered) return registered.payload
-    const { wait, waitVersion, session } = registered
-    try {
-      const result = await wait
-      if (result.event === 'delivery') return trimPayload(result.value, trim)
-      return createPayload({
-        file,
-        buffer: this.#store.pathsForDocument(file).buffer,
-        agent: attach.agent,
-        event: result.event
-      })
-    } finally {
-      await this.#withSession(file, async () => {
-        if (session.attachWaitVersions[attach.agent] !== waitVersion) return
-        const current = session.attachments[attach.agent]
-        if (current) session.attachments[attach.agent] = finishAttachCall(current, this.#now())
-        // The document may have closed while the call waited; its state is
-        // already durable and a closed session is not written again.
-        if (this.#sessions.get(file) !== session) return
-        await this.#persist(session)
-        this.#scheduleIdleExpiry()
-        this.#publish()
-      })
-    }
-  }
-
-  /** Anchor failures outside annotate and edit take the same shape those two report. */
-  #anchorFailure(session: OpenDocumentSession, error: AnnotationAnchorError, quote = ''): CommandFailure {
-    return quoteFailureCommand([{ index: 0, quote, ...describeQuoteFailure(session.state.shadow, quote, error) }], 'quote')
-  }
-
-  /**
-   * A Lead accept whose suggestion text moved: the most useful candidate is
-   * whatever now stands on the lines the suggestion anchored to.
-   */
-  #movedSuggestionFailure(session: OpenDocumentSession, suggestion: Annotation, error: AnnotationAnchorError): CommandFailure {
-    const shadow = session.state.shadow
-    const described = describeQuoteFailure(shadow, suggestion.quote, error)
-    const here = quoteCandidateForLines(shadow, suggestion.anchor.start, suggestion.anchor.end)
-    return quoteFailureCommand([{
-      index: 0,
-      quote: suggestion.quote,
-      ...described,
-      candidates: [here, ...described.candidates.filter((candidate) => candidate.line !== here.line)],
-      hint: 'The text this suggestion quotes moved; candidates show what stands there now: run stratamd state to read the current buffer, or reject the suggestion.',
-    }], 'quote')
-  }
-
-  /** The name an attachment has now, for annotations written before names were recorded. */
-  #attachmentName(session: OpenDocumentSession): (agent: string) => string | undefined {
-    return (agent) => session.attachments[agent]?.name
-  }
-
-  #attachmentRows(session: OpenDocumentSession): PayloadAttachment[] {
-    return Object.entries(session.attachments).map(([id, attachment]) => ({
-      agent: id,
-      name: attachment.name,
-      state: attachmentDisplayState(attachment),
-      lead: id === session.leadAgentId
-    }))
-  }
-
-  /** Every open document, from the tab registry (order and focus) and the sessions (dirty, attachments). */
-  #docsPayload(): unknown {
-    const focused = this.#tabs.focusedPath
-    const documents = this.#tabs.list().map((tab) => {
-      const session = this.#require(tab.path)
-      return {
-        file: tab.path,
-        buffer: this.#store.pathsForDocument(tab.path).buffer,
-        focused: tab.path === focused,
-        dirty: session.state.shadow !== session.state.disk,
-        attachments: this.#attachmentRows(session)
-      }
-    })
-    const lines = documents.length === 0
-      ? ['No document is open.']
-      : documents.flatMap((document) => [
-          `${document.file}${document.focused ? ' (focused)' : ''}${document.dirty ? ' (unsaved changes)' : ''}`,
-          ...document.attachments.map((row) =>
-            `  ${row.name} (${row.agent}): ${row.state}${row.lead ? ', Lead' : ''}`),
-        ])
-    return { version: PAYLOAD_VERSION, event: 'docs', documents, text: lines.join('\n') }
-  }
-
-  async #dispatch(
-    request: CommandRequest,
-    session: OpenDocumentSession,
-    file: string,
-    signal: AbortSignal,
-  ): Promise<unknown> {
-    switch (request.command) {
-      case 'ack': {
-        const ack = request.args
-        const attachment = session.attachments[ack.agent]
-        if (!attachment) throw attachmentNotFound(ack.agent, file, 'nothing is queued for it')
-        const result = acknowledgeDelivery(attachment, ack.deliveryId)
-        if (!result.acknowledged) throw unknownDeliveryFailure(attachment, ack.deliveryId)
-        session.attachments[ack.agent] = result.attachment
-        session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
-        await this.#persist(session)
-        this.#scheduleIdleExpiry()
-        this.#publish()
-        return { acknowledged: result.acknowledged }
-      }
-      case 'detach': {
-        if (!session.attachments[request.args.agent]) {
-          throw attachmentNotFound(request.args.agent, file, 'there is nothing to detach')
-        }
-        this.#removeAttachment(session, request.args.agent)
-        await this.#persist(session)
-        this.#scheduleIdleExpiry()
-        this.#publish()
-        return { detached: true }
-      }
-      case 'state': {
-        const snapshot = deliverySnapshot(session)
-        return trimPayload({
-          ...withoutAgent(createPayload({
-            file,
-            buffer: this.#store.pathsForDocument(file).buffer,
-            agent: 'state',
-            event: 'state',
-            open: true,
-            cursor: snapshot.cursor,
-            document: snapshot.document,
-            annotations: withAttachmentNames(Object.values(session.annotations.annotations).map(toDeliveredAnnotation), this.#attachmentName(session)),
-            attachments: this.#attachmentRows(session)
-          })),
-          theme: this.#themeSummary()
-        }, request.args)
-      }
-      case 'changes':
-        return withoutAgent(createPayload({
-          file,
-          buffer: this.#store.pathsForDocument(file).buffer,
-          agent: 'changes',
-          event: 'changes',
-          segments: currentUnreviewedSegments(session.state)
-        }, { currentDocument: session.state.shadow }))
-      case 'changed':
-        session.state = setExternalTag(session.state, request.args.agent, request.args.name, this.#now())
-        await this.#persist(session)
-        return { tagged: true }
-      case 'annotate': {
-        const author = session.attachments[request.args.agent]
-        if (!author) throw attachmentNotFound(request.args.agent, file)
-        let next = session.annotations
-        const created: Array<{ id: string; kind: string; quote: string }> = []
-        const failures: QuoteFailureEntry[] = []
-        for (const [index, annotation] of request.args.annotations.entries()) {
-          const id = `a_${randomUUID().slice(0, 12)}`
-          const quote = annotation.kind === 'decision'
-            ? (annotation.heading ?? annotation.quote ?? '')
-            : annotation.quote
-          try {
-            next = createAnnotation(next, session.state.shadow, {
-              createdAt: this.#now(),
-              id,
-              kind: annotation.kind,
-              author: 'agent',
-              agent: request.args.agent,
-              name: author.name,
-              quote,
-              text: annotation.text ?? '',
-              ...(annotation.kind !== 'decision' && annotation.label ? { label: annotation.label } : {}),
-              ...(annotation.kind === 'decision' ? {
-                anchorKind: annotation.document === true ? 'document' : annotation.heading !== undefined ? 'heading' : 'quote',
-                options: annotation.options,
-              } : {}),
-              // An empty context is a document boundary, so undefined is the only "absent".
-              ...(annotation.precededBy === undefined ? {} : { precededBy: annotation.precededBy }),
-              ...(annotation.followedBy === undefined ? {} : { followedBy: annotation.followedBy })
-            }).log
-            created.push({ id, kind: annotation.kind, quote })
-          } catch (error) {
-            if (!(error instanceof AnnotationAnchorError)) throw error
-            failures.push({ index, quote, ...describeQuoteFailure(session.state.shadow, quote, error) })
-          }
-        }
-        if (failures.length > 0) throw quoteFailureCommand(failures, 'quote')
-        session.annotations = next
-        await this.#persist(session)
-        this.#publish()
-        return { created }
-      }
-      case 'edit':
-        return this.#editCommand(session, request.args)
-      case 'pin':
-        return this.#pinCommand(session, request.args)
-      case 'reply': {
-        const replier = session.attachments[request.args.agent]
-        if (!replier) throw attachmentNotFound(request.args.agent, file)
-        if (!session.annotations.annotations[request.args.annotation]) {
-          throw annotationNotFound(request.args.annotation, file)
-        }
-        const id = `r_${randomUUID().slice(0, 12)}`
-        session.annotations = replyToAnnotation(session.annotations, request.args.annotation, {
-          createdAt: this.#now(),
-          id,
-          author: 'agent',
-          agent: request.args.agent,
-          name: replier.name,
-          text: request.args.text
-        }).log
-        await this.#persist(session)
-        this.#publish()
-        return { replied: id, annotation: request.args.annotation }
-      }
-      case 'answer': {
-        const action = request.args
-        const decision = session.annotations.annotations[action.decision]
-        if (!decision) throw annotationNotFound(action.decision, file)
-        if (decision.kind !== 'decision') {
-          throw new CommandFailure(`${action.decision} is not a decision`, 3, 'NOT_A_DECISION', { annotation: action.decision })
-        }
-        throw new CommandFailure(
-          `Only the user can answer decision ${action.decision}. Reply to its thread to clarify or recommend a choice.`,
-          3,
-          'DECISION_OWNER_REQUIRED',
-          { decision: action.decision, action: 'reply' },
-        )
-      }
-      case 'send': {
-        const message = request.args
-        const sender = session.attachments[message.agent]
-        if (!sender) throw attachmentNotFound(message.agent, file)
-        const requested = message.to ?? Object.keys(session.attachments).filter((id) => id !== message.agent)
-        if (requested.includes(message.agent)) {
-          throw new CommandFailure('A message cannot name its sender as a recipient', 2, 'SELF_RECIPIENT')
-        }
-        if (requested.length === 0) {
-          throw new CommandFailure('No other agents are attached', 2, 'NO_RECIPIENTS')
-        }
-        const recipients = [...new Set(requested)]
-        const missing = recipients.filter((id) => session.attachments[id] === undefined)
-        if (missing.length > 0) {
-          throw new CommandFailure(`Recipient ${missing.join(', ')} is not attached to ${file}`, 2, 'ATTACHMENT_NOT_FOUND', { recipients: missing, file })
-        }
-        // All-or-nothing: every sender→recipient slot is checked before anything
-        // is enqueued, so a failed send never double-delivers on retry.
-        const blocked = recipients.filter((id) => session.attachments[id]!.deliveries.some(
-          (delivery) => isMessageDelivery(delivery) && delivery.payload.from?.agent === message.agent,
-        ))
-        if (blocked.length > 0) {
-          throw new CommandFailure(
-            `Your earlier message to ${blocked.join(', ')} has not been collected yet. Retry after they attach, or send only to the others with --to.`,
-            3,
-            'MESSAGE_PENDING',
-            { recipients: blocked, others: recipients.filter((id) => !blocked.includes(id)) },
-          )
-        }
-        const senderTag = { agent: message.agent, name: sender.name }
-        const sent = recipients.map((id) => {
-          const attachment = session.attachments[id]!
-          session.attachments[id] = enqueueDelivery(attachment, freezeMessage(attachment, {
-            file,
-            buffer: this.#store.pathsForDocument(file).buffer,
-            sender: senderTag,
-            note: message.text,
-            now: this.#now()
-          }))
-          return { agent: id, name: attachment.name }
-        })
-        await this.#persist(session)
-        for (const { agent } of sent) {
-          const delivery = collectOldest(session.attachments[agent]!)
-          if (delivery) this.#attachWaits.deliver(attachKey(file, agent), delivery.payload)
-        }
-        this.#scheduleIdleExpiry()
-        this.#publish()
-        return { sent }
-      }
-      case 'lead': {
-        const claim = request.args
-        if (!session.attachments[claim.agent]) throw attachmentNotFound(claim.agent, file)
-        if (session.leadAgentId !== null && session.leadAgentId !== claim.agent) {
-          const holder = this.#leadHolder(session)!
-          throw new CommandFailure(`${holder.name} (${holder.agent}) already holds the Lead`, 3, 'LEAD_TAKEN', { holder })
-        }
-        session.leadAgentId = claim.agent
-        await this.#persist(session)
-        this.#publish()
-        return { lead: claim.agent }
-      }
-      case 'accept': {
-        const action = request.args
-        this.#requireLead(session, action.agent)
-        const suggestion = session.annotations.annotations[action.annotation]
-        if (!suggestion) throw annotationNotFound(action.annotation, file)
-        try {
-          await this.#acceptSuggestionAsLead(session, action.annotation, action.agent)
-        } catch (error) {
-          if (error instanceof AnnotationAnchorError) throw this.#movedSuggestionFailure(session, suggestion, error)
-          throw error
-        }
-        return { accepted: action.annotation }
-      }
-      case 'reject': {
-        const action = request.args
-        this.#requireLead(session, action.agent)
-        if (!session.annotations.annotations[action.annotation]) throw annotationNotFound(action.annotation, file)
-        session.annotations = rejectAnnotationSuggestion(
-          session.annotations,
-          action.annotation,
-          'agent',
-          action.agent,
-        ).log
-        session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
-        await this.#persist(session)
-        this.#publish()
-        return { rejected: action.annotation }
-      }
-      case 'resolve': {
-        const action = request.args
-        const record = session.annotations.annotations[action.annotation]
-        if (!record) throw annotationNotFound(action.annotation, file)
-        if (record.kind === 'decision') {
-          throw new CommandFailure(
-            `Only the user can answer or reopen decision ${action.annotation}. Reply to its thread instead.`,
-            3,
-            'DECISION_OWNER_REQUIRED',
-            { decision: action.annotation, action: 'reply' },
-          )
-        }
-        if (!session.attachments[action.agent]) throw attachmentNotFound(action.agent, file)
-        if (record.agent !== action.agent && session.leadAgentId !== action.agent) {
-          throw this.#notLead(session, `Only the Lead may resolve annotations it did not author; ${action.annotation} belongs to ${record.agent ?? 'the user'}`)
-        }
-        session.annotations = resolveAnnotationThread(session.annotations, action.annotation, 'agent', action.agent).log
-        session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
-        await this.#persist(session)
-        this.#publish()
-        return { resolved: action.annotation }
-      }
-      case 'save': {
-        this.#requireLead(session, request.args.agent)
-        try {
-          await this.#saveLocked(file)
-        } catch (error) {
-          // A conflict or pending recovery needs the user; the round may end unsaved.
-          throw new CommandFailure(
-            error instanceof Error ? error.message : 'Save was blocked',
-            3,
-            'SAVE_BLOCKED',
-            { reason: error instanceof Error ? error.message : String(error) },
-          )
-        }
-        return { saved: true }
-      }
-      default:
-        throw new CommandFailure('Unsupported command', 1, 'UNSUPPORTED_COMMAND')
-    }
-  }
-
   /** The user's transfer or revoke from the attachments panel; authoritative over agent claims. */
   setLead(path: string, agentId: string | null): Promise<void> {
     return this.#withSession(path, async () => {
@@ -2520,14 +1869,13 @@ export class StrataApplication implements StrataApi {
     })
   }
 
-  /** The panel's disconnect: the same path as agent `detach`, cancelling a blocked attach call. */
-  disconnectAgent(path: string, agentId: string): Promise<void> {
+  /** Ends only this document/thread link; the engine thread is untouched. */
+  detachThread(path: string, agentId: string): Promise<void> {
     return this.#withSession(path, async () => {
       const session = this.#require(path)
       if (!session.attachments[agentId]) throw new Error(`Attachment ${agentId} was not found`)
       this.#removeAttachment(session, agentId)
       await this.#persist(session)
-      this.#scheduleIdleExpiry()
       this.#publish()
     })
   }
@@ -2536,197 +1884,8 @@ export class StrataApplication implements StrataApi {
     delete session.attachments[agentId]
     if (session.leadAgentId === agentId) session.leadAgentId = null
     session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
-    this.#attachWaits.cancel(attachKey(session.path, agentId), new Error('Attachment detached'))
   }
 
-  #leadHolder(session: OpenDocumentSession): { agent: string; name: string } | null {
-    const id = session.leadAgentId
-    if (id === null) return null
-    return { agent: id, name: session.attachments[id]?.name ?? id }
-  }
-
-  /** NOT_LEAD always says who holds it, or that nobody does and how to claim it. */
-  #notLead(session: OpenDocumentSession, message: string): CommandFailure {
-    const holder = this.#leadHolder(session)
-    const who = holder === null ? 'no agent holds the Lead; run stratamd lead to claim it' : `${holder.name} (${holder.agent}) holds the Lead`
-    return new CommandFailure(`${message}: ${who}`, 3, 'NOT_LEAD', { holder })
-  }
-
-  #requireLead(session: OpenDocumentSession, agentId: string): void {
-    if (!session.attachments[agentId]) throw attachmentNotFound(agentId, session.path)
-    if (session.leadAgentId !== agentId) throw this.#notLead(session, 'This action needs the Lead')
-  }
-
-  /**
-   * A compare-and-swap edit: each match is located in the live shadow with
-   * annotate's rules, then the whole replacement lands through the same path
-   * as a tagged buffer write, so it is a pending hunk in the agent's name and
-   * the ghost never moves. The mirror is flushed first so the merge compares
-   * against exactly the text the matches were found in.
-   */
-  async #editCommand(session: OpenDocumentSession, edit: CommandArguments['edit']): Promise<unknown> {
-    if (session.readOnly) throw new CommandFailure('This document is read-only', 3, 'READ_ONLY')
-    if (session.recovery) {
-      throw new CommandFailure('The user must choose Recover or Discard before the buffer can change', 3, 'RECOVERY_PENDING')
-    }
-    if (!session.attachments[edit.agent]) throw attachmentNotFound(edit.agent, session.path)
-    await session.mirror?.flush()
-    const shadow = session.state.shadow
-    const located: Array<{ index: number; start: number; end: number; replace: string }> = []
-    const failures: QuoteFailureEntry[] = []
-    for (const [index, input] of edit.edits.entries()) {
-      try {
-        const anchor = locateEdit(shadow, input)
-        located.push({ index, start: anchor.start, end: anchor.end, replace: input.replace })
-      } catch (error) {
-        if (!(error instanceof AnnotationAnchorError)) throw error
-        failures.push({ index, quote: input.match, ...describeQuoteFailure(shadow, input.match, error, 'match') })
-      }
-    }
-    if (failures.length > 0) throw quoteFailureCommand(failures, 'match')
-    located.sort((left, right) => left.start - right.start || left.index - right.index)
-    for (let position = 1; position < located.length; position += 1) {
-      const previous = located[position - 1]!
-      const current = located[position]!
-      // Two zero-width inserts at one point are fine; anything sharing text is not.
-      if (current.start < previous.end) {
-        throw new CommandFailure(
-          `Edits ${previous.index + 1} and ${current.index + 1} overlap in the buffer`,
-          3,
-          'EDITS_OVERLAP',
-          {
-            edits: [previous.index, current.index],
-            matches: [edit.edits[previous.index]!.match, edit.edits[current.index]!.match],
-          },
-        )
-      }
-    }
-    if (edit.dryRun === true) {
-      return {
-        located: located
-          .slice()
-          .sort((left, right) => left.index - right.index)
-          .map((entry) => ({ line: lineAt(shadow, entry.start), match: edit.edits[entry.index]!.match })),
-      }
-    }
-
-    let next = ''
-    let cursor = 0
-    const applied: Array<{ index: number; line: number; match: string; replace: string }> = []
-    for (const entry of located) {
-      next += shadow.slice(cursor, entry.start)
-      applied.push({
-        index: entry.index,
-        line: next.split('\n').length,
-        match: edit.edits[entry.index]!.match,
-        replace: entry.replace,
-      })
-      next += entry.replace
-      cursor = entry.end
-    }
-    next += shadow.slice(cursor)
-
-    const name = edit.name ?? session.attachments[edit.agent]?.name ?? edit.agent
-    session.state = setExternalTag(session.state, edit.agent, name, this.#now())
-    await this.#mergeExternalText(session, 'buffer', next)
-    await this.#changed(session)
-    await session.mirror?.flush()
-    return {
-      applied: applied
-        .sort((left, right) => left.index - right.index)
-        .map(({ line, match, replace }) => ({ line, match, replace })),
-    }
-  }
-
-  async #pinCommand(session: OpenDocumentSession, input: CommandArguments['pin']): Promise<unknown> {
-    if (session.readOnly) throw new CommandFailure('This document is read-only', 3, 'READ_ONLY')
-    if (session.recovery) {
-      throw new CommandFailure('The user must choose Recover or Discard before the buffer can change', 3, 'RECOVERY_PENDING')
-    }
-    const attachment = session.attachments[input.agent]
-    if (!attachment) throw attachmentNotFound(input.agent, session.path)
-    await session.mirror?.flush()
-    const parsed = parseMarkdown(session.state.shadow)
-    const block = parsed.blocks.find((candidate) => {
-      const node = candidate.node as unknown as ComponentAstNode
-      return candidate.span.start.line === input.componentLine
-        && node.type === 'mdxJsxFlowElement'
-        && node.name === 'AnnotatedScreenshot'
-    })
-    if (!block) {
-      throw new CommandFailure(
-        `No AnnotatedScreenshot opens on line ${input.componentLine} in ${session.path}`,
-        2,
-        'COMPONENT_NOT_FOUND',
-        { file: session.path, line: input.componentLine, component: 'AnnotatedScreenshot' },
-      )
-    }
-    const node = block.node as unknown as ComponentAstNode
-    const analysis = analyzeComponentNode(node)
-    const screenshot = annotatedScreenshotData(node)
-    if (!analysis.valid || !screenshot || screenshot.tableEnd === null) {
-      throw new CommandFailure(
-        `AnnotatedScreenshot on line ${input.componentLine} needs valid image and pin-table syntax`,
-        3,
-        'COMPONENT_INVALID',
-        { file: session.path, line: input.componentLine, problems: analysis.problems },
-      )
-    }
-    let image: string | undefined
-    try {
-      image = await resolveAllowedLocalPath(screenshot.imageSource, session.path, this.#settings.explorerFolders)
-    } catch {
-      // The command exposes one stable not-found result for missing and disallowed image paths.
-    }
-    if (!image) {
-      throw new CommandFailure(
-        `The image in AnnotatedScreenshot on line ${input.componentLine} is unavailable`,
-        2,
-        'IMAGE_NOT_FOUND',
-        { file: session.path, line: input.componentLine, source: screenshot.imageSource },
-      )
-    }
-    let version: string
-    try {
-      const details = await stat(image, { bigint: true })
-      version = `${details.size}:${details.mtimeNs}`
-    } catch {
-      throw new CommandFailure(
-        `The image ${image} is unavailable`,
-        2,
-        'IMAGE_NOT_FOUND',
-        { file: session.path, line: input.componentLine, source: screenshot.imageSource, path: image },
-      )
-    }
-    if (screenshot.pins.some((pin) => pin.version !== version)) {
-      throw new CommandFailure(
-        `The image ${screenshot.imageSource} in ${session.path} at line ${input.componentLine} changed; verify existing pin positions in StrataMD before adding another pin`,
-        3,
-        'IMAGE_VERIFICATION_REQUIRED',
-        { file: session.path, line: input.componentLine, source: screenshot.imageSource },
-      )
-    }
-    const pin = Math.max(0, ...screenshot.pins.map((entry) => entry.pin)) + 1
-    const note = input.note.replaceAll('\r', ' ').replaceAll('\n', ' ').replaceAll('\\', '\\\\').replaceAll('|', '\\|').trim()
-    if (!note) throw new CommandFailure('--note must contain visible text', 1, 'USAGE')
-    const tableEnd = screenshot.tableEnd
-    if (tableEnd < block.span.start.offset || tableEnd > block.span.end.offset) {
-      throw new CommandFailure(`AnnotatedScreenshot pin table on line ${input.componentLine} has no source end`, 3, 'COMPONENT_INVALID')
-    }
-    const lineEnding = block.source.includes('\r\n') ? '\r\n' : '\n'
-    const row = `| ${pin} | ${input.x.toFixed(1)} | ${input.y.toFixed(1)} | ${version} | ${note} |`
-    const next = session.state.shadow.slice(0, tableEnd)
-      + lineEnding + row
-      + session.state.shadow.slice(tableEnd)
-    const name = input.name ?? attachment.name
-    session.state = setExternalTag(session.state, input.agent, name, this.#now())
-    await this.#mergeExternalText(session, 'buffer', next)
-    await this.#changed(session)
-    await session.mirror?.flush()
-    return { pinned: pin, component: input.componentLine, x: input.x, y: input.y, note: input.note }
-  }
-
-  /** One external merge as an application step: the watcher's path, shared with `edit`. */
   async #mergeExternalText(
     session: OpenDocumentSession,
     source: ExternalSource,
@@ -2756,51 +1915,6 @@ export class StrataApplication implements StrataApi {
       return result.status === 'applied'
     })
     return status
-  }
-
-  /**
-   * The Lead's accept reuses the suggestion path with the Lead as actor: the
-   * replacement lands as an external, Lead-tagged segment with a pending hunk,
-   * the ghost stays put, and the whole step is undoable like an external merge.
-   */
-  async #acceptSuggestionAsLead(
-    session: OpenDocumentSession,
-    annotationId: string,
-    agentId: string,
-  ): Promise<void> {
-    const name = session.attachments[agentId]?.name ?? agentId
-    await this.#applyApplicationStep(session, () => {
-      const result = acceptAnnotationSuggestion(
-        session.annotations,
-        session.state.shadow,
-        annotationId,
-        'agent',
-        agentId,
-      )
-      if (result.userChange) {
-        session.state = acceptAgentReplacement(
-          session.state,
-          {
-            from: result.userChange.start,
-            to: result.userChange.end,
-            insert: result.userChange.added
-          },
-          { agentId, name },
-        )
-        session.annotations = relocateOpenAnnotations(
-          mapAnnotationsThroughEdit(result.log, {
-            start: result.userChange.start,
-            deleteCount: result.userChange.end - result.userChange.start,
-            insertText: result.userChange.added
-          }),
-          session.state.shadow,
-        )
-      } else {
-        session.annotations = result.log
-      }
-      session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
-    })
-    await this.#changed(session)
   }
 
   #installMirrorAndWatcher(session: OpenDocumentSession): void {
@@ -3094,10 +2208,8 @@ export class StrataApplication implements StrataApi {
       conflicts: session.state.conflicts,
       nextId: session.state.nextId,
       forceNewUserSegment: session.state.forceNewUserSegment,
-      pendingTag: session.state.pendingTag,
       attachments,
       leadAgentId: session.leadAgentId,
-      clipboardRecipient: persistClipboardRecipient(session.clipboardRecipient),
       annotationEvents: session.annotations.events,
       annotations: session.annotations.annotations,
       nextAnnotationSeq: session.annotations.nextSeq,
@@ -3149,7 +2261,7 @@ export class StrataApplication implements StrataApi {
     session: OpenDocumentSession,
     request: SendPreviewRequest,
     recipients: readonly string[],
-    event: 'send' | 'closed' = 'send',
+    event: 'send' = 'send',
     annotations: AnnotationLog = session.annotations,
   ) {
     const deliveries = await Promise.all(recipients.map(async (id) => {
@@ -3169,26 +2281,20 @@ export class StrataApplication implements StrataApi {
   async #deliverySource(
     session: OpenDocumentSession,
     request: SendPreviewRequest,
-    recipient: string | 'clipboard',
-    event: 'send' | 'closed' = 'send',
+    recipient: string,
+    event: 'send' = 'send',
     annotations: AnnotationLog = session.annotations,
     attachmentOverride?: Attachment,
   ): Promise<DeliverySource> {
-    const targetAttachment = recipient === 'clipboard' ? null : (attachmentOverride ?? session.attachments[recipient]!)
+    const targetAttachment = attachmentOverride ?? session.attachments[recipient]!
     const cursor = annotations.nextSeq - 1
-    const fromCursor = recipient === 'clipboard'
-      ? (session.clipboardRecipient.pending?.to.cursor ?? session.clipboardRecipient.cursor)
-      : deliveryStart(targetAttachment!).cursor
-    const start = recipient === 'clipboard'
-      ? deliveryStartForClipboard(session.clipboardRecipient)
-      : deliveryStart(targetAttachment!)
+    const fromCursor = deliveryStart(targetAttachment).cursor
+    const start = deliveryStart(targetAttachment)
     const baselineWithinHistory = start.segmentIndex >= session.segmentOffset - 1
-    const baselineAvailable = recipient === 'clipboard' && session.clipboardRecipient.baseline === null
-      ? true
-      : baselineWithinHistory && await this.#store.hasObject(start.snapshotId)
-    const skippedEvents = recipient === 'clipboard' || !baselineAvailable
+    const baselineAvailable = baselineWithinHistory && await this.#store.hasObject(start.snapshotId)
+    const skippedEvents = !baselineAvailable
       ? new Set<number>()
-      : new Set(targetAttachment!.deliveredSeqs)
+      : new Set(targetAttachment.deliveredSeqs)
     const slice = annotationDeliverySlice(
       annotations,
       baselineAvailable ? fromCursor : 0,
@@ -3211,7 +2317,7 @@ export class StrataApplication implements StrataApi {
       answers: slice.answers,
       resolved: slice.resolved,
       edits: slice.edits,
-      note: [request.note, ...(targetAttachment?.pendingBlockOutcomes?.length ? ['Strata block outcomes:', ...targetAttachment.pendingBlockOutcomes] : [])].filter(Boolean).join('\n'),
+      note: [request.note, ...(targetAttachment.pendingBlockOutcomes?.length ? ['Strata block outcomes:', ...targetAttachment.pendingBlockOutcomes] : [])].filter(Boolean).join('\n'),
       includeExternal: request.includeExternal,
       excludedHunks: request.excludedHunks ?? [],
       eventsLeftOut: slice.excluded > 0,
@@ -3219,6 +2325,10 @@ export class StrataApplication implements StrataApi {
       now: this.#now(),
       baselineAvailable,
     }
+  }
+
+  #attachmentName(session: OpenDocumentSession): (agent: string) => string | undefined {
+    return (agent) => session.attachments[agent]?.name
   }
 
   /** Everything one recipient could receive, independent of the current selection, for the composer's checkboxes. */
@@ -3324,38 +2434,6 @@ export class StrataApplication implements StrataApi {
     return session
   }
 
-  async #closedStatePayload(file: string) {
-    const disk = await readDocument(file)
-    if (!disk.validUtf8) throw new CommandFailure('Invalid UTF-8', 1, 'INVALID_UTF8')
-    let document = disk.text
-    let annotations = createAnnotationLog()
-    if (await this.#store.hasDocument(file)) {
-      const meta = await this.#store.loadMeta(file)
-      annotations = restoredAnnotationLog(meta)
-      const buffer = await this.#store.readBuffer(file)
-      if (buffer) {
-        const [bufferInfo, diskInfo] = await Promise.all([
-          stat(this.#store.pathsForDocument(file).buffer),
-          stat(file),
-        ])
-        if (bufferInfo.mtimeMs > diskInfo.mtimeMs) document = buffer.toString('utf8')
-      }
-    }
-    return {
-      ...withoutAgent(createPayload({
-        file,
-        buffer: this.#store.pathsForDocument(file).buffer,
-        agent: 'state',
-        event: 'state',
-        open: false,
-        cursor: annotations.nextSeq - 1,
-        document,
-        annotations: Object.values(annotations.annotations).map(toDeliveredAnnotation),
-      })),
-      theme: this.#themeSummary(),
-    }
-  }
-
   #themeSummary(): { id: string; name: string; path: string | null } {
     return { id: this.#theme.id, name: this.#theme.name, path: this.#theme.path }
   }
@@ -3401,57 +2479,10 @@ export class StrataApplication implements StrataApi {
     )
   }
 
-  /** Save, Send, and Copy for agent end the application-step history. */
+  /** Save and Send end the application-step history. */
   #clearApplicationHistory(session: OpenDocumentSession): void {
     session.applicationUndo = []
     session.applicationRedo = []
-  }
-
-  #scheduleIdleExpiry(): void {
-    if (this.#idleTimer) clearTimeout(this.#idleTimer)
-    this.#idleTimer = null
-    let deadline = Number.POSITIVE_INFINITY
-    for (const session of this.#sessions.values()) {
-      for (const attachment of Object.values(session.attachments)) {
-        // Same predicate as mayExpireAttachment: a message-only queue still arms the timer.
-        if (attachment.waiting || attachment.deliveries.some((delivery) => !isMessageDelivery(delivery))) continue
-        deadline = Math.min(deadline, attachment.lastCallAt + this.#settings.attachmentIdleTimeoutMs)
-      }
-    }
-    if (!Number.isFinite(deadline)) return
-    // setTimeout treats a delay beyond 2^31-1 ms as 1 ms; a long idle window
-    // would then expire attachments at once. Wait in bounded steps and re-arm.
-    const delay = Math.min(MAX_TIMER_DELAY_MS, Math.max(0, deadline - this.#now()))
-    this.#idleTimer = setTimeout(() => {
-      this.#idleTimer = null
-      void this.#expireIdleAttachmentsLive()
-    }, delay)
-    this.#idleTimer.unref?.()
-  }
-
-  async #expireIdleAttachmentsLive(): Promise<void> {
-    const now = this.#now()
-    let changed = false
-    for (const session of [...this.#sessions.values()]) {
-      await this.#withSession(session.path, async () => {
-        if (this.#sessions.get(session.path) !== session) return
-        const retained = expireIdleAttachments(
-          session.attachments,
-          now,
-          this.#settings.attachmentIdleTimeoutMs,
-        )
-        if (Object.keys(retained).length === Object.keys(session.attachments).length) return
-        session.attachments = { ...retained }
-        if (session.leadAgentId !== null && session.attachments[session.leadAgentId] === undefined) {
-          session.leadAgentId = null
-        }
-        session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
-        changed = true
-        await this.#persist(session)
-      })
-    }
-    this.#scheduleIdleExpiry()
-    if (changed) this.#publish()
   }
 
   #view(): AppView {
@@ -3470,6 +2501,7 @@ export class StrataApplication implements StrataApi {
 
   #rawView(): AppView {
     const focused = this.#tabs.focusedPath
+    const engine = this.#engine.view()
     return {
       tabs: this.#tabs.list().map((tab) => {
         const session = this.#sessions.get(tab.path)!
@@ -3487,10 +2519,10 @@ export class StrataApplication implements StrataApi {
           dirty: session.state.shadow !== session.state.disk
         }
       }),
-      activeDocument: focused ? documentView(this.#sessions.get(focused)!, this.#store, this.#now()) : null,
+      activeDocument: focused ? documentView(this.#sessions.get(focused)!, this.#store, this.#now(), engine) : null,
       explorer: explorerView(this.#explorer, this.#sessions),
       settings: { ...settingsView(this.#settings), theme: this.#themeView() },
-      engine: this.#engine.view()
+      engine
     }
   }
 
@@ -3544,10 +2576,7 @@ function retainConfiguredResolvedAnnotations(
   keepResolvedAnnotations: boolean,
 ): AnnotationLog {
   if (keepResolvedAnnotations) return session.annotations
-  const cursors = [
-    ...Object.values(session.attachments).map((attachment) => attachment.cursor),
-    session.clipboardRecipient.cursor,
-  ]
+  const cursors = Object.values(session.attachments).map((attachment) => attachment.cursor)
   const removable = new Set(
     Object.values(session.annotations.annotations)
       .filter((annotation) =>
@@ -3719,7 +2748,6 @@ async function restoreDocumentState(
       ...base,
       segments: structuredClone(legacy.segments),
       snapshots: { ...legacy.snapshots, [contentHash(shadow)]: shadow },
-      pendingTag: legacy.pendingTag ? { ...legacy.pendingTag } : null,
       nextId: legacy.nextId,
       forceNewUserSegment: legacy.forceNewUserSegment,
       conflicts: structuredClone(legacy.conflicts ?? []),
@@ -3737,14 +2765,6 @@ async function restoreDocumentState(
   for (const attachment of Object.values(meta.attachments)) {
     snapshotIds.add(attachment.baselineBlob)
     for (const delivery of attachment.deliveries) snapshotIds.add(delivery.snapshotBlob)
-  }
-  if (meta.clipboardRecipient && typeof meta.clipboardRecipient === 'object') {
-    const clipboard = meta.clipboardRecipient as {
-      baselineBlob?: unknown
-      pending?: { snapshotBlob?: unknown }
-    }
-    if (typeof clipboard.baselineBlob === 'string') snapshotIds.add(clipboard.baselineBlob)
-    if (typeof clipboard.pending?.snapshotBlob === 'string') snapshotIds.add(clipboard.pending.snapshotBlob)
   }
   const snapshots: Record<string, string> = {}
   for (const id of snapshotIds) {
@@ -3772,9 +2792,6 @@ async function restoreDocumentState(
       }]
     }),
     snapshots,
-    pendingTag: meta.pendingTag && typeof meta.pendingTag === 'object'
-      ? meta.pendingTag as DocumentState['pendingTag']
-      : null,
     nextId: meta.nextId ?? base.nextId,
     forceNewUserSegment: meta.forceNewUserSegment ?? false,
     conflicts: Array.isArray(meta.conflicts)
@@ -3826,8 +2843,6 @@ async function restoreAttachments(
       id: stored.id ?? id,
       name: stored.name ?? id,
       attachedAt: stored.attachedAt ?? 0,
-      lastCallAt: stored.lastCallAt ?? stored.attachedAt ?? 0,
-      waiting: false,
       baseline: { snapshotId: stored.baselineBlob, segmentIndex: stored.segmentIndex },
       cursor: stored.cursor,
       deliveredSeqs: Array.isArray(stored.deliveredSeqs)
@@ -3862,8 +2877,6 @@ async function persistAttachment(
     id: attachment.id,
     name: attachment.name,
     attachedAt: attachment.attachedAt,
-    lastCallAt: attachment.lastCallAt,
-    waiting: attachment.waiting ?? false,
     baselineBlob: attachment.baseline.snapshotId,
     segmentIndex: attachment.baseline.segmentIndex,
     cursor: attachment.cursor,
@@ -3873,50 +2886,6 @@ async function persistAttachment(
     pendingBlockOutcomes: attachment.pendingBlockOutcomes ?? [],
     deliveries,
   }
-}
-
-function restoreClipboardRecipient(
-  stored: unknown,
-  legacy: ClipboardRecipient | undefined,
-): ClipboardRecipient {
-  if (!stored || typeof stored !== 'object') return structuredClone(legacy ?? createClipboardRecipient())
-  const value = stored as {
-    baselineBlob?: unknown
-    segmentIndex?: unknown
-    cursor?: unknown
-    pending?: unknown
-  }
-  const baseline = typeof value.baselineBlob === 'string' && typeof value.segmentIndex === 'number'
-    ? { snapshotId: value.baselineBlob, segmentIndex: value.segmentIndex }
-    : null
-  const pendingValue = value.pending && typeof value.pending === 'object'
-    ? value.pending as Record<string, unknown>
-    : null
-  let pending: ClipboardRecipient['pending'] = null
-  if (pendingValue) {
-    const { snapshotBlob: _snapshotBlob, ...delivery } = pendingValue
-    pending = delivery as unknown as ClipboardRecipient['pending']
-  }
-  return {
-    baseline,
-    cursor: typeof value.cursor === 'number' ? value.cursor : 0,
-    pending,
-  }
-}
-
-function persistClipboardRecipient(recipient: ClipboardRecipient): unknown {
-  return {
-    baselineBlob: recipient.baseline?.snapshotId ?? null,
-    segmentIndex: recipient.baseline?.segmentIndex ?? -1,
-    cursor: recipient.cursor,
-    pending: recipient.pending
-      ? { ...recipient.pending, snapshotBlob: recipient.pending.to.snapshotId }
-      : null,
-  }
-}
-
-function deliveryStartForClipboard(recipient: ClipboardRecipient) {
-  return recipient.pending?.to ?? recipient.baseline ?? { snapshotId: '', segmentIndex: -1 }
 }
 
 function persistedApplication(meta: DocumentMeta): PersistedApplicationState | undefined {
@@ -4042,19 +3011,18 @@ function hunkViews(session: OpenDocumentSession, now: number): HunkView[] {
   })
 }
 
-function documentView(session: OpenDocumentSession, store: GhostStore, now: number): DocumentView {
+function documentView(session: OpenDocumentSession, store: GhostStore, now: number, engine: AppView['engine']): DocumentView {
   const ids = Object.keys(session.attachments)
   const attachments: AttachmentView[] = ids.map((id, index) => {
     const attachment = session.attachments[id]!
+    const thread = engine.projects.flatMap((project) => project.threads).find((candidate) => candidate.id === id)
     return {
       agent: agentIdentity(id, attachment.name, index),
       attachedAt: attachment.attachedAt,
-      state: attachmentDisplayState(attachment),
+      state: engine.state === 'connected' ? (thread?.status ?? 'idle') : 'disconnected',
       queuedDeliveries: attachment.deliveries.map((delivery) => delivery.id),
       queuedSendCount: attachment.deliveries.filter((delivery) => !isMessageDelivery(delivery)).length,
-      // Metadata from before calls were timed restores as zero; that is no time at all.
-      lastCallAt: attachment.lastCallAt > 0 ? attachment.lastCallAt : null
-      ,cursor: deliveryStart(attachment).cursor
+      cursor: deliveryStart(attachment).cursor
     }
   })
   const drafts: DraftView[] = session.drafts.drafts.map((draft) => {
@@ -4141,7 +3109,6 @@ function explorerView(scan: ExplorerScanResult, sessions: Map<string, OpenDocume
 function settingsView(settings: Settings): Omit<AppSettingsView, 'theme'> {
   return {
     animatedBackground: settings.ambientMotion,
-    attachmentIdleHours: settings.attachmentIdleTimeoutMs / (60 * 60 * 1_000),
     panelSizes: { ...settings.panels },
     zoom: { ...settings.zoom }
   }
@@ -4217,11 +3184,6 @@ function pruneSnapshots(session: OpenDocumentSession, current: readonly string[]
       referenced.add(delivery.to.snapshotId)
     }
   }
-  if (session.clipboardRecipient.baseline) referenced.add(session.clipboardRecipient.baseline.snapshotId)
-  if (session.clipboardRecipient.pending) {
-    referenced.add(session.clipboardRecipient.pending.from.snapshotId)
-    referenced.add(session.clipboardRecipient.pending.to.snapshotId)
-  }
   for (const save of session.saves) {
     referenced.add(save.beforeBlob)
     referenced.add(save.afterBlob)
@@ -4233,19 +3195,6 @@ function pruneSnapshots(session: OpenDocumentSession, current: readonly string[]
     ...session.state,
     snapshots: Object.fromEntries(keys.filter((id) => referenced.has(id)).map((id) => [id, snapshots[id]!])),
   }
-}
-
-/** An ack that names no queued delivery is refused, never silently absorbed (plan 4.5). */
-function unknownDeliveryFailure(attachment: Attachment, deliveryId: string): CommandFailure {
-  const head = attachment.deliveries[0]?.id ?? null
-  const message = head === null
-    ? `No delivery ${deliveryId} is queued for ${attachment.id}; nothing is waiting to be acknowledged`
-    : `No delivery ${deliveryId} is at the head of ${attachment.id}'s queue; acknowledge ${head} first`
-  return new CommandFailure(message, 2, 'DELIVERY_NOT_FOUND', {
-    deliveryId,
-    agent: attachment.id,
-    queued: attachment.deliveries.map((delivery) => delivery.id),
-  })
 }
 
 function deliverySnapshot(session: OpenDocumentSession) {
@@ -4307,9 +3256,4 @@ async function releaseSessionResources(session: OpenDocumentSession): Promise<vo
   ])
   const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
   if (failed) throw failed.reason
-}
-
-function withoutAgent<T extends { agent?: string }>(payload: T): Omit<T, 'agent'> {
-  const { agent: _agent, ...rest } = payload
-  return rest
 }

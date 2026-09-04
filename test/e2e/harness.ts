@@ -1,5 +1,5 @@
 import { _electron as electron, expect, type ElectronApplication, type Page, type TestInfo } from '@playwright/test'
-import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
 import { constants, realpathSync } from 'node:fs'
 import { access, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -33,45 +33,17 @@ export interface Annotation {
   context?: AnnotationContext
   resolution?: 'accepted' | 'rejected'
   decision?: {
-    options: string[]
-    answers: Array<{ seq: number; option: string | null; other?: string; author: 'user'; answeredAt: number }>
+    options: readonly string[]
+    answers: readonly { seq: number; option: string | null; other?: string; author: 'user'; answeredAt: number }[]
   }
 }
 
-export interface Payload {
-  version?: number
-  file?: string
+export interface DocumentInspection {
   buffer?: string
-  agent?: string
-  event: 'initial' | 'send' | 'message' | 'resync' | 'closed' | 'timeout' | 'superseded' | 'state' | 'changes'
-  deliveryId?: string
-  from?: { agent: string; name: string }
   document?: string
-  notes?: string[]
   attachments?: Array<{ agent: string; name: string; state: string; lead: boolean }>
   segments?: Segment[]
   annotations?: Annotation[]
-  answers?: Array<{
-    annotation: string
-    seq: number
-    option: string | null
-    other?: string
-    author: 'user'
-    answeredAt: number
-  }>
-  resolved?: Array<{ id: string; kind: string; resolution: string }>
-  edits?: Array<{ seq: number; verdict: 'kept' | 'reverted'; quote: string }>
-  partial?: boolean
-  text?: string
-}
-
-export interface CliResult {
-  code: number
-  pid: number | undefined
-  stdout: string
-  stderr: string
-  payload: Payload | undefined
-  error: unknown
 }
 
 // Canonicalizes TMPDIR before any scenario path derives from it (macOS /var
@@ -82,7 +54,6 @@ process.env.TMPDIR = realpathSync(tmpdir())
 const here = dirname(fileURLToPath(import.meta.url))
 export const projectRoot = resolve(here, '../..')
 export const mainEntry = join(projectRoot, 'out/main/index.js')
-export const cliEntry = join(projectRoot, 'bin/stratamd')
 
 /**
  * Shortcut helpers so specs never hard-code a platform modifier
@@ -105,11 +76,6 @@ export const selectToLineEndKey = macHost ? 'Shift+Meta+ArrowRight' : 'Shift+End
 export const launchArgs: string[] = macHost ? [] : ['--ozone-platform=x11']
 const linuxLaunchEnv = { ELECTRON_OZONE_PLATFORM_HINT: 'x11' }
 
-function parseJson(value: string): unknown {
-  const trimmed = value.trim()
-  return trimmed ? JSON.parse(trimmed) : undefined
-}
-
 export class Scenario {
   readonly root: string
   readonly file: string
@@ -126,9 +92,7 @@ export class Scenario {
   }
 
   static async create(_testInfo: TestInfo, content: string | Buffer, name = 'scenario.md'): Promise<Scenario> {
-    // Unix-domain socket paths are limited to 108 bytes on Linux. Playwright's
-    // descriptive output paths are longer than that. Documents also live in
-    // this isolated directory so acceptance fixtures are outside StrataMD's
+    // Documents live in this isolated directory so acceptance fixtures are outside StrataMD's
     // own Git worktree and exercise the PRD's non-Git baseline behavior.
     // The ghost store and Electron's user data live here too, not under
     // testInfo.outputPath: Playwright deletes its output directory at the
@@ -245,39 +209,23 @@ export class Scenario {
     await rm(this.runtimeRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
   }
 
-  async cli(args: string[], timeoutMs = 15_000): Promise<CliResult> {
-    await access(cliEntry, constants.X_OK)
-    const result = await runProcess(cliEntry, args, this.env, timeoutMs)
-    if (result.code === 4 && result.stderr.includes('PEER_REJECTED')) {
-      const uid = process.getuid?.()
-      result.stderr += `${JSON.stringify({
-        diagnostic: 'peer-credentials',
-        socket: join(this.runtimeRoot, 'stratamd.sock'),
-        runtime: this.runtimeRoot,
-        appPid: this.app?.process().pid,
-        appUid: uid,
-        cliPid: result.pid,
-        cliUid: uid,
-      })}\n`
+  async inspectDocument(file = this.file): Promise<DocumentInspection> {
+    if (!this.page) throw new Error('The application is not running')
+    const document = await this.page.evaluate(async () => (await window.strata.getState()).activeDocument)
+    if (document === null || document.path !== file) throw new Error(`The active document is not ${file}`)
+    const hunks = document.pendingHunks.map(({ oldStart, oldLines, newStart, newLines, removed, added }) => ({ oldStart, oldLines, newStart, newLines, removed, added }))
+    return {
+      buffer: document.bufferPath,
+      document: document.content,
+      attachments: document.attachments.map((attachment) => ({
+        agent: attachment.agent.id,
+        name: attachment.agent.name,
+        state: attachment.state,
+        lead: attachment.agent.id === document.leadAgentId,
+      })),
+      segments: hunks.length === 0 ? [] : [{ author: 'external', hunks }],
+      annotations: document.annotations as Annotation[],
     }
-    return result
-  }
-
-  async attach(agent: string, name = agent): Promise<Payload> {
-    return expectPayload(await this.cli(['attach', this.file, '--as', agent, '--name', name, '--timeout', '0']))
-  }
-
-  async state(file = this.file): Promise<Payload> {
-    return expectPayload(await this.cli(['state', file]))
-  }
-
-  async changes(file = this.file): Promise<Payload> {
-    return expectPayload(await this.cli(['changes', file]))
-  }
-
-  async tag(agent: string, name = agent): Promise<void> {
-    const tagged = await this.cli(['changed', this.file, '--as', agent, '--name', name])
-    expect(tagged.code, `${tagged.stderr}${tagged.stdout}`).toBe(0)
   }
 
   async atomicWrite(path: string, content: string | Buffer): Promise<void> {
@@ -287,46 +235,10 @@ export class Scenario {
   }
 
   async waitForBuffer(expected: string, timeoutMs = 5_000): Promise<void> {
-    const payload = await this.state()
+    const payload = await this.inspectDocument()
     expect(payload.buffer).toBeTruthy()
     await expect.poll(async () => readFile(payload.buffer!, 'utf8'), { timeout: timeoutMs }).toBe(expected)
   }
-}
-
-export async function runProcess(executable: string, args: string[], env: NodeJS.ProcessEnv, timeoutMs = 15_000): Promise<CliResult> {
-  return new Promise((resolveProcess, rejectProcess) => {
-    const child = spawn(executable, args, { cwd: projectRoot, env })
-    let stdout = ''
-    let stderr = ''
-    const timer = setTimeout(() => {
-      child.kill('SIGKILL')
-      rejectProcess(new Error(`Command timed out: ${executable} ${args.join(' ')}`))
-    }, timeoutMs)
-
-    child.stdout.setEncoding('utf8')
-    child.stderr.setEncoding('utf8')
-    child.stdout.on('data', (chunk: string) => { stdout += chunk })
-    child.stderr.on('data', (chunk: string) => { stderr += chunk })
-    child.once('error', rejectProcess)
-    child.once('close', (code) => {
-      clearTimeout(timer)
-      let payload: Payload | undefined
-      let error: unknown
-      try { payload = parseJson(stdout) as Payload | undefined } catch (caught) { error = caught }
-      resolveProcess({ code: code ?? 1, pid: child.pid, stdout, stderr, payload, error })
-    })
-  })
-}
-
-export function spawnCli(args: string[], env: NodeJS.ProcessEnv): ChildProcessWithoutNullStreams {
-  return spawn(cliEntry, args, { cwd: projectRoot, env })
-}
-
-export function expectPayload(result: CliResult): Payload {
-  expect(result.code, result.stderr || result.stdout).toBe(0)
-  expect(result.error, result.stdout).toBeUndefined()
-  expect(result.payload).toBeTruthy()
-  return result.payload!
 }
 
 export async function sourceEditor(page: Page) {
@@ -402,6 +314,7 @@ export async function selectTextInVisualEditor(page: Page, exactText: string): P
       const selection = window.getSelection()
       selection?.removeAllRanges()
       selection?.addRange(range)
+      document.dispatchEvent(new Event('selectionchange'))
       return true
     }
     return false
@@ -449,11 +362,11 @@ export async function selectVisualEditorRange(page: Page, startText: string, end
   expect(selected, `Could not select ${JSON.stringify(startText)} through ${JSON.stringify(endText)}`).toBe(true)
 }
 
-export function allHunks(payload: Payload): Hunk[] {
+export function allHunks(payload: DocumentInspection): Hunk[] {
   return (payload.segments ?? []).flatMap((segment) => segment.hunks ?? [])
 }
 
-export function externalText(payload: Payload): string {
+export function externalText(payload: DocumentInspection): string {
   return (payload.segments ?? [])
     .filter((segment) => segment.author === 'external')
     .flatMap((segment) => segment.hunks)

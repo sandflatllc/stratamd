@@ -45,9 +45,6 @@ export interface Attachment {
   id: string
   name: string
   attachedAt: number
-  lastCallAt: number
-  /** True only while an attach call for this document/agent is blocked. */
-  waiting?: boolean
   baseline: DeliveryBaseline
   cursor: number
   /** Event seqs settled outside the attachment's cursor range. */
@@ -58,8 +55,6 @@ export interface Attachment {
   processedMessageIds?: readonly string[]
   pendingBlockOutcomes?: readonly string[]
 }
-
-export type AttachmentDisplayState = 'waiting' | 'working' | 'pending'
 
 export interface CreateAttachmentInput {
   id: string
@@ -87,7 +82,7 @@ export interface DeliverySource {
   baselineAvailable?: boolean
   now: number
   id?: string
-  event?: Extract<PayloadEvent, 'send' | 'closed'>
+  event?: Extract<PayloadEvent, 'send'>
 }
 
 export interface SendResult {
@@ -100,16 +95,8 @@ export interface AcknowledgmentResult {
   acknowledged: boolean
 }
 
-export interface ClipboardRecipient {
-  baseline: DeliveryBaseline | null
-  cursor: number
-  pending: FrozenDelivery | null
-}
-
 const MAX_NOTE_BYTES = 64 * 1024
 const MAX_MESSAGE_NOTE_BYTES = 4 * 1024
-export const DEFAULT_ATTACHMENT_IDLE_MS = 24 * 60 * 60 * 1000
-
 function makeId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`
 }
@@ -146,8 +133,6 @@ export function createAttachment(input: CreateAttachmentInput): Attachment {
     id: input.id,
     name: input.name,
     attachedAt: input.now,
-    lastCallAt: input.now,
-    waiting: false,
     baseline: {
       snapshotId: input.snapshot.snapshotId,
       segmentIndex: input.snapshot.segmentIndex,
@@ -156,14 +141,6 @@ export function createAttachment(input: CreateAttachmentInput): Attachment {
     deliveredSeqs: [],
     deliveries: [],
   }
-}
-
-export function attachmentDisplayState(
-  attachment: Attachment,
-  waiting = attachment.waiting ?? false,
-): AttachmentDisplayState {
-  if (attachment.deliveries.length > 0) return 'pending'
-  return waiting ? 'waiting' : 'working'
 }
 
 /**
@@ -410,14 +387,6 @@ export function collectOldest(attachment: Attachment): FrozenDelivery | null {
   return attachment.deliveries[0] ?? null
 }
 
-export function noteAttachCall(attachment: Attachment, now: number): Attachment {
-  return { ...attachment, lastCallAt: now, waiting: true }
-}
-
-export function finishAttachCall(attachment: Attachment, now: number): Attachment {
-  return { ...attachment, lastCallAt: now, waiting: false }
-}
-
 export function acknowledgeDelivery(
   attachment: Attachment,
   deliveryId: string,
@@ -442,38 +411,6 @@ export function acknowledgeDelivery(
   }
 }
 
-export function mayExpireAttachment(
-  attachment: Attachment,
-  now: number,
-  idleMs = DEFAULT_ATTACHMENT_IDLE_MS,
-): boolean {
-  return !attachment.waiting
-    && attachment.deliveries.every(isMessageDelivery)
-    && now - attachment.lastCallAt >= idleMs
-}
-
-export function expireIdleAttachments(
-  attachments: Readonly<Record<string, Attachment>>,
-  now: number,
-  idleMs = DEFAULT_ATTACHMENT_IDLE_MS,
-): Readonly<Record<string, Attachment>> {
-  return Object.fromEntries(
-    Object.entries(attachments).filter(([, attachment]) =>
-      !mayExpireAttachment(attachment, now, idleMs),
-    ),
-  )
-}
-
-export function queueClosed(
-  attachments: Readonly<Record<string, Attachment>>,
-  source: Omit<DeliverySource, 'event' | 'segments'> & { segments?: readonly IndexedSegment[] },
-): SendResult {
-  return sendToRecipients(
-    attachments,
-    { ...source, segments: source.segments ?? [], event: 'closed' },
-  )
-}
-
 export function createInitialPayload(
   attachment: Attachment,
   file: string,
@@ -490,76 +427,4 @@ export function createInitialPayload(
     document: snapshot.document,
     annotations: eventsInRange(annotations, 0, snapshot.cursor),
   })
-}
-
-export function createClipboardRecipient(): ClipboardRecipient {
-  return { baseline: null, cursor: 0, pending: null }
-}
-
-export function prepareClipboardDelivery(
-  recipient: ClipboardRecipient,
-  source: DeliverySource,
-): { recipient: ClipboardRecipient; delivery: FrozenDelivery } {
-  if (recipient.pending !== null) return { recipient, delivery: recipient.pending }
-
-  const synthetic = recipient.baseline === null
-    ? createAttachment({
-        id: 'clipboard',
-        name: 'Clipboard',
-        now: source.now,
-        snapshot: { snapshotId: '', segmentIndex: -1, cursor: 0, document: '' },
-      })
-    : {
-        id: 'clipboard',
-        name: 'Clipboard',
-        attachedAt: source.now,
-        lastCallAt: source.now,
-        baseline: recipient.baseline,
-        cursor: recipient.cursor,
-        deliveredSeqs: [],
-        deliveries: [],
-      }
-
-  let delivery: FrozenDelivery
-  if (recipient.baseline === null) {
-    const id = source.id ?? makeId('d')
-    const from: DeliveryEndpoint = { snapshotId: '', segmentIndex: -1, cursor: 0 }
-    delivery = cloneAndFreeze({
-      id,
-      createdAt: source.now,
-      includeExternal: false,
-      from,
-      to: endpoint(source.snapshot),
-      payload: createPayload({
-        file: source.file,
-        buffer: source.buffer,
-        agent: 'clipboard',
-        event: 'initial',
-        cursor: source.snapshot.cursor,
-        document: source.snapshot.document,
-        annotations: eventsInRange(source.annotations, 0, source.snapshot.cursor),
-      }),
-    })
-  } else {
-    delivery = freezeDelivery(synthetic, source)
-  }
-  const next = { ...recipient, pending: delivery }
-  return { recipient: next, delivery }
-}
-
-/** Call only after attempting the system clipboard write. Failure keeps the frozen retry pending. */
-export function acknowledgeClipboardWrite(
-  recipient: ClipboardRecipient,
-  deliveryId: string,
-  succeeded: boolean,
-): ClipboardRecipient {
-  if (!succeeded || recipient.pending?.id !== deliveryId) return recipient
-  return {
-    baseline: {
-      snapshotId: recipient.pending.to.snapshotId,
-      segmentIndex: recipient.pending.to.segmentIndex,
-    },
-    cursor: recipient.pending.to.cursor,
-    pending: null,
-  }
 }

@@ -47,19 +47,23 @@ test('the Mesa-style review reads as numbered sections with Contents, the walkth
   const editor = page.getByRole('textbox', { name: 'Document editor' })
   await expect(editor).toBeVisible()
 
-  // Populate the review column: one agent change, one decision, one question, one suggestion.
-  expect((await value.attach('claude', 'Claude')).event).toBe('initial')
-  await value.tag('claude', 'Claude')
-  const state = await value.state()
+  // Populate the review column: one outside change, one decision, one question, one suggestion.
+  const state = await value.inspectDocument()
   await value.atomicWrite(state.buffer!, review.replace('The process spends almost all of its weight on the prose.', 'The written process spends almost all of its weight on the prose.'))
   await expect(page.getByRole('tab', { name: /^Changes/ }).locator('.rail-tab-count')).toHaveText('1')
-  for (const args of [
-    ['--kind', 'decision', '--quote', '## 6. CI and release gates', '--text', 'Should deploys wait for green CI?', '--option', 'Gate deploys', '--option', 'Informational'],
-    ['--kind', 'question', '--quote', 'The rules it needs fit in about 5,000.', '--text', 'Is 5,000 tokens a hard target or a useful comparison?'],
-    ['--kind', 'suggestion', '--quote', 'Make the gate mechanical.', '--text', 'Make the gate mechanical and visible.'],
+  for (const annotation of [
+    { kind: 'decision' as const, quote: '## 6. CI and release gates', text: 'Should deploys wait for green CI?', options: ['Gate deploys', 'Informational'] },
+    { kind: 'question' as const, quote: 'The rules it needs fit in about 5,000.', text: 'Is 5,000 tokens a hard target or a useful comparison?' },
+    { kind: 'suggestion' as const, quote: 'Make the gate mechanical.', text: 'Make the gate mechanical and visible.' },
   ]) {
-    const result = await value.cli(['annotate', value.file, ...args, '--as', 'claude'])
-    expect(result.code, `${result.stderr}${result.stdout}`).toBe(0)
+    const from = review.indexOf(annotation.quote)
+    await page.evaluate(async ({ path, annotation, from }) => {
+      if (annotation.kind === 'decision') {
+        await window.strata.addAnnotation(path, { ...annotation, from, to: from + annotation.quote.length, anchor: 'heading' })
+      } else {
+        await window.strata.addAnnotation(path, { ...annotation, from, to: from + annotation.quote.length })
+      }
+    }, { path: value.file, annotation, from })
   }
 
   // Contents and the walkthrough.
@@ -94,14 +98,14 @@ test('the Mesa-style review reads as numbered sections with Contents, the walkth
   await expect(decision.locator('.decision-chips > span')).toHaveCount(2)
   await expect(page.locator('.annotation-row.kind-question .quote-mini')).toContainText('5,000')
   await expect(page.getByRole('heading', { name: 'Attached' })).toBeVisible()
-  await expect(page.locator('.agents-panel .agent-row')).toContainText('Claude')
+  await expect(page.getByText('None attached', { exact: true })).toBeVisible()
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
   await capture(page, 'shell-walkthrough-annotations')
   await expect(page).toHaveScreenshot('shell-walkthrough-annotations.png', { ...SNAPSHOT, mask: masks(page) })
   await expect(page.locator('.navigation-rail')).toHaveScreenshot('contents-walkthrough.png', SNAPSHOT)
 
   await reviewTabs.getByRole('tab', { name: /^Changes/ }).click()
-  await expect(page.locator('.changes-panel .change-row').first()).toContainText('Claude')
+  await expect.poll(() => page.locator('.changes-panel .change-row').count()).toBeGreaterThanOrEqual(2)
   await expect(page.locator('.changes-panel .change-avatar').first()).toBeVisible()
   await capture(page, 'shell-changes-tab')
   await reviewTabs.getByRole('tab', { name: /^Items/ }).click()
@@ -147,7 +151,7 @@ test('the Mesa-style review reads as numbered sections with Contents, the walkth
   await expect(head.locator('.strata-table-count')).toHaveText('2 of 8 shown')
   await capture(page, 'table-compare')
   await islands.getByRole('button', { name: 'Table', exact: true }).click()
-  expect((await value.state()).document).toBe(review.replace('The process spends almost all of its weight on the prose.', 'The written process spends almost all of its weight on the prose.'))
+  expect((await value.inspectDocument()).document).toBe(review.replace('The process spends almost all of its weight on the prose.', 'The written process spends almost all of its weight on the prose.'))
   expect(await readFile(value.file, 'utf8')).toBe(review)
 
   // The ordered change list as a PhaseBoard, labelled in human copy.

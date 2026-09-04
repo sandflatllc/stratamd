@@ -10,10 +10,6 @@ import {
 } from './storage'
 
 export const CURRENT_SETTINGS_VERSION = 2
-export const DEFAULT_ATTACHMENT_IDLE_TIMEOUT = 24 * 60 * 60 * 1000
-/** A year: far beyond any useful idle window, and well inside what a timer can represent. */
-export const MAX_ATTACHMENT_IDLE_TIMEOUT = 365 * 24 * 60 * 60 * 1000
-
 /** A settings file that could not be read, kept aside so nothing in it is lost. */
 export interface SettingsRecovery {
   /** Where the unreadable file was moved. */
@@ -61,7 +57,6 @@ export interface Settings {
   /** Active theme id (PRD §6.13). Strata Vivid is the default and built-in fallback. */
   readonly theme: string
   readonly keepResolvedAnnotations: boolean
-  readonly attachmentIdleTimeoutMs: number
   readonly explorerFolders: readonly string[]
   readonly panels: PanelSettings
   readonly zoom: ZoomSettings
@@ -83,7 +78,6 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   formatVersion: CURRENT_SETTINGS_VERSION,
   theme: 'strata-vivid',
   keepResolvedAnnotations: true,
-  attachmentIdleTimeoutMs: DEFAULT_ATTACHMENT_IDLE_TIMEOUT,
   explorerFolders: Object.freeze([]),
   panels: Object.freeze({
     explorerWidth: 212,
@@ -144,11 +138,6 @@ export function normalizeZoom(value: unknown): number {
   return Math.round(clamped * 10) / 10
 }
 
-function idleTimeout(value: unknown, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return fallback
-  return Math.min(MAX_ATTACHMENT_IDLE_TIMEOUT, Math.max(1, Math.round(value)))
-}
-
 export function normalizeSettings(value: unknown): Settings {
   if (!isRecord(value)) return structuredClone(DEFAULT_SETTINGS)
   const version = value.formatVersion ?? value.version ?? CURRENT_SETTINGS_VERSION
@@ -190,10 +179,6 @@ export function normalizeSettings(value: unknown): Settings {
     keepResolvedAnnotations: typeof value.keepResolvedAnnotations === 'boolean'
       ? value.keepResolvedAnnotations
       : DEFAULT_SETTINGS.keepResolvedAnnotations,
-    attachmentIdleTimeoutMs: idleTimeout(
-      value.attachmentIdleTimeoutMs,
-      DEFAULT_SETTINGS.attachmentIdleTimeoutMs,
-    ),
     explorerFolders,
     panels: {
       // Side windows have a floor but no practical ceiling (PRD §6.9).

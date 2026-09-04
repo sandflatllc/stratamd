@@ -128,10 +128,4 @@ describe('settings', () => {
     await expect(readFile(store.path, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
-  it('caps the attachment idle timeout and rounds fractional values', () => {
-    expect(normalizeSettings({ attachmentIdleTimeoutMs: Number.MAX_SAFE_INTEGER }).attachmentIdleTimeoutMs)
-      .toBe(365 * 24 * 60 * 60 * 1000)
-    expect(normalizeSettings({ attachmentIdleTimeoutMs: 100.00000000000001 }).attachmentIdleTimeoutMs).toBe(100)
-    expect(normalizeSettings({ attachmentIdleTimeoutMs: 0 }).attachmentIdleTimeoutMs).toBe(DEFAULT_SETTINGS.attachmentIdleTimeoutMs)
-  })
 })

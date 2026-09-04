@@ -8,12 +8,6 @@ export type PayloadEvent =
   | 'send'
   | 'message'
   | 'resync'
-  | 'closed'
-  | 'timeout'
-  | 'superseded'
-  | 'state'
-  | 'changes'
-  | 'docs'
 
 export interface PayloadHunk {
   oldStart: number
@@ -109,14 +103,6 @@ export interface PayloadEditVerdict {
   quote: string
 }
 
-/** One attachment row in a `state` payload (PRD §8). */
-export interface PayloadAttachment {
-  agent: string
-  name: string
-  state: 'waiting' | 'working' | 'pending'
-  lead: boolean
-}
-
 export interface StrataPayload {
   version: typeof PAYLOAD_VERSION
   file: string
@@ -127,10 +113,6 @@ export interface StrataPayload {
   /** The sending attachment; present only on `message` events. */
   from?: PayloadAgentTag
   notes?: readonly string[]
-  /** Every attachment, present only on `state` for an open document. */
-  attachments?: readonly PayloadAttachment[]
-  /** Present on `state`: whether the document is open in the app. */
-  open?: boolean
   cursor?: number
   document?: string
   segments?: readonly PayloadSegment[]
@@ -155,10 +137,10 @@ export interface RenderContext {
 
 /** Full guardrail for the agent's first look at a document. */
 export const guardrailLine = (file: string, buffer: string): string =>
-  `While attached, write only to the buffer file: ${buffer}. The document ${file} is the user's to save.`
+  `Read the live buffer at ${buffer}. While the owner is in the loop, do not write it or ${file}; return document actions in the final strata block.`
 
 /** Later events repeat only the part the agent must act on; it already knows the document. */
-export const writeOnlyLine = (buffer: string): string => `Write only to ${buffer}.`
+export const writeOnlyLine = (buffer: string): string => `Read the live buffer at ${buffer}. Return document actions in the final strata block.`
 
 function openingLine(input: PayloadInput): string {
   return input.event === 'initial' || input.event === 'resync'
@@ -438,50 +420,8 @@ function renderDecisionAnswer(answer: PayloadDecisionAnswer): string {
   return `${answer.annotation} ← ${renderDecisionAnswerChoice(answer)}\n  decision: ${headingText(answer.parent.text)} (${location}); choices: ${answer.parent.options.map(headingText).join(' | ')} | Other`
 }
 
-/**
- * The fixed line after every message note. Both are open read commands any
- * agent may run unprompted (PRD §6.7), so the line adds a prompt, not authority.
- */
 export const MESSAGE_GUIDANCE_LINE =
-  'To catch up before acting, run stratamd state --brief (who is attached and who leads), stratamd state (the buffer and annotations), or stratamd changes (unreviewed edits).'
-
-/** A timeout is not an action (PRD §7); the text says so where the agent reads it. */
-export const TIMEOUT_GUIDANCE_LINE =
-  'Nothing happened. Run stratamd attach again and say nothing about it in chat; if your harness demands a visible reply, one word is enough.'
-
-export const SUPERSEDED_GUIDANCE_LINE =
-  'A newer attach call for your id is listening. Do nothing and say nothing about it in chat; if your harness demands a visible reply, one word is enough.'
-
-export interface PayloadTrimOptions {
-  /** Drop `document`, `text`, and `annotations`: the attachment and Lead view of `state`. */
-  brief?: boolean
-  /** Drop `document`; `text` already carries the whole buffer with annotations inlined. */
-  textOnly?: boolean
-  /** Drop `document`; `text` becomes the open-question and open-decision lists. */
-  annotationsOnly?: boolean
-}
-
-function isAnnotationList(value: unknown): value is readonly PayloadAnnotation[] {
-  return Array.isArray(value)
-}
-
-/** The same payload with the fields the caller asked to leave out removed, never mutating the input. */
-export function trimPayload<T extends { document?: unknown; text?: unknown; annotations?: unknown }>(
-  payload: T,
-  options: PayloadTrimOptions,
-): T {
-  if (!options.brief && !options.textOnly && !options.annotationsOnly) return payload
-  const { document: _document, ...withoutDocument } = payload
-  if (options.brief) {
-    const { text: _text, annotations: _annotations, ...brief } = withoutDocument
-    return brief as T
-  }
-  if (options.annotationsOnly) {
-    const annotations = isAnnotationList(payload.annotations) ? payload.annotations : []
-    return { ...withoutDocument, annotations, text: [...renderOpenQuestions(annotations), ...renderOpenDecisions(annotations)].join('\n') } as T
-  }
-  return withoutDocument as T
-}
+  'The owner sees this message in Conversation. Put document actions in the final strata block.'
 
 export function renderPayloadText(input: PayloadInput, context: RenderContext = {}): string {
   const sections: string[] = [openingLine(input)]
@@ -497,12 +437,7 @@ export function renderPayloadText(input: PayloadInput, context: RenderContext = 
     return sections.join('\n\n')
   }
 
-  if (input.event === 'timeout' || input.event === 'superseded') {
-    sections.push(input.event === 'timeout' ? TIMEOUT_GUIDANCE_LINE : SUPERSEDED_GUIDANCE_LINE)
-    return sections.join('\n\n')
-  }
-
-  if (input.event === 'initial' || input.event === 'resync' || input.event === 'state') {
+  if (input.event === 'initial' || input.event === 'resync') {
     const document = input.document ?? ''
     const placements = annotationPlacements(document, annotations)
     sections.push(inlineAnnotations(document, placements))
@@ -551,13 +486,11 @@ function renderBlockMap(map: BlockAnchorMap): string {
 }
 
 export function createPayload(input: PayloadInput, context: RenderContext = {}): StrataPayload {
-  let normalized: PayloadInput = input.event === 'changes' && input.segments !== undefined
-    ? { ...input, segments: input.segments.filter((segment) => segment.author === 'external') }
-    : input
+  let normalized: PayloadInput = input
   const document = context.currentDocument ?? input.document
   if (document !== undefined && normalized.blockMap === undefined) {
     const mapped = mapMarkdownBlocks(input.file, document)
-    const carriesDocument = ['initial', 'resync', 'state'].includes(input.event)
+    const carriesDocument = ['initial', 'resync'].includes(input.event)
     const quotes = new Set((normalized.annotations ?? []).map((annotation) => annotation.quote).filter(Boolean))
     const changedText = (normalized.segments ?? []).flatMap((segment) => segment.hunks.flatMap((hunk) => hunk.added)).filter((line) => line.trim().length > 0)
     const blocks = carriesDocument ? mapped.blocks : mapped.blocks.filter((block) => [...quotes, ...changedText].some((fragment) => block.text.includes(fragment)))

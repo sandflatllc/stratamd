@@ -14,10 +14,7 @@ import {
 import { basename, dirname, join, resolve } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { contentHash } from '../core/diff.js'
-import {
-  getDataDirectory as getPlatformDataDirectory,
-  getSocketLocation,
-} from '../platform/paths.js'
+import { getDataDirectory as getPlatformDataDirectory } from '../platform/paths.js'
 import { currentProcessIdentity, identityMatches } from '../platform/process-identity.js'
 
 export const CURRENT_META_VERSION = 3
@@ -79,8 +76,6 @@ export interface AttachmentMeta {
   readonly id?: string
   readonly name?: string
   readonly attachedAt?: number
-  readonly lastCallAt?: number
-  readonly waiting?: boolean
   readonly baselineBlob: string
   readonly segmentIndex: number
   readonly deliveries: readonly DeliveryMeta[]
@@ -117,8 +112,6 @@ export interface DocumentMeta {
   readonly conflicts?: readonly unknown[]
   readonly nextId?: number
   readonly forceNewUserSegment?: boolean
-  readonly pendingTag?: unknown
-  readonly clipboardRecipient?: unknown
   readonly [key: string]: unknown
 }
 
@@ -184,22 +177,6 @@ export function getDataDirectory(
 }
 
 export const getDataRoot = getDataDirectory
-
-export function getRuntimeSocketPath(
-  env: StorageEnvironment = process.env,
-  homeDirectory?: string,
-): string {
-  return getSocketLocation({ env, ...(homeDirectory ? { home: homeDirectory } : {}) }).path
-}
-
-export async function prepareRuntimeSocketPath(
-  env: StorageEnvironment = process.env,
-  homeDirectory?: string,
-): Promise<string> {
-  const location = getSocketLocation({ env, ...(homeDirectory ? { home: homeDirectory } : {}) })
-  if (location.ownedParent) await ensurePrivateDirectory(dirname(location.path))
-  return location.path
-}
 
 export async function ensurePrivateDirectory(path: string): Promise<void> {
   await mkdir(path, { recursive: true, mode: PRIVATE_DIRECTORY_MODE })
@@ -381,22 +358,6 @@ function referencedBlobs(meta: DocumentMeta): Set<string> {
     for (const delivery of attachment.deliveries) {
       result.add(delivery.snapshotBlob)
       if (typeof delivery.payloadBlob === 'string') result.add(delivery.payloadBlob)
-    }
-  }
-  const clipboard = meta.clipboardRecipient
-  if (isRecord(clipboard)) {
-    for (const key of ['baselineBlob', 'snapshotBlob']) {
-      if (typeof clipboard[key] === 'string') result.add(clipboard[key])
-    }
-    if (Array.isArray(clipboard.deliveries)) {
-      for (const delivery of clipboard.deliveries) {
-        if (isRecord(delivery) && typeof delivery.snapshotBlob === 'string') {
-          result.add(delivery.snapshotBlob)
-        }
-      }
-    }
-    if (isRecord(clipboard.pending) && typeof clipboard.pending.snapshotBlob === 'string') {
-      result.add(clipboard.pending.snapshotBlob)
     }
   }
   return result
