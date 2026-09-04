@@ -7,7 +7,7 @@ import { mapMarkdownBlocks } from '../../src/core/blocks'
 
 const at = '2026-09-03T12:00:00.000Z'
 
-async function startEngine(): Promise<{ server: Server; origin: string; commands: Array<Record<string, unknown>>; setOnline(value: boolean): void; setMessage(value: string): void }> {
+async function startEngine(): Promise<{ server: Server; origin: string; commands: Array<Record<string, unknown>>; setOnline(value: boolean): void; setMessage(value: string): void; finish(): void }> {
   let online = true
   let message = 'Read-side conversation from T3.'
   let status: 'running' | 'stopped' = 'running'
@@ -59,7 +59,7 @@ async function startEngine(): Promise<{ server: Server; origin: string; commands
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('Fake engine did not bind')
-  return { server, origin: `http://127.0.0.1:${address.port}`, commands, setOnline: (value) => { online = value }, setMessage: (value) => { message = value } }
+  return { server, origin: `http://127.0.0.1:${address.port}`, commands, setOnline: (value) => { online = value }, setMessage: (value) => { message = value }, finish: () => { status = 'stopped' } }
 }
 
 async function seededScenario(testInfo: TestInfo, origin: string): Promise<Scenario> {
@@ -170,6 +170,37 @@ test('4 explicit message item: completed agent prose has block ids and its poste
     await expect(proseNode).toHaveAttribute('data-block-ids', new RegExp(block.id))
     await expect(conversation.getByRole('region', { name: 'Turn items' }).getByText('Which approach should I take?')).toHaveCount(1)
     await expect(conversation).not.toContainText('```strata')
+  } finally {
+    await scenario.dispose()
+    await new Promise<void>((resolve) => engine.server.close(() => resolve()))
+  }
+})
+
+test('4 inference: seven prose questions queue four keyed replies in one delivery and leave three open', async ({}, testInfo) => {
+  const engine = await startEngine()
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    engine.setMessage('1. Which audience should lead?\n2. Should launch be public?\n3. What is the budget?\n4. Which region goes first?\n5. Keep the old name?\n6. Require approval?\n7. When should work begin?')
+    const page = await scenario.launch()
+    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
+    await page.getByRole('button', { name: /Live engine thread/ }).click()
+    const conversation = page.getByRole('region', { name: 'Conversation' })
+    await conversation.getByRole('button', { name: 'Stop' }).click()
+    const checklist = conversation.getByRole('region', { name: 'Turn items' })
+    await expect(checklist.locator('.turn-item')).toHaveCount(7)
+    await expect(checklist.getByText('inferred')).toHaveCount(7)
+    for (const [index, answer] of ['Audience', 'Yes', '$10k', 'West'].entries()) {
+      const row = checklist.locator('.turn-item').nth(index)
+      await row.getByRole('textbox').fill(answer)
+      await row.getByRole('button', { name: 'Queue reply' }).click()
+    }
+    await expect(checklist.locator('.turn-item[data-status="drafted"]')).toHaveCount(4)
+    await conversation.getByRole('button', { name: 'Send', exact: true }).click()
+    await expect.poll(() => engine.commands.filter((command) => command.type === 'thread.turn.start').length).toBe(1)
+    const text = ((engine.commands.find((command) => command.type === 'thread.turn.start')!.message as { text: string }).text)
+    expect(text.match(/^- inferred_[^:]+:/gmu)).toHaveLength(4)
+    engine.finish()
+    await expect(checklist.locator('.turn-item[data-status="open"]')).toHaveCount(3)
   } finally {
     await scenario.dispose()
     await new Promise<void>((resolve) => engine.server.close(() => resolve()))

@@ -23,6 +23,7 @@ import type { EngineProjectView, EngineThreadView, EngineView } from '../../shar
 import { assertSupportedPlatform } from '../../platform/runtime'
 import { mapMarkdownBlocks, parseStrataBlock } from '../../core/blocks'
 import { postedMessageItems } from '../../core/items'
+import { inferredMessageItems } from '../../core/inference'
 
 export const T3_SUPPORTED_VERSION = '0.0.33'
 
@@ -186,7 +187,7 @@ export class T3EngineClient implements EngineReadClient {
             : typeof latestTurn?.requestedAt === 'string' ? latestTurn.requestedAt : null,
           messages,
           activities,
-          items: postedMessageItems(messages, thread.id),
+          items: (() => { const explicit = postedMessageItems(messages, thread.id); return [...explicit, ...messages.flatMap((message) => inferredMessageItems(message, thread.id, explicit))] })(),
         }
       }),
     }))

@@ -70,19 +70,20 @@ interface ConversationProps {
   onActItem?(item: ItemView, action: 'accept' | 'reject' | 'keep' | 'revert', option?: string): void
 }
 
-function TurnChecklist({ items, onReply, onOpen, onAct }: { items: readonly ItemView[]; onReply?(item: ItemView, text: string): void; onOpen?(item: ItemView): void; onAct?(item: ItemView, action: 'accept' | 'reject' | 'keep' | 'revert', option?: string): void }) {
+function TurnChecklist({ items, onReply, onOpen, onAct, onDismiss }: { items: readonly ItemView[]; onReply?(item: ItemView, text: string): void; onOpen?(item: ItemView): void; onAct?(item: ItemView, action: 'accept' | 'reject' | 'keep' | 'revert', option?: string): void; onDismiss?(item: ItemView): void }) {
   const [replies, setReplies] = useState<Record<string, string>>({})
   const done = items.filter((item) => item.status === 'done').length
   if (items.length === 0) return null
   return <section className="turn-checklist" aria-label="Turn items">
     <header><strong>Items</strong><span>{done} of {items.length} done</span></header>
     {items.map((item) => <div className="turn-item" data-kind={item.kind} data-status={item.status} key={item.id}>
-      <button type="button" className="turn-item-open" onClick={() => onOpen?.(item)}><span>{item.status === 'done' ? '✓' : item.status === 'drafted' ? '◌' : '○'}</span><strong>{item.kind}</strong><span>{item.text || item.quote}</span>{item.status === 'drafted' && <em>Drafted</em>}</button>
+      <button type="button" className="turn-item-open" onClick={() => onOpen?.(item)}><span>{item.status === 'done' ? '✓' : item.status === 'drafted' ? '◌' : '○'}</span><strong>{item.kind}</strong><span>{item.text || item.quote}</span>{item.inferred && <em>inferred</em>}{item.status === 'drafted' && <em>Drafted</em>}</button>
       <div className="turn-item-actions">
         {item.kind === 'suggestion' && <><button type="button" onClick={() => onAct?.(item, 'accept')}>Accept</button><button type="button" onClick={() => onAct?.(item, 'reject')}>Reject</button></>}
         {item.kind === 'edit' && <><button type="button" onClick={() => onAct?.(item, 'keep')}>Keep</button><button type="button" onClick={() => onAct?.(item, 'revert')}>Revert</button></>}
         <input aria-label={`Reply to ${item.kind}`} value={replies[item.id] ?? ''} onChange={(event) => setReplies((value) => ({ ...value, [item.id]: event.target.value }))} placeholder="Reply" />
         <button type="button" disabled={!(replies[item.id] ?? '').trim()} onClick={() => { const text = (replies[item.id] ?? '').trim(); if (text) { onReply?.(item, text); setReplies((value) => ({ ...value, [item.id]: '' })) } }}>Queue reply</button>
+        {item.inferred && <button type="button" onClick={() => onDismiss?.(item)}>Dismiss</button>}
       </div>
     </div>)}
   </section>
@@ -97,6 +98,9 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
   const [effort, setEffort] = useState<string | null>(null)
   const [access, setAccess] = useState<EngineThreadView['access']>('approval-required')
   const [now, setNow] = useState(Date.now())
+  const [queuedReplies, setQueuedReplies] = useState<Record<string, string>>({})
+  const [sentReplies, setSentReplies] = useState<Set<string>>(() => new Set())
+  const [dismissed, setDismissed] = useState<Set<string>>(() => new Set())
   const thread = selected?.thread
 
   useEffect(() => { if (passage) setScope('passage') }, [passage])
@@ -123,7 +127,9 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
     }
     return ids.map((id) => ({ id, messages: thread.messages.filter((message) => (message.turnId ?? 'thread') === id), activities: thread.activities.filter((activity) => (activity.turnId ?? 'thread') === id) }))
   }, [thread])
-  const allItems = useMemo(() => thread ? [...items, ...(thread.items ?? [])] : [...items], [items, thread])
+  const allItems = useMemo(() => (thread ? [...items, ...(thread.items ?? [])] : [...items])
+    .filter((item) => !dismissed.has(item.id))
+    .map((item) => sentReplies.has(item.id) ? { ...item, status: 'done' as const } : queuedReplies[item.id] ? { ...item, status: 'drafted' as const } : item), [items, thread, dismissed, queuedReplies, sentReplies])
 
   if (engine.state === 'disconnected' || engine.state === 'connecting') return <div className="engine-empty" data-testid="conversation-disconnected">{engine.server ?? 'Engine'} is {engine.state === 'connecting' ? 'connecting' : 'disconnected'}.<button type="button" onClick={onReconnect}>Reconnect</button></div>
   if (!thread && passage) return <section className="conversation-panel" aria-label="Conversation" data-placement={placement}>
@@ -133,9 +139,13 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
   if (!thread || !selected) return <div className="engine-empty">No conversation open.<small>Choose a thread under Projects.</small></div>
   const running = thread.status === 'running' || thread.status === 'starting'
   const send = () => {
-    if (!text.trim()) return
-    onStart(thread.id, { text: text.trim(), model, effort, access })
+    const replies = Object.entries(queuedReplies)
+    if (!text.trim() && replies.length === 0) return
+    const replyText = replies.length > 0 ? `Replies:\n${replies.map(([id, value]) => `- ${id}: ${value}`).join('\n')}` : ''
+    onStart(thread.id, { text: [text.trim(), replyText].filter(Boolean).join('\n\n'), model, effort, access })
     setText('')
+    setSentReplies((current) => new Set([...current, ...replies.map(([id]) => id)]))
+    setQueuedReplies({})
   }
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send() }
@@ -156,13 +166,14 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
           {turn.activities.filter((activity) => !activity.kind.endsWith('.requested') && !activity.kind.endsWith('.resolved')).map((activity) => <article className="conversation-tool" key={activity.id} data-tone={activity.tone}><strong>{activity.summary}</strong></article>)}
           {approvals.filter((activity) => (activity.turnId ?? 'thread') === turn.id).map((activity) => { const payload = record(activity.payload); const requestId = String(payload.requestId ?? ''); return <section className="conversation-request" data-kind="approval" key={activity.id}><strong>{typeof payload.detail === 'string' ? payload.detail : activity.summary}</strong><div className="conversation-actions"><button type="button" onClick={() => onApproval(thread.id, requestId, 'accept')}>Approve</button><button type="button" onClick={() => onApproval(thread.id, requestId, 'decline')}>Decline</button></div></section> })}
           {userInputs.filter((activity) => (activity.turnId ?? 'thread') === turn.id).map((activity) => <UserInputCard key={activity.id} activity={activity} onAnswer={(requestId, answers) => onUserInput(thread.id, requestId, answers)} />)}
-          <TurnChecklist items={allItems.filter((item) => item.threadId === thread.id && item.turnId === turn.id)} {...(onReplyItem ? { onReply: onReplyItem } : {})} {...(onOpenItem ? { onOpen: onOpenItem } : {})} {...(onActItem ? { onAct: onActItem } : {})} />
+          <TurnChecklist items={allItems.filter((item) => item.threadId === thread.id && item.turnId === turn.id)} onReply={(item, value) => { if (item.annotationId && onReplyItem) onReplyItem(item, value); else setQueuedReplies((current) => ({ ...current, [item.id]: value })) }} onDismiss={(item) => setDismissed((current) => new Set([...current, item.id]))} {...(onOpenItem ? { onOpen: onOpenItem } : {})} {...(onActItem ? { onAct: onActItem } : {})} />
         </section>
       })}
     </div>}
     <footer className="conversation-composer">
       <div className="conversation-pills"><label>Model<input aria-label="Conversation model" value={model} onChange={(event) => setModel(event.target.value)} /></label><label>Effort<select aria-label="Conversation effort" value={effort ?? ''} onChange={(event) => setEffort(event.target.value || null)}><option value="">Default</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">Extra high</option></select></label><label>Access<select aria-label="Conversation access" value={access} onChange={(event) => setAccess(event.target.value as EngineThreadView['access'])}><option value="approval-required">Ask</option><option value="auto-accept-edits">Auto edits</option><option value="auto">Auto</option><option value="full-access">Full</option></select></label></div>
-      <div className="conversation-compose-row"><textarea aria-label="Message conversation" value={text} onChange={(event) => setText(event.target.value)} onKeyDown={keyDown} placeholder="Message this thread" /><button type="button" onClick={send} disabled={!text.trim()}>Send</button></div>
+      {Object.keys(queuedReplies).length > 0 && <small>{Object.keys(queuedReplies).length} answer{Object.keys(queuedReplies).length === 1 ? '' : 's'} queued</small>}
+      <div className="conversation-compose-row"><textarea aria-label="Message conversation" value={text} onChange={(event) => setText(event.target.value)} onKeyDown={keyDown} placeholder="Message this thread" /><button type="button" onClick={send} disabled={!text.trim() && Object.keys(queuedReplies).length === 0}>Send</button></div>
     </footer>
   </section>
 }
