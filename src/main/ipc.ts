@@ -40,7 +40,7 @@ const sendRequestSchema = z.object({
 }).strict()
 const themeIdSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(120)
 const readingStatePatchSchema = z.object({
-  navigationTab: z.enum(['files', 'contents']).optional(),
+  navigationTab: z.enum(['projects', 'conversation', 'contents']).optional(),
   reviewTab: z.enum(['changes', 'annotations']).optional(),
 }).strict()
 const headingReferenceSchema = z.object({

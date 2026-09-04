@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario, setSource } from './harness'
+import { Scenario, setSource, switchToDocument } from './harness'
 import { seededScenario, startEngine, type FakeEngine } from './cockpit-engine-harness'
 import { agentEdits, attachThread, openThread } from './cockpit-agent'
 
@@ -39,14 +39,14 @@ test('tab hosts preserve the shell, expose counts, and keep Attached visible whi
 
   const navigation = page.getByRole('tablist', { name: 'Document navigation' })
   const review = page.getByRole('tablist', { name: 'Document review' })
-  await expect(navigation.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true')
+  await expect(navigation.getByRole('tab', { name: 'Contents' })).toHaveAttribute('aria-selected', 'true')
   await expect(review.getByRole('tab', { name: /^Changes/ })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('heading', { name: 'Attached' })).toBeVisible()
   await expect(page.getByText('None attached', { exact: true })).toBeVisible()
 
   await openThread(page, 'Agent A')
   await attachThread(page, 't1', 'Agent A')
-  await navigation.getByRole('tab', { name: 'Files' }).click()
+  await navigation.getByRole('tab', { name: 'Contents' }).click()
   agentEdits(engine, 't1', value.file, 'Original sentence.', 'Original sentence.', 'Agent proposal.')
   await expect(review.getByRole('tab', { name: /^Changes/ }).locator('.rail-tab-count')).toHaveText('1')
   await expect(page.getByText('1 attached', { exact: true })).toBeVisible()
@@ -75,10 +75,16 @@ test('Contents follows the live document, centers jumps, and restores each docum
   const navigation = page.getByRole('tablist', { name: 'Document navigation' })
   const review = page.getByRole('tablist', { name: 'Document review' })
 
-  const files = navigation.getByRole('tab', { name: 'Files' })
-  await files.focus()
-  await page.keyboard.press('ArrowRight')
-  await expect(navigation.getByRole('tab', { name: 'Contents' })).toHaveAttribute('aria-selected', 'true')
+  // Projects, Conversation, Contents: the arrow keys walk the left window's tabs in that order from the selected one.
+  const contents = navigation.getByRole('tab', { name: 'Contents' })
+  await expect(contents).toHaveAttribute('aria-selected', 'true')
+  await contents.focus()
+  await page.keyboard.press('ArrowLeft')
+  await expect(navigation.getByRole('tab', { name: 'Conversation' })).toHaveAttribute('aria-selected', 'true')
+  await page.keyboard.press('ArrowLeft')
+  await expect(navigation.getByRole('tab', { name: 'Projects' })).toHaveAttribute('aria-selected', 'true')
+  await page.keyboard.press('End')
+  await expect(contents).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('button', { name: /Reading guide/ })).toBeVisible()
   // H2 rows are the primary route; deeper headings appear beneath the active or explicitly expanded section.
   await expect(page.getByRole('treeitem')).toHaveCount(2)
@@ -119,12 +125,12 @@ test('Contents follows the live document, centers jumps, and restores each docum
 
   await review.getByRole('tab', { name: /^Items/ }).click()
   await page.evaluate(async (path) => window.strata.openDocument(path), second)
-  await expect(navigation.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true')
+  await expect(navigation.getByRole('tab', { name: 'Contents' })).toHaveAttribute('aria-selected', 'true')
   await expect(review.getByRole('tab', { name: /^Changes/ })).toHaveAttribute('aria-selected', 'true')
   await navigation.getByRole('tab', { name: 'Contents' }).click()
   await expect(page.getByText('This document has no headings.')).toBeVisible()
 
-  await page.getByRole('tab', { name: /guide\.md/i }).click()
+  await switchToDocument(page, /guide\.md/i)
   await expect(navigation.getByRole('tab', { name: 'Contents' })).toHaveAttribute('aria-selected', 'true')
   await expect(review.getByRole('tab', { name: /^Items/ })).toHaveAttribute('aria-selected', 'true')
   await value.stop()

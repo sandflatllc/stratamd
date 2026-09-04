@@ -6,19 +6,20 @@ import { launchArgs, Scenario, mainEntry, projectRoot, setSource } from './harne
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 import { attachThread, openThread } from './cockpit-agent'
 
-test('blank shell opens the first document from the explorer and drag and drop', async ({}, testInfo) => {
+test('blank shell opens a document from the Open file button, the bridge, and drag and drop', async ({}, testInfo) => {
   const value = await Scenario.create(testInfo, '# First document\n\nOpen from the shell.\n', 'first.md')
   await value.writeSettings({ explorerFolders: [dirname(value.file)] })
 
   try {
     const page = await value.launchEmpty()
+    await expect(page.locator('.conversation-island')).toBeVisible()
     await expect(page.getByText('No conversation open.', { exact: false })).toBeVisible()
-    const explorer = page.getByRole('complementary', { name: /File explorer/i })
-    await expect(explorer).toBeVisible()
-    await expect(page.getByRole('button', { name: /^Add folder$/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^Open file$/i })).toHaveCount(1)
+    await expect(page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab')).toHaveText(['Projects'])
 
-    await explorer.getByRole('button', { name: /first\.md/i }).click()
+    await page.evaluate((path) => window.strata.openDocument(path), value.file)
     await expect(page.getByRole('textbox', { name: /Document editor/i })).toBeVisible()
+    await expect(page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab')).toHaveText(['Projects', 'Conversation', 'Contents'])
 
     await page.getByRole('button', { name: /Close tab/i }).click()
     await expect(page.getByRole('heading', { name: /Open a markdown file/i })).toBeVisible()
@@ -86,28 +87,10 @@ test('blank shell opens the first document from the explorer and drag and drop',
   }
 })
 
-test('explorer and document tabs copy full paths from a right-click menu', { tag: '@clipboard' }, async ({}, testInfo) => {
+test('document tabs copy full paths from a right-click menu', { tag: '@clipboard' }, async ({}, testInfo) => {
   const value = await Scenario.create(testInfo, '# Paths\n\nCopy me.\n', 'paths.md')
-  const folder = dirname(value.file)
-  const segments = folder.split('/').filter(Boolean)
-  await value.writeSettings({ explorerFolders: [folder] })
   try {
-    const page = await value.launchEmpty()
-    const root = page.locator('.folder-row').first()
-    await expect(root).toHaveAttribute('title', folder)
-    await expect(root.locator('.folder-parent')).toHaveText(`${segments.at(-2)}/`)
-    await expect(root.locator('.folder-name')).toHaveText(segments.at(-1)!)
-
-    await root.click({ button: 'right' })
-    await page.getByRole('menuitem', { name: 'Copy full path' }).click()
-    await expect.poll(() => value.app!.evaluate(({ clipboard }) => clipboard.readText())).toBe(folder)
-    await expect(page.getByRole('menuitem', { name: 'Copy full path' })).toBeHidden()
-
-    await page.getByRole('button', { name: /paths\.md/i }).click({ button: 'right' })
-    await page.getByRole('menuitem', { name: 'Copy full path' }).click()
-    await expect.poll(() => value.app!.evaluate(({ clipboard }) => clipboard.readText())).toBe(value.file)
-
-    await page.getByRole('button', { name: /paths\.md/i }).click()
+    const page = await value.launch()
     await value.app!.evaluate(({ clipboard }) => clipboard.writeText('sentinel'))
     const tab = page.getByRole('tab', { name: /paths\.md/i })
     await tab.click({ button: 'right' })

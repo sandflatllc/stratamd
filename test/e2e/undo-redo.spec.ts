@@ -1,7 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario, documentEndKey, lineEndKey, lineStartKey, primaryKey, selectTextInVisualEditor, selectToLineEndKey } from './harness'
+import { Scenario, documentEndKey, lineEndKey, lineStartKey, primaryKey, selectTextInVisualEditor, selectToLineEndKey, switchToDocument } from './harness'
 import { seededScenario, startEngine, type FakeEngine } from './cockpit-engine-harness'
 import { agentEdits, attachThread, openThread } from './cockpit-agent'
 
@@ -274,7 +274,7 @@ test.describe('undo and redo timeline', () => {
     await expect.poll(() => bufferText(value)).toContain('Typed here.')
     await page.evaluate((path) => window.strata.openDocument(path), second)
     await expect(page.getByRole('tab', { name: /second\.md/i })).toHaveAttribute('aria-selected', 'true')
-    await page.getByRole('tab', { name: /scenario\.md/i }).click()
+    await switchToDocument(page, /scenario\.md/i)
     await expect(page.getByRole('tab', { name: /scenario\.md/i })).toHaveAttribute('aria-selected', 'true')
 
     await undo(page)

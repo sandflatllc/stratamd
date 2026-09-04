@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import { mapMarkdownBlocks } from '../../src/core/blocks'
 import { readFile } from 'node:fs/promises'
 import { credentialPath, seededScenario, startEngine } from './cockpit-engine-harness'
+import { primaryKey } from './harness'
 
 test('1 pairing: host plus code pairs through the dialog, shows the server, and pairing again replaces the credential', async ({}, testInfo) => {
   const engine = await startEngine({ pairingCodes: ['first-code', 'second-code'] })
@@ -374,6 +375,83 @@ test('cockpit parity: Projects renders folders, shelves, hover Settle, and the T
     await rename.fill('Pinned and renamed')
     await page.keyboard.press('Enter')
     await expect.poll(() => engine.commands.find((command) => command.type === 'thread.meta.update') ?? {}).toMatchObject({ threadId: 't2', title: 'Pinned and renamed' })
+  } finally {
+    await scenario.dispose()
+    await engine.close()
+  }
+})
+
+test('conversation zoom: the side conversation follows the left window and the center conversation follows the editor, and messages render as blocks', async ({}, testInfo) => {
+  const engine = await startEngine()
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    const page = await scenario.launch()
+    engine.setMessage('## Plan\n\nRead the file, then patch it.\n\n```ts\nconst a = 1\n```\n\n- first\n- second')
+    const navigation = page.getByRole('tablist', { name: 'Document navigation' })
+    await navigation.getByRole('tab', { name: 'Projects' }).click()
+    await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
+    const side = page.getByRole('region', { name: 'Conversation' })
+    const prose = side.locator('.conversation-message.assistant .conversation-prose')
+    // Block structure survives: a heading, a fenced code block, and a list, not one flattened run.
+    await expect(prose.getByRole('heading', { name: 'Plan' })).toBeVisible()
+    await expect(prose.locator('pre code')).toHaveText('const a = 1')
+    await expect(prose.getByRole('listitem')).toHaveCount(2)
+    const fontSize = (locator: typeof prose) => locator.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
+    const zoomOf = (selector: string) => page.locator(selector).evaluate((element) => getComputedStyle(element).getPropertyValue('--zoom').trim())
+    const sideBase = await fontSize(prose)
+    expect(sideBase).toBeCloseTo(15, 0)
+
+    // Changed files fold into a card (§6.9): count and delta, top-level folders, chips, and the list on request; never a wall of absolute paths.
+    const card = side.getByRole('region', { name: 'Changed files' })
+    await expect(card.getByRole('button', { name: /2 changed files/ })).toContainText('+12')
+    await expect(card.locator('.conversation-files-folders')).toHaveText(/notes 1 file/)
+    await expect(card.locator('.conversation-files-folders')).toHaveText(/src 1 file/)
+    await expect(card.locator('.conversation-file-chip')).toHaveText(['mdone.md', 'tstwo.ts'])
+    await expect(card).not.toContainText('/tmp/')
+    await card.getByRole('button', { name: /Show files/ }).click()
+    await expect(card.locator('.conversation-file-row')).toHaveCount(2)
+    await expect(card.locator('.conversation-file-row').first()).toHaveAttribute('title', /\/notes\/one\.md$/)
+    await expect(card.locator('.conversation-file-row').first()).toHaveText(/one\.md.*notes.*\+4/)
+    await card.getByRole('button', { name: /Hide files/ }).click()
+    await expect(card.locator('.conversation-file-row')).toHaveCount(0)
+
+    // Ctrl+= over the side conversation scales the left window's factor, and the message text with it (§6.9).
+    await prose.hover()
+    await page.keyboard.press(primaryKey('Equal'))
+    await expect.poll(() => zoomOf('[data-pane="explorer"]')).toBe('1.1')
+    await expect.poll(() => fontSize(prose)).toBeCloseTo(16.5, 0)
+    await expect(page.getByRole('button', { name: 'Reset zoom' })).toBeVisible()
+
+    // Ctrl+wheel works the same way.
+    await page.mouse.wheel(0, -120).catch(() => undefined)
+    await prose.hover()
+    await page.keyboard.down('Control')
+    await page.mouse.wheel(0, -120)
+    await page.keyboard.up('Control')
+    await expect.poll(() => zoomOf('[data-pane="explorer"]')).toBe('1.2')
+
+    // In the center the conversation is the editor pane: the editor factor applies and the document's is untouched.
+    await side.getByRole('button', { name: 'Open in center' }).click()
+    const center = page.locator('.conversation-panel[data-placement="center"]')
+    const centerProse = center.locator('.conversation-message.assistant .conversation-prose')
+    await expect(centerProse.getByRole('heading', { name: 'Plan' })).toBeVisible()
+    expect(await fontSize(centerProse)).toBeCloseTo(17, 0)
+    await centerProse.hover()
+    await page.keyboard.press(primaryKey('Equal'))
+    await expect.poll(() => zoomOf('[data-pane="editor"]')).toBe('1.1')
+    await expect.poll(() => fontSize(centerProse)).toBeCloseTo(18.7, 0)
+    // The left window now offers Projects alone; Conversation and Contents return with a document in the center.
+    await expect(navigation.getByRole('tab')).toHaveText(['Projects'])
+
+    await page.getByRole('button', { name: 'Reset zoom' }).click()
+    await expect.poll(() => zoomOf('[data-pane="editor"]')).toBe('1')
+    await expect.poll(() => fontSize(centerProse)).toBeCloseTo(17, 0)
+    await center.getByRole('region', { name: 'Changed files' }).scrollIntoViewIfNeeded()
+    await page.screenshot({ path: testInfo.outputPath('conversation-center.png') })
+    await page.getByRole('button', { name: 'Move to side' }).click()
+    await expect(side.locator('.conversation-message.assistant .conversation-prose').getByRole('heading', { name: 'Plan' })).toBeVisible()
+    await side.getByRole('region', { name: 'Changed files' }).scrollIntoViewIfNeeded()
+    await page.screenshot({ path: testInfo.outputPath('conversation-side.png') })
   } finally {
     await scenario.dispose()
     await engine.close()

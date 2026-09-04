@@ -2,13 +2,12 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import type { ItemView, AnnotationContext, AnnotationKind, AnnotationView, AppView, AttachmentView, BufferOrigin, CreateDraftRequest, DocumentTabView, DocumentView, HunkView, NavigationTab, PaneId, PanelSize, PaneZoom, PanelSizes, QuickSendRequest, RedoResult, ReviewTab, SendPreviewRequest, TableViewState, ThemePanelGeometry, UndoResult, WalkthroughAction } from '../shared/contracts'
 import type { EditorHeading } from '../editor/headings'
 import type { RendererEditorFactory, RendererEditorHandle } from './editorAdapter'
-import { Explorer } from './components/Explorer'
 import { AmbientBackground, AmbientContext } from './components/AmbientDecor'
 import { Boundary } from './components/Boundary'
 import { ThemePanel } from './components/ThemePanel'
 import { EditorPane, forgetClosedScroll } from './components/EditorPane'
 import { forgetClosedEditors } from './components/EditorMount'
-import { FileNameDialog, TrashFileDialog } from './components/FileDialogs'
+import { FileNameDialog } from './components/FileDialogs'
 import { StrataIcon } from './components/Logo'
 import { CloseTabDialog, ConflictDialog, DetachDialog, MixedRevertDialog, RecoveryDialog, ResolveSuggestionDialog, RevertAllDialog } from './components/Overlays'
 import { Resizer } from './components/Resizer'
@@ -18,13 +17,14 @@ import { ShortcutSheet } from './components/ShortcutSheet'
 import { forgetReplyDrafts, ItemPanel } from './components/ItemPanel'
 import { Toast } from './components/Toast'
 import { TopBar } from './components/TopBar'
+import { Contents } from './components/Contents'
 import { NavigationRail, type LeftTab } from './components/NavigationRail'
 import { ProjectsPanel } from './components/ProjectsPanel'
 import { Conversation } from './components/Conversation'
 import { EngineDialog } from './components/EngineDialog'
 import { NewConversation } from './components/NewConversation'
 import { AccountsDialog } from './components/AccountsDialog'
-import { activitySnapshot, agentActivity, agentActivityMessage, ambientStyles, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, hasUnsavedCounted, isZoomed, leftWindowWidth, nextReviewTarget, PANEL_LIMITS, pendingCount, projectForPath, rendererThemeStyle, reviewTargets, shouldAdoptPushed, sideWindowCeiling, stepZoom, tabsToClose, THREAD_PANEL_LIMITS, threadTargets, type ActivitySnapshot, type NumericPanelKey, type ReviewTarget } from './model'
+import { activitySnapshot, agentActivity, agentActivityMessage, ambientStyles, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, hasUnsavedCounted, isZoomed, leftWindowWidth, nextReviewTarget, PANEL_LIMITS, pendingCount, projectForPath, rendererThemeStyle, reviewTargets, shouldAdoptPushed, sideWindowCeiling, stepZoom, tabsToClose, threadTargets, type ActivitySnapshot, type NumericPanelKey, type ReviewTarget } from './model'
 import { flushPendingBuffer, peekPendingBuffer, setPendingBuffer } from './pendingBuffer'
 import { nextToast, type ToastAction, type ToastState } from './toasts'
 import { consumeDocumentLaunch, readWorkspace, writeWorkspace } from './workspaceState'
@@ -36,10 +36,7 @@ function insideOwnForm(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest('.annotation-composer, .thread-panel, .editor-popover') !== null
 }
 
-type FileDialogState =
-  | { kind: 'new'; directory: string }
-  | { kind: 'rename'; path: string }
-  | { kind: 'trash'; path: string }
+type FileDialogState = { kind: 'new'; directory: string }
 
 interface AppProps { createEditor: RendererEditorFactory }
 
@@ -57,8 +54,6 @@ export function App({ createEditor }: AppProps) {
   const [revertAll, setRevertAll] = useState<{ name: string; hunks: HunkView[] } | null>(null)
   const [detaching, setDetaching] = useState<AttachmentView | null>(null)
   const [selectedAnnotation, setSelectedAnnotation] = useState<AnnotationView | null>(null)
-  /** Engine tabs are session state; Files and Contents retain their document preference. */
-  const [engineTab, setEngineTab] = useState<'projects' | 'conversation' | null>(null)
   const engineNavigationIntent = useRef(0)
   const engineNavigationTimer = useRef<number | null>(null)
   const [savedWorkspace] = useState(readWorkspace)
@@ -93,7 +88,6 @@ export function App({ createEditor }: AppProps) {
   }, [])
   const [jumpHunkId, setJumpHunkId] = useState<string | null>(null)
   const [jumpAnnotationId, setJumpAnnotationId] = useState<string | null>(null)
-  const [scanning, setScanning] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [panelSizes, setPanelSizes] = useState<PanelSizes>(EMPTY_VIEW.settings.panelSizes)
   const [zoom, setZoom] = useState<PaneZoom>(EMPTY_VIEW.settings.zoom)
@@ -123,7 +117,6 @@ export function App({ createEditor }: AppProps) {
   /** The last change stepped to with F7 / Shift+F7, so the next press continues from it. */
   const reviewCursor = useRef<string | null>(null)
   const document = view.activeDocument
-  useEffect(() => { if (!document && view.engine.state === 'connected') setEngineTab('projects') }, [Boolean(document), view.engine.state])
   const headings = document && headingState.path === document.path ? headingState.headings : []
   const activeHeadingId = document && headingState.path === document.path ? headingState.activeId : null
 
@@ -147,13 +140,11 @@ export function App({ createEditor }: AppProps) {
   /** Opens a document item inside Conversation, or returns to the transcript. */
   const showThread = useCallback((annotation: AnnotationView | null) => {
     setSelectedAnnotation(annotation)
-    setEngineTab(annotation !== null ? 'conversation' : null)
+    if (annotation !== null) selectNavigationTab('conversation')
     setConfirmResolve(false)
-  }, [])
+  }, [selectNavigationTab])
   const selectLeftTab = useCallback((tab: LeftTab) => {
     cancelEngineNavigation()
-    if (tab === 'projects' || tab === 'conversation') { setEngineTab(tab); return }
-    setEngineTab(null)
     selectNavigationTab(tab)
   }, [cancelEngineNavigation, selectNavigationTab])
   const selectReviewTab = useCallback((tab: ReviewTab) => {
@@ -296,22 +287,18 @@ export function App({ createEditor }: AppProps) {
     if (commit) commitPanels({ ...panelSizes, [key]: clamped })
   }, [commitPanels, panelSizes])
 
-  const updatePanelSize = useCallback((key: 'threadPanel' | 'annotationComposer' | 'sendComposer', value: PanelSize, commit: boolean) => {
+  const updatePanelSize = useCallback((key: 'annotationComposer' | 'sendComposer', value: PanelSize, commit: boolean) => {
     setPanelSizes((sizes) => ({ ...sizes, [key]: value }))
     if (commit) commitPanels({ ...panelSizes, [key]: value })
   }, [commitPanels, panelSizes])
 
-  // The left window has two widths: navigation and thread (§6.9). The handle
-  // between it and the editor edits whichever the selected tab uses.
+  // One left width for every tab (decided 2026-09-04); the handle between it and the editor edits it.
   const thread = document ? currentAnnotation(document, selectedAnnotation) : null
-  const leftWidth = leftWindowWidth(panelSizes, engineTab === 'conversation', windowWidth)
-  const leftMin = engineTab === 'conversation' ? THREAD_PANEL_LIMITS.minWidth : PANEL_LIMITS.explorerWidth[0]
+  const leftWidth = leftWindowWidth(panelSizes, windowWidth)
+  const leftMin = PANEL_LIMITS.explorerWidth[0]
   const leftMax = sideWindowCeiling(leftMin, windowWidth, panelSizes.rightRailWidth)
   const rightMax = sideWindowCeiling(PANEL_LIMITS.rightRailWidth[0], windowWidth, leftWidth)
-  const resizeLeft = (value: number, commit: boolean) => {
-    if (engineTab === 'conversation') updatePanelSize('threadPanel', { ...panelSizes.threadPanel, width: value }, commit)
-    else updatePanel('explorerWidth', value, commit)
-  }
+  const resizeLeft = (value: number, commit: boolean) => updatePanel('explorerWidth', value, commit)
   const threadEmpty = (
     <div className="empty-subtle thread-empty">
       No item open.
@@ -339,7 +326,6 @@ export function App({ createEditor }: AppProps) {
   const pickerDocument = documentPicker?.path && document?.path === documentPicker.path ? document : null
   const beginNewConversation = (projectId?: string) => {
     cancelEngineNavigation()
-    setEngineTab("projects")
     const currentProject = projectId ?? (conversationCentered ? documentPicker?.projectId : document ? projectForPath(view.engine, document.path)?.id : undefined) ?? view.engine.projects.find((project) => project.threads.some((thread) => thread.id === view.engine.activeThreadId))?.id ?? view.engine.projects[0]?.id
     setDocumentPicker({ path: null, ...(currentProject ? { projectId: currentProject } : {}) })
     setConversationCentered(true)
@@ -370,6 +356,8 @@ export function App({ createEditor }: AppProps) {
     onUserInput: (threadId: string, requestId: string, answers: Record<string, unknown>) => void perform(() => window.strata.answerEngineUserInput(threadId, requestId, answers)),
     onQueueReply: (threadId: string, item: ItemView, text: string) => void perform(() => window.strata.queueItemReply(threadId, item.id, text)),
     onDismissItem: (threadId: string, item: ItemView) => void perform(() => window.strata.dismissItem(threadId, item.id)),
+    // A changed Markdown file opens as a document; the center leaves the conversation for it (§6.9).
+    onOpenDocument: (path: string) => { setConversationCentered(false); void perform(() => window.strata.openDocument(path)) },
   }
   const activeEngineThread = view.engine.projects.flatMap((project) => project.threads).find((candidate) => candidate.id === view.engine.activeThreadId) ?? null
   /** Shows a thread in the center and keeps its tab listed until closed. */
@@ -394,7 +382,7 @@ export function App({ createEditor }: AppProps) {
       engineNavigationTimer.current = null
       if (engineNavigationIntent.current !== intent) return
       if (conversationCentered || !document) showCenterConversation(threadId)
-      else setEngineTab('conversation')
+      else selectNavigationTab('conversation')
     }, 180)
   })
   const engineThreads = view.engine.projects.flatMap((project) => project.threads)
@@ -416,9 +404,9 @@ export function App({ createEditor }: AppProps) {
       if (hunk && action === 'revert') revert(hunk)
     },
   } : {}
-  const sideConversation = <Conversation engine={view.engine} passage={thread && document ? threadNode(document, thread) : undefined} placement="side" {...runConversation} {...itemActions} onMove={() => { if (view.engine.activeThreadId) showCenterConversation(view.engine.activeThreadId); setEngineTab(null) }} />
-  const centerConversation = documentPicker && (documentPicker.path === null || pickerDocument) ? <NewConversation key={`${documentPicker.path ?? "new"}:${documentPicker.projectId ?? "current"}`} engine={view.engine} {...(documentPicker.projectId ? { projectId: documentPicker.projectId } : {})} document={pickerDocument} {...(documentPicker.comment ? { comment: documentPicker.comment } : {})} onProjectChange={(projectId) => setDocumentPicker((current) => current && current.projectId !== projectId ? { ...current, projectId } : current)} onBeforeSend={async () => { if (pickerDocument) await flushBuffer() }} onStarted={showCenterConversation} /> : <Conversation engine={view.engine} placement="center" documentMeasure={panelSizes.documentMeasure} onDocumentMeasure={(value, commit) => updatePanel('documentMeasure', value, commit)} {...runConversation} {...itemActions} onMove={() => { setConversationCentered(false); setEngineTab('conversation') }} />
-  const conversationNode = conversationCentered ? null : sideConversation
+  const sideConversation = <Conversation engine={view.engine} passage={thread && document ? threadNode(document, thread) : undefined} placement="side" {...runConversation} {...itemActions} onMove={() => { if (view.engine.activeThreadId) showCenterConversation(view.engine.activeThreadId) }} />
+  // The center conversation is the editor pane for zoom: Ctrl+wheel and Ctrl+= over it scale the editor factor, as they do over a document (§6.9).
+  const centerConversation = <main className="island editor-island conversation-island" data-pane="editor" style={{ '--zoom': zoom.editor } as CSSProperties}>{documentPicker && (documentPicker.path === null || pickerDocument) ? <NewConversation key={`${documentPicker.path ?? "new"}:${documentPicker.projectId ?? "current"}`} engine={view.engine} {...(documentPicker.projectId ? { projectId: documentPicker.projectId } : {})} document={pickerDocument} {...(documentPicker.comment ? { comment: documentPicker.comment } : {})} onProjectChange={(projectId) => setDocumentPicker((current) => current && current.projectId !== projectId ? { ...current, projectId } : current)} onBeforeSend={async () => { if (pickerDocument) await flushBuffer() }} onStarted={showCenterConversation} /> : <Conversation engine={view.engine} placement="center" documentMeasure={panelSizes.documentMeasure} onDocumentMeasure={(value, commit) => updatePanel('documentMeasure', value, commit)} {...runConversation} {...itemActions} {...(document ? { onMove: () => { setConversationCentered(false); selectNavigationTab('conversation') } } : {})} />}</main>
 
   const flushBuffer = useCallback(async () => {
     if (mirrorTimer.current !== null) window.clearTimeout(mirrorTimer.current)
@@ -488,14 +476,13 @@ export function App({ createEditor }: AppProps) {
     if (document.recipients.length === 0) {
       // Any document can start a thread (§3.10); the picker replaces Send until one is attached (§5.7).
       setDocumentPicker({ path: document.path })
-      setEngineTab("projects")
       setConversationCentered(true)
     } else if (document.canSend || document.recipients.some((recipient) => !recipient.attached)) setComposer(true)
     else report('Nothing to send. Make an edit or add an annotation first.')
   }, [document, flushBuffer, report])
   const startThreadWithComment = useCallback((comment: CreateDraftRequest) => {
     if (!document) return
-    setDocumentPicker({ path: document.path, comment }); setEngineTab("projects"); setConversationCentered(true)
+    setDocumentPicker({ path: document.path, comment }); setConversationCentered(true)
   }, [document])
 
   const addAnnotation = useCallback((kind: Exclude<AnnotationKind, 'decision'>, quote: string, text: string, from: number, to: number, context?: AnnotationContext) => {
@@ -600,37 +587,22 @@ export function App({ createEditor }: AppProps) {
     })
   }, [bridgeMissing, perform, report])
   const newFileHere = useCallback(() => {
-    const directory = document ? document.path.slice(0, document.path.lastIndexOf('/')) || '/' : view.explorer[0]?.path
-    if (!directory) { report('Add a folder first, then make a new file in it.'); return }
+    const directory = document ? document.path.slice(0, document.path.lastIndexOf('/')) || '/' : null
+    if (!directory) { report('Open a document first. Ctrl+N then makes a new file beside it.'); return }
     newFile(directory)
-  }, [document, newFile, report, view.explorer])
+  }, [document, newFile, report])
   const openFile = useCallback(() => {
     const dialog = window.strata.openFileDialog
     if (!dialog) { bridgeMissing(); return }
     void perform(dialog)
   }, [bridgeMissing, perform])
-  const revealFile = useCallback((path: string) => {
-    const reveal = window.strata.revealFile
-    if (!reveal) { bridgeMissing(); return }
-    void perform(() => reveal(path))
-  }, [bridgeMissing, perform])
   const confirmFileDialog = useCallback((name?: string) => {
     const dialog = fileDialog
     setFileDialog(null)
     if (!dialog) return
-    if (dialog.kind === 'new') {
-      const create = window.strata.createFile
-      if (!create) { bridgeMissing(); return }
-      void perform(async () => { const path = await create(dialog.directory, name); report(`Created ${path.split('/').pop() ?? path}.`) })
-    } else if (dialog.kind === 'rename') {
-      const renameFile = window.strata.renameFile
-      if (!renameFile || !name) { if (!renameFile) bridgeMissing(); return }
-      void perform(async () => { const path = await renameFile(dialog.path, name); report(`Renamed to ${path.split('/').pop() ?? path}.`) })
-    } else {
-      const trash = window.strata.trashFile
-      if (!trash) { bridgeMissing(); return }
-      void perform(() => trash(dialog.path), `${dialog.path.split('/').pop() ?? 'File'} moved to the trash.`)
-    }
+    const create = window.strata.createFile
+    if (!create) { bridgeMissing(); return }
+    void perform(async () => { const path = await create(dialog.directory, name); report(`Created ${path.split('/').pop() ?? path}.`) })
   }, [bridgeMissing, fileDialog, perform, report])
 
   const jumpTo = useCallback((target: ReviewTarget) => {
@@ -732,29 +704,18 @@ export function App({ createEditor }: AppProps) {
   const fileDialogs = (
     <>
       {fileDialog?.kind === 'new' && <FileNameDialog title="New file" action="Create" initial="untitled.md" onCancel={() => setFileDialog(null)} onConfirm={confirmFileDialog} />}
-      {fileDialog?.kind === 'rename' && <FileNameDialog title={`Rename ${fileDialog.path.split('/').pop() ?? ''}`} action="Rename" initial={fileDialog.path.split('/').pop() ?? ''} onCancel={() => setFileDialog(null)} onConfirm={confirmFileDialog} />}
-      {fileDialog?.kind === 'trash' && <TrashFileDialog name={fileDialog.path.split('/').pop() ?? fileDialog.path} onCancel={() => setFileDialog(null)} onConfirm={() => confirmFileDialog()} />}
       {shortcutsOpen && <ShortcutSheet onClose={() => setShortcutsOpen(false)} />}
     </>
   )
-  const explorerFileActions = {
-    onOpenFile: openFile,
-    onNewFile: (directory: string) => setFileDialog({ kind: 'new', directory }),
-    onRename: (path: string) => setFileDialog({ kind: 'rename', path }),
-    onTrash: (path: string) => setFileDialog({ kind: 'trash', path }),
-    onReveal: revealFile,
-  }
-  const explorer = (activePath?: string) => <Explorer embedded folders={view.explorer} {...(activePath === undefined ? {} : { activePath })} scanning={scanning} {...explorerFileActions} onOpen={(path) => void perform(() => window.strata.openDocument(path))} onScan={(path) => { setScanning(true); void perform(() => window.strata.scanFolder(path), 'Folder prepared. Every markdown file in it is remembered.').finally(() => setScanning(false)) }} onRefresh={() => void perform(() => window.strata.refreshExplorer(), 'Explorer refreshed')} onAddFolder={() => void perform(() => window.strata.addFolder())} onForget={(path) => void perform(() => window.strata.forgetDocument(path), 'Document forgotten')} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onRemoveFolder={(path) => void perform(() => window.strata.removeFolder(path), 'Folder removed from the list. Its documents stay remembered.')} />
-
   if (!ready) return <div className="boot-screen"><StrataIcon /><span>Opening StrataMD…</span></div>
   if (!document) return (
     <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell empty-shell" data-new-conversation={Boolean(documentPicker && conversationCentered)} style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={enterFiles} onDragOver={overFiles} onDragLeave={leaveFiles} onDrop={dropFiles}>
-      <AmbientBackground /><TopBar onOpenFile={openFile} tabs={view.tabs} canSend={false} hasAgents={false} pending={0} pendingUnsaved={false} onOpenTab={(path) => { setConversationCentered(false); void perform(() => window.strata.openDocument(path)) }} onCloseTab={setClosingTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onSend={() => undefined} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} engine={view.engine} onOpenEngine={() => setEngineDialog(true)} onOpenAccounts={openAccounts} {...topBarConversations} />
+      <AmbientBackground /><TopBar tabs={view.tabs} canSend={false} hasAgents={false} pending={0} pendingUnsaved={false} onOpenTab={(path) => { setConversationCentered(false); void perform(() => window.strata.openDocument(path)) }} onCloseTab={setClosingTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onOpenFile={openFile} onSend={() => undefined} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} engine={view.engine} onOpenEngine={() => setEngineDialog(true)} onOpenAccounts={openAccounts} {...topBarConversations} />
       <div className="workspace">
-        <div data-pane="explorer" style={{ width: panelSizes.explorerWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected={engineTab ?? 'files'} files={explorer()} projects={projectsNode} conversation={conversationCentered ? null : sideConversation} projectsCount={attentionTotal} conversationCount={activeEngineThread?.attention ?? 0} headings={[]} drafts={[]} activeHeadingId={null} walkthrough={{ active: false, level: 'h2', current: null, excluded: [], markers: [] }} content="" onSelect={selectLeftTab} onJumpHeading={() => undefined} onWalkthrough={() => undefined} /></Boundary></div>
+        <div data-pane="explorer" style={{ width: panelSizes.explorerWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected="projects" documentOpen={false} projects={projectsNode} conversation={null} contents={null} projectsCount={attentionTotal} onSelect={selectLeftTab} /></Boundary></div>
         <Resizer axis="vertical" label="Resize left window" value={panelSizes.explorerWidth} min={PANEL_LIMITS.explorerWidth[0]} max={sideWindowCeiling(PANEL_LIMITS.explorerWidth[0], windowWidth, panelSizes.rightRailWidth)} onChange={(value) => updatePanel('explorerWidth', value, false)} onCommit={(value) => updatePanel('explorerWidth', value, true)} />
         <main className="island editor-island empty-editor-island" data-pane="editor" style={{ '--zoom': zoom.editor } as CSSProperties}>
-          <Boundary region="editor">{conversationCentered ? centerConversation : <div className="empty-welcome"><StrataIcon /><h1>Open a markdown file</h1><p>Choose a folder, then open a document from the explorer.</p><button type="button" className="keep-button large" onClick={() => void perform(() => window.strata.addFolder())}>Add folder</button></div>}</Boundary>
+          <Boundary region="editor">{conversationCentered ? centerConversation : <div className="empty-welcome"><StrataIcon /><h1>Open a markdown file</h1><p>Open a file from disk, or drop one here.</p><button type="button" className="keep-button large" onClick={openFile}>Open file</button></div>}</Boundary>
         </main>
       </div>
       {dragging && <div className="drop-overlay">Drop markdown files to open</div>}
@@ -776,13 +737,13 @@ export function App({ createEditor }: AppProps) {
   return (
     <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell" data-new-conversation={Boolean(documentPicker && conversationCentered)} style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={enterFiles} onDragOver={overFiles} onDragLeave={leaveFiles} onDrop={dropFiles}>
       <AmbientBackground />
-      <TopBar onOpenFile={openFile} tabs={view.tabs} canSend={document.canSend || document.recipients.some((recipient) => !recipient.attached)} hasAgents={document.recipients.length > 0} pending={pendingCount(document)} pendingUnsaved={hasUnsavedCounted(document)} onOpenTab={(path) => { setConversationCentered(false); void perform(() => window.strata.openDocument(path)) }} onCloseTab={closeTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onSend={() => void perform(openComposer)} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} engine={view.engine} onOpenEngine={() => setEngineDialog(true)} onOpenAccounts={openAccounts} onStartThread={() => void perform(openComposer)} {...topBarConversations} />
+      <TopBar tabs={view.tabs} canSend={document.canSend || document.recipients.some((recipient) => !recipient.attached)} hasAgents={document.recipients.length > 0} pending={pendingCount(document)} pendingUnsaved={hasUnsavedCounted(document)} onOpenTab={(path) => { setConversationCentered(false); void perform(() => window.strata.openDocument(path)) }} onCloseTab={closeTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onOpenFile={openFile} onSend={() => void perform(openComposer)} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} engine={view.engine} onOpenEngine={() => setEngineDialog(true)} onOpenAccounts={openAccounts} onStartThread={() => void perform(openComposer)} {...topBarConversations} />
       <div className="workspace">
-        <div data-pane="explorer" style={{ width: leftWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected={engineTab ?? document.reading.navigationTab} files={explorer(document.path)} projects={projectsNode} conversation={conversationNode} projectsCount={attentionTotal} conversationCount={activeEngineThread?.attention ?? 0} headings={headings} drafts={document.drafts} activeHeadingId={activeHeadingId} walkthrough={document.reading.walkthrough} content={document.content} onSelect={selectLeftTab} onJumpHeading={(id) => setJumpHeading({ id, token: Date.now() })} onWalkthrough={updateWalkthrough} /></Boundary></div>
+        <div data-pane="explorer" style={{ width: leftWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected={document.reading.navigationTab} documentOpen={!conversationCentered} projects={projectsNode} conversation={sideConversation} contents={<Contents headings={headings} drafts={document.drafts} activeId={activeHeadingId} walkthrough={document.reading.walkthrough} content={document.content} onJump={(id) => setJumpHeading({ id, token: Date.now() })} onWalkthrough={updateWalkthrough} />} projectsCount={attentionTotal} conversationCount={activeEngineThread?.attention ?? 0} onSelect={selectLeftTab} /></Boundary></div>
         <Resizer axis="vertical" label="Resize left window" value={leftWidth} min={leftMin} max={leftMax} onChange={(value) => resizeLeft(value, false)} onCommit={(value) => resizeLeft(value, true)} />
         <Boundary region="editor">{conversationCentered ? centerConversation : <EditorPane editorRef={editorHandle} document={document} walkthrough={document.reading.walkthrough} headings={headings} onWalkthrough={updateWalkthrough} onJumpHeading={(id) => setJumpHeading({ id, token: Date.now() })} documentMeasure={panelSizes.documentMeasure} zoom={zoom.editor} composerSize={panelSizes.annotationComposer} createEditor={createEditor} onDocumentMeasure={(value, commit) => updatePanel('documentMeasure', value, commit)} onComposerSize={(size, commit) => updatePanelSize('annotationComposer', size, commit)} onBufferChange={bufferChanged} onToggleSource={(source) => void perform(() => window.strata.setSourceMode(document.path, source))} onSave={save} onUndo={undoApplication} onRedo={redoApplication} onKeepHunk={(id) => void perform(() => window.strata.keepHunk(document.path, id), 'Kept.')} onRevertHunk={revert} onTableView={(state: TableViewState) => void perform(() => window.strata.updateTableView(document.path, state))} onAddAnnotation={addAnnotation} onAddDecision={addPassageDecision} onHoldDraft={holdDraft} onQuickSend={quickSend} onStartThread={startThreadWithComment} activeConversationId={view.engine.activeThreadId} onAdjustAnnotation={(id, quote, from, to) => void perform(() => window.strata.requoteAnnotation(document.path, id, { quote, from, to }), 'Annotation moved to the new quote. Agents receive it on the next Send.')} onAccept={(id) => void perform(() => window.strata.acceptSuggestion(document.path, id), 'Suggestion accepted as your change.')} onReject={(id) => void perform(() => window.strata.rejectSuggestion(document.path, id), 'Suggestion rejected.')} selectedAnnotation={selectedAnnotation} onSelectAnnotation={(annotation) => { threadOpener.current = null; showThread(annotation) }} jumpHunkId={jumpHunkId} jumpAnnotationId={jumpAnnotationId} jumpHeading={jumpHeading} onHeadings={(next, activeId, durationMs) => { setHeadingState({ path: document.path, headings: next, activeId }); globalThis.document.documentElement.dataset.headingIndexMs = durationMs.toFixed(3) }} />}</Boundary>
         <Resizer axis="vertical" label="Resize right rail" value={panelSizes.rightRailWidth} min={PANEL_LIMITS.rightRailWidth[0]} max={rightMax} invert onChange={(value) => updatePanel('rightRailWidth', value, false)} onCommit={(value) => updatePanel('rightRailWidth', value, true)} />
-        <div data-pane="rightRail" style={{ width: panelSizes.rightRailWidth, flex: 'none', minWidth: 0, '--zoom': zoom.rightRail } as CSSProperties}><Boundary region="rightRail"><RightRail document={document} headings={headings} conversationDocuments={activeEngineThread?.documents ?? []} onOpenDocument={(path) => void perform(() => window.strata.openDocument(path))} onAddDecision={addRailDecision} selectedTab={document.reading.reviewTab} upperReviewHeight={panelSizes.upperReviewHeight} onSelectTab={selectReviewTab} onHeight={(value, commit) => updatePanel('upperReviewHeight', value, commit)} onMarkReviewed={() => void perform(() => window.strata.markReviewed(document.path), 'All changes marked reviewed. Suggestions still need Accept or Reject.')} onJumpHunk={(hunk) => { setJumpHunkId(null); window.requestAnimationFrame(() => setJumpHunkId(hunk.id)) }} onKeepHunk={(id) => void perform(() => window.strata.keepHunk(document.path, id), 'Kept.')} onRevertHunk={revert} onAcceptAllSuggestions={(agentId) => void perform(async () => { const result = await window.strata.acceptAllSuggestions(document.path, agentId); report(`${result.accepted.length} suggestion${result.accepted.length === 1 ? '' : 's'} accepted${result.skipped.length > 0 ? `; ${result.skipped.length} overlapping skipped` : ''}.`) })} onRejectAllSuggestions={(agentId) => void perform(async () => { const rejected = await window.strata.rejectAllSuggestions(document.path, agentId); report(`${rejected.length} suggestion${rejected.length === 1 ? '' : 's'} rejected.`) })} onAcceptSuggestion={(id) => void perform(() => window.strata.acceptSuggestion(document.path, id), 'Suggestion accepted as your change.')} onRejectSuggestion={(id) => void perform(() => window.strata.rejectSuggestion(document.path, id), 'Suggestion rejected.')} onRevertAll={setRevertAll} onKeepAll={(group) => void perform(async () => { for (const hunk of group.hunks) await window.strata.keepHunk(document.path, hunk.id) }, `${group.hunks.length} changes by ${group.name} kept.`)} onJumpAnnotation={(annotation) => { rememberThreadOpener(); if (annotation.status === 'orphaned' || annotation.anchor === 'document') { setJumpAnnotationId(null); showThread(annotation); return } setJumpAnnotationId(null); window.requestAnimationFrame(() => { setJumpAnnotationId(annotation.id); showThread(annotation) }) }} onClearResolved={() => void perform(() => window.strata.clearResolvedAnnotations(document.path), 'Resolved annotations cleared.')} onStop={(id) => void perform(() => window.strata.stopConversationTurn(id), 'Turn stopped.')} onOpenConversation={(id) => { showCenterConversation(id); void perform(() => window.strata.openConversation(id)) }} onSetLead={(agentId) => void perform(() => window.strata.setLead(document.path, agentId))} onDetach={(attachment) => { if (attachment.queuedSendCount > 0) setDetaching(attachment); else detach(attachment) }} onSaveRound={(index) => window.strata.saveRound(document.path, index)} /></Boundary></div>
+        <div data-pane="rightRail" style={{ width: panelSizes.rightRailWidth, flex: 'none', minWidth: 0, '--zoom': zoom.rightRail } as CSSProperties}><Boundary region="rightRail"><RightRail document={document} headings={headings} onAddDecision={addRailDecision} selectedTab={document.reading.reviewTab} upperReviewHeight={panelSizes.upperReviewHeight} onSelectTab={selectReviewTab} onHeight={(value, commit) => updatePanel('upperReviewHeight', value, commit)} onMarkReviewed={() => void perform(() => window.strata.markReviewed(document.path), 'All changes marked reviewed. Suggestions still need Accept or Reject.')} onJumpHunk={(hunk) => { setJumpHunkId(null); window.requestAnimationFrame(() => setJumpHunkId(hunk.id)) }} onKeepHunk={(id) => void perform(() => window.strata.keepHunk(document.path, id), 'Kept.')} onRevertHunk={revert} onAcceptAllSuggestions={(agentId) => void perform(async () => { const result = await window.strata.acceptAllSuggestions(document.path, agentId); report(`${result.accepted.length} suggestion${result.accepted.length === 1 ? '' : 's'} accepted${result.skipped.length > 0 ? `; ${result.skipped.length} overlapping skipped` : ''}.`) })} onRejectAllSuggestions={(agentId) => void perform(async () => { const rejected = await window.strata.rejectAllSuggestions(document.path, agentId); report(`${rejected.length} suggestion${rejected.length === 1 ? '' : 's'} rejected.`) })} onAcceptSuggestion={(id) => void perform(() => window.strata.acceptSuggestion(document.path, id), 'Suggestion accepted as your change.')} onRejectSuggestion={(id) => void perform(() => window.strata.rejectSuggestion(document.path, id), 'Suggestion rejected.')} onRevertAll={setRevertAll} onKeepAll={(group) => void perform(async () => { for (const hunk of group.hunks) await window.strata.keepHunk(document.path, hunk.id) }, `${group.hunks.length} changes by ${group.name} kept.`)} onJumpAnnotation={(annotation) => { rememberThreadOpener(); if (annotation.status === 'orphaned' || annotation.anchor === 'document') { setJumpAnnotationId(null); showThread(annotation); return } setJumpAnnotationId(null); window.requestAnimationFrame(() => { setJumpAnnotationId(annotation.id); showThread(annotation) }) }} onClearResolved={() => void perform(() => window.strata.clearResolvedAnnotations(document.path), 'Resolved annotations cleared.')} onStop={(id) => void perform(() => window.strata.stopConversationTurn(id), 'Turn stopped.')} onOpenConversation={(id) => { showCenterConversation(id); void perform(() => window.strata.openConversation(id)) }} onSetLead={(agentId) => void perform(() => window.strata.setLead(document.path, agentId))} onDetach={(attachment) => { if (attachment.queuedSendCount > 0) setDetaching(attachment); else detach(attachment) }} onSaveRound={(index) => window.strata.saveRound(document.path, index)} /></Boundary></div>
       </div>
       {confirmResolve && document && thread && (
         // Above every island: inside the left window the editor would paint over it.

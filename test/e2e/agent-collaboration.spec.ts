@@ -203,7 +203,7 @@ test('3b. detach confirms only when queued sends would be discarded, and ends th
   }
 })
 
-test('4. an item pages below the fold opens in Conversation with the span centered, works, and keeps its own width', async ({}, testInfo) => {
+test('4. an item pages below the fold opens in Conversation with the span centered, works, and shares the left window width', async ({}, testInfo) => {
   const filler = Array.from({ length: 70 }, (_, index) => `Filler paragraph ${index + 1} pads the page.`)
   const original = `# Threads\n\n${filler.slice(0, 60).join('\n\n')}\n\nThe needle sentence sits far below the fold.\n\n${filler.slice(60).join('\n\n')}\n`
   const fixture = await scenario(testInfo, original, 'threads.md', [['t1', 'Agent A']])
@@ -211,7 +211,7 @@ test('4. an item pages below the fold opens in Conversation with the span center
   const settingsPath = join(String(value.env.XDG_CONFIG_HOME), 'stratamd', 'settings.json')
   try {
     const page = value.page!
-    // Room for the default Conversation width beside the right rail and the editor's floor.
+    // Room for the left window beside the right rail and the editor's floor.
     await page.setViewportSize({ width: 1440, height: 900 })
     agentActs(engine, 't1', [{ verb: 'comment', anchor: { document: value.file, quote: 'needle sentence' }, text: 'Found it?' }])
     await annotationByText(value, 'Found it?')
@@ -226,7 +226,8 @@ test('4. an item pages below the fold opens in Conversation with the span center
     await expect(panel).toBeInViewport()
     await expect(navigation.getByRole('tab', { name: /^Conversation(?: \d+)?$/ })).toHaveAttribute('aria-selected', 'true')
     await expect(page.locator('.strata-annotation.is-active').first()).toBeInViewport()
-    await expect.poll(() => leftWindow.evaluate((element) => (element as HTMLElement).style.width)).toBe('660px')
+    // Conversation shows at the left window's one width (decided 2026-09-04).
+    await expect.poll(() => leftWindow.evaluate((element) => (element as HTMLElement).style.width)).toBe('212px')
 
     // Reply and Resolve work from the panel.
     const reply = panel.getByRole('textbox', { name: 'Reply' })
@@ -238,27 +239,25 @@ test('4. an item pages below the fold opens in Conversation with the span center
       return state.annotations?.flatMap((item) => item.replies ?? []).map((item) => item.text) ?? []
     }).toContain('Replying from the panel')
 
-    // Dragging the left window's handle while Conversation shows persists the
-    // Conversation width and leaves the navigation width alone.
+    // Dragging the left window's handle while Conversation shows persists the one left width.
     await dragBy(page, page.getByRole('button', { name: 'Resize left window' }), 120, 0)
     await expect.poll(async () => {
       try {
-        return JSON.parse(await readFile(settingsPath, 'utf8')).panels?.threadPanel?.width ?? null
+        return JSON.parse(await readFile(settingsPath, 'utf8')).panels?.explorerWidth ?? null
       } catch {
         return null
       }
-    }, { timeout: 15_000 }).toBe(780)
-    expect(JSON.parse(await readFile(settingsPath, 'utf8')).panels?.explorerWidth).toBe(212)
+    }, { timeout: 15_000 }).toBe(332)
     await panel.getByRole('button', { name: 'Close thread' }).click()
     await expect(panel).toBeHidden()
-    // Closing returns the left window to navigation at its own width.
-    await expect(navigation.getByRole('tab', { name: 'Contents', exact: true })).toHaveAttribute('aria-selected', 'true')
-    await expect.poll(() => leftWindow.evaluate((element) => (element as HTMLElement).style.width)).toBe('212px')
+    // Closing the item keeps Conversation selected, now showing the whole thread, at the same width.
+    await expect(navigation.getByRole('tab', { name: /^Conversation(?: \d+)?$/ })).toHaveAttribute('aria-selected', 'true')
+    await expect.poll(() => leftWindow.evaluate((element) => (element as HTMLElement).style.width)).toBe('332px')
 
-    // The in-editor highlight opens the same item at the remembered width.
+    // The in-editor highlight opens the same item at that width.
     await page.locator('.strata-annotation').first().click()
     await expect(panel).toBeVisible()
-    await expect.poll(() => leftWindow.evaluate((element) => (element as HTMLElement).style.width)).toBe('780px')
+    await expect.poll(() => leftWindow.evaluate((element) => (element as HTMLElement).style.width)).toBe('332px')
 
     // The writing modal gets the same resize treatment.
     await panel.getByRole('button', { name: 'Close thread' }).click()

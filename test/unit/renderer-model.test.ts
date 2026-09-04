@@ -3,7 +3,6 @@ import type { DocumentView, HunkView } from '../../src/shared/contracts'
 import { activeAnnotations, activitySnapshot, agentActivity, agentActivityMessage, annotationCounts, attachmentStatusLine, bannerFor, bulkRevertGroups, changeGroups, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, explorerTree, filteredAnnotations, hasResolvedAnnotations, hasUnsavedCounted, hunkAction, hunkAuthor, hunkSnippet, leftWindowWidth, nextReviewTarget, pendingCount, previewTabIndex, rendererThemeStyle, reviewTargets, saveStateSentence, shouldAdoptPushed, sideWindowCeiling, spellingForSelection, tabsToClose, threadTargets, threadTime, timeAgoShort, projectForPath } from '../../src/renderer/model'
 import { INFO_TOAST_MS, nextToast, toastLifetime } from '../../src/renderer/toasts'
 import { formatKeys, shortcutGroups } from '../../src/renderer/shortcuts'
-import { ancestorFolders } from '../../src/renderer/components/Explorer'
 import { menuKeyTarget } from '../../src/renderer/components/PathContextMenu'
 import { THEME_KEYS } from '../../src/shared/theme-keys'
 import { renderAmbient } from '../../src/renderer/components/AmbientDecor'
@@ -17,7 +16,7 @@ const hunk: HunkView = {
 function document(overrides: Partial<DocumentView> = {}): DocumentView {
   return {
     path: '/tmp/plan.md', bufferPath: '/tmp/buffer.md', leadAgentId: null, content: '# Plan', sourceMode: false,
-    reading: { formatVersion: 4, navigationTab: 'files', reviewTab: 'changes', walkthrough: { active: false, level: 'h2', current: null, excluded: [], markers: [] }, tables: [], foldedHeadings: [] },
+    reading: { formatVersion: 4, navigationTab: 'contents', reviewTab: 'changes', walkthrough: { active: false, level: 'h2', current: null, excluded: [], markers: [] }, tables: [], foldedHeadings: [] },
     sourceOnly: false, readOnly: false, dirty: false, deleted: false, invalidUtf8: false,
     lastSavedAt: null, historyStep: 0, pendingHunks: [], saves: [], annotations: [], drafts: [], attachments: [], recipients: [],
     canSend: false, conflicts: [], problems: [], ...overrides
@@ -33,17 +32,18 @@ describe('renderer model', () => {
     expect(clampPanelSize('documentMeasure', 2000)).toBe(1600)
   })
 
-  it('gives the left window a navigation width and a thread width, with no fixed ceiling', () => {
+  it('gives the left window one width for every tab, with no fixed ceiling', () => {
     const sizes = { ...EMPTY_VIEW.settings.panelSizes, explorerWidth: 212, rightRailWidth: 300, threadPanel: { width: 780, height: -1 } }
-    expect(leftWindowWidth(sizes, false, 1440)).toBe(212)
-    expect(leftWindowWidth(sizes, true, 1440)).toBe(780)
-    expect(leftWindowWidth({ ...sizes, threadPanel: { width: 100, height: -1 } }, true, 1440)).toBe(330)
-    expect(leftWindowWidth({ ...sizes, explorerWidth: 1500 }, false, 2400)).toBe(1500)
+    expect(leftWindowWidth(sizes, 1440)).toBe(212)
+    // The legacy Conversation width is ignored: one width serves Projects, Conversation, and Contents (decided 2026-09-04).
+    expect(leftWindowWidth({ ...sizes, threadPanel: { width: 100, height: -1 } }, 1440)).toBe(212)
+    expect(leftWindowWidth({ ...sizes, explorerWidth: 100 }, 1440)).toBe(160)
+    expect(leftWindowWidth({ ...sizes, explorerWidth: 1500 }, 2400)).toBe(1500)
     expect(clampPanelSize('explorerWidth', 1500)).toBe(1500)
     // The window is the only limit: a side window yields so the editor keeps its floor,
     // and the side window's own minimum wins when the window cannot fit both.
     expect(sideWindowCeiling(160, 1440, 300)).toBe(812)
-    expect(leftWindowWidth(sizes, true, 960)).toBe(332)
+    expect(leftWindowWidth({ ...sizes, explorerWidth: 900 }, 960)).toBe(332)
     expect(sideWindowCeiling(330, 600, 300)).toBe(330)
   })
 
@@ -375,14 +375,7 @@ describe('usability round 2 renderer helpers', () => {
     expect(shortcutGroups(['Mod-b'], false).find((group) => group.title === 'Writing')!.entries).toEqual([{ keys: 'Ctrl+B', action: 'Bold' }])
   })
 
-  it('finds the folders to open so the active document shows, and walks menus with the arrow keys', () => {
-    const folder = { path: '/root', name: 'root', files: [
-      { path: '/root/a/b/deep.md', name: 'deep.md', relativePath: 'a/b/deep.md', folder: '/root', missing: false, pendingCount: 0 },
-      { path: '/root/top.md', name: 'top.md', relativePath: 'top.md', folder: '/root', missing: false, pendingCount: 0 },
-    ] }
-    expect(ancestorFolders(folder, '/root/a/b/deep.md')).toEqual(['/root/a', '/root/a/b'])
-    expect(ancestorFolders(folder, '/root/top.md')).toEqual([])
-    expect(ancestorFolders(folder, '/elsewhere.md')).toEqual([])
+  it('walks menus with the arrow keys', () => {
     const items = [{}, {}, {}] as unknown as HTMLElement[]
     expect(menuKeyTarget(items, 0, 'ArrowDown')).toBe(1)
     expect(menuKeyTarget(items, 0, 'ArrowUp')).toBe(2)

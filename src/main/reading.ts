@@ -8,7 +8,7 @@ export const CURRENT_READING_VERSION = 4
 
 export const DEFAULT_READING_STATE: ReadingState = Object.freeze({
   formatVersion: CURRENT_READING_VERSION,
-  navigationTab: 'files',
+  navigationTab: 'contents',
   reviewTab: 'changes',
   walkthrough: { active: false, level: 'h2' as const, current: null, excluded: [], markers: [] },
   tables: [],
@@ -124,7 +124,8 @@ export function normalizeReadingState(value: unknown): ReadingState {
   if ((version as number) > CURRENT_READING_VERSION) throw new Error(`Reading state version ${String(version)} is newer than this build`)
   return {
     formatVersion: CURRENT_READING_VERSION,
-    navigationTab: value.navigationTab === 'contents' ? 'contents' : 'files',
+    // 'files' was a tab until 2026-09-04; a document that remembered it opens on Contents.
+    navigationTab: value.navigationTab === 'projects' || value.navigationTab === 'conversation' ? value.navigationTab : 'contents',
     reviewTab: value.reviewTab === 'annotations' ? 'annotations' : 'changes',
     walkthrough: walkthroughState(value.walkthrough),
     tables: tableViews(value.tables),

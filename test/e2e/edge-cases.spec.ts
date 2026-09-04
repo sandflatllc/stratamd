@@ -89,28 +89,6 @@ test('invalid UTF-8 opens source-only and read-only without creating document me
   }
 })
 
-test('a missing ghost stays struck through in the explorer until Forget', async ({}, testInfo) => {
-  const value = await Scenario.create(testInfo, '# Missing\n\nKeep the ghost.\n', 'missing.md')
-  await value.writeSettings({ explorerFolders: [dirname(value.file)] })
-
-  try {
-    const page = await value.launch()
-    await page.getByRole('button', { name: /Close tab/i }).click()
-    await rm(value.file)
-    await page.getByRole('button', { name: /Refresh/i }).click()
-
-    const missing = page.locator('.file-row.missing').filter({ hasText: 'missing.md' })
-    await expect(missing).toBeVisible()
-    await expect(missing.locator('button').first().locator('span').first()).toHaveCSS('text-decoration-line', 'line-through')
-    await expect(page.getByText(/1 missing/i)).toBeVisible()
-
-    await missing.getByRole('button', { name: /forget/i }).click()
-    await expect(missing).toHaveCount(0)
-  } finally {
-    await value.dispose()
-  }
-})
-
 test('a document over 2 MB opens in the full visual editor while review and Send still work', async ({}, testInfo) => {
   test.slow()
   const filler = 'x'.repeat(2 * 1024 * 1024)

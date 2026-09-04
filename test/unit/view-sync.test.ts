@@ -9,7 +9,7 @@ function makeDocument(content: string, overrides: Partial<DocumentView> = {}): D
     bufferPath: '/tmp/buffer.md',
     leadAgentId: null,
     content,
-    reading: { formatVersion: 4, navigationTab: 'files', reviewTab: 'changes', walkthrough: { active: false, level: 'h2', current: null, excluded: [], markers: [] }, tables: [], foldedHeadings: [] },
+    reading: { formatVersion: 4, navigationTab: 'contents', reviewTab: 'changes', walkthrough: { active: false, level: 'h2', current: null, excluded: [], markers: [] }, tables: [], foldedHeadings: [] },
     sourceMode: false,
     sourceOnly: false,
     readOnly: false,

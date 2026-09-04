@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario, lineEndKey, primaryKey, selectTextInVisualEditor, setSource } from './harness'
+import { Scenario, lineEndKey, primaryKey, selectTextInVisualEditor, setSource, switchToDocument } from './harness'
 import { seededScenario, startEngine, type FakeEngine } from './cockpit-engine-harness'
 import { agentActs, annotationByText, attachThread, openThread } from './cockpit-agent'
 
@@ -87,7 +87,7 @@ test('per-pane text zoom follows the hovered pane, resets from one button, and p
     await page.keyboard.press(primaryKey('Equal'))
     await expect.poll(() => zoomOf(explorer)).toBe('1.2')
     expect(await zoomOf(editor)).toBe('1')
-    await expect(page.locator('.explorer .panel-heading h2')).toHaveCSS('font-size', '18px')
+    await expect(page.locator('.rail-tab').first()).toHaveCSS('font-size', '14.4px')
 
     await rail.hover()
     await page.keyboard.press(primaryKey('Minus'))
@@ -216,7 +216,7 @@ test('the theme panel floats over a live app, writes only chosen keys, follows o
     await expect(page.getByRole('tab', { name: /Theme sample\.md/ })).toHaveAttribute('aria-selected', 'true')
     await expect(page.locator('.editor-island .ProseMirror h1')).toContainText('level-one heading')
     await expect(page.locator('.editor-island .ProseMirror table')).toBeVisible()
-    await page.getByRole('tab', { name: /theme\.md/ }).click()
+    await switchToDocument(page, /theme\.md/)
 
     // The document stays editable behind the panel.
     await page.getByRole('textbox', { name: /Document editor/i }).click()
@@ -279,7 +279,7 @@ test('the theme panel floats over a live app, writes only chosen keys, follows o
     await value.stop()
     const restarted = await value.launch()
     await restarted.getByRole('button', { name: 'Recover my edits' }).click()
-    await restarted.getByRole('tab', { name: /theme\.md/ }).click()
+    await switchToDocument(restarted, /theme\.md/)
     await expect(restarted.locator('.app-shell')).toHaveAttribute('data-ambient-windows', 'starfield')
     await restarted.getByRole('button', { name: 'Theme', exact: true }).click()
     const reopened = restarted.getByRole('dialog', { name: 'Theme' })

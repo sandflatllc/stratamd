@@ -1,17 +1,57 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { EngineActivityView, EngineThreadView, EngineView, ItemView } from '../../shared/contracts'
+import { changedFilesLabel, formatDelta, summarizeChangedFiles, type ChangedFileInput, type ChangedFileView } from '../../core/changed-files'
 import { deriveWorkEntries, groupWorkRows, type WorkEntry } from '../../core/work-log'
 import { ConversationComposer } from './ConversationComposer'
 import { ConversationHistory } from './ConversationHistory'
 import { Resizer } from './Resizer'
-import { InlineMarkdown } from '../inlineMarkdown'
+import { MessageMarkdown } from '../messageMarkdown'
 
-function activeThread(engine: EngineView): { thread: EngineThreadView; project: string } | null {
+function activeThread(engine: EngineView): { thread: EngineThreadView; project: string; root: string | null } | null {
   for (const project of engine.projects) {
     const thread = project.threads.find((candidate) => candidate.id === engine.activeThreadId)
-    if (thread) return { thread, project: project.title }
+    if (thread) return { thread, project: project.title, root: project.workspaceRoot || null }
   }
   return null
+}
+
+function FileChip({ file, onOpen }: { file: ChangedFileView; onOpen?(path: string): void }) {
+  const body = <><span className="conversation-file-kind" aria-hidden="true">{file.extension || '·'}</span><span className="conversation-file-name">{file.name}</span></>
+  if (file.markdown && onOpen) return <button type="button" className="conversation-file-chip" title={file.path} onClick={() => onOpen(file.path)}>{body}</button>
+  return <span className="conversation-file-chip" title={file.path}>{body}</span>
+}
+
+/** A turn's changed files, folded like T3's card: count and delta, top-level folders, three chips, and the full list on request (§6.9). */
+function ChangedFilesCard({ files, root, onOpen }: { files: readonly ChangedFileInput[]; root: string | null; onOpen?(path: string): void }) {
+  const [expanded, setExpanded] = useState(false)
+  const summary = useMemo(() => summarizeChangedFiles(files, root), [files, root])
+  if (summary.count === 0) return null
+  return <section className="conversation-changed-files" aria-label="Changed files" data-expanded={expanded || undefined}>
+    <header>
+      <button type="button" className="conversation-files-toggle" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+        <span className="conversation-work-chevron" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+        <strong>{changedFilesLabel(summary.count)}</strong>
+        <span className="conversation-delta"><ins>+{formatDelta(summary.additions)}</ins><del>−{formatDelta(summary.deletions)}</del></span>
+        <span className="conversation-files-show">{expanded ? 'Hide files' : 'Show files'}</span>
+      </button>
+    </header>
+    {!expanded && <div className="conversation-files-folders">{summary.groups.map((group) => <span key={group.label}><code>{group.label}</code> {group.files.length} {group.files.length === 1 ? 'file' : 'files'}</span>)}</div>}
+    {!expanded && <div className="conversation-files-preview">
+      {summary.preview.map((file) => <FileChip key={file.path} file={file} {...(onOpen ? { onOpen } : {})} />)}
+      {summary.count > summary.preview.length && <button type="button" className="conversation-files-more" onClick={() => setExpanded(true)}>Show all {summary.count} files</button>}
+    </div>}
+    {expanded && <div className="conversation-files-list">
+      {summary.groups.map((group) => <div className="conversation-files-group" key={group.label}>
+        <span className="conversation-files-group-label"><code>{group.label}</code> {group.files.length} {group.files.length === 1 ? 'file' : 'files'}</span>
+        {group.files.map((file) => {
+          const row = <><span className="conversation-file-kind" aria-hidden="true">{file.extension || '·'}</span><span className="conversation-file-name">{file.name}</span><small className="conversation-file-dir">{file.directory}</small><span className="conversation-delta"><ins>+{formatDelta(file.additions)}</ins><del>−{formatDelta(file.deletions)}</del></span></>
+          return file.markdown && onOpen
+            ? <button type="button" className="conversation-file-row" key={file.path} title={`Open ${file.path}`} onClick={() => onOpen(file.path)}>{row}</button>
+            : <div className="conversation-file-row" key={file.path} title={file.path}>{row}</div>
+        })}
+      </div>)}
+    </div>}
+  </section>
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -65,7 +105,8 @@ interface ConversationProps {
   placement?: 'side' | 'center'
   passage?: ReactNode
   onReconnect(): void
-  onMove(): void
+  /** Moves the thread to the other placement; absent when no document could take the center's place. */
+  onMove?(): void
   onStart(threadId: string, input: import('../../shared/contracts').ConversationInput): Promise<void>
   onStop(threadId: string): void
   onApproval(threadId: string, requestId: string, decision: 'accept' | 'decline'): void
@@ -77,6 +118,8 @@ interface ConversationProps {
   onDismissItem?(threadId: string, item: ItemView): void
   onOpenItem?(item: ItemView): void
   onActItem?(item: ItemView, action: 'accept' | 'reject' | 'keep' | 'revert', option?: string): void
+  /** Opens a changed Markdown file in the center (§6.9); other changed files list without an action. */
+  onOpenDocument?(path: string): void
 }
 
 const workIcons = { terminal: '›_', search: '⌕', wrench: '⌘', hammer: '◆', bot: '◇', tone: '•' } as const
@@ -116,7 +159,7 @@ function TurnChecklist({ items, onReply, onOpen, onAct, onDismiss }: { items: re
   </section>
 }
 
-export function Conversation({ documentMeasure = 860, onDocumentMeasure, engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput, items = [], onReplyItem, onQueueReply, onDismissItem, onOpenItem, onActItem }: ConversationProps) {
+export function Conversation({ documentMeasure = 860, onDocumentMeasure, engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput, items = [], onReplyItem, onQueueReply, onDismissItem, onOpenItem, onActItem, onOpenDocument }: ConversationProps) {
   const selected = activeThread(engine)
   const [scope, setScope] = useState<'whole' | 'passage'>(passage ? 'passage' : 'whole')
   const [expandedWork, setExpandedWork] = useState<Record<string, boolean>>({})
@@ -161,7 +204,7 @@ export function Conversation({ documentMeasure = 860, onDocumentMeasure, engine,
   const running = thread.status === 'running' || thread.status === 'starting'
   return <section className="conversation-panel" aria-label="Conversation" data-placement={placement}>
     <header>
-      <div className="conversation-title"><strong><span>{selected.project}</span><i aria-hidden="true">/</i>{thread.title}</strong><button type="button" onClick={onMove}>{placement === 'side' ? 'Open in center' : 'Move to side'}</button></div>
+      <div className="conversation-title"><strong><span>{selected.project}</span><i aria-hidden="true">/</i>{thread.title}</strong>{onMove && <button type="button" onClick={onMove}>{placement === 'side' ? 'Open in center' : 'Move to side'}</button>}</div>
       <small>{thread.model}{thread.effort ? ` · ${thread.effort}` : ''} · {thread.access}</small>
       <div className="conversation-status"><span>{thread.status}{running ? ` · ${elapsed(thread.turnStartedAt, now)}` : ''}</span>{running && <button type="button" className="stop-button" onClick={() => onStop(thread.id)}>Stop</button>}</div>
       <div className="conversation-scope" role="tablist" aria-label="Conversation scope"><button type="button" role="tab" aria-selected={scope === 'whole'} onClick={() => setScope('whole')}>Whole thread</button><button type="button" role="tab" aria-selected={scope === 'passage'} disabled={!passage} onClick={() => setScope('passage')}>This passage</button></div>
@@ -197,9 +240,9 @@ export function Conversation({ documentMeasure = 860, onDocumentMeasure, engine,
             const messageExpanded = expandedMessages[message.id] ?? false
             return <article className={`conversation-message ${message.role}`} key={message.id} data-history-row data-message-id={message.id} data-streaming={message.streaming || undefined}>
               <small>{message.role === 'assistant' ? 'Agent' : message.role === 'user' ? 'You' : 'System'}{message.role === 'user' && <span className="conversation-chip">{message.attachmentCount > 0 ? `${message.attachmentCount} attached` : 'Message'}</span>}{message.role === 'assistant' && <button type="button" className="conversation-copy" aria-label="Copy assistant message" onClick={() => void navigator.clipboard.writeText(prose)}>Copy</button>}</small>
-              <div className={longUserMessage && !messageExpanded ? 'conversation-user-collapsed' : undefined} data-annotatable={message.role === 'assistant' && !message.streaming || undefined} data-block-ids={blocks.map((block) => block.id).join(' ')}><InlineMarkdown text={prose} /></div>
+              <div className={longUserMessage && !messageExpanded ? 'conversation-user-collapsed' : undefined} data-annotatable={message.role === 'assistant' && !message.streaming || undefined} data-block-ids={blocks.map((block) => block.id).join(' ')}><MessageMarkdown text={prose} /></div>
               {longUserMessage && <button type="button" className="conversation-message-toggle" aria-expanded={messageExpanded} onClick={() => setExpandedMessages((value) => ({ ...value, [message.id]: !messageExpanded }))}>{messageExpanded ? 'Show less' : 'Show more'}</button>}
-              {message.id === lastAssistant && changedFiles.length > 0 && <section className="conversation-changed-files" aria-label="Changed files"><strong>Changed files</strong>{changedFiles.map((file) => <span key={`${file.turnId}:${file.path}`}>{file.path}<small>+{file.additions} −{file.deletions}</small></span>)}</section>}
+              {message.id === lastAssistant && changedFiles.length > 0 && <ChangedFilesCard files={changedFiles} root={selected.root} {...(onOpenDocument ? { onOpen: onOpenDocument } : {})} />}
             </article>
           })}
           {approvals.filter((activity) => (activity.turnId ?? 'thread') === turn.id).map((activity) => { const payload = record(activity.payload); const requestId = String(payload.requestId ?? ''); return <section className="conversation-request" data-kind="approval" key={activity.id}><strong>{typeof payload.detail === 'string' ? payload.detail : activity.summary}</strong><div className="conversation-actions"><button type="button" onClick={() => onApproval(thread.id, requestId, 'accept')}>Approve</button><button type="button" onClick={() => onApproval(thread.id, requestId, 'decline')}>Decline</button></div></section> })}

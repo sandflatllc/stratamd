@@ -16,8 +16,7 @@ test('tabs cycle from the keyboard, close with the primary modifier and W, and c
   await value.writeSettings({ explorerFolders: [folder] })
   try {
     const page = await value.launch()
-    const explorer = page.getByRole('complementary', { name: /File explorer/i })
-    await explorer.getByRole('button', { name: /^other\.md$/i }).click()
+    await page.evaluate((path) => window.strata.openDocument(path), join(folder, 'other.md'))
     const keysTab = page.getByRole('tab', { name: /keys\.md/i })
     const otherTab = page.getByRole('tab', { name: /other\.md/i })
     await expect(otherTab).toHaveAttribute('aria-selected', 'true')
@@ -37,7 +36,7 @@ test('tabs cycle from the keyboard, close with the primary modifier and W, and c
     await expect(keysTab).toHaveAttribute('aria-selected', 'true')
 
     // A dirty tab asks first; Escape keeps it open.
-    await explorer.getByRole('button', { name: /^other\.md$/i }).click()
+    await page.evaluate((path) => window.strata.openDocument(path), join(folder, 'other.md'))
     await expect(otherTab).toHaveAttribute('aria-selected', 'true')
     await setSource(page, '# Other\n\nSecond document, edited.\n')
     await expect(otherTab.locator('.tab-dirty-dot')).toBeVisible()
@@ -46,7 +45,7 @@ test('tabs cycle from the keyboard, close with the primary modifier and W, and c
     await expect(dialog).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(dialog).toBeHidden()
-    await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(2)
+    await expect(page.getByRole('button', { name: 'Docs menu' }).locator('.tab-menu-count')).toHaveText('2')
 
     // A clean tab closes at once.
     await page.keyboard.press('Control+Tab')
@@ -86,7 +85,7 @@ test('an error toast uses the danger color, outlives a success, and clears from 
     // Longer than a success toast lives; a success does not paint over it.
     await page.waitForTimeout(3_200)
     await expect(alert).toBeVisible()
-    await page.locator('.folder-row').first().click({ button: 'right' })
+    await page.getByRole('tab', { name: /toast\.md/i }).click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Copy full path' }).click()
     await page.waitForTimeout(300)
     await expect(alert).toBeVisible()
@@ -169,36 +168,5 @@ test('composer and reply drafts survive Escape, and Escape closes one surface at
   } finally {
     await value.dispose()
     await engine.close()
-  }
-})
-
-test('a root folder can be removed from the explorer while the open document stays available', { tag: '@clipboard' }, async ({}, testInfo) => {
-  const value = await Scenario.create(testInfo, '# Remove\n\nKeep me remembered.\n', 'remove.md')
-  const folder = dirname(value.file)
-  await value.writeSettings({ explorerFolders: [folder] })
-  try {
-    const page = await value.launch()
-    await expect(page.locator('.explorer-note')).toContainText(/^Up to date · 1 file/)
-    await expect(page.locator('.explorer-note')).not.toContainText(/ghost/i)
-
-    // File rows keep the one-item menu.
-    await page.getByRole('button', { name: /^remove\.md$/i }).click({ button: 'right' })
-    await expect(page.getByRole('menuitem', { name: 'Copy full path' })).toBeVisible()
-    await expect(page.getByRole('menuitem', { name: 'Remove folder' })).toHaveCount(0)
-    await page.keyboard.press('Escape')
-
-    await page.locator('.folder-row').first().click({ button: 'right' })
-    await page.getByRole('menuitem', { name: 'Remove folder' }).click()
-    await expect(page.locator('.folder-row')).toHaveCount(0)
-    await expect(page.getByRole('status')).toContainText(/Folder removed/)
-    const settingsPath = join(String(value.env.XDG_CONFIG_HOME), 'stratamd', 'settings.json')
-    await expect.poll(async () => JSON.parse(await readFile(settingsPath, 'utf8')).explorerFolders ?? []).toEqual([])
-    // The open document is untouched.
-    await expect(page.getByRole('tab', { name: /remove\.md/i })).toHaveAttribute('aria-selected', 'true')
-
-    await expect(page.getByRole('heading', { name: 'Attached' })).toBeVisible()
-    await expect(page.getByText('No threads attached. Start a thread from this document to send it.')).toBeVisible()
-  } finally {
-    await value.dispose()
   }
 })

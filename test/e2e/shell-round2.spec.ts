@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario } from './harness'
+import { Scenario, switchToDocument } from './harness'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 import { agentActs, annotationByText, attachThread, openThread } from './cockpit-agent'
 
@@ -85,9 +85,6 @@ test('F1 lists the shortcuts, toolbar menus take arrow keys, and source view exp
     await page.getByRole('button', { name: /source/i }).click()
     await expect(page.getByRole('note')).toContainText(/Formatting tools work in the visual view/)
     await expect(page.getByRole('toolbar', { name: 'Formatting' }).getByLabel('Bold', { exact: true })).toHaveAttribute('title', /visual view/)
-
-    // The explorer is a tree.
-    await expect(page.getByRole('tree', { name: 'Documents' })).toBeVisible()
   } finally {
     await scenario.dispose()
   }
@@ -101,24 +98,27 @@ test('the tab menu closes other, saved, or all tabs and keeps the ones with unsa
   await scenario.writeSettings({ explorerFolders: [folder] })
   try {
     const page = await scenario.launch()
-    const explorer = page.getByRole('complementary', { name: /File explorer/i })
-    await explorer.getByRole('button', { name: /^two\.md$/i }).click()
-    await explorer.getByRole('button', { name: /^three\.md$/i }).click()
-    await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(3)
+    const openCount = page.getByRole('button', { name: 'Docs menu' }).locator('.tab-menu-count')
+    await page.evaluate((path) => window.strata.openDocument(path), join(folder, 'two.md'))
+    await page.evaluate((path) => window.strata.openDocument(path), join(folder, 'three.md'))
+    await expect(openCount).toHaveText('3')
 
+    // Only the active document is a pill; the others wait in the Docs menu (§6.9).
+    await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(1)
+    await switchToDocument(page, /one\.md/i)
     await page.getByRole('tab', { name: /one\.md/i }).click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Close other tabs' }).click()
-    await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(1)
+    await expect(openCount).toHaveText('1')
     await expect(page.getByRole('tab', { name: /one\.md/i })).toBeVisible()
 
     // A dirty tab survives Close all, and the note says so.
-    await explorer.getByRole('button', { name: /^two\.md$/i }).click()
+    await page.evaluate((path) => window.strata.openDocument(path), join(folder, 'two.md'))
     await page.getByRole('textbox', { name: /document editor/i }).click()
     await page.keyboard.type('Edited ')
     await expect(page.getByRole('tab', { name: /two\.md/i }).locator('.tab-dirty-dot')).toBeVisible()
     await page.getByRole('tab', { name: /two\.md/i }).click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Close all tabs' }).click()
-    await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(1)
+    await expect(openCount).toHaveText('1')
     await expect(page.getByRole('tab', { name: /two\.md/i })).toBeVisible()
     await expect(page.getByRole('status')).toContainText(/1 tab closed\. 1 with unsaved edits stayed open\./)
   } finally {

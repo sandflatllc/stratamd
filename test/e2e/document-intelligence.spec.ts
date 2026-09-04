@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { dirname, join } from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
-import { primaryKey, Scenario } from './harness'
+import { Scenario, primaryKey, switchToDocument } from './harness'
 
 const markdown = `# Document intelligence
 
@@ -181,7 +181,7 @@ test('diagrams, trees, images, local previews, and durable folds remain document
     await inspector.locator('.strata-image-inspector__viewport').press('ArrowDown')
     await expect(inspector.locator('img')).toHaveAttribute('style', /translate\(0px, 12px\) scale\(1\.1\)/)
     await page.evaluate(async (path) => window.strata.openDocument(path), join(documentDirectory, 'notes.md'))
-    await page.getByRole('tab', { name: /intelligence\.md/i }).click()
+    await switchToDocument(page, /intelligence\.md/i)
     const restoredInspector = page.getByRole('dialog', { name: 'Inspect Tiny sample' })
     await expect(restoredInspector.locator('img')).toHaveAttribute('style', /translate\(0px, 12px\) scale\(1\.1\)/)
     await restoredInspector.locator('.strata-image-inspector__viewport').press('Escape')
@@ -193,7 +193,7 @@ test('diagrams, trees, images, local previews, and durable folds remain document
     await expect(linkPreview).toContainText('Preview body.')
     await linkPreview.getByRole('button', { name: 'Open document' }).click()
     await expect(page.getByRole('tab', { name: /notes\.md/i })).toHaveAttribute('aria-selected', 'true')
-    await page.getByRole('tab', { name: /intelligence\.md/i }).click()
+    await switchToDocument(page, /intelligence\.md/i)
     await editor.getByRole('button', { name: 'Preview notes.md' }).press('Enter')
     await expect(page.getByRole('dialog', { name: 'Preview notes.md' })).toBeVisible()
     await page.keyboard.press('Escape')

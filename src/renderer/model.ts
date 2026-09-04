@@ -39,9 +39,6 @@ export const PANEL_LIMITS = {
 
 export const THEME_PANEL_LIMITS = { minWidth: 300, maxWidth: 900, minHeight: 320, maxHeight: 1600 } as const
 
-/** The left window's width while Conversation is selected. */
-export const THREAD_PANEL_LIMITS = { minWidth: 330, maxWidth: SIDE_WINDOW_MAX } as const
-
 /** The editor never drops below this width because a side window grew; the side window yields instead. */
 export const EDITOR_FLOOR = 240
 /** Shell padding and the two drag handles either side of the editor. */
@@ -58,15 +55,13 @@ export function sideWindowCeiling(minimum: number, windowWidth: number, otherSid
 }
 
 /**
- * The left window carries two widths: one for Files and Contents, one for the
- * Conversation, so navigation can stay narrow while the transcript gets room.
- * The stored width is what the owner chose; what shows is that width clamped
- * to the window so the editor never collapses.
+ * The left window has one width for every tab (decided 2026-09-04). The stored
+ * width is what the owner chose; what shows is that width clamped to the window
+ * so the editor never collapses.
  */
-export function leftWindowWidth(sizes: PanelSizes, threadShown: boolean, windowWidth: number): number {
-  const minimum = threadShown ? THREAD_PANEL_LIMITS.minWidth : PANEL_LIMITS.explorerWidth[0]
-  const preferred = threadShown ? sizes.threadPanel.width : sizes.explorerWidth
-  return Math.min(Math.max(minimum, preferred), sideWindowCeiling(minimum, windowWidth, sizes.rightRailWidth))
+export function leftWindowWidth(sizes: PanelSizes, windowWidth: number): number {
+  const minimum = PANEL_LIMITS.explorerWidth[0]
+  return Math.min(Math.max(minimum, sizes.explorerWidth), sideWindowCeiling(minimum, windowWidth, sizes.rightRailWidth))
 }
 export const COMPOSER_LIMITS = { minWidth: 330, maxWidth: 900, minHeight: 160, maxHeight: 1200 } as const
 

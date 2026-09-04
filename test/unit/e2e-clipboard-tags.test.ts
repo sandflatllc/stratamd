@@ -90,6 +90,6 @@ describe('e2e clipboard tags', () => {
     }
     // Guards the scanner itself: a regex change that stops recognizing test
     // declarations would otherwise pass the first check vacuously.
-    expect(tagged).toBeGreaterThanOrEqual(7)
+    expect(tagged).toBeGreaterThanOrEqual(6)
   })
 })

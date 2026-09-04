@@ -1,7 +1,7 @@
 import { expect, test, type Locator } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { primaryKey, Scenario } from './harness'
+import { Scenario, primaryKey, switchToDocument } from './harness'
 
 const filler = Array.from({ length: 12 }, (_, index) => `Reading context ${index + 1} keeps navigation targets away from the scroll boundary.`).join('\n\n')
 const DOCUMENT = `# Review
@@ -89,7 +89,7 @@ test('table views stay read-only, return to the selected source cell, and separa
 
   await page.evaluate(async (path) => window.strata.openDocument(path), other)
   await expect(page.getByRole('heading', { name: 'Other' })).toBeVisible()
-  await page.getByRole('tab', { name: /tables\.md/i }).click()
+  await switchToDocument(page, /tables\.md/i)
   block = page.locator('.strata-table-block')
   await expect(block).toHaveAttribute('data-center-focus', 'true')
   await expect(page.getByRole('heading', { name: 'Review', exact: true })).toBeHidden()

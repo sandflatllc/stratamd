@@ -177,7 +177,8 @@ export interface DocumentTabView {
   dirty: boolean
 }
 
-export type NavigationTab = 'files' | 'contents'
+/** The left window's tabs (§6.9): Projects always; Conversation and Contents while a document is in the center. */
+export type NavigationTab = 'projects' | 'conversation' | 'contents'
 export type ReviewTab = 'changes' | 'annotations'
 
 export type EngineConnectionState = 'unpaired' | 'connecting' | 'connected' | 'disconnected'

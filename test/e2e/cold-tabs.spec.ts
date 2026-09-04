@@ -1,7 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario, documentEndKey, lineEndKey, primaryKey } from './harness'
+import { Scenario, documentEndKey, lineEndKey, primaryKey, switchToDocument } from './harness'
 
 /**
  * docs/plans/completed/cold-tab-plan.md §9: with STRATAMD_EDITOR_CACHE=0 every tab switch
@@ -70,7 +70,7 @@ async function coldSwitchAway(value: Scenario): Promise<void> {
   await page.waitForTimeout(250)
   await page.evaluate((path) => window.strata.openDocument(path), second)
   await expect(page.getByRole('tab', { name: /second\.md/i })).toHaveAttribute('aria-selected', 'true')
-  await page.getByRole('tab', { name: /scenario\.md/i }).click()
+  await switchToDocument(page, /scenario\.md/i)
   await expect(page.getByRole('tab', { name: /scenario\.md/i })).toHaveAttribute('aria-selected', 'true')
 }
 

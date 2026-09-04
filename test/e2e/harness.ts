@@ -173,7 +173,7 @@ export class Scenario {
     })
     this.page = await this.app.firstWindow()
     await this.page.waitForLoadState('domcontentloaded')
-    await expect(this.page.locator('.app-shell')).toBeVisible()
+    await expect(this.page.getByRole('button', { name: /^Open file$/i }).first()).toBeVisible()
     return this.page
   }
 
@@ -372,4 +372,15 @@ export function externalText(payload: DocumentInspection): string {
     .flatMap((segment) => segment.hunks)
     .flatMap((hunk) => [...hunk.removed, ...hunk.added])
     .join('\n')
+}
+
+/**
+ * Brings a document to the center (PRD §6.9, decided 2026-09-04). Pinned and
+ * active documents are pills; every other open document sits in the Docs menu.
+ */
+export async function switchToDocument(page: Page, name: RegExp): Promise<void> {
+  const pill = page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab', { name })
+  if (await pill.count() > 0) { await pill.click(); return }
+  await page.getByRole('button', { name: 'Docs menu' }).click()
+  await page.getByRole('menu', { name: 'Open docs' }).getByRole('menuitem', { name }).click()
 }

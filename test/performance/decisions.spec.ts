@@ -48,7 +48,7 @@ test('100 decisions with answer history stay below 100 ms', async ({}, testInfo)
   }))
   const document: DocumentView = {
     path: '/tmp/decisions.md', bufferPath: '/tmp/buffer.md', leadAgentId: null,
-    content: '# Decisions\n', reading: { formatVersion: 4, navigationTab: 'files', reviewTab: 'annotations', walkthrough: { active: false, level: 'h2', current: null, excluded: [], markers: [] }, tables: [], foldedHeadings: [] },
+    content: '# Decisions\n', reading: { formatVersion: 4, navigationTab: 'contents', reviewTab: 'annotations', walkthrough: { active: false, level: 'h2', current: null, excluded: [], markers: [] }, tables: [], foldedHeadings: [] },
     sourceMode: false, sourceOnly: false, readOnly: false, dirty: false, deleted: false, invalidUtf8: false,
     problems: [], lastSavedAt: null, historyStep: 0, pendingHunks: [], saves: [], annotations: projected, drafts: [],
     attachments: [], recipients: [], canSend: false, conflicts: [],
