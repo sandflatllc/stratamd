@@ -1,10 +1,16 @@
 import { chmod, readFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { atomicWriteFile, PRIVATE_FILE_MODE } from '../storage'
 import {
   shellSnapshot,
   threadDetailSnapshot,
   tokenExchangeResult,
+  turnStartCommand,
+  turnInterruptCommand,
+  approvalRespondCommand,
+  userInputRespondCommand,
+  dispatchResult,
   T3_CONTRACT_REVISION,
   T3_HTTP,
   type T3ShellSnapshot,
@@ -43,6 +49,10 @@ export interface EngineReadClient {
   pair(server: string, pairingCode: string): Promise<void>
   reconnect(): Promise<void>
   openThread(threadId: string): Promise<void>
+  startTurn(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access'] }): Promise<void>
+  interrupt(threadId: string): Promise<void>
+  respondApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
+  respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
 }
 
 const EMPTY_ENGINE: EngineView = {
@@ -130,7 +140,18 @@ export class T3EngineClient implements EngineReadClient {
           turnId: message.turnId,
           streaming: message.streaming,
           createdAt: message.createdAt,
+          attachmentCount: message.attachments?.length ?? 0,
         })) : []
+        const activities = detailThread?.id === thread.id ? detailThread.activities.map((activity) => ({
+          id: activity.id,
+          tone: activity.tone,
+          kind: activity.kind,
+          summary: activity.summary,
+          payload: activity.payload,
+          turnId: activity.turnId,
+          createdAt: activity.createdAt,
+        })) : []
+        const latestTurn = thread.latestTurn && typeof thread.latestTurn === 'object' ? thread.latestTurn as Record<string, unknown> : null
         const visited = this.#reading.lastVisited[thread.id] ?? 0
         return {
           id: thread.id,
@@ -145,7 +166,12 @@ export class T3EngineClient implements EngineReadClient {
           unread: Date.parse(thread.updatedAt) > visited && thread.id !== this.#reading.activeThreadId,
           pendingApprovals: thread.hasPendingApprovals,
           pendingUserInput: thread.hasPendingUserInput,
+          activeTurnId: thread.session?.activeTurnId ?? null,
+          turnStartedAt: typeof latestTurn?.startedAt === 'string'
+            ? latestTurn.startedAt
+            : typeof latestTurn?.requestedAt === 'string' ? latestTurn.requestedAt : null,
           messages,
+          activities,
         }
       }),
     }))
@@ -222,6 +248,43 @@ export class T3EngineClient implements EngineReadClient {
     this.#publish()
   }
 
+  async startTurn(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access'] }): Promise<void> {
+    const thread = this.#shell?.threads.find((candidate) => candidate.id === threadId)
+    if (!thread) throw new Error(`Thread was not found: ${threadId}`)
+    const command = turnStartCommand.parse({
+      type: 'thread.turn.start', commandId: randomUUID(), threadId, createdAt: new Date(this.#now()).toISOString(),
+      message: { messageId: randomUUID(), role: 'user', text: input.text.trim(), attachments: [] },
+      modelSelection: { instanceId: thread.modelSelection.instanceId, model: input.model, options: input.effort ? { effort: input.effort } : {} },
+      runtimeMode: input.access, interactionMode: thread.interactionMode,
+    })
+    await this.#dispatch(command)
+  }
+
+  async interrupt(threadId: string): Promise<void> {
+    const thread = this.#shell?.threads.find((candidate) => candidate.id === threadId)
+    if (!thread) throw new Error(`Thread was not found: ${threadId}`)
+    const command = turnInterruptCommand.parse({
+      type: 'thread.turn.interrupt', commandId: randomUUID(), threadId,
+      ...(thread.session?.activeTurnId ? { turnId: thread.session.activeTurnId } : {}),
+      createdAt: new Date(this.#now()).toISOString(),
+    })
+    await this.#dispatch(command)
+  }
+
+  async respondApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void> {
+    await this.#dispatch(approvalRespondCommand.parse({
+      type: 'thread.approval.respond', commandId: randomUUID(), threadId, requestId, decision,
+      createdAt: new Date(this.#now()).toISOString(),
+    }))
+  }
+
+  async respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void> {
+    await this.#dispatch(userInputRespondCommand.parse({
+      type: 'thread.user-input.respond', commandId: randomUUID(), threadId, requestId, answers,
+      createdAt: new Date(this.#now()).toISOString(),
+    }))
+  }
+
   async #refresh(): Promise<void> {
     if (!this.#credential) return
     if (this.#polling) return this.#polling
@@ -265,6 +328,19 @@ export class T3EngineClient implements EngineReadClient {
     })
     if (!response.ok) throw new Error(response.status === 401 ? 'The engine pairing has expired' : `The engine returned ${response.status}`)
     return response
+  }
+
+  async #dispatch(command: unknown): Promise<void> {
+    if (!this.#credential) throw new Error('No engine is paired')
+    const response = await this.#fetch(`${this.#credential.server}${T3_HTTP.dispatch}`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${this.#credential.accessToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify(command),
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!response.ok) throw new Error(response.status === 401 ? 'The engine pairing has expired' : `The engine refused the command (${response.status})`)
+    dispatchResult.parse(await response.json())
+    await this.#refresh()
   }
 
   #schedule(): void {

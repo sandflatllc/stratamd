@@ -7,12 +7,11 @@ import { defineConfig } from '@playwright/test'
 // test/unit/e2e-clipboard-tags.test.ts fails when a clipboard test lacks the tag.
 const clipboardTag = /@clipboard/
 
-// Ordinary tests run in parallel at the test level. Two Electron workers keep
-// pointer and scroll tests deterministic on the shared Xvfb display while
-// still overlapping the long scenarios. CI uses the same bounded pressure.
+// Electron pointer and hover tests share one Xvfb display, so ordinary tests
+// run in one worker. The independent clipboard project may overlap it.
 function ordinaryWorkerCount(): number {
   const override = process.env.STRATAMD_E2E_WORKERS
-  if (override === undefined || override === '') return 2
+  if (override === undefined || override === '') return 1
   if (!/^[1-9]\d*$/.test(override)) {
     throw new Error(`STRATAMD_E2E_WORKERS must be a positive integer such as 4; got ${JSON.stringify(override)}`)
   }

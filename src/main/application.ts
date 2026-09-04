@@ -710,6 +710,22 @@ export class StrataApplication implements StrataApi {
     await this.#engine.openThread(threadId)
   }
 
+  async startConversationTurn(threadId: string, input: Parameters<EngineReadClient['startTurn']>[1]): Promise<void> {
+    await this.#engine.startTurn(threadId, input)
+  }
+
+  async stopConversationTurn(threadId: string): Promise<void> {
+    await this.#engine.interrupt(threadId)
+  }
+
+  async answerEngineApproval(threadId: string, requestId: string, decision: Parameters<EngineReadClient['respondApproval']>[2]): Promise<void> {
+    await this.#engine.respondApproval(threadId, requestId, decision)
+  }
+
+  async answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void> {
+    await this.#engine.respondUserInput(threadId, requestId, answers)
+  }
+
   /** The paths of every open document whose buffer differs from the file. */
   dirtyDocumentPaths(): string[] {
     return [...this.#sessions.values()]

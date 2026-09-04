@@ -90,4 +90,40 @@ describe('T3 engine read client', () => {
     expect(client.view().activeThreadId).toBe('t1')
     await client.shutdown()
   })
+
+  it('dispatches conversation turns, interruption, approvals, and user input with the T3 command contract', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'strata-engine-write-'))
+    const commands: Array<Record<string, unknown>> = []
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+      if (url.endsWith('/api/orchestration/dispatch')) {
+        commands.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+        return Response.json({ sequence: commands.length })
+      }
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(shell('First thread', 'running'), { headers: { 'x-t3-version': '0.0.33' } })
+      return Response.json(detail())
+    }) as typeof globalThis.fetch
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), pollMs: 60_000 })
+    await client.pair('http://engine.test', 'code')
+    await client.openThread('t1')
+    await client.startTurn('t1', { text: 'Continue the work', model: 'gpt-5.6', effort: 'high', access: 'full-access' })
+    await client.respondApproval('t1', 'approval-1', 'accept')
+    await client.respondUserInput('t1', 'input-1', { choice: 'Ship it' })
+    await client.interrupt('t1')
+
+    expect(commands.map((command) => command.type)).toEqual([
+      'thread.turn.start', 'thread.approval.respond', 'thread.user-input.respond', 'thread.turn.interrupt',
+    ])
+    expect(commands[0]).toMatchObject({
+      threadId: 't1', message: { role: 'user', text: 'Continue the work', attachments: [] },
+      modelSelection: { instanceId: 'codex-main', model: 'gpt-5.6', options: { effort: 'high' } },
+      runtimeMode: 'full-access', interactionMode: 'default',
+    })
+    expect(commands[1]).toMatchObject({ requestId: 'approval-1', decision: 'accept' })
+    expect(commands[2]).toMatchObject({ requestId: 'input-1', answers: { choice: 'Ship it' } })
+    expect(commands[3]).toMatchObject({ turnId: 'turn-1' })
+    for (const command of commands) expect(command).toMatchObject({ commandId: expect.any(String), createdAt: at })
+    await client.shutdown()
+  })
 })

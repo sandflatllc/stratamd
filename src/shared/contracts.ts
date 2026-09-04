@@ -153,6 +153,17 @@ export interface EngineMessageView {
   turnId: string | null
   streaming: boolean
   createdAt: string
+  attachmentCount: number
+}
+
+export interface EngineActivityView {
+  id: string
+  tone: 'info' | 'tool' | 'approval' | 'error'
+  kind: string
+  summary: string
+  payload: unknown
+  turnId: string | null
+  createdAt: string
 }
 
 export interface EngineThreadView {
@@ -168,7 +179,10 @@ export interface EngineThreadView {
   unread: boolean
   pendingApprovals: boolean
   pendingUserInput: boolean
+  activeTurnId: string | null
+  turnStartedAt: string | null
   messages: EngineMessageView[]
+  activities: EngineActivityView[]
 }
 
 export interface EngineProjectView {
@@ -525,6 +539,10 @@ export interface StrataApi {
   pairEngine(server: string, pairingCode: string): Promise<void>
   reconnectEngine(): Promise<void>
   openConversation(threadId: string): Promise<void>
+  startConversationTurn(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access'] }): Promise<void>
+  stopConversationTurn(threadId: string): Promise<void>
+  answerEngineApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
+  answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
   openDocument(path?: string): Promise<void>
   /** Renderer-only bridge: preload resolves Electron File objects with webUtils. */
   openDroppedFiles?(files: File[]): Promise<void>

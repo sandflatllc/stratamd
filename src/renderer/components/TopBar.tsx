@@ -24,12 +24,14 @@ interface TopBarProps {
   zoomed: boolean
   onResetZoom(): void
   onOpenTheme(): void
+  conversationTab?: { id: string; name: string }
+  onCloseConversation?(): void
 }
 
-export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onSend, onCopy, zoomed, onResetZoom, onOpenTheme }: TopBarProps) {
+export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onSend, onCopy, zoomed, onResetZoom, onOpenTheme, conversationTab, onCloseConversation }: TopBarProps) {
   const tabStrip = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState<PathContextMenuState | null>(null)
-  const activePath = tabs.find((tab) => tab.active)?.path
+  const activePath = conversationTab ? `conversation:${conversationTab.id}` : tabs.find((tab) => tab.active)?.path
   const openMenu = (event: ReactMouseEvent, path: string) => {
     event.preventDefault()
     event.stopPropagation()
@@ -55,8 +57,8 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
           <button
             type="button"
             role="tab"
-            aria-selected={tab.active}
-            className={`tab ${tab.active ? 'tab-active' : ''}`}
+            aria-selected={!conversationTab && tab.active}
+            className={`tab ${!conversationTab && tab.active ? 'tab-active' : ''}`}
             key={tab.path}
             title={tab.name}
             onClick={() => onOpenTab(tab.path)}
@@ -84,6 +86,10 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
             >×</span>
           </button>
         ))}
+        {conversationTab && <button type="button" role="tab" aria-selected className="tab tab-active conversation-tab" title={conversationTab.name}>
+          <span className="tab-name">{conversationTab.name}</span>
+          <span role="button" tabIndex={0} aria-label={`Close tab ${conversationTab.name}`} className="tab-close" onClick={(event) => { event.stopPropagation(); onCloseConversation?.() }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onCloseConversation?.() } }}>×</span>
+        </button>}
       </div>
       {menu && <PathContextMenu menu={menu} onCopyPath={onCopyPath} onClose={closeMenu} {...(onCloseOthers ? { onCloseOthers } : {})} {...(onCloseAll ? { onCloseAll } : {})} {...(onCloseSaved ? { onCloseSaved } : {})} />}
       <div className="topbar-spacer" />

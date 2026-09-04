@@ -13,6 +13,12 @@ const pathSchema = z.string().min(1).max(16_384)
 const idSchema = z.string().min(1).max(512)
 const textSchema = z.string().max(64 * 1_024)
 const serverSchema = z.string().url().max(2_048)
+const conversationTurnSchema = z.object({
+  text: textSchema.refine((value) => value.trim().length > 0),
+  model: idSchema,
+  effort: idSchema.nullable(),
+  access: z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access']),
+}).strict()
 const sendRequestSchema = z.object({
   recipients: z.array(idSchema).max(128),
   note: textSchema,
@@ -115,6 +121,10 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.pairEngine]: z.tuple([serverSchema, idSchema]),
   [IPC.reconnectEngine]: z.tuple([]),
   [IPC.openConversation]: z.tuple([idSchema]),
+  [IPC.startConversationTurn]: z.tuple([idSchema, conversationTurnSchema]),
+  [IPC.stopConversationTurn]: z.tuple([idSchema]),
+  [IPC.answerEngineApproval]: z.tuple([idSchema, idSchema, z.enum(['accept', 'acceptForSession', 'acceptAlways', 'decline', 'cancel'])]),
+  [IPC.answerEngineUserInput]: z.tuple([idSchema, idSchema, z.record(z.string(), z.unknown())]),
   [IPC.openDocument]: z.tuple([pathSchema.optional()]),
   [IPC.closeDocument]: z.tuple([pathSchema, z.enum(['save', 'discard', 'cancel']).optional()]),
   [IPC.updateBuffer]: z.tuple([pathSchema, z.string(), z.enum(['edit', 'history'])]),
@@ -287,6 +297,10 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.pairEngine]: (server: string, pairingCode: string) => options.api.pairEngine(server, pairingCode),
     [IPC.reconnectEngine]: () => options.api.reconnectEngine(),
     [IPC.openConversation]: (threadId: string) => options.api.openConversation(threadId),
+    [IPC.startConversationTurn]: (threadId: string, input: Parameters<StrataApi['startConversationTurn']>[1]) => options.api.startConversationTurn(threadId, input),
+    [IPC.stopConversationTurn]: (threadId: string) => options.api.stopConversationTurn(threadId),
+    [IPC.answerEngineApproval]: (threadId: string, requestId: string, decision: Parameters<StrataApi['answerEngineApproval']>[2]) => options.api.answerEngineApproval(threadId, requestId, decision),
+    [IPC.answerEngineUserInput]: (threadId: string, requestId: string, answers: Record<string, unknown>) => options.api.answerEngineUserInput(threadId, requestId, answers),
     [IPC.openDocument]: (path?: string) => options.api.openDocument(path),
     [IPC.closeDocument]: (path: string, decision?: 'save' | 'discard' | 'cancel') => options.api.closeDocument(path, decision),
     [IPC.updateBuffer]: (path: string, content: string, origin: BufferOrigin) => options.api.updateBuffer(path, content, origin),

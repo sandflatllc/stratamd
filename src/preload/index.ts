@@ -67,6 +67,10 @@ const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyn
   pairEngine: (server, pairingCode) => invoke<void>(IPC.pairEngine, server, pairingCode),
   reconnectEngine: () => invoke<void>(IPC.reconnectEngine),
   openConversation: (threadId) => invoke<void>(IPC.openConversation, threadId),
+  startConversationTurn: (threadId, input) => invoke<void>(IPC.startConversationTurn, threadId, input),
+  stopConversationTurn: (threadId) => invoke<void>(IPC.stopConversationTurn, threadId),
+  answerEngineApproval: (threadId, requestId, decision) => invoke<void>(IPC.answerEngineApproval, threadId, requestId, decision),
+  answerEngineUserInput: (threadId, requestId, answers) => invoke<void>(IPC.answerEngineUserInput, threadId, requestId, answers),
   onSpelling(listener) {
     const wrapped = (_event: Electron.IpcRendererEvent, spelling: unknown): void => {
       if (!isSpellingContext(spelling)) return
