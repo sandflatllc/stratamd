@@ -252,8 +252,8 @@ test('10 accounts: usage from the engine, parking from the top bar, and the mode
     await page.getByRole('button', { name: 'New thread', exact: true }).click()
     await page.getByRole('button', { name: 'Choose model and account' }).click()
     const models = page.getByRole('region', { name: 'Models and accounts' })
-    await expect(models.getByRole('button', { name: /^GPT-5.6 Codex work/ })).toBeDisabled()
-    await expect(models.getByRole('button', { name: 'Claude Fable 5.1 Claude', exact: true })).toBeEnabled()
+    await expect(models.getByRole('button', { name: 'GPT', exact: true })).toBeDisabled()
+    await expect(models.getByRole('button', { name: 'Use Claude Fable 5.1', exact: true })).toBeEnabled()
   } finally {
     await scenario.dispose()
     await engine.close()

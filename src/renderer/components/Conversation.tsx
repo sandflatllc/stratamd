@@ -203,6 +203,6 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
         </section>
       })}
     </ConversationHistory>}
-    <ConversationComposer key={thread.id} engine={engine} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} queuedCount={queuedCount} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} onSend={(input) => onStart(thread.id, input)} />
+    <ConversationComposer key={thread.id} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} queuedCount={queuedCount} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} onSend={(input) => onStart(thread.id, input)} />
   </section>
 }

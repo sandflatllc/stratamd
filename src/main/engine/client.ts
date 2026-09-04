@@ -1,3 +1,4 @@
+import { continuationScope, familyLabel, modelFamily, permitsSelection } from '../../shared/modelSelection'
 import { chmod, readFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { extname, isAbsolute, join, resolve } from 'node:path'
@@ -518,6 +519,20 @@ export class T3EngineClient implements EngineReadClient {
   async startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string }): Promise<void> {
     const thread = this.#shell?.threads.find((candidate) => candidate.id === threadId)
     if (!thread) throw new Error(`Thread was not found: ${threadId}`)
+    const instanceId = input.instanceId ?? thread.modelSelection.instanceId
+    const accounts = this.#accountViews()
+    const driverFor = (id: string) => accounts.find(account => account.instanceId === id)?.driver ?? this.#models.find(model => model.instanceId === id)?.driver
+    const scope = continuationScope({ instanceId: thread.modelSelection.instanceId, model: thread.modelSelection.model, driver: driverFor(thread.modelSelection.instanceId) })
+    const requestedFamily = modelFamily(undefined, input.model)
+    if (!permitsSelection(scope, { instanceId, model: input.model, driver: driverFor(instanceId) }) || (requestedFamily !== 'unknown' && requestedFamily !== scope.family)) {
+      throw new Error(scope.instanceId
+        ? `This ${familyLabel(scope.family)} conversation stays on subscription ${scope.instanceId}. Choose a model in that subscription.`
+        : `This ${familyLabel(scope.family)} conversation only supports ${familyLabel(scope.family)} models.`)
+    }
+    const catalog = this.#models.filter(model => model.instanceId === instanceId)
+    if (catalog.length && !catalog.some(model => model.slug === input.model)) throw new Error(`Model ${input.model} is not available on subscription ${instanceId}.`)
+    // Validate routing before uploading files or consuming queued replies.
+    await this.#resolveInstance(thread.projectId, instanceId)
     // A conversation Send carries the queued item replies as its attachment (§5.4), keyed by item id; the text stays the owner's note.
     const state = this.#conversations.threads[threadId]
     const queued = state && Object.keys(state.replies).length > 0 ? state.replies : null
@@ -534,7 +549,7 @@ export class T3EngineClient implements EngineReadClient {
     const command = turnStartCommand.parse({
       type: 'thread.turn.start', commandId: input.commandId ?? (queued ? `strata-${messageId}` : randomUUID()), threadId, createdAt: new Date(this.#now()).toISOString(),
       message: { messageId, role: 'user', text, attachments },
-      modelSelection: { instanceId: input.instanceId ? await this.#resolveInstance(thread.projectId, input.instanceId) : thread.modelSelection.instanceId, model: input.model, options: input.options ?? turnOptions(input, thread) },
+      modelSelection: { instanceId, model: input.model, options: input.options ?? turnOptions(input, thread) },
       runtimeMode: input.access, interactionMode: thread.interactionMode,
     })
     await this.#dispatch(command, `turn:${command.message.messageId}`, command.message.messageId)

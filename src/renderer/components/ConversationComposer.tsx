@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import type { ConversationInput, EngineView } from '../../shared/contracts'
+import type { ConversationInput, EngineView, EngineThreadView } from '../../shared/contracts'
+import { continuationScope, permitsSelection } from '../../shared/modelSelection'
+import { ModelPicker } from './ModelPicker'
 import { availableModels, clearDraft, readDraft, rememberSelection, selectionForModel, writeDraft, type ComposerSelection } from '../conversationDrafts'
 
 const accessModes = [
@@ -8,12 +10,10 @@ const accessModes = [
   ['auto', 'Auto', 'Supported providers approve routine actions; others still ask.'],
   ['full-access', 'Full access', 'Allow commands and edits without prompts.'],
 ] as const
-function readFavorites(): string[] {
-  try { const value: unknown = JSON.parse(localStorage.getItem('stratamd.model-favorites.v1') ?? '[]'); return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [] } catch { return [] }
-}
 
 export interface ConversationComposerProps {
   engine: EngineView
+  thread?: EngineThreadView | undefined
   projectId: string
   draftKey: string
   initial: ComposerSelection
@@ -26,15 +26,12 @@ export interface ConversationComposerProps {
   onSend(input: ConversationInput): Promise<void>
 }
 
-export function ConversationComposer({ engine, projectId, draftKey, initial, centered = false, queuedCount = 0, context, canSendContext = false, workspace, branch, onSend }: ConversationComposerProps) {
+export function ConversationComposer({ engine, thread, projectId, draftKey, initial, centered = false, queuedCount = 0, context, canSendContext = false, workspace, branch, onSend }: ConversationComposerProps) {
   const [draft] = useState(() => readDraft(draftKey))
   const [text, setText] = useState(draft.text)
   const [attachment, setAttachment] = useState(draft.attachment)
-  const [selection, setSelection] = useState(draft.selection ?? initial)
+  const [storedSelection, setSelection] = useState(draft.selection ?? initial)
   const [menu, setMenu] = useState<'models' | 'options' | 'access' | null>(null)
-  const [search, setSearch] = useState('')
-  const [favorites, setFavorites] = useState(readFavorites)
-  const [onlyFavorites, setOnlyFavorites] = useState(false)
   const [busy, setBusy] = useState(false)
   const sending = useRef(false)
   const [error, setError] = useState('')
@@ -42,7 +39,12 @@ export function ConversationComposer({ engine, projectId, draftKey, initial, cen
   const input = useRef<HTMLTextAreaElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const popup = useRef<HTMLDivElement>(null)
-  const models = availableModels(engine)
+  const allModels = availableModels(engine)
+  const boundThread = thread ?? engine.projects.flatMap(project => project.threads).find(candidate => candidate.id === readDraft(draftKey).threadId)
+  const driverFor = (instanceId: string | null | undefined) => engine.accounts.find(account => account.instanceId === instanceId)?.driver ?? allModels.find(model => model.instanceId === instanceId)?.driver
+  const scope = boundThread ? continuationScope({ instanceId: boundThread.providerInstanceId, model: boundThread.model, driver: driverFor(boundThread.providerInstanceId) }) : undefined
+  const models = allModels.filter(model => permitsSelection(scope, { instanceId: model.instanceId, model: model.slug, driver: model.driver }))
+  const selection = permitsSelection(scope, { instanceId: storedSelection.instanceId ?? '', model: storedSelection.model, driver: driverFor(storedSelection.instanceId) }) ? storedSelection : boundThread ? { model: boundThread.model, instanceId: boundThread.providerInstanceId, effort: boundThread.effort, options: boundThread.options ?? [], access: storedSelection.access } : initial
   const model = models.find((model) => model.slug === selection.model && model.instanceId === selection.instanceId)
   const account = engine.accounts.find((account) => account.instanceId === selection.instanceId)
   const access = accessModes.find(([id]) => id === selection.access) ?? accessModes[0]
@@ -57,7 +59,7 @@ export function ConversationComposer({ engine, projectId, draftKey, initial, cen
   const choose = (next: ComposerSelection) => { setSelection(next); rememberSelection(projectId, next); persist(text, next, attachment) }
   useEffect(() => { if (centered) input.current?.focus() }, [])
   useEffect(() => {
-    if (!selection.model && initial.model) setSelection(initial)
+    if (!storedSelection.model && initial.model) setSelection(initial)
   }, [initial.model])
   useEffect(() => {
     if (!menu) return
@@ -71,7 +73,8 @@ export function ConversationComposer({ engine, projectId, draftKey, initial, cen
     element.showPopover()
     const place = () => {
       const box = root.current!.getBoundingClientRect()
-      const width = Math.min(menu === 'options' ? 320 : 420, box.width, window.innerWidth - 24)
+      const preferredWidth = menu === 'models' ? 420 : Math.min(menu === 'options' ? 320 : 420, box.width)
+      const width = Math.min(preferredWidth, window.innerWidth - 24)
       element.style.width = `${width}px`
       element.style.left = `${Math.max(12, Math.min(box.left, window.innerWidth - width - 12))}px`
       const below = window.innerHeight - box.bottom - 20
@@ -82,11 +85,13 @@ export function ConversationComposer({ engine, projectId, draftKey, initial, cen
       element.style.top = `${Math.max(12, down ? box.bottom + 6 : box.top - height - 6)}px`
     }
     place()
-    if (menu === 'models') element.querySelector('input')?.focus({ preventScroll: true })
+    if (menu === 'models') element.querySelector<HTMLElement>('button, select')?.focus({ preventScroll: true })
+    const observer = new ResizeObserver(place)
+    observer.observe(element)
     window.addEventListener('resize', place)
     window.addEventListener('scroll', place, true)
-    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); if (element.matches(':popover-open')) element.hidePopover() }
-  }, [menu, search, onlyFavorites])
+    return () => { observer.disconnect(); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); if (element.matches(':popover-open')) element.hidePopover() }
+  }, [menu])
   const send = async () => {
     if (sending.current || !valid || (!text.trim() && !attachment && !queuedCount && !canSendContext)) return
     sending.current = true; setBusy(true); setError(''); setMenu(null)
@@ -98,14 +103,9 @@ export function ConversationComposer({ engine, projectId, draftKey, initial, cen
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'The message could not be sent. Try again.') }
     finally { sending.current = false; setBusy(false) }
   }
-  const favoriteKey = (instanceId: string, slug: string) => `${instanceId}:${slug}`
-  const visibleModels = models.filter((model) => (!onlyFavorites || favorites.includes(favoriteKey(model.instanceId, model.slug))) && `${model.name} ${model.slug} ${model.accountName}`.toLowerCase().includes(search.toLowerCase())).toSorted((a, b) => Number(favorites.includes(favoriteKey(b.instanceId, b.slug))) - Number(favorites.includes(favoriteKey(a.instanceId, a.slug))))
   return <form ref={root} className="chat-composer" data-centered={centered} aria-label="Conversation composer" onSubmit={(event) => { event.preventDefault(); void send() }} onKeyDown={(event) => {
     if (event.key === 'Escape' && menu) { event.preventDefault(); event.stopPropagation(); setMenu(null); input.current?.focus() }
-    if ((event.ctrlKey || event.metaKey) && /^[1-9]$/.test(event.key)) {
-      const target = favorites[Number(event.key) - 1]; const next = models.find((model) => favoriteKey(model.instanceId, model.slug) === target)
-      if (next && !engine.accounts.some((account) => account.instanceId === next.instanceId && !account.usable)) { event.preventDefault(); event.stopPropagation(); choose(selectionForModel(next, selection.access)) }
-    }
+
   }}>
     <div className="chat-composer-box">
       {context && <div className="chat-context">{context}</div>}
@@ -116,16 +116,7 @@ export function ConversationComposer({ engine, projectId, draftKey, initial, cen
       <div className="chat-controls">
         <div className="chat-control"><button type="button" className="chat-pill" aria-label="Choose model and account" aria-expanded={menu === 'models'} disabled={busy} onClick={() => setMenu(menu === 'models' ? null : 'models')} title={model?.accountName}>{model?.name ?? (selection.model || 'Choose model')}<small>{model?.accountName}</small><span aria-hidden="true">⌄</span></button>
           {menu === 'models' && <div ref={popup} popover="manual" className="chat-menu chat-model-menu" aria-label="Models and accounts" role="region">
-            <div className="chat-model-search"><button type="button" aria-label="Show favorite models" aria-pressed={onlyFavorites} onClick={() => setOnlyFavorites(!onlyFavorites)}>★</button><input aria-label="Search models" placeholder="Search models or accounts…" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-            <div className="chat-model-list">{visibleModels.map((candidate) => {
-              const key = favoriteKey(candidate.instanceId, candidate.slug); const favorite = favorites.includes(key)
-              const unavailable = engine.accounts.find((account) => account.instanceId === candidate.instanceId)
-              return <div className="chat-model-row" key={key} data-selected={model === candidate}>
-                <button type="button" disabled={unavailable?.usable === false} onClick={() => { choose(selectionForModel(candidate, selection.access)); setMenu(null); input.current?.focus() }}><span>{candidate.name}</span><small>{candidate.accountName}{unavailable?.usable === false ? ` · ${unavailable.reason ?? unavailable.state}` : ''}</small></button>
-                {favorite && favorites.indexOf(key) < 9 && <kbd>Ctrl+{favorites.indexOf(key) + 1}</kbd>}
-                <button type="button" className="chat-favorite" aria-label={`${favorite ? 'Unfavorite' : 'Favorite'} ${candidate.name} ${candidate.accountName}`} aria-pressed={favorite} onClick={() => { const next = favorite ? favorites.filter((value) => value !== key) : [...favorites, key]; setFavorites(next); try { localStorage.setItem('stratamd.model-favorites.v1', JSON.stringify(next)) } catch { /* In-memory favorites still work. */ } }}>{favorite ? '★' : '☆'}</button>
-              </div>
-            })}{visibleModels.length === 0 && <p>No matching models.</p>}</div>
+            <ModelPicker models={models} accounts={engine.accounts} selection={selection} scope={scope} onSelect={(next, close) => { choose(selectionForModel(next, selection.access)); if (close) { setMenu(null); input.current?.focus() } }} />
           </div>}
         </div>
         <div className="chat-control"><button type="button" className="chat-pill" aria-label="Thinking and context" aria-expanded={menu === 'options'} disabled={busy} onClick={() => setMenu(menu === 'options' ? null : 'options')}>{optionSummary}<span aria-hidden="true">⌄</span></button>

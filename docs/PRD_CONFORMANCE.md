@@ -85,3 +85,5 @@ Then run the cockpit removal audit and build the launcher target with `./node_mo
 ## Direct conversation entry
 
 PRD §6.0 is covered by `test/e2e/new-conversation.spec.ts` for project entry, focus, deferred creation, draft restoration, model/account options, first-send retry, streamed titles, and visual captures; `test/e2e/cockpit-drafts.spec.ts` covers document context delivery. `test/unit/conversation-drafts.test.ts` covers saved defaults and account selection.
+
+The Family → Subscription → Model picker, daily flagships, GPT subscription switching, Claude subscription lock, and saved-draft and dispatch restrictions are covered by `test/unit/model-selection.test.ts` and `test/e2e/model-selector.spec.ts`.

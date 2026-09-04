@@ -135,7 +135,8 @@ test('8: Start thread from a document preselects its project and sends the pendi
     await expect(picker).toContainText('Pending comment.')
     await expect(picker).toContainText('1 held draft')
     await picker.getByRole('button', { name: 'Choose model and account' }).click()
-    await page.getByRole('button', { name: 'Claude Fable 5.1 Claude', exact: true }).click()
+    await page.getByRole('region', { name: 'Models and accounts' }).getByRole('button', { name: 'Claude', exact: true }).click()
+    await page.getByRole('button', { name: 'Use Claude Fable 5.1', exact: true }).click()
     await picker.getByRole('button', { name: 'Send', exact: true }).click()
 
     await expect.poll(() => engine.commands.filter((command) => command.type === 'thread.create' || command.type === 'thread.turn.start').map((command) => command.type)).toEqual(['thread.create', 'thread.turn.start'])

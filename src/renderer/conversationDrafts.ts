@@ -1,3 +1,4 @@
+import { flagshipModel } from '../shared/modelSelection'
 import type { ConversationInput, CreateDraftRequest, EngineModelView, EngineView, ModelOption } from '../shared/contracts'
 
 export type ComposerSelection = Pick<ConversationInput, 'model' | 'effort' | 'access' | 'instanceId' | 'options'>
@@ -51,7 +52,7 @@ export function initialSelection(engine: EngineView, projectId: string): Compose
   const selected = project?.defaultModelSelection
   const instanceId = selected?.instanceId ?? previous?.providerInstanceId
   const slug = selected?.model ?? previous?.model
-  const model = models.find((candidate) => candidate.instanceId === instanceId && candidate.slug === slug && usable(candidate.instanceId)) ?? models.find((candidate) => candidate.isDefault && usable(candidate.instanceId)) ?? models.find((candidate) => usable(candidate.instanceId))
+  const model = (selected ? models.find((candidate) => candidate.instanceId === instanceId && candidate.slug === slug && usable(candidate.instanceId)) : undefined) ?? flagshipModel(models.filter((candidate) => candidate.instanceId === instanceId && usable(candidate.instanceId))) ?? flagshipModel(models.filter((candidate) => usable(candidate.instanceId)))
   if (!model) return { model: '', instanceId: null, options: [], effort: null, access: 'approval-required' }
   const result = selectionForModel(model, previous?.access ?? 'approval-required')
   if (model.instanceId === instanceId && model.slug === slug) {

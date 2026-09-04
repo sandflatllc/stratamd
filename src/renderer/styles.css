@@ -1509,15 +1509,8 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .chat-menu { position: fixed; z-index: 80; inset: auto; margin: 0; width: min(420px, 100%); max-height: min(380px, 45vh); overflow: auto; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); box-shadow: 0 12px 30px var(--shadow); color: var(--text); }
 .chat-menu::backdrop { background: transparent; }
 .chat-menu button { border: 0; border-radius: 7px; background: transparent; color: var(--text); text-align: left; padding: 9px; }
-.chat-menu button:hover, .chat-menu button[aria-pressed="true"], .chat-model-row[data-selected="true"] { background: var(--card-2); }
+.chat-menu button:hover, .chat-menu button[aria-pressed="true"] { background: var(--card-2); }
 .chat-menu p { padding: 8px; color: var(--muted); }
-.chat-model-search { display: flex; align-items: center; gap: 8px; position: sticky; top: -8px; padding: 3px 0 10px; background: var(--card); }
-.chat-model-search input { min-width: 0; flex: 1; border: 0; border-bottom: 1px solid var(--line); padding: 9px 3px; background: transparent; color: var(--text); font: inherit; }
-.chat-model-row { display: flex; align-items: center; border-radius: 7px; }
-.chat-model-row > button:first-child { flex: 1; min-width: 0; }
-.chat-model-row small { display: block; color: var(--muted); font-size: .85em; overflow-wrap: anywhere; }
-.chat-model-row .chat-favorite { flex: none; color: var(--muted); }
-.chat-model-row .chat-favorite[aria-pressed="true"] { color: var(--controls-warning); background: transparent; }
 .chat-options-menu { width: min(320px, 100%); }
 .chat-options-menu fieldset { border: 0; border-bottom: 1px solid var(--line); margin: 0 0 7px; padding: 6px 0; }
 .chat-options-menu legend { color: var(--muted); padding: 4px 9px; }
@@ -1535,3 +1528,22 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .app-shell[data-new-conversation="true"] .pending-status,
 .app-shell[data-new-conversation="true"] .topbar > kbd,
 .app-shell[data-new-conversation="true"] .send-button { display: none; }
+
+.model-picker { display: grid; gap: 16px; padding: 8px; }
+.model-picker-families { margin: 0; padding: 0; border: 0; min-width: 0; }
+.model-picker-families legend, .model-picker-label, .model-picker-subscription, .model-picker-fixed > span { color: var(--muted); font-size: .9em; }
+.model-picker-families > div { display: flex; gap: 8px; margin-top: 8px; }
+.model-picker-families button { flex: 1; text-align: center; border: 1px solid var(--line); }
+.model-picker-subscription { display: grid; gap: 8px; }
+.model-picker-subscription select { width: 100%; min-width: 0; max-width: none; padding: 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--card-2); color: var(--text); font: inherit; }
+.model-picker-fixed { display: grid; gap: 5px; }
+.model-picker-fixed strong { overflow-wrap: anywhere; font-weight: 600; }
+.model-picker-models { display: grid; gap: 8px; min-width: 0; }
+.model-picker-flagship { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; border: 1px solid var(--line) !important; }
+.model-picker-flagship strong { overflow-wrap: anywhere; }
+.model-picker-flagship small { color: var(--muted); white-space: nowrap; }
+.model-picker-others { border-top: 1px solid var(--line); padding-top: 8px; }
+.model-picker-others summary { cursor: pointer; padding: 6px; }
+.model-picker-others summary small { display: block; margin: 4px 0 0 16px; color: var(--muted); }
+.model-picker-others [role="group"] { display: grid; margin-top: 6px; }
+.model-picker-others button { width: 100%; }
