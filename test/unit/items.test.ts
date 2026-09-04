@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { deriveItems, itemProgress, turnItems } from '../../src/core/items'
+import { deriveItems, itemProgress, postedMessageItems, turnItems } from '../../src/core/items'
+import { mapMarkdownBlocks } from '../../src/core/blocks'
 import type { AnnotationView, AttachmentView, HunkView } from '../../src/shared/contracts'
 
 const author = { id: 'thread-1', name: 'Reviewer', color: 'grape' as const }
@@ -28,5 +29,17 @@ describe('items', () => {
 
   it('projects Reviewed and Revisit without storing a second item record', () => {
     expect(Object.fromEntries(deriveItems({ annotations: [{ ...base, review: 'reviewed' }, { ...base, id: 'changed', review: 'revisit' }] }).map((item) => [item.id, item.review]))).toEqual({ q: 'reviewed', changed: 'revisit' })
+  })
+
+  it('derives agent-posted items from immutable message block ids', () => {
+    const targetText = 'The first choice has a lower cost.\n\nThe second choice is faster.'
+    const block = mapMarkdownBlocks('message:answer-1', targetText).blocks[1]!
+    const messages = [
+      { id: 'answer-1', role: 'assistant' as const, text: targetText, turnId: 'turn-1', streaming: false, createdAt: '2026-09-03T00:00:00Z', attachmentCount: 0 },
+      { id: 'answer-2', role: 'assistant' as const, text: `Choose.\n\n\`\`\`strata\n[{"verb":"decision","anchor":{"message":"answer-1","block":"${block.id}"},"text":"Which path?","options":["First","Second"]}]\n\`\`\``, turnId: 'turn-2', streaming: false, createdAt: '2026-09-03T00:01:00Z', attachmentCount: 0 },
+    ]
+    expect(postedMessageItems(messages, 'thread-1')).toMatchObject([{
+      kind: 'decision', quote: 'The second choice is faster.', text: 'Which path?', threadId: 'thread-1', turnId: 'turn-2', messageId: 'answer-1', inferred: false,
+    }])
   })
 })

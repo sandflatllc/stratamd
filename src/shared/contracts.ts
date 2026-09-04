@@ -179,6 +179,9 @@ export interface EngineMessageView {
   streaming: boolean
   createdAt: string
   attachmentCount: number
+  /** Immutable markdown blocks, namespaced by the stable message id. */
+  blocks?: Array<{ id: string; from: number; to: number; text: string }>
+  prose?: string
 }
 
 export interface EngineActivityView {
@@ -208,6 +211,7 @@ export interface EngineThreadView {
   turnStartedAt: string | null
   messages: EngineMessageView[]
   activities: EngineActivityView[]
+  items?: ItemView[]
 }
 
 export interface EngineProjectView {

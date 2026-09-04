@@ -21,6 +21,8 @@ import {
 } from './t3-contract'
 import type { EngineProjectView, EngineThreadView, EngineView } from '../../shared/contracts'
 import { assertSupportedPlatform } from '../../platform/runtime'
+import { mapMarkdownBlocks, parseStrataBlock } from '../../core/blocks'
+import { postedMessageItems } from '../../core/items'
 
 export const T3_SUPPORTED_VERSION = '0.0.33'
 
@@ -152,6 +154,7 @@ export class T3EngineClient implements EngineReadClient {
           streaming: message.streaming,
           createdAt: message.createdAt,
           attachmentCount: message.attachments?.length ?? 0,
+          ...(!message.streaming && message.role === 'assistant' ? (() => { const prose = parseStrataBlock(message.text)?.prose ?? message.text; return { prose, blocks: mapMarkdownBlocks(`message:${message.id}`, prose).blocks } })() : {}),
         })) : []
         const activities = detailThread?.id === thread.id ? detailThread.activities.map((activity) => ({
           id: activity.id,
@@ -183,6 +186,7 @@ export class T3EngineClient implements EngineReadClient {
             : typeof latestTurn?.requestedAt === 'string' ? latestTurn.requestedAt : null,
           messages,
           activities,
+          items: postedMessageItems(messages, thread.id),
         }
       }),
     }))

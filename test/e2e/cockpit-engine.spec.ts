@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test, type TestInfo } from '@playwright/test'
 import { Scenario } from './harness'
+import { mapMarkdownBlocks } from '../../src/core/blocks'
 
 const at = '2026-09-03T12:00:00.000Z'
 
@@ -147,6 +148,28 @@ test('2 conversation: moves between placements and dispatches a message, approva
     await expect(moved.getByRole('tab', { name: 'This passage' })).toHaveAttribute('aria-selected', 'true')
     await moved.getByRole('tab', { name: 'Whole thread' }).click()
     await expect(moved).toContainText('Read-side conversation from T3.')
+  } finally {
+    await scenario.dispose()
+    await new Promise<void>((resolve) => engine.server.close(() => resolve()))
+  }
+})
+
+test('4 explicit message item: completed agent prose has block ids and its posted item appears once', async ({}, testInfo) => {
+  const engine = await startEngine()
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    const prose = 'The first approach is safer.\n\nThe second approach is faster.'
+    const block = mapMarkdownBlocks('message:m1', prose).blocks[1]!
+    engine.setMessage(`${prose}\n\n\`\`\`strata\n[{"verb":"question","anchor":{"message":"m1","block":"${block.id}"},"text":"Which approach should I take?"}]\n\`\`\``)
+    const page = await scenario.launch()
+    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
+    await page.getByRole('button', { name: /Live engine thread/ }).click()
+    const conversation = page.getByRole('region', { name: 'Conversation' })
+    await conversation.getByRole('button', { name: 'Stop' }).click()
+    const proseNode = conversation.locator('[data-message-id="m1"] [data-annotatable="true"]')
+    await expect(proseNode).toHaveAttribute('data-block-ids', new RegExp(block.id))
+    await expect(conversation.getByRole('region', { name: 'Turn items' }).getByText('Which approach should I take?')).toHaveCount(1)
+    await expect(conversation).not.toContainText('```strata')
   } finally {
     await scenario.dispose()
     await new Promise<void>((resolve) => engine.server.close(() => resolve()))

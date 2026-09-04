@@ -1,4 +1,5 @@
-import type { AnnotationView, AttachmentView, HunkView, ItemView } from '../shared/contracts'
+import type { AnnotationView, AttachmentView, EngineMessageView, HunkView, ItemView } from '../shared/contracts'
+import { mapMarkdownBlocks, parseStrataBlock, resolveBlock } from './blocks'
 
 export interface ItemInputs {
   annotations: readonly AnnotationView[]
@@ -61,4 +62,42 @@ export function turnItems(items: readonly ItemView[], threadId: string, turnId: 
 
 export function itemProgress(items: readonly ItemView[]): { done: number; total: number } {
   return { done: items.filter((item) => item.status === 'done').length, total: items.length }
+}
+
+/** Explicit message-anchored items posted in completed agent strata blocks. */
+export function postedMessageItems(messages: readonly EngineMessageView[], threadId: string): ItemView[] {
+  const byId = new Map(messages.map((message) => [message.id, message]))
+  const result: ItemView[] = []
+  for (const source of messages) {
+    if (source.role !== 'assistant' || source.streaming) continue
+    const parsed = parseStrataBlock(source.text)
+    if (!parsed) continue
+    for (const entryResult of parsed.results) {
+      const entry = entryResult.entry
+      if (!entry || !(entry.verb === 'comment' || entry.verb === 'question' || entry.verb === 'decision' || entry.verb === 'suggest') || !('message' in entry.anchor)) continue
+      const target = byId.get(entry.anchor.message)
+      if (!target || target.streaming) continue
+      const prose = parseStrataBlock(target.text)?.prose ?? target.text
+      const blocks = target.blocks ?? mapMarkdownBlocks(`message:${target.id}`, prose).blocks
+      const block = resolveBlock({ namespace: `message:${target.id}`, blocks }, entry.anchor.block)
+      if (!block) continue
+      const kind = entry.verb === 'suggest' ? 'suggestion' : entry.verb
+      result.push({
+        id: `m_${source.id}_${entryResult.index}`,
+        kind,
+        status: 'open',
+        review: 'unreviewed',
+        text: entry.verb === 'suggest' ? entry.replacement : entry.text,
+        quote: block.text,
+        order: block.from * 1_000 + entryResult.index,
+        threadId,
+        turnId: source.turnId,
+        messageId: target.id,
+        annotationId: null,
+        hunkId: null,
+        inferred: false,
+      })
+    }
+  }
+  return result.sort((left, right) => Number(right.kind === 'decision') - Number(left.kind === 'decision') || left.order - right.order)
 }

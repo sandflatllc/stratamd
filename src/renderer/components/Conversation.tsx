@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { EngineActivityView, EngineThreadView, EngineView, ItemView } from '../../shared/contracts'
-import { turnItems } from '../../core/items'
 import { InlineMarkdown } from '../inlineMarkdown'
 
 function activeThread(engine: EngineView): { thread: EngineThreadView; project: string } | null {
@@ -124,6 +123,7 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
     }
     return ids.map((id) => ({ id, messages: thread.messages.filter((message) => (message.turnId ?? 'thread') === id), activities: thread.activities.filter((activity) => (activity.turnId ?? 'thread') === id) }))
   }, [thread])
+  const allItems = useMemo(() => thread ? [...items, ...(thread.items ?? [])] : [...items], [items, thread])
 
   if (engine.state === 'disconnected' || engine.state === 'connecting') return <div className="engine-empty" data-testid="conversation-disconnected">{engine.server ?? 'Engine'} is {engine.state === 'connecting' ? 'connecting' : 'disconnected'}.<button type="button" onClick={onReconnect}>Reconnect</button></div>
   if (!thread && passage) return <section className="conversation-panel" aria-label="Conversation" data-placement={placement}>
@@ -152,11 +152,11 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
         const folded = collapsed[turn.id] ?? placement === 'side'
         return <section className="conversation-turn" key={turn.id} data-folded={folded || undefined}>
           <button type="button" className="conversation-fold" aria-expanded={!folded} onClick={() => setCollapsed((value) => ({ ...value, [turn.id]: !folded }))}>{folded ? 'Expand turn' : 'Collapse turn'}</button>
-          {turn.messages.map((message) => <article className={`conversation-message ${message.role}`} key={message.id} data-streaming={message.streaming || undefined}><small>{message.role === 'assistant' ? 'Agent' : message.role === 'user' ? 'You' : 'System'}{message.role === 'user' && <span className="conversation-chip">{message.attachmentCount > 0 ? `${message.attachmentCount} attached` : 'Message'}</span>}</small><div className={message.role === 'assistant' && folded ? 'conversation-prose-folded' : undefined}><InlineMarkdown text={message.text} /></div></article>)}
+          {turn.messages.map((message) => { const prose = message.prose ?? message.text; const blocks = message.blocks ?? []; return <article className={`conversation-message ${message.role}`} key={message.id} data-message-id={message.id} data-streaming={message.streaming || undefined}><small>{message.role === 'assistant' ? 'Agent' : message.role === 'user' ? 'You' : 'System'}{message.role === 'user' && <span className="conversation-chip">{message.attachmentCount > 0 ? `${message.attachmentCount} attached` : 'Message'}</span>}</small><div className={message.role === 'assistant' && folded ? 'conversation-prose-folded' : undefined} data-annotatable={message.role === 'assistant' && !message.streaming || undefined} data-block-ids={blocks.map((block) => block.id).join(' ')}><InlineMarkdown text={prose} /></div></article> })}
           {turn.activities.filter((activity) => !activity.kind.endsWith('.requested') && !activity.kind.endsWith('.resolved')).map((activity) => <article className="conversation-tool" key={activity.id} data-tone={activity.tone}><strong>{activity.summary}</strong></article>)}
           {approvals.filter((activity) => (activity.turnId ?? 'thread') === turn.id).map((activity) => { const payload = record(activity.payload); const requestId = String(payload.requestId ?? ''); return <section className="conversation-request" data-kind="approval" key={activity.id}><strong>{typeof payload.detail === 'string' ? payload.detail : activity.summary}</strong><div className="conversation-actions"><button type="button" onClick={() => onApproval(thread.id, requestId, 'accept')}>Approve</button><button type="button" onClick={() => onApproval(thread.id, requestId, 'decline')}>Decline</button></div></section> })}
           {userInputs.filter((activity) => (activity.turnId ?? 'thread') === turn.id).map((activity) => <UserInputCard key={activity.id} activity={activity} onAnswer={(requestId, answers) => onUserInput(thread.id, requestId, answers)} />)}
-          <TurnChecklist items={turnItems(items, thread.id, turn.id)} {...(onReplyItem ? { onReply: onReplyItem } : {})} {...(onOpenItem ? { onOpen: onOpenItem } : {})} {...(onActItem ? { onAct: onActItem } : {})} />
+          <TurnChecklist items={allItems.filter((item) => item.threadId === thread.id && item.turnId === turn.id)} {...(onReplyItem ? { onReply: onReplyItem } : {})} {...(onOpenItem ? { onOpen: onOpenItem } : {})} {...(onActItem ? { onAct: onActItem } : {})} />
         </section>
       })}
     </div>}
