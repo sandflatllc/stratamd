@@ -22,19 +22,55 @@ function shell(text = 'First thread', status: 'idle' | 'running' = 'idle') {
   }
 }
 
-function detail(message = 'Engine transcript') {
+function detail(message = 'Engine transcript', checkpoints: unknown[] = []) {
   return {
     snapshotSequence: 5,
     thread: {
       ...shell().threads[0], deletedAt: null,
       messages: [{ id: 'm1', role: 'assistant', text: message, attachments: [], turnId: 'turn-1', streaming: false, createdAt: at, updatedAt: at }],
-      activities: [], checkpoints: [],
+      activities: [], checkpoints,
     },
     page: { beforeCursor: null, hasMore: false, snapshotSequence: 5, threadSequence: 5 },
   }
 }
 
 describe('T3 engine read client', () => {
+  it('projects markdown and code files from completed turn diffs without opening them', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'strata-engine-files-'))
+    const checkpoint = { turnId: 'turn-1', checkpointTurnCount: 1, checkpointRef: 'ref', status: 'ready', files: [{ path: 'notes/one.md', kind: 'modified', additions: 4, deletions: 1 }, { path: 'src/two.ts', kind: 'created', additions: 8, deletions: 0 }], assistantMessageId: 'm1', completedAt: at }
+    const fetch = vi.fn(async (input: string | URL | Request) => String(input).endsWith('/oauth/token')
+      ? Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+      : String(input).endsWith('/api/orchestration/shell') ? Response.json(shell(), { headers: { 'x-t3-version': '0.0.33' } }) : Response.json(detail('Done', [checkpoint]))) as typeof globalThis.fetch
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, pollMs: 60_000 })
+    await client.pair('http://engine.test', 'code')
+    await client.openThread('t1')
+    expect(client.view().projects[0]!.threads[0]!.documents).toEqual([
+      { path: '/work/strata/notes/one.md', turnId: 'turn-1', additions: 4, deletions: 1, markdown: true },
+      { path: '/work/strata/src/two.ts', turnId: 'turn-1', additions: 8, deletions: 0, markdown: false },
+    ])
+    await client.shutdown()
+  })
+
+  it('creates a thread with the picker choices and makes it active', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'strata-engine-create-'))
+    let created: Record<string, unknown> | null = null
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+      if (url.endsWith('/api/orchestration/dispatch')) { created = JSON.parse(String(init?.body)); return Response.json({ sequence: 2 }) }
+      const base = shell()
+      if (created) { const command = created as { threadId: string; title: string; modelSelection: unknown; runtimeMode: string }; base.threads.push({ ...base.threads[0]!, id: command.threadId, title: command.title, modelSelection: command.modelSelection as typeof base.threads[0]['modelSelection'], runtimeMode: command.runtimeMode as 'full-access' }) }
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(base, { headers: { 'x-t3-version': '0.0.33' } })
+      const id = url.split('/').pop()!
+      return Response.json({ ...detail(''), thread: { ...detail('').thread, ...base.threads.find((thread) => thread.id === id), id } })
+    }) as typeof globalThis.fetch
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), pollMs: 60_000 })
+    await client.pair('http://engine.test', 'code')
+    const id = await client.createThread({ projectId: 'p1', title: 'From document', model: 'gpt-5.6', effort: 'high', access: 'full-access' })
+    expect(client.view().activeThreadId).toBe(id)
+    expect(created).toMatchObject({ type: 'thread.create', threadId: id, projectId: 'p1', title: 'From document', modelSelection: { model: 'gpt-5.6', options: { effort: 'high' } }, runtimeMode: 'full-access' })
+    await client.shutdown()
+  })
   it('pairs, keeps the credential private, projects the shell, and persists visits', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'strata-engine-'))
     const requests: Array<{ url: string; init?: RequestInit }> = []
@@ -111,9 +147,10 @@ describe('T3 engine read client', () => {
     await client.respondApproval('t1', 'approval-1', 'accept')
     await client.respondUserInput('t1', 'input-1', { choice: 'Ship it' })
     await client.interrupt('t1')
+    await client.actOnThread('t1', 'settle')
 
     expect(commands.map((command) => command.type)).toEqual([
-      'thread.turn.start', 'thread.approval.respond', 'thread.user-input.respond', 'thread.turn.interrupt',
+      'thread.turn.start', 'thread.approval.respond', 'thread.user-input.respond', 'thread.turn.interrupt', 'thread.settle',
     ])
     expect(commands[0]).toMatchObject({
       threadId: 't1', message: { role: 'user', text: 'Continue the work', attachments: [] },
@@ -123,7 +160,9 @@ describe('T3 engine read client', () => {
     expect(commands[1]).toMatchObject({ requestId: 'approval-1', decision: 'accept' })
     expect(commands[2]).toMatchObject({ requestId: 'input-1', answers: { choice: 'Ship it' } })
     expect(commands[3]).toMatchObject({ turnId: 'turn-1' })
-    for (const command of commands) expect(command).toMatchObject({ commandId: expect.any(String), createdAt: at })
+    expect(commands[4]).toMatchObject({ threadId: 't1' })
+    for (const command of commands) expect(command).toMatchObject({ commandId: expect.any(String) })
+    for (const command of commands.slice(0, 4)) expect(command).toMatchObject({ createdAt: at })
     await client.shutdown()
   })
 

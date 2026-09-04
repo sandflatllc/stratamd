@@ -1296,9 +1296,17 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .project-group { display: grid; gap: 4px; padding: 8px 0 14px; }
 .project-group h3 { margin: 0; font-size: 0.9rem; }
 .project-group > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
-.project-thread { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 7px 8px; text-align: left; }
+.project-thread { display: flex; align-items: center; gap: 5px; width: 100%; padding: 4px; }
+.project-thread > button:first-child { display: flex; min-width: 0; flex: 1; justify-content: space-between; gap: 8px; padding: 7px 8px; border: 0; background: none; color: inherit; text-align: left; }
 .project-thread.active { background: var(--surfaces-raised); }
 .project-thread small { color: var(--text-muted); white-space: nowrap; }
+.project-row-actions { display: flex; gap: 2px; }
+.project-row-actions button { border: 0; background: none; color: var(--text-muted); font-size: .65rem; }
+.thread-picker { display: grid; gap: 7px; margin: 8px 0; padding: 10px; border: 1px solid var(--borders-subtle); border-radius: 9px; }
+.thread-picker label { display: flex; justify-content: space-between; gap: 8px; }
+.documents-panel { max-height: 220px; overflow: auto; }
+.documents-panel > button { display: flex; width: 100%; justify-content: space-between; gap: 8px; padding: 7px 10px; border: 0; background: none; color: var(--text-primary); text-align: left; }
+.documents-panel > button small { color: var(--text-muted); }
 .unread-dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--accents-primary); }
 .engine-mismatch { color: var(--semantic-caution); }
 .conversation-panel { display: flex; flex-direction: column; min-height: 0; height: 100%; }

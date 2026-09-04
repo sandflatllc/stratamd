@@ -212,6 +212,7 @@ export interface EngineThreadView {
   messages: EngineMessageView[]
   activities: EngineActivityView[]
   items?: ItemView[]
+  documents?: Array<{ path: string; turnId: string; additions: number; deletions: number; markdown: boolean }>
 }
 
 export interface EngineProjectView {
@@ -573,6 +574,8 @@ export interface StrataApi {
   stopConversationTurn(threadId: string): Promise<void>
   answerEngineApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
   answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
+  createEngineThread(input: { projectId: string; title: string; model: string; effort: string | null; access: EngineThreadView['access'] }): Promise<string>
+  actOnEngineThread(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void>
   openDocument(path?: string): Promise<void>
   /** Renderer-only bridge: preload resolves Electron File objects with webUtils. */
   openDroppedFiles?(files: File[]): Promise<void>

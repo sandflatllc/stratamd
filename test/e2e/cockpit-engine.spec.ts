@@ -51,7 +51,7 @@ async function startEngine(): Promise<{ server: Server; origin: string; commands
         { id: 'tool-1', tone: 'tool', kind: 'tool.completed', summary: 'Updated cockpit files', payload: {}, turnId: 'turn-1', createdAt: at },
       ]
       const sent = commands.filter((command) => command.type === 'thread.turn.start').map((command, index) => ({ id: `sent-${index}`, role: 'user', text: (command.message as { text: string }).text, attachments: [], turnId: 'turn-1', streaming: false, createdAt: at, updatedAt: at }))
-      response.end(JSON.stringify({ snapshotSequence: commands.length + 2, thread: { id: 't1', projectId: 'p1', title: 'Live engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: { turnId: 'turn-1', state: status === 'running' ? 'running' : 'interrupted', requestedAt: at, startedAt: at, completedAt: null, assistantMessageId: 'm1' }, createdAt: at, updatedAt: at, session: { threadId: 't1', status, providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, deletedAt: null, messages: [...sent, { id: 'm1', role: 'assistant', text: message, attachments: [], turnId: 'turn-1', streaming: status === 'running', createdAt: at, updatedAt: at }], activities, checkpoints: [] }, page: { beforeCursor: null, hasMore: false, snapshotSequence: commands.length + 2, threadSequence: commands.length + 2 } }))
+      response.end(JSON.stringify({ snapshotSequence: commands.length + 2, thread: { id: 't1', projectId: 'p1', title: 'Live engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: { turnId: 'turn-1', state: status === 'running' ? 'running' : 'interrupted', requestedAt: at, startedAt: at, completedAt: null, assistantMessageId: 'm1' }, createdAt: at, updatedAt: at, session: { threadId: 't1', status, providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, deletedAt: null, messages: [...sent, { id: 'm1', role: 'assistant', text: message, attachments: [], turnId: 'turn-1', streaming: status === 'running', createdAt: at, updatedAt: at }], activities, checkpoints: [{ turnId: 'turn-1', checkpointTurnCount: 1, checkpointRef: 'ref', status: 'ready', files: [{ path: 'notes/one.md', kind: 'created', additions: 4, deletions: 0 }, { path: 'src/two.ts', kind: 'created', additions: 8, deletions: 0 }], assistantMessageId: 'm1', completedAt: at }] }, page: { beforeCursor: null, hasMore: false, snapshotSequence: commands.length + 2, threadSequence: commands.length + 2 } }))
       return
     }
     response.writeHead(404).end('{}')
@@ -77,8 +77,8 @@ test('1 and 2 read side: disconnect is isolated and reconnect restores the activ
     const page = await scenario.launch()
     const navigation = page.getByRole('tablist', { name: 'Document navigation' })
     await navigation.getByRole('tab', { name: 'Projects' }).click()
-    await expect(page.getByRole('button', { name: /Live engine thread/ })).toBeVisible()
-    await page.getByRole('button', { name: /Live engine thread/ }).click()
+    await expect(page.getByRole('button', { name: /^Open Live engine thread$/ })).toBeVisible()
+    await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
     await expect(page.getByRole('region', { name: 'Conversation' })).toContainText('Read-side conversation from T3.')
 
     engine.setOnline(false)
@@ -94,7 +94,7 @@ test('1 and 2 read side: disconnect is isolated and reconnect restores the activ
     engine.setMessage('Conversation restored after reconnect.')
     engine.setOnline(true)
     await navigation.getByRole('tab', { name: 'Conversation' }).click()
-    await page.getByRole('button', { name: 'Reconnect' }).click()
+    await page.getByRole('button', { name: 'Reconnect' }).dispatchEvent('click')
     await expect(page.getByRole('region', { name: 'Conversation' })).toContainText('Conversation restored after reconnect.')
     expect(await page.evaluate(async () => (await window.strata.getState()).activeDocument?.content)).toContain('Still here.')
   } finally {
@@ -110,7 +110,7 @@ test('2 conversation: moves between placements and dispatches a message, approva
     const page = await scenario.launch()
     const navigation = page.getByRole('tablist', { name: 'Document navigation' })
     await navigation.getByRole('tab', { name: 'Projects' }).click()
-    await page.getByRole('button', { name: /Live engine thread/ }).click()
+    await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
     const side = page.getByRole('region', { name: 'Conversation' })
     await expect(side.locator('.conversation-turn')).toHaveAttribute('data-folded', 'true')
     await expect(side.getByRole('tab', { name: 'This passage' })).toBeDisabled()
@@ -163,7 +163,7 @@ test('4 explicit message item: completed agent prose has block ids and its poste
     engine.setMessage(`${prose}\n\n\`\`\`strata\n[{"verb":"question","anchor":{"message":"m1","block":"${block.id}"},"text":"Which approach should I take?"}]\n\`\`\``)
     const page = await scenario.launch()
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
-    await page.getByRole('button', { name: /Live engine thread/ }).click()
+    await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
     const conversation = page.getByRole('region', { name: 'Conversation' })
     await conversation.getByRole('button', { name: 'Stop' }).click()
     const proseNode = conversation.locator('[data-message-id="m1"] [data-annotatable="true"]')
@@ -183,7 +183,7 @@ test('4 inference: seven prose questions queue four keyed replies in one deliver
     engine.setMessage('1. Which audience should lead?\n2. Should launch be public?\n3. What is the budget?\n4. Which region goes first?\n5. Keep the old name?\n6. Require approval?\n7. When should work begin?')
     const page = await scenario.launch()
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
-    await page.getByRole('button', { name: /Live engine thread/ }).click()
+    await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
     const conversation = page.getByRole('region', { name: 'Conversation' })
     await conversation.getByRole('button', { name: 'Stop' }).click()
     const checklist = conversation.getByRole('region', { name: 'Turn items' })
@@ -201,6 +201,30 @@ test('4 inference: seven prose questions queue four keyed replies in one deliver
     expect(text.match(/^- inferred_[^:]+:/gmu)).toHaveLength(4)
     engine.finish()
     await expect(checklist.locator('.turn-item[data-status="open"]')).toHaveCount(3)
+  } finally {
+    await scenario.dispose()
+    await new Promise<void>((resolve) => engine.server.close(() => resolve()))
+  }
+})
+
+test('8 and 9 projects: picker is project-scoped, row actions dispatch, and turn files stay closed in Documents', async ({}, testInfo) => {
+  const engine = await startEngine()
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    const page = await scenario.launch()
+    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
+    await page.getByRole('button', { name: 'New thread' }).click()
+    const picker = page.getByRole('form', { name: 'Start thread' })
+    await expect(picker.getByLabel('Project')).toHaveValue('p1')
+    await expect(picker.getByLabel('Model')).toHaveValue('gpt-5.6')
+    await picker.getByRole('button', { name: 'Cancel' }).click()
+    await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
+    await expect(page.getByRole('heading', { name: 'Documents' })).toBeVisible()
+    await expect(page.locator('.documents-panel > button')).toHaveCount(2)
+    await expect(page.locator('.tabs > .tab:not(.conversation-tab)')).toHaveCount(1)
+    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
+    await page.getByRole('button', { name: 'Settle Live engine thread' }).click()
+    await expect.poll(() => engine.commands.some((command) => command.type === 'thread.settle')).toBe(true)
   } finally {
     await scenario.dispose()
     await new Promise<void>((resolve) => engine.server.close(() => resolve()))

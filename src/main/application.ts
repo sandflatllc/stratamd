@@ -718,6 +718,16 @@ export class StrataApplication implements StrataApi {
     await this.#engine.openThread(threadId)
   }
 
+  async createEngineThread(input: { projectId: string; title: string; model: string; effort: string | null; access: import('../shared/contracts').EngineThreadView['access'] }): Promise<string> {
+    if (!this.#engine.createThread) throw new Error('This engine cannot create threads')
+    return this.#engine.createThread(input)
+  }
+
+  async actOnEngineThread(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void> {
+    if (!this.#engine.actOnThread) throw new Error('This engine cannot change threads')
+    await this.#engine.actOnThread(threadId, action)
+  }
+
   async startConversationTurn(threadId: string, input: Parameters<EngineReadClient['startTurn']>[1]): Promise<void> {
     await this.#engine.startTurn(threadId, input)
   }

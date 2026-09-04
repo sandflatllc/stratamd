@@ -1,6 +1,6 @@
 import { chmod, readFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
+import { extname, isAbsolute, join, resolve } from 'node:path'
 import { atomicWriteFile, PRIVATE_FILE_MODE } from '../storage'
 import {
   shellSnapshot,
@@ -10,6 +10,8 @@ import {
   attachmentUploadResult,
   turnStartCommand,
   turnInterruptCommand,
+  threadCreateCommand,
+  threadActionCommand,
   approvalRespondCommand,
   userInputRespondCommand,
   dispatchResult,
@@ -60,6 +62,8 @@ export interface EngineReadClient {
   interrupt(threadId: string): Promise<void>
   respondApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
   respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
+  createThread?(input: { projectId: string; title: string; model: string; effort: string | null; access: EngineThreadView['access'] }): Promise<string>
+  actOnThread?(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void>
 }
 
 const EMPTY_ENGINE: EngineView = {
@@ -168,6 +172,11 @@ export class T3EngineClient implements EngineReadClient {
         })) : []
         const latestTurn = thread.latestTurn && typeof thread.latestTurn === 'object' ? thread.latestTurn as Record<string, unknown> : null
         const visited = this.#reading.lastVisited[thread.id] ?? 0
+        const workingRoot = detailThread?.id === thread.id ? detailThread.worktreePath ?? project.workspaceRoot : project.workspaceRoot
+        const documents = detailThread?.id === thread.id ? detailThread.checkpoints.flatMap((checkpoint) => checkpoint.files.map((file) => {
+          const path = isAbsolute(file.path) ? file.path : resolve(workingRoot, file.path)
+          return { path, turnId: checkpoint.turnId, additions: file.additions, deletions: file.deletions, markdown: ['.md', '.markdown', '.mdown', '.mkd'].includes(extname(path).toLowerCase()) }
+        })) : []
         return {
           id: thread.id,
           projectId: thread.projectId,
@@ -188,6 +197,7 @@ export class T3EngineClient implements EngineReadClient {
           messages,
           activities,
           items: (() => { const explicit = postedMessageItems(messages, thread.id); return [...explicit, ...messages.flatMap((message) => inferredMessageItems(message, thread.id, explicit))] })(),
+          documents,
         }
       }),
     }))
@@ -275,6 +285,20 @@ export class T3EngineClient implements EngineReadClient {
       runtimeMode: input.access, interactionMode: thread.interactionMode,
     })
     await this.#dispatch(command, `turn:${command.message.messageId}`, command.message.messageId)
+  }
+
+  async createThread(input: { projectId: string; title: string; model: string; effort: string | null; access: EngineThreadView['access'] }): Promise<string> {
+    if (!this.#shell?.projects.some((project) => project.id === input.projectId)) throw new Error(`Project was not found: ${input.projectId}`)
+    const threadId = randomUUID()
+    await this.#dispatch(threadCreateCommand.parse({ type: 'thread.create', commandId: randomUUID(), threadId, projectId: input.projectId, title: input.title,
+      modelSelection: { instanceId: 'codex', model: input.model, options: input.effort ? { effort: input.effort } : {} }, runtimeMode: input.access,
+      interactionMode: 'default', branch: null, worktreePath: null, createdAt: new Date(this.#now()).toISOString() }))
+    await this.openThread(threadId)
+    return threadId
+  }
+
+  async actOnThread(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void> {
+    await this.#dispatch(threadActionCommand.parse({ type: `thread.${action}`, commandId: randomUUID(), threadId }))
   }
 
   async interrupt(threadId: string): Promise<void> {

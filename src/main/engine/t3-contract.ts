@@ -168,6 +168,11 @@ export const turnStartCommand = z.object({
   interactionMode,
 }).passthrough()
 export const turnInterruptCommand = z.object({ type: z.literal('thread.turn.interrupt'), ...commandBase, turnId: id.optional() }).passthrough()
+export const threadCreateCommand = z.object({
+  type: z.literal('thread.create'), commandId: id, threadId: id, projectId: id, title: id, modelSelection,
+  runtimeMode, interactionMode, branch: id.nullable(), worktreePath: id.nullable(), createdAt: isoDate,
+}).passthrough()
+export const threadActionCommand = z.object({ type: z.enum(['thread.delete', 'thread.archive', 'thread.settle']), commandId: id, threadId: id }).passthrough()
 export const approvalRespondCommand = z.object({ type: z.literal('thread.approval.respond'), ...commandBase, requestId: id, decision: z.enum(['accept', 'acceptForSession', 'acceptAlways', 'decline', 'cancel']) }).passthrough()
 export const userInputRespondCommand = z.object({ type: z.literal('thread.user-input.respond'), ...commandBase, requestId: id, answers: z.record(z.string(), z.unknown()) }).passthrough()
 export const dispatchResult = z.object({ sequence: nonNegativeInt }).passthrough()

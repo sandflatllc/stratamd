@@ -59,6 +59,8 @@ interface RightRailProps {
   onSetLead(agentId: string | null): void
   onDisconnect(attachment: AttachmentView): void
   onSaveRound(index: number): Promise<{ hunks: RoundHunkView[] }>
+  conversationDocuments?: Array<{ path: string; turnId: string; additions: number; deletions: number; markdown: boolean }>
+  onOpenDocument?(path: string): void
 }
 
 function colorOf(author: AgentIdentity | 'user' | null): string {
@@ -465,6 +467,7 @@ export function RightRail(props: RightRailProps) {
       </section>
       <Resizer axis="horizontal" label="Resize review window" value={props.upperReviewHeight} min={180} max={954} onChange={(value) => props.onHeight(value, false)} onCommit={(value) => props.onHeight(value, true)} />
       <AttachmentsPanel document={props.document} now={now} onStop={props.onStop} onOpenConversation={props.onOpenConversation} onSetLead={props.onSetLead} onDisconnect={props.onDisconnect} />
+      {props.conversationDocuments && <section className="island rail-panel documents-panel" aria-labelledby="documents-heading"><div className="panel-heading"><h2 id="documents-heading">Documents</h2><span className="panel-counts">{props.conversationDocuments.length}</span></div>{props.conversationDocuments.map((entry) => <button type="button" key={`${entry.turnId}:${entry.path}`} onClick={() => props.onOpenDocument?.(entry.path)}><strong>{entry.path.split('/').pop()}</strong><small>{entry.markdown ? 'Markdown' : 'Code diff'} · +{entry.additions} −{entry.deletions}</small></button>)}{props.conversationDocuments.length === 0 && <div className="empty-subtle">This thread has not changed any files.</div>}</section>}
       <div className="save-state-footer">{saveStateSentence(props.document.dirty, props.document.lastSavedAt, now)}</div>
     </aside>
   )
