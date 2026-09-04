@@ -1,6 +1,40 @@
 import { expect, test } from '@playwright/test'
 import { mapMarkdownBlocks } from '../../src/core/blocks'
-import { seededScenario, startEngine } from './cockpit-engine-harness'
+import { readFile } from 'node:fs/promises'
+import { credentialPath, seededScenario, startEngine } from './cockpit-engine-harness'
+
+test('1 pairing: host plus code pairs through the dialog, shows the server, and pairing again replaces the credential', async ({}, testInfo) => {
+  const engine = await startEngine({ pairingCodes: ['first-code', 'second-code'] })
+  const scenario = await seededScenario(testInfo, engine.origin, undefined, 'cockpit-pairing.md', { paired: false })
+  try {
+    const page = await scenario.launch()
+    const navigation = page.getByRole('tablist', { name: 'Document navigation' })
+    await navigation.getByRole('tab', { name: 'Projects' }).click()
+    await expect(page.getByTestId('engine-unpaired')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Engine status' })).toHaveText(/Pair engine/)
+    await page.getByTestId('engine-unpaired').getByRole('button', { name: 'Pair engine' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Engine' })
+    await expect(dialog.getByTestId('engine-status')).toHaveText('No engine paired')
+    await dialog.getByLabel('Host').fill(engine.origin.replace('http://', ''))
+    await dialog.getByLabel('Code').fill('first-code')
+    await dialog.getByRole('button', { name: 'Pair', exact: true }).click()
+    await expect(dialog.getByTestId('engine-status')).toHaveText('Connected')
+    await expect(dialog.getByTestId('engine-server')).toHaveText(engine.origin)
+    await expect(dialog.getByTestId('engine-version')).toHaveText('0.0.33')
+    await expect(JSON.parse(await readFile(credentialPath(scenario), 'utf8'))).toMatchObject({ server: engine.origin, accessToken: 'session-for-first-code' })
+
+    await dialog.getByLabel('Pairing link').fill(`${engine.origin}/pair?token=second-code`)
+    await dialog.getByRole('button', { name: 'Pair again' }).click()
+    await expect.poll(() => engine.tokenRequests).toEqual(['first-code', 'second-code'])
+    await expect.poll(async () => JSON.parse(await readFile(credentialPath(scenario), 'utf8')).accessToken).toBe('session-for-second-code')
+    await dialog.getByRole('button', { name: 'Close' }).click()
+    await expect(page.getByRole('button', { name: /^Open Live engine thread$/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Engine status' })).toHaveText(/Connected/)
+  } finally {
+    await scenario.dispose()
+    await engine.close()
+  }
+})
 
 test('1 and 2 read side: disconnect is isolated and reconnect restores the active live conversation', async ({}, testInfo) => {
   const engine = await startEngine()

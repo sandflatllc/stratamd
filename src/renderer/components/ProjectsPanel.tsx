@@ -7,9 +7,11 @@ interface ProjectsPanelProps {
   onReconnect(): void
   onCreate(input: { projectId: string; title: string; model: string; effort: string | null; access: EngineThreadView['access'] }): void
   onAction(threadId: string, action: 'archive' | 'settle' | 'delete'): void
+  /** Opens the engine dialog: pairing, server, version, and connection state (§5.1). */
+  onOpenEngine?(): void
 }
 
-export function ProjectsPanel({ engine, onOpenThread, onReconnect, onCreate, onAction }: ProjectsPanelProps) {
+export function ProjectsPanel({ engine, onOpenThread, onReconnect, onCreate, onAction, onOpenEngine }: ProjectsPanelProps) {
   const [creating, setCreating] = useState(false)
   const [projectId, setProjectId] = useState(engine.projects[0]?.id ?? '')
   const [title, setTitle] = useState('New thread')
@@ -18,7 +20,13 @@ export function ProjectsPanel({ engine, onOpenThread, onReconnect, onCreate, onA
   const [access, setAccess] = useState<EngineThreadView['access']>('approval-required')
   const [accounts, setAccounts] = useState(false)
   const [parked, setParked] = useState<Set<string>>(() => new Set())
-  if (engine.state === 'unpaired') return <div className="engine-empty">No engine paired.<small>Pair StrataMD in Settings to see projects.</small></div>
+  if (engine.state === 'unpaired') return (
+    <div className="engine-empty" data-testid="engine-unpaired">
+      No engine paired.
+      <small>Pair StrataMD with your T3 server to see its projects.</small>
+      {onOpenEngine && <button type="button" onClick={onOpenEngine}>Pair engine</button>}
+    </div>
+  )
   if (engine.state === 'disconnected' || engine.state === 'connecting') return (
     <div className="engine-empty" data-testid="engine-disconnected">
       {engine.server ?? 'Engine'} is {engine.state === 'connecting' ? 'connecting' : 'disconnected'}.

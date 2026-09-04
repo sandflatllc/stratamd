@@ -561,10 +561,13 @@ export interface ErrorReport {
   componentStack?: string
 }
 
+/** How the owner pairs (§5.1): a pairing link from T3, or the host plus the code shown beside it. */
+export type PairEngineRequest = { link: string } | { host: string; code: string }
+
 export interface StrataApi {
   getState(): Promise<AppView>
   subscribe(listener: (state: AppView) => void): () => void
-  pairEngine(server: string, pairingCode: string): Promise<void>
+  pairEngine(request: PairEngineRequest): Promise<void>
   reconnectEngine(): Promise<void>
   openConversation(threadId: string): Promise<void>
   startConversationTurn(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access'] }): Promise<void>

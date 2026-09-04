@@ -12,7 +12,6 @@ type StrataIpcApi = Omit<StrataApi, 'subscribe'>
 const pathSchema = z.string().min(1).max(16_384)
 const idSchema = z.string().min(1).max(512)
 const textSchema = z.string().max(64 * 1_024)
-const serverSchema = z.string().url().max(2_048)
 const conversationTurnSchema = z.object({
   text: textSchema.refine((value) => value.trim().length > 0),
   model: idSchema,
@@ -117,7 +116,10 @@ const settingsSchema = z.object({
 
 const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.state]: z.tuple([]),
-  [IPC.pairEngine]: z.tuple([serverSchema, idSchema]),
+  [IPC.pairEngine]: z.tuple([z.union([
+    z.object({ link: z.string().trim().min(1).max(4_096) }).strict(),
+    z.object({ host: z.string().trim().min(1).max(2_048), code: idSchema }).strict(),
+  ])]),
   [IPC.reconnectEngine]: z.tuple([]),
   [IPC.openConversation]: z.tuple([idSchema]),
   [IPC.createEngineThread]: z.tuple([z.object({ projectId: idSchema, title: idSchema, model: idSchema, effort: idSchema.nullable(), access: z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access']) }).strict()]),
@@ -293,7 +295,7 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
       const view = await options.api.getState()
       return before === nextSeq ? record(view) : lastSent!
     },
-    [IPC.pairEngine]: (server: string, pairingCode: string) => options.api.pairEngine(server, pairingCode),
+    [IPC.pairEngine]: (request: Parameters<StrataApi['pairEngine']>[0]) => options.api.pairEngine(request),
     [IPC.reconnectEngine]: () => options.api.reconnectEngine(),
     [IPC.openConversation]: (threadId: string) => options.api.openConversation(threadId),
     [IPC.createEngineThread]: (input: Parameters<StrataApi['createEngineThread']>[0]) => options.api.createEngineThread(input),

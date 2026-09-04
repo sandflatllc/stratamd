@@ -8,8 +8,15 @@ import { Scenario } from './harness'
 
 const at = '2026-09-03T12:00:00.000Z'
 
-export async function startEngine(): Promise<{ server: Server; origin: string; commands: Array<Record<string, unknown>>; uploads: string[]; setOnline(value: boolean): void; setMessage(value: string): void; finish(): void; close(): Promise<void> }> {
+export interface FakeEngineOptions {
+  /** The one-time codes the fake accepts at the token endpoint; each returns a session token derived from it. */
+  pairingCodes?: string[]
+}
+
+export async function startEngine(options: FakeEngineOptions = {}): Promise<{ server: Server; origin: string; commands: Array<Record<string, unknown>>; uploads: string[]; tokenRequests: string[]; setOnline(value: boolean): void; setMessage(value: string): void; finish(): void; close(): Promise<void> }> {
   let online = true
+  const pairingCodes = new Set(options.pairingCodes ?? ['pair-code-1'])
+  const tokenRequests: string[] = []
   let message = 'Read-side conversation from T3.'
   let status: 'running' | 'stopped' = 'running'
   let approvalOpen = true
@@ -24,6 +31,18 @@ export async function startEngine(): Promise<{ server: Server; origin: string; c
     }
     response.setHeader('content-type', 'application/json')
     response.setHeader('x-t3-version', '0.0.33')
+    if (request.url === '/oauth/token' && request.method === 'POST') {
+      const chunks: Buffer[] = []
+      request.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+      request.on('end', () => {
+        const form = new URLSearchParams(Buffer.concat(chunks).toString('utf8'))
+        const code = form.get('subject_token') ?? ''
+        tokenRequests.push(code)
+        if (!pairingCodes.has(code)) { response.writeHead(401).end(JSON.stringify({ error: 'invalid_grant' })); return }
+        response.end(JSON.stringify({ access_token: `session-for-${code}`, issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' }))
+      })
+      return
+    }
     if (request.url === '/api/auth/websocket-ticket' && request.method === 'POST') {
       response.end(JSON.stringify({ ticket: 'test-ticket', expiresAt: new Date(Date.now() + 60_000).toISOString() }))
       return
@@ -110,6 +129,7 @@ export async function startEngine(): Promise<{ server: Server; origin: string; c
     origin: `http://127.0.0.1:${address.port}`,
     commands,
     uploads,
+    tokenRequests,
     setOnline: (value) => { online = value },
     setMessage: (value) => { message = value },
     finish: () => { status = 'stopped' },
@@ -120,10 +140,20 @@ export async function startEngine(): Promise<{ server: Server; origin: string; c
   }
 }
 
-export async function seededScenario(testInfo: TestInfo, origin: string, content = '# Engine-safe document\n\nKeep editing while the engine is down.\n', name = 'cockpit-engine.md'): Promise<Scenario> {
+/** Where the app keeps its engine credential for this scenario. */
+export function credentialPath(scenario: Scenario): string {
+  return join(String(scenario.env.XDG_DATA_HOME), 'stratamd', 'engine-credential.json')
+}
+
+/**
+ * A scenario already paired with the fake engine, unless `paired: false`, in
+ * which case nothing is written and the app starts unpaired for the pairing UI.
+ */
+export async function seededScenario(testInfo: TestInfo, origin: string, content = '# Engine-safe document\n\nKeep editing while the engine is down.\n', name = 'cockpit-engine.md', options: { paired?: boolean } = {}): Promise<Scenario> {
   const scenario = await Scenario.create(testInfo, content, name)
-  const directory = join(String(scenario.env.XDG_DATA_HOME), 'stratamd')
-  await mkdir(directory, { recursive: true })
-  await writeFile(join(directory, 'engine-credential.json'), `${JSON.stringify({ formatVersion: 1, server: origin, accessToken: 'test-session', expiresAt: Date.now() + 3_600_000 })}\n`, { mode: 0o600 })
+  if (options.paired === false) return scenario
+  const path = credentialPath(scenario)
+  await mkdir(join(path, '..'), { recursive: true })
+  await writeFile(path, `${JSON.stringify({ formatVersion: 1, server: origin, accessToken: 'test-session', expiresAt: Date.now() + 3_600_000 })}\n`, { mode: 0o600 })
   return scenario
 }

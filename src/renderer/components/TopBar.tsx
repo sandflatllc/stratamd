@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
-import type { DocumentTabView } from '../../shared/contracts'
+import type { DocumentTabView, EngineView } from '../../shared/contracts'
 import { AGENT_COLORS, textColorFor } from '../model'
 import { Logo } from './Logo'
+import { engineStateLabel } from './EngineDialog'
 import { primaryModifierLabel } from '../../shared/primary-modifier'
 import { PathContextMenu, type PathContextMenuState } from './PathContextMenu'
 
@@ -25,9 +26,12 @@ interface TopBarProps {
   onOpenTheme(): void
   conversationTab?: { id: string; name: string }
   onCloseConversation?(): void
+  /** The paired engine's state; the status control opens the engine dialog (§5.1, §5.13). */
+  engine?: EngineView
+  onOpenEngine?(): void
 }
 
-export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onSend, zoomed, onResetZoom, onOpenTheme, conversationTab, onCloseConversation }: TopBarProps) {
+export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onSend, zoomed, onResetZoom, onOpenTheme, conversationTab, onCloseConversation, engine, onOpenEngine }: TopBarProps) {
   const tabStrip = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState<PathContextMenuState | null>(null)
   const activePath = conversationTab ? `conversation:${conversationTab.id}` : tabs.find((tab) => tab.active)?.path
@@ -92,6 +96,12 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
       </div>
       {menu && <PathContextMenu menu={menu} onCopyPath={onCopyPath} onClose={closeMenu} {...(onCloseOthers ? { onCloseOthers } : {})} {...(onCloseAll ? { onCloseAll } : {})} {...(onCloseSaved ? { onCloseSaved } : {})} />}
       <div className="topbar-spacer" />
+      {engine && onOpenEngine && (
+        <button type="button" className="text-action engine-status" data-state={engine.state} aria-label="Engine status" title={engine.server ?? 'No engine paired'} onClick={onOpenEngine}>
+          <i className={`state-dot state-${engine.state === 'connected' || engine.state === 'mismatch' ? 'ready' : engine.state === 'connecting' ? 'starting' : 'disconnected'}`} aria-hidden="true" />
+          {engine.state === 'unpaired' ? 'Pair engine' : engineStateLabel(engine)}
+        </button>
+      )}
       <button type="button" className="text-action theme-button" onClick={onOpenTheme}>Theme</button>
       {zoomed && <button type="button" className="text-action reset-zoom" onClick={onResetZoom}>Reset zoom</button>}
       <span className="pending-status" data-unsaved={pendingUnsaved} title="Next change · F7. Previous change · Shift+F7. All shortcuts · F1">{pending} pending</span>

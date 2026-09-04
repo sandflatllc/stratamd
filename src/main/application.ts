@@ -31,8 +31,10 @@ import type {
   HeadingReference,
   LocalMarkdownPreview,
   LocalImageResolution,
+  PairEngineRequest,
   QuickSendRequest,
 } from '../shared/contracts'
+import { resolvePairingTarget } from './engine/pairing'
 import { createDraftStore, discardDraft as removeDraft, holdDraft as addHeldDraft, relocateDraft, type DraftStore } from '../core/drafts'
 import { blockOutcomeLines, parseStrataBlock, resolveBlock } from '../core/blocks'
 import { deriveItems } from '../core/items'
@@ -666,8 +668,9 @@ export class StrataApplication implements StrataApi {
     await this.#withSession(canonical, () => this.#openLocked(canonical))
   }
 
-  async pairEngine(server: string, pairingCode: string): Promise<void> {
-    await this.#engine.pair(server, pairingCode)
+  async pairEngine(request: PairEngineRequest): Promise<void> {
+    const target = resolvePairingTarget(request)
+    await this.#engine.pair(target.server, target.code)
   }
 
   async reconnectEngine(): Promise<void> {
