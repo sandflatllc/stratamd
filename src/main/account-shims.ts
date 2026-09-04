@@ -1,15 +1,39 @@
-import { chmod, mkdir, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-/** Writes owner-only Linux launchers that select one provider home for terminal use. */
-export async function writeTerminalShims(directory: string, accounts: readonly { name: string; command: string; home: string }[]): Promise<string[]> {
+export interface TerminalShimTarget {
+  /** The launcher's file name, normally the provider binary's name so PATH order picks it. */
+  name: string
+  /** The provider binary the launcher runs. */
+  command: string
+  /** The environment variable the provider reads its home from (CODEX_HOME, CLAUDE_CONFIG_DIR). */
+  homeVariable: string
+  home: string
+}
+
+/**
+ * Writes owner-only Linux launchers that select one provider home for terminal
+ * use (§5.13). Launchers for drivers no longer defaulted are removed so PATH
+ * falls back to the provider's own binary.
+ */
+export async function writeTerminalShims(directory: string, accounts: readonly TerminalShimTarget[], retire: readonly string[] = []): Promise<string[]> {
   await mkdir(directory, { recursive: true, mode: 0o700 })
   const paths: string[] = []
+  for (const name of retire) {
+    if (accounts.some((account) => account.name === name)) continue
+    await rm(join(directory, name), { force: true })
+  }
   for (const account of accounts) {
     const path = join(directory, account.name)
-    await writeFile(path, `#!/bin/sh\nexec env CODEX_HOME=${JSON.stringify(account.home)} ${JSON.stringify(account.command)} "$@"\n`, { mode: 0o700 })
+    if (!/^[A-Za-z0-9_.-]+$/u.test(account.name) || !/^[A-Z_][A-Z0-9_]*$/u.test(account.homeVariable)) throw new Error(`Refusing to write a launcher named ${account.name}`)
+    await writeFile(path, `#!/bin/sh\nexec env ${account.homeVariable}=${shellQuote(account.home)} ${shellQuote(account.command)} "$@"\n`, { mode: 0o700 })
     await chmod(path, 0o700)
     paths.push(path)
   }
   return paths
+}
+
+/** Single-quote for /bin/sh; JSON quoting would let `$` and backticks expand. */
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/gu, `'\\''`)}'`
 }

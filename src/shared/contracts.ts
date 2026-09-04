@@ -231,6 +231,40 @@ export interface EngineProjectView {
   threads: EngineThreadView[]
 }
 
+/** A usage window the provider reports or Strata last measured (§5.13). */
+export interface UsageWindowView {
+  usedPercent: number
+  resetsAt: string | null
+  measuredAt: string
+}
+
+export type AccountStateView = 'ready' | 'stale' | 'limited' | 'no-subscription' | 'signed-out' | 'parked' | 'disabled' | 'unknown'
+
+/** One provider instance as Accounts and the picker show it (§5.13). */
+export interface AccountView {
+  instanceId: string
+  driver: string
+  name: string
+  homePath: string | null
+  email: string | null
+  plan: string | null
+  state: AccountStateView
+  /** Whether Auto or the picker may start a thread on this instance now. */
+  usable: boolean
+  reason: string | null
+  /** When a hit limit lifts, if the provider said. */
+  limitedUntil: string | null
+  /** The higher of the session and weekly usage, or null when never measured. */
+  pressure: number | null
+  parked: boolean
+  session: UsageWindowView | null
+  weekly: UsageWindowView | null
+  /** When the shown usage was measured; null when never. */
+  measuredAt: string | null
+  /** True when the usage came from the engine on this connection, false when it is Strata's persisted measurement. */
+  live: boolean
+}
+
 export interface EngineView {
   state: EngineConnectionState
   server: string | null
@@ -239,6 +273,12 @@ export interface EngineView {
   problem: string | null
   projects: EngineProjectView[]
   activeThreadId: string | null
+  /** Provider accounts on the engine, with Strata's persisted measurements and parking (§5.13). */
+  accounts: AccountView[]
+  /** Per driver: `auto`, an instance id, or null for the system default (§5.13 terminal defaults). */
+  terminalDefaults: Record<string, string | null>
+  /** Where Strata writes terminal launchers, or null when this platform gets none. */
+  terminalShimDirectory: string | null
 }
 
 export interface HeadingReference {
@@ -612,6 +652,12 @@ export interface StrataApi {
   /** Creates the thread, attaches it to the document, and sends the pending comment and drafts as its first turn (§5.7, §5.14). */
   startThreadFromDocument(path: string, input: StartThreadFromDocumentInput): Promise<string>
   actOnEngineThread(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void>
+  /** Parks or unparks a provider instance so Auto and the picker skip it (§5.13); persisted in the ghost store. */
+  parkAccount(instanceId: string, parked: boolean): Promise<void>
+  /** Sets which account a driver's terminal launcher uses: `auto`, an instance id, or null for none (§5.13). */
+  setTerminalDefault(driver: string, selection: string | null): Promise<void>
+  /** Probes the engine for provider usage now (§5.13 "a probe on open"). */
+  refreshAccounts(): Promise<void>
   openDocument(path?: string): Promise<void>
   /** Renderer-only bridge: preload resolves Electron File objects with webUtils. */
   openDroppedFiles?(files: File[]): Promise<void>

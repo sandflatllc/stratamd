@@ -13,12 +13,53 @@ export interface FakeEngineOptions {
   pairingCodes?: string[]
   /** The workspace root of the one seeded project; a scenario's document folder makes it the containing project (§5.7). */
   workspaceRoot?: string
+  /** Provider instances `server.getConfig` reports (§5.13); defaults to a Codex account with usage and a Claude account without. */
+  providers?: unknown[]
+}
+
+const usageAt = '2026-09-03T11:59:00.000Z'
+export const DEFAULT_PROVIDERS: unknown[] = [
+  { instanceId: 'codex', driver: 'codex', displayName: 'Codex work', enabled: true, installed: true, version: '0.50.0', status: 'ready', auth: { status: 'authenticated', type: 'chatgpt', label: 'Pro', email: 'owner@example.com' }, checkedAt: usageAt, models: [], usage: { session: { usedPercent: 40, resetsAt: '2026-09-03T16:00:00.000Z', measuredAt: usageAt, source: 'session' }, weekly: { usedPercent: 20, resetsAt: '2026-09-08T00:00:00.000Z', measuredAt: usageAt, source: 'session' }, planLabel: 'Pro', applicable: true } },
+  { instanceId: 'claude-main', driver: 'claudeAgent', displayName: 'Claude', enabled: true, installed: true, version: '2.1.0', status: 'ready', auth: { status: 'authenticated', type: 'oauth', label: 'Max' }, checkedAt: usageAt, models: [] },
+]
+
+/** One text frame, server to client (unmasked). */
+function textFrame(text: string): Buffer {
+  const payload = Buffer.from(text)
+  const header = payload.length < 126
+    ? Buffer.from([0x81, payload.length])
+    : payload.length < 65_536
+      ? Buffer.from([0x81, 126, payload.length >> 8, payload.length & 0xff])
+      : Buffer.concat([Buffer.from([0x81, 127]), (() => { const b = Buffer.alloc(8); b.writeBigUInt64BE(BigInt(payload.length)); return b })()])
+  return Buffer.concat([header, payload])
+}
+
+/** Parses complete client frames from `buffer`; returns them and the unread remainder. */
+function readFrames(buffer: Buffer): { frames: Array<{ opcode: number; payload: Buffer }>; rest: Buffer } {
+  const frames: Array<{ opcode: number; payload: Buffer }> = []
+  let offset = 0
+  while (buffer.length - offset >= 2) {
+    const opcode = buffer[offset]! & 0x0f
+    const masked = (buffer[offset + 1]! & 0x80) !== 0
+    let length = buffer[offset + 1]! & 0x7f
+    let cursor = offset + 2
+    if (length === 126) { if (buffer.length < cursor + 2) break; length = buffer.readUInt16BE(cursor); cursor += 2 }
+    else if (length === 127) { if (buffer.length < cursor + 8) break; length = Number(buffer.readBigUInt64BE(cursor)); cursor += 8 }
+    const maskLength = masked ? 4 : 0
+    if (buffer.length < cursor + maskLength + length) break
+    const mask = buffer.subarray(cursor, cursor + maskLength); cursor += maskLength
+    const payload = Buffer.alloc(length)
+    for (let index = 0; index < length; index += 1) payload[index] = masked ? buffer[cursor + index]! ^ mask[index % 4]! : buffer[cursor + index]!
+    frames.push({ opcode, payload })
+    offset = cursor + length
+  }
+  return { frames, rest: Buffer.from(buffer.subarray(offset)) }
 }
 
 interface CreatedThread { id: string; projectId: string; title: string; modelSelection: unknown; runtimeMode: string }
 interface CreatedProject { id: string; title: string; workspaceRoot: string }
 
-export async function startEngine(options: FakeEngineOptions = {}): Promise<{ server: Server; origin: string; commands: Array<Record<string, unknown>>; uploads: string[]; tokenRequests: string[]; setOnline(value: boolean): void; setMessage(value: string): void; setWorkspaceRoot(value: string): void; finish(): void; close(): Promise<void> }> {
+export async function startEngine(options: FakeEngineOptions = {}): Promise<{ server: Server; origin: string; commands: Array<Record<string, unknown>>; uploads: string[]; tokenRequests: string[]; setOnline(value: boolean): void; setMessage(value: string): void; setWorkspaceRoot(value: string): void; setProviders(value: unknown[]): void; rpcRequests: Array<{ tag: string; payload: unknown }>; finish(): void; close(): Promise<void> }> {
   let online = true
   const pairingCodes = new Set(options.pairingCodes ?? ['pair-code-1'])
   const tokenRequests: string[] = []
@@ -31,6 +72,8 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<{ se
   const createdThreads: CreatedThread[] = []
   const createdProjects: CreatedProject[] = []
   let workspaceRoot = options.workspaceRoot ?? '/tmp/cockpit'
+  let providers = options.providers ?? DEFAULT_PROVIDERS
+  const rpcRequests: Array<{ tag: string; payload: unknown }> = []
   const sockets = new Set<Socket>()
   const server = createServer((request, response) => {
     if (!online) {
@@ -123,24 +166,31 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<{ se
     if (typeof key !== 'string') { socket.destroy(); return }
     const accept = createHash('sha1').update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64')
     socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`)
-    socket.once('data', (chunk) => {
-      const frame = Buffer.from(chunk)
-      let offset = 2
-      let length = frame[1]! & 0x7f
-      if (length === 126) { length = frame.readUInt16BE(offset); offset += 2 }
-      const mask = frame.subarray(offset, offset + 4); offset += 4
-      const payload = Buffer.alloc(length)
-      for (let index = 0; index < length; index += 1) payload[index] = frame[offset + index]! ^ mask[index % 4]!
-      const rpc = JSON.parse(payload.toString('utf8')) as { id: string }
-      const attachmentId = `upload-${uploads.length + 1}`
-      const response = Buffer.from(JSON.stringify({ _tag: 'Exit', requestId: rpc.id, exit: { _tag: 'Success', value: { attachmentId, relativeUrl: `/upload/${attachmentId}`, expiresAt: Date.now() + 60_000 } } }))
-      const header = response.length < 126
-        ? Buffer.from([0x81, response.length])
-        : Buffer.from([0x81, 126, response.length >> 8, response.length & 0xff])
-      socket.write(Buffer.concat([header, response]))
-      setTimeout(() => socket.end(), 25)
+    let pending: Buffer = Buffer.alloc(0)
+    socket.on('data', (chunk) => {
+      pending = Buffer.concat([pending, Buffer.from(chunk)])
+      const { frames, rest } = readFrames(pending)
+      pending = rest
+      for (const frame of frames) {
+        if (frame.opcode === 8) { socket.write(Buffer.from([0x88, 0])); socket.end(); return }
+        if (frame.opcode !== 1) continue
+        const rpc = JSON.parse(frame.payload.toString('utf8')) as { _tag?: string; id: string; tag: string; payload: unknown }
+        if (rpc._tag !== 'Request') continue
+        rpcRequests.push({ tag: rpc.tag, payload: rpc.payload })
+        socket.write(textFrame(JSON.stringify({ _tag: 'Exit', requestId: rpc.id, exit: { _tag: 'Success', value: rpcValue(rpc.tag) } })))
+      }
     })
+    socket.on('error', () => undefined)
   })
+  function rpcValue(tag: string): unknown {
+    if (tag === 'attachments.createUploadUrl') {
+      const attachmentId = `upload-${uploads.length + 1}`
+      return { attachmentId, relativeUrl: `/upload/${attachmentId}`, expiresAt: Date.now() + 60_000 }
+    }
+    if (tag === 'server.getConfig') return { providers, settings: { providerInstances: { codex: { config: { homePath: '/home/owner/.codex-work' } } } } }
+    if (tag === 'server.refreshProviders') return { providers }
+    return null
+  }
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('Fake engine did not bind')
@@ -153,6 +203,8 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<{ se
     setOnline: (value) => { online = value },
     setMessage: (value) => { message = value },
     setWorkspaceRoot: (value) => { workspaceRoot = value },
+    setProviders: (value) => { providers = value },
+    rpcRequests,
     finish: () => { status = 'stopped' },
     close: async () => {
       for (const socket of sockets) socket.destroy()

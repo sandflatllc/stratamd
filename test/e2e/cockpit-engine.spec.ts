@@ -199,21 +199,38 @@ test('8 and 9 projects: picker is project-scoped, row actions dispatch, and turn
   }
 })
 
-test('10 accounts: modal and picker show the same provider instance and parking state', async ({}, testInfo) => {
+test('10 accounts: usage from the engine, parking from the top bar, and the parked account survives a reload and is refused by the picker', async ({}, testInfo) => {
   const engine = await startEngine()
   const scenario = await seededScenario(testInfo, engine.origin)
   try {
     const page = await scenario.launch()
+    await expect(page.getByRole('button', { name: 'Engine status' })).toHaveText(/Connected/)
+    await page.getByRole('button', { name: 'Accounts', exact: true }).click()
+    let modal = page.getByRole('dialog', { name: 'Accounts' })
+    await expect(modal.getByTestId('account-state-codex')).toHaveText('Ready · 40% used')
+    await expect(modal.getByTestId('account-state-claude-main')).toHaveText('Ready · not measured')
+    await expect(modal.locator('[data-instance="codex"]')).toContainText('owner@example.com')
+    await expect(modal.locator('[data-instance="codex"] .account-usage[data-window="session"] small')).toContainText('40%')
+    // Opening Accounts probes the engine for fresh usage (§5.13) before reading its configuration.
+    await expect.poll(() => engine.rpcRequests.map((request) => request.tag)).toContain('server.refreshProviders')
+    expect(engine.rpcRequests.map((request) => request.tag)).toContain('server.getConfig')
+    await modal.getByRole('button', { name: 'Park Codex work' }).click()
+    await expect(modal.getByTestId('account-state-codex')).toHaveText('Parked')
+    await modal.getByRole('button', { name: 'Close' }).click()
+
+    await page.reload()
+    await expect(page.getByRole('button', { name: 'Engine status' })).toHaveText(/Connected/)
+    await page.getByRole('button', { name: 'Accounts', exact: true }).click()
+    modal = page.getByRole('dialog', { name: 'Accounts' })
+    await expect(modal.getByTestId('account-state-codex')).toHaveText('Parked')
+    await expect(modal.getByRole('button', { name: 'Unpark Codex work' })).toBeVisible()
+    await modal.getByRole('button', { name: 'Close' }).click()
+
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
-    await page.getByRole('button', { name: 'Accounts' }).click()
-    const modal = page.getByRole('dialog', { name: 'Accounts' })
-    await expect(modal).toContainText('codex')
-    await expect(modal).toContainText('Ready · not measured')
-    await modal.getByRole('button', { name: 'Park' }).dispatchEvent('click')
-    await expect(modal).toContainText('Parked')
-    await modal.getByRole('button', { name: 'Close' }).dispatchEvent('click')
     await page.getByRole('button', { name: 'New thread' }).click()
-    await expect(page.getByLabel('Account').getByRole('option', { name: /codex · parked/ })).toHaveAttribute('disabled', '')
+    const account = page.getByRole('form', { name: 'Start thread' }).getByLabel('Account')
+    await expect(account.getByRole('option', { name: 'Codex work · parked' })).toHaveAttribute('disabled', '')
+    await expect(account.getByRole('option', { name: 'Claude' })).not.toHaveAttribute('disabled', '')
   } finally {
     await scenario.dispose()
     await engine.close()

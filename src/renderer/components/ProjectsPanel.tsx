@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import type { EngineView } from '../../shared/contracts'
 
 interface ProjectsPanelProps {
@@ -10,13 +9,11 @@ interface ProjectsPanelProps {
   onAction(threadId: string, action: 'archive' | 'settle' | 'delete'): void
   /** Opens the engine dialog: pairing, server, version, and connection state (§5.1). */
   onOpenEngine?(): void
-  /** Provider instances the owner parked (§5.13); the accounts modal toggles them. */
-  parked: ReadonlySet<string>
-  onPark(instanceId: string, parked: boolean): void
+  /** Opens the Accounts modal (§5.13), the same one the top bar's engine status opens. */
+  onOpenAccounts?(): void
 }
 
-export function ProjectsPanel({ engine, onOpenThread, onReconnect, onNewThread, onAction, onOpenEngine, parked, onPark }: ProjectsPanelProps) {
-  const [accounts, setAccounts] = useState(false)
+export function ProjectsPanel({ engine, onOpenThread, onReconnect, onNewThread, onAction, onOpenEngine, onOpenAccounts }: ProjectsPanelProps) {
   if (engine.state === 'unpaired') return (
     <div className="engine-empty" data-testid="engine-unpaired">
       No engine paired.
@@ -32,8 +29,7 @@ export function ProjectsPanel({ engine, onOpenThread, onReconnect, onNewThread, 
   )
   return <div className="projects-panel">
     <button type="button" onClick={onNewThread}>New thread</button>
-    <button type="button" onClick={() => setAccounts(true)}>Accounts</button>
-    {accounts && <section className="accounts-modal" role="dialog" aria-modal="true" aria-label="Accounts"><h2>Accounts</h2>{[...new Set(engine.projects.flatMap((project) => project.threads.map((thread) => thread.providerInstanceId)))].map((instanceId) => <div key={instanceId}><strong>{instanceId}</strong><span>{parked.has(instanceId) ? 'Parked' : 'Ready · not measured'}</span><button type="button" onClick={() => onPark(instanceId, !parked.has(instanceId))}>{parked.has(instanceId) ? 'Unpark' : 'Park'}</button></div>)}<button type="button" onClick={() => setAccounts(false)}>Close</button></section>}
+    {onOpenAccounts && <button type="button" onClick={onOpenAccounts}>Accounts</button>}
     {engine.state === 'mismatch' && <p className="engine-mismatch">{engine.problem}</p>}
     {engine.projects.map((project) => <section className="project-group" key={project.id}>
       <h3>{project.title}</h3>

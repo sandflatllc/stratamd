@@ -1,4 +1,5 @@
 import type {
+  AccountView,
   AgentIdentity,
   AnnotationView,
   AppView,
@@ -82,6 +83,32 @@ export function defaultRecipientIds(
 }
 
 /** The T3 project whose workspace contains the document, by path segments (§5.7). */
+/** Why the picker refuses an account, in the option label so the owner sees it without opening Accounts (§5.13). */
+export function accountUnavailableNote(account: AccountView): string | null {
+  if (account.usable) return null
+  switch (account.state) {
+    case 'parked': return 'parked'
+    case 'limited': return account.limitedUntil ? `limited until ${new Date(account.limitedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'limited'
+    case 'signed-out': return 'signed out'
+    case 'no-subscription': return 'no subscription'
+    case 'disabled': return 'disabled'
+    default: return account.reason ?? 'unavailable'
+  }
+}
+
+/**
+ * The picker's Account options beside Auto (§5.13): every instance the engine
+ * reports, disabled with the reason when it cannot take a thread now. Without
+ * an account report, the instances seen on threads are offered as they are.
+ */
+export function pickerAccountOptions(engine: EngineView): Array<{ instanceId: string; label: string; disabled: boolean }> {
+  if (engine.accounts.length > 0) return engine.accounts.map((account) => {
+    const note = accountUnavailableNote(account)
+    return { instanceId: account.instanceId, label: note ? `${account.name} · ${note}` : account.name, disabled: note !== null }
+  })
+  return [...new Set(engine.projects.flatMap((project) => project.threads.map((thread) => thread.providerInstanceId)))].map((instanceId) => ({ instanceId, label: instanceId, disabled: false }))
+}
+
 export function projectForPath(engine: Pick<EngineView, 'projects'>, path: string): EngineProjectView | null {
   const normalized = path.replace(/\/+$/u, '')
   let best: EngineProjectView | null = null
@@ -97,7 +124,7 @@ export const EMPTY_VIEW: AppView = {
   tabs: [],
   activeDocument: null,
   explorer: [],
-  engine: { state: 'unpaired', server: null, serverVersion: null, supportedVersion: '0.0.33', problem: null, projects: [], activeThreadId: null },
+  engine: { state: 'unpaired', server: null, serverVersion: null, supportedVersion: '0.0.33', problem: null, projects: [], activeThreadId: null, accounts: [], terminalDefaults: {}, terminalShimDirectory: null },
   settings: {
     animatedBackground: true,
     panelSizes: {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { EngineThreadView, EngineView, StartThreadInput } from '../../shared/contracts'
 import { useDialogFocus } from '../useDialogFocus'
-import { projectForPath } from '../model'
+import { pickerAccountOptions, projectForPath } from '../model'
 
 export interface ThreadPickerProps {
   engine: EngineView
@@ -13,13 +13,6 @@ export interface ThreadPickerProps {
   onConfirm(input: StartThreadInput): void
   /** Adds a T3 project for the document's folder when no project contains it (§5.7). */
   onAddProject?(input: { title: string; workspaceRoot: string }): Promise<string>
-  /** Provider instances that cannot take a new thread right now (parked, limited, signed out) (§5.13). */
-  unavailableInstanceIds?: ReadonlySet<string>
-}
-
-/** Provider instances the picker offers beside Auto, from the engine's threads. */
-export function pickerInstanceIds(engine: EngineView): string[] {
-  return [...new Set(engine.projects.flatMap((project) => project.threads.map((thread) => thread.providerInstanceId)))]
 }
 
 function folderOf(path: string): string {
@@ -30,7 +23,7 @@ function folderOf(path: string): string {
  * The picker (§1, §5.7): project, name, model, thinking level, access, and the
  * account. Shown every time a thread starts, from Projects or from a document.
  */
-export function ThreadPicker({ engine, documentPath, carries, onCancel, onConfirm, onAddProject, unavailableInstanceIds }: ThreadPickerProps) {
+export function ThreadPicker({ engine, documentPath, carries, onCancel, onConfirm, onAddProject }: ThreadPickerProps) {
   const dialogRef = useRef<HTMLElement>(null)
   useDialogFocus(dialogRef, onCancel)
   const containing = documentPath ? projectForPath(engine, documentPath) : null
@@ -81,7 +74,7 @@ export function ThreadPicker({ engine, documentPath, carries, onCancel, onConfir
           <label>Model<input aria-label="Model" value={model} onChange={(event) => setModel(event.target.value)} /></label>
           <label>Thinking<select aria-label="Thinking" value={effort ?? ''} onChange={(event) => setEffort(event.target.value || null)}><option value="">Default</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">Extra high</option></select></label>
           <label>Access<select aria-label="Access" value={access} onChange={(event) => setAccess(event.target.value as EngineThreadView['access'])}><option value="approval-required">Ask</option><option value="auto-accept-edits">Auto edits</option><option value="auto">Auto</option><option value="full-access">Full</option></select></label>
-          <label>Account<select aria-label="Account" value={instanceId} onChange={(event) => setInstanceId(event.target.value)}><option value="auto">Auto</option>{pickerInstanceIds(engine).map((id) => <option value={id} key={id} disabled={unavailableInstanceIds?.has(id) ?? false}>{id}{unavailableInstanceIds?.has(id) ? ' · parked' : ''}</option>)}</select></label>
+          <label>Account<select aria-label="Account" value={instanceId} onChange={(event) => setInstanceId(event.target.value)}><option value="auto">Auto</option>{pickerAccountOptions(engine).map((option) => <option value={option.instanceId} key={option.instanceId} disabled={option.disabled}>{option.label}</option>)}</select></label>
           {error && <div className="send-error" role="alert">{error}</div>}
           <div className="modal-actions"><button type="button" className="quiet-button" onClick={onCancel}>Cancel</button><button type="submit" className="primary-button" disabled={!projectId || addingProject}>{documentPath ? 'Start thread' : 'Create'}</button></div>
         </form>

@@ -31,9 +31,11 @@ interface TopBarProps {
   /** The paired engine's state; the status control opens the engine dialog (§5.1, §5.13). */
   engine?: EngineView
   onOpenEngine?(): void
+  /** Accounts (§5.13) opens from the engine status area once an engine is paired. */
+  onOpenAccounts?(): void
 }
 
-export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onSend, onStartThread, zoomed, onResetZoom, onOpenTheme, conversationTab, onCloseConversation, engine, onOpenEngine }: TopBarProps) {
+export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onSend, onStartThread, zoomed, onResetZoom, onOpenTheme, conversationTab, onCloseConversation, engine, onOpenEngine, onOpenAccounts }: TopBarProps) {
   const tabStrip = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState<PathContextMenuState | null>(null)
   const activePath = conversationTab ? `conversation:${conversationTab.id}` : tabs.find((tab) => tab.active)?.path
@@ -102,6 +104,11 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
         <button type="button" className="text-action engine-status" data-state={engine.state} aria-label="Engine status" title={engine.server ?? 'No engine paired'} onClick={onOpenEngine}>
           <i className={`state-dot state-${engine.state === 'connected' || engine.state === 'mismatch' ? 'ready' : engine.state === 'connecting' ? 'starting' : 'disconnected'}`} aria-hidden="true" />
           {engine.state === 'unpaired' ? 'Pair engine' : engineStateLabel(engine)}
+        </button>
+      )}
+      {engine && engine.state !== 'unpaired' && onOpenAccounts && (
+        <button type="button" className="text-action accounts-button" aria-label="Accounts" title={engine.accounts.length ? `${engine.accounts.filter((account) => account.usable).length} of ${engine.accounts.length} accounts can take a thread` : 'Provider accounts'} onClick={onOpenAccounts}>
+          Accounts{engine.accounts.some((account) => !account.usable && !account.parked) && <i className="attention-dot" aria-hidden="true" />}
         </button>
       )}
       <button type="button" className="text-action theme-button" onClick={onOpenTheme}>Theme</button>

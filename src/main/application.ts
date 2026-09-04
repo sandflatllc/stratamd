@@ -38,6 +38,7 @@ import type {
   StartThreadInput,
 } from '../shared/contracts'
 import { resolvePairingTarget } from './engine/pairing'
+import { isDarwin } from '../platform/runtime'
 import { createDraftStore, discardDraft as removeDraft, holdDraft as addHeldDraft, relocateDraft, type DraftStore } from '../core/drafts'
 import { blockOutcomeLines, parseStrataBlock, resolveBlock } from '../core/blocks'
 import { deriveItems } from '../core/items'
@@ -317,7 +318,11 @@ export class StrataApplication implements StrataApi {
     this.#selectFolder = options.selectFolder ?? (async () => null)
     this.#now = options.now ?? Date.now
     this.#watch = options.watch ?? true
-    this.#engine = options.engine ?? new T3EngineClient({ dataDirectory: this.#store.dataDirectory, now: this.#now })
+    this.#engine = options.engine ?? new T3EngineClient({
+      dataDirectory: this.#store.dataDirectory, now: this.#now,
+      // Terminal launchers are scripts Strata writes on Linux (§5.13); macOS gets none.
+      terminalShimDirectory: isDarwin() ? null : join(this.#store.dataDirectory, 'bin'),
+    })
     this.#tabs = new SessionRegistry({
       canonicalize: resolveDocumentPath,
       now: this.#now,
@@ -731,6 +736,21 @@ export class StrataApplication implements StrataApi {
   async actOnEngineThread(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void> {
     if (!this.#engine.actOnThread) throw new Error('This engine cannot change threads')
     await this.#engine.actOnThread(threadId, action)
+  }
+
+  async parkAccount(instanceId: string, parked: boolean): Promise<void> {
+    if (!this.#engine.parkAccount) throw new Error('This engine has no accounts to park')
+    await this.#engine.parkAccount(instanceId, parked)
+  }
+
+  async setTerminalDefault(driver: string, selection: string | null): Promise<void> {
+    if (!this.#engine.setTerminalDefault) throw new Error('This engine has no terminal defaults')
+    await this.#engine.setTerminalDefault(driver, selection)
+  }
+
+  async refreshAccounts(): Promise<void> {
+    if (!this.#engine.refreshAccounts) throw new Error('This engine does not report accounts')
+    await this.#engine.refreshAccounts()
   }
 
   async startConversationTurn(threadId: string, input: Parameters<EngineReadClient['startTurn']>[1]): Promise<void> {

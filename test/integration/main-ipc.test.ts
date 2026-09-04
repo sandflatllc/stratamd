@@ -10,7 +10,7 @@ const view: AppView = {
   tabs: [],
   activeDocument: null,
   explorer: [],
-  engine: { state: 'unpaired', server: null, serverVersion: null, supportedVersion: '0.0.33', problem: null, projects: [], activeThreadId: null },
+  engine: { state: 'unpaired', server: null, serverVersion: null, supportedVersion: '0.0.33', problem: null, projects: [], activeThreadId: null, accounts: [], terminalDefaults: {}, terminalShimDirectory: null },
   settings: {
     animatedBackground: false,
     panelSizes: {
@@ -40,6 +40,9 @@ function fakeApi(): StrataApi {
     reconnectEngine: vi.fn(async () => undefined),
     createEngineThread: vi.fn(async () => 'thread-new'),
     createEngineProject: vi.fn(async () => 'project-new'),
+    parkAccount: vi.fn(async () => undefined),
+    setTerminalDefault: vi.fn(async () => undefined),
+    refreshAccounts: vi.fn(async () => undefined),
     startThreadFromDocument: vi.fn(async () => 'thread-new'),
     actOnEngineThread: vi.fn(async () => undefined),
     openConversation: vi.fn(async () => undefined),

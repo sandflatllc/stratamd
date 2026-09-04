@@ -1301,8 +1301,26 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .project-row-actions button { border: 0; background: none; color: var(--text-muted); font-size: .65rem; }
 .thread-picker { display: grid; gap: 7px; margin: 8px 0; padding: 10px; border: 1px solid var(--borders-subtle); border-radius: 9px; }
 .thread-picker label { display: flex; justify-content: space-between; gap: 8px; }
-.accounts-modal { position: fixed; z-index: 80; inset: 15% 25%; display: grid; align-content: start; gap: 10px; padding: 20px; border: 1px solid var(--borders-subtle); border-radius: 14px; background: var(--surfaces-window); box-shadow: 0 20px 60px color-mix(in srgb, var(--text-primary) 38%, transparent); }
-.accounts-modal > div { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; }
+/* Accounts (cockpit §5.13). */
+.accounts-dialog { width: min(600px, 92vw); max-height: 86vh; overflow: auto; }
+.accounts-group { display: grid; gap: 8px; padding: 10px 0; border-top: 1px solid var(--line); }
+.accounts-group h3 { margin: 0; font-size: 1rem; }
+.account-row { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--borders-subtle); border-radius: 9px; }
+.account-row[data-usable="false"] { opacity: 0.78; }
+.account-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.account-head small { color: var(--dim); }
+.account-state { font-size: 13px; }
+.account-row[data-state="ready"] .account-state { color: var(--controls-positive); }
+.account-row[data-state="limited"] .account-state, .account-row[data-state="stale"] .account-state { color: var(--controls-warning); }
+.account-row[data-state="signed-out"] .account-state, .account-row[data-state="no-subscription"] .account-state { color: var(--controls-danger); }
+.account-usage { display: grid; grid-template-columns: 60px 1fr auto; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
+.account-usage meter { width: 100%; height: 8px; }
+.account-measured { color: var(--dim); font-size: 12px; }
+.account-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.account-terminal { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 10px; font-size: 13px; }
+.account-terminal select { min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; background: var(--surfaces-inset); color: var(--text); font: inherit; }
+.accounts-button { position: relative; }
+.accounts-button .attention-dot { position: absolute; top: 4px; right: 2px; width: 6px; height: 6px; border-radius: 50%; background: var(--controls-warning); }
 .documents-panel { max-height: 220px; overflow: auto; }
 .documents-panel > button { display: flex; width: 100%; justify-content: space-between; gap: 8px; padding: 7px 10px; border: 0; background: none; color: var(--text-primary); text-align: left; }
 .documents-panel > button small { color: var(--text-muted); }

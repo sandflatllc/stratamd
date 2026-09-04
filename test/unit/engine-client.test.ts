@@ -212,6 +212,8 @@ describe('T3 engine read client', () => {
       addEventListener(name: string, listener: (event: { data?: string }) => void) { this.listeners.set(name, [...(this.listeners.get(name) ?? []), listener]) }
       send(value: string) {
         const request = JSON.parse(value) as { id: string; tag: string; payload: unknown }
+        // The same socket also serves the accounts probe (§5.13); this test only cares about the upload.
+        if (request.tag === 'server.getConfig') { queueMicrotask(() => this.emit('message', { data: JSON.stringify({ _tag: 'Exit', requestId: request.id, exit: { _tag: 'Success', value: { providers: [] } } }) })); return }
         expect(request).toMatchObject({ tag: 'attachments.createUploadUrl', payload: { type: 'file', name: 'delivery.md', mimeType: 'text/markdown' } })
         queueMicrotask(() => this.emit('message', { data: JSON.stringify({ _tag: 'Exit', requestId: request.id, exit: { _tag: 'Success', value: { attachmentId: 'pending-upload', relativeUrl: '/upload/signed', expiresAt: 1 } } }) }))
       }

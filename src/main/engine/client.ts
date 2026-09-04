@@ -19,9 +19,13 @@ import {
   T3_CONTRACT_REVISION,
   T3_HTTP,
   T3_RPC,
+  serverConfigSlice,
   type T3ShellSnapshot,
   type T3ThreadDetailSnapshot,
 } from './t3-contract'
+import { accountViews, chooseInstance, emptyAccountsStore, providerInstancesOf, readAccountsStore, recordMeasurements, terminalShimTargets, writeAccountsStore, type AccountsStore, type EngineProviderInstance } from './accounts'
+import { writeTerminalShims } from '../account-shims'
+import { logError } from '../log'
 import type { EngineProjectView, EngineThreadView, EngineView } from '../../shared/contracts'
 import { assertSupportedPlatform } from '../../platform/runtime'
 import { mapMarkdownBlocks, parseStrataBlock } from '../../core/blocks'
@@ -49,6 +53,11 @@ export interface EngineClientOptions {
   now?: () => number
   pollMs?: number
   webSocket?: typeof WebSocket
+  /** How long a provider usage reading stays fresh before the next refresh asks the engine again (§5.13). */
+  configRefreshMs?: number
+  /** Where terminal launchers are written, or null to write none (§5.13: Linux only). */
+  terminalShimDirectory?: string | null
+  writeShims?: typeof writeTerminalShims
 }
 
 export interface EngineReadClient {
@@ -66,6 +75,9 @@ export interface EngineReadClient {
   createThread?(input: { projectId: string; title: string; model: string; effort: string | null; access: EngineThreadView['access']; instanceId?: string | null }): Promise<string>
   createProject?(input: { title: string; workspaceRoot: string }): Promise<string>
   actOnThread?(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void>
+  parkAccount?(instanceId: string, parked: boolean): Promise<void>
+  setTerminalDefault?(driver: string, selection: string | null): Promise<void>
+  refreshAccounts?(): Promise<void>
 }
 
 const EMPTY_ENGINE: EngineView = {
@@ -76,7 +88,13 @@ const EMPTY_ENGINE: EngineView = {
   problem: null,
   projects: [],
   activeThreadId: null,
+  accounts: [],
+  terminalDefaults: {},
+  terminalShimDirectory: null,
 }
+
+/** The launcher names Strata may have written; a driver without a terminal default gets its launcher removed. */
+const SHIM_NAMES = ['codex', 'claude']
 
 function cleanServer(value: string): string {
   const url = new URL(value)
@@ -100,7 +118,15 @@ export class T3EngineClient implements EngineReadClient {
   readonly #credentialPath: string
   readonly #readingPath: string
   readonly #commandsPath: string
+  readonly #accountsPath: string
   readonly #WebSocket: typeof WebSocket
+  readonly #configRefreshMs: number
+  readonly #shimDirectory: string | null
+  readonly #writeShims: typeof writeTerminalShims
+  #accounts: AccountsStore = emptyAccountsStore()
+  #providers: EngineProviderInstance[] = []
+  #configFetchedAt = 0
+  #configProblem: string | null = null
   readonly #listeners = new Set<(view: EngineView) => void>()
   #credential: EngineCredential | null = null
   #reading: EngineReadingState = { formatVersion: 1, activeThreadId: null, lastVisited: {} }
@@ -121,13 +147,18 @@ export class T3EngineClient implements EngineReadClient {
     this.#credentialPath = join(options.dataDirectory, 'engine-credential.json')
     this.#readingPath = join(options.dataDirectory, 'engine-reading.json')
     this.#commandsPath = join(options.dataDirectory, 'engine-commands.json')
+    this.#accountsPath = join(options.dataDirectory, 'engine-accounts.json')
     this.#WebSocket = options.webSocket ?? WebSocket
+    this.#configRefreshMs = options.configRefreshMs ?? 30_000
+    this.#shimDirectory = options.terminalShimDirectory ?? null
+    this.#writeShims = options.writeShims ?? writeTerminalShims
   }
 
   async initialize(): Promise<void> {
     this.#credential = await this.#readCredential()
     this.#reading = await this.#readReading()
     this.#pendingCommands = await this.#readCommands()
+    this.#accounts = await readAccountsStore(this.#accountsPath)
     if (!this.#credential) return
     this.#running = true
     await this.reconnect()
@@ -211,7 +242,48 @@ export class T3EngineClient implements EngineReadClient {
       problem: this.#problem,
       projects,
       activeThreadId: this.#reading.activeThreadId,
+      accounts: this.#accountViews(),
+      terminalDefaults: { ...this.#accounts.terminalDefaults },
+      terminalShimDirectory: this.#shimDirectory,
     }
+  }
+
+  #accountViews() {
+    return accountViews(this.#accounts, this.#providers, this.#now())
+  }
+
+  /**
+   * Parking (§5.13) lives in Strata's ghost store, not on the server, so it
+   * survives restarts and never touches T3's settings.
+   */
+  async parkAccount(instanceId: string, parked: boolean): Promise<void> {
+    const current = this.#accounts.parked.includes(instanceId)
+    if (current === parked) return
+    this.#accounts = { ...this.#accounts, parked: parked ? [...this.#accounts.parked, instanceId] : this.#accounts.parked.filter((id) => id !== instanceId) }
+    await writeAccountsStore(this.#accountsPath, this.#accounts)
+    this.#publish()
+    await this.#syncShims()
+  }
+
+  async setTerminalDefault(driver: string, selection: string | null): Promise<void> {
+    this.#accounts = { ...this.#accounts, terminalDefaults: { ...this.#accounts.terminalDefaults, [driver]: selection } }
+    await writeAccountsStore(this.#accountsPath, this.#accounts)
+    this.#publish()
+    await this.#syncShims()
+  }
+
+  /**
+   * The probe on open (§5.13): asks the engine to re-measure every provider,
+   * then reads the configuration that carries the fresh usage. A server too
+   * old to refresh still answers the read.
+   */
+  async refreshAccounts(): Promise<void> {
+    if (!this.#credential) throw new Error('No engine is paired')
+    await this.#rpc(T3_RPC.refreshProviders, {}, 'provider refresh').catch(() => undefined)
+    this.#configFetchedAt = 0
+    await this.#refreshConfig()
+    this.#publish()
+    if (this.#configProblem) throw new Error(this.#configProblem)
   }
 
   async pair(server: string, pairingCode: string): Promise<void> {
@@ -292,12 +364,36 @@ export class T3EngineClient implements EngineReadClient {
   async createThread(input: { projectId: string; title: string; model: string; effort: string | null; access: EngineThreadView['access']; instanceId?: string | null }): Promise<string> {
     if (!this.#shell?.projects.some((project) => project.id === input.projectId)) throw new Error(`Project was not found: ${input.projectId}`)
     const threadId = randomUUID()
-    const instanceId = input.instanceId ?? this.#shell.threads.find((thread) => thread.projectId === input.projectId)?.modelSelection.instanceId ?? this.#shell.threads[0]?.modelSelection.instanceId ?? 'codex'
+    const instanceId = await this.#resolveInstance(input.projectId, input.instanceId ?? null)
     await this.#dispatch(threadCreateCommand.parse({ type: 'thread.create', commandId: randomUUID(), threadId, projectId: input.projectId, title: input.title,
       modelSelection: { instanceId, model: input.model, options: input.effort ? { effort: input.effort } : {} }, runtimeMode: input.access,
       interactionMode: 'default', branch: null, worktreePath: null, createdAt: new Date(this.#now()).toISOString() }))
     await this.openThread(threadId)
     return threadId
+  }
+
+  /**
+   * Auto (§5.13) goes through the fork's ordering over the accounts Strata
+   * knows; an explicit choice is honored but refused while unusable. Without
+   * any account report the project's existing instance keeps working.
+   */
+  async #resolveInstance(projectId: string, explicit: string | null): Promise<string> {
+    const accounts = this.#accountViews()
+    if (explicit) {
+      const account = accounts.find((candidate) => candidate.instanceId === explicit)
+      if (account && !account.usable) throw new Error(`${account.name} cannot take a thread: ${account.reason ?? account.state}`)
+      return explicit
+    }
+    const chosen = chooseInstance(this.#accounts, accounts, null)
+    if (chosen) {
+      if (chosen !== this.#accounts.stickyInstanceId) {
+        this.#accounts = { ...this.#accounts, stickyInstanceId: chosen }
+        await writeAccountsStore(this.#accountsPath, this.#accounts)
+      }
+      return chosen
+    }
+    if (accounts.length) throw new Error('No account can take a thread right now. Unpark one or wait for a limit to reset.')
+    return this.#shell?.threads.find((thread) => thread.projectId === projectId)?.modelSelection.instanceId ?? this.#shell?.threads[0]?.modelSelection.instanceId ?? 'codex'
   }
 
   async createProject(input: { title: string; workspaceRoot: string }): Promise<string> {
@@ -358,6 +454,7 @@ export class T3EngineClient implements EngineReadClient {
         this.#problem = this.#state === 'mismatch'
           ? `Server ${this.#serverVersion} is outside the tested ${T3_SUPPORTED_VERSION} contract (${T3_CONTRACT_REVISION.slice(0, 8)}).`
           : null
+        if (this.#now() - this.#configFetchedAt >= this.#configRefreshMs) await this.#refreshConfig()
       } catch (error) {
         this.#state = 'disconnected'
         this.#problem = error instanceof Error ? error.message : 'The engine is unreachable'
@@ -367,6 +464,37 @@ export class T3EngineClient implements EngineReadClient {
       }
     })()
     return this.#polling
+  }
+
+  /**
+   * Provider instances and usage come from `server.getConfig` (§5.13). Live
+   * usage is folded into the persisted measurements; a failure keeps the last
+   * measurement on screen and never marks the engine disconnected.
+   */
+  async #refreshConfig(): Promise<void> {
+    this.#configFetchedAt = this.#now()
+    try {
+      const config = serverConfigSlice.parse(await this.#rpc(T3_RPC.getServerConfig, {}))
+      this.#providers = providerInstancesOf(config)
+      const next = recordMeasurements(this.#accounts, this.#providers, new Date(this.#now()).toISOString())
+      if (next !== this.#accounts) {
+        this.#accounts = next
+        await writeAccountsStore(this.#accountsPath, this.#accounts)
+      }
+      this.#configProblem = null
+      await this.#syncShims()
+    } catch (error) {
+      this.#configProblem = error instanceof Error ? error.message : 'The engine did not report its providers'
+    }
+  }
+
+  async #syncShims(): Promise<void> {
+    if (!this.#shimDirectory) return
+    try {
+      await this.#writeShims(this.#shimDirectory, terminalShimTargets(this.#accounts, this.#accountViews()), SHIM_NAMES)
+    } catch (error) {
+      logError('engine', 'Terminal launchers could not be written', error)
+    }
   }
 
   async #refreshThread(threadId: string): Promise<void> {
@@ -408,37 +536,43 @@ export class T3EngineClient implements EngineReadClient {
     dispatchResult.parse(await response.json())
   }
 
-  async #uploadTextAttachment(input: { name: string; text: string }): Promise<{ type: 'file'; id: string; name: string; mimeType: string; sizeBytes: number }> {
+  /**
+   * One request over T3's Effect RPC socket: a ticket, a `Request` frame, and
+   * the matching `Exit`. Uploads and the server config both go this way.
+   */
+  async #rpc(tag: string, payload: unknown, what = 'request'): Promise<unknown> {
     if (!this.#credential) throw new Error('No engine is paired')
-    const bytes = new TextEncoder().encode(input.text)
-    if (bytes.byteLength === 0) throw new Error('A delivery attachment cannot be empty')
     const ticketResponse = await this.#fetch(`${this.#credential.server}${T3_HTTP.websocketTicket}`, {
       method: 'POST', headers: { authorization: `Bearer ${this.#credential.accessToken}` }, signal: AbortSignal.timeout(3_000),
     })
-    if (!ticketResponse.ok) throw new Error(`The engine could not authorize an attachment upload (${ticketResponse.status})`)
+    if (!ticketResponse.ok) throw new Error(`The engine could not authorize the ${what} (${ticketResponse.status})`)
     const ticket = websocketTicketResult.parse(await ticketResponse.json())
     const socketUrl = new URL(T3_HTTP.websocket, this.#credential.server)
     socketUrl.protocol = socketUrl.protocol === 'https:' ? 'wss:' : 'ws:'
     socketUrl.searchParams.set('wsTicket', ticket.ticket)
-    const upload = await new Promise<ReturnType<typeof attachmentUploadResult.parse>>((resolve, reject) => {
+    return new Promise<unknown>((resolve, reject) => {
       const socket = new this.#WebSocket(socketUrl)
       const requestId = randomUUID()
-      const timeout = setTimeout(() => { socket.close(); reject(new Error('The engine attachment upload timed out')) }, 5_000)
-      socket.addEventListener('open', () => socket.send(JSON.stringify({
-        _tag: 'Request', id: requestId, tag: T3_RPC.createAttachmentUploadUrl,
-        payload: { type: 'file', name: input.name, mimeType: 'text/markdown', sizeBytes: bytes.byteLength },
-      })))
+      const timeout = setTimeout(() => { socket.close(); reject(new Error(`The engine ${what} timed out`)) }, 5_000)
+      socket.addEventListener('open', () => socket.send(JSON.stringify({ _tag: 'Request', id: requestId, tag, payload, headers: [] })))
       socket.addEventListener('message', (event) => {
         try {
           const message = JSON.parse(String(event.data)) as { _tag?: string; requestId?: string; exit?: { _tag?: string; value?: unknown; cause?: unknown } }
           if (message._tag !== 'Exit' || message.requestId !== requestId) return
           clearTimeout(timeout); socket.close()
-          if (message.exit?._tag !== 'Success') reject(new Error('The engine refused the attachment upload'))
-          else resolve(attachmentUploadResult.parse(message.exit.value))
+          if (message.exit?._tag !== 'Success') reject(new Error(`The engine refused the ${what}`))
+          else resolve(message.exit.value)
         } catch (error) { clearTimeout(timeout); socket.close(); reject(error) }
       })
-      socket.addEventListener('error', () => { clearTimeout(timeout); reject(new Error('The engine attachment channel is unreachable')) })
+      socket.addEventListener('error', () => { clearTimeout(timeout); reject(new Error(`The engine channel for the ${what} is unreachable`)) })
     })
+  }
+
+  async #uploadTextAttachment(input: { name: string; text: string }): Promise<{ type: 'file'; id: string; name: string; mimeType: string; sizeBytes: number }> {
+    if (!this.#credential) throw new Error('No engine is paired')
+    const bytes = new TextEncoder().encode(input.text)
+    if (bytes.byteLength === 0) throw new Error('A delivery attachment cannot be empty')
+    const upload = attachmentUploadResult.parse(await this.#rpc(T3_RPC.createAttachmentUploadUrl, { type: 'file', name: input.name, mimeType: 'text/markdown', sizeBytes: bytes.byteLength }, 'attachment upload'))
     const response = await this.#fetch(new URL(upload.relativeUrl, this.#credential.server), {
       method: 'PUT', headers: { 'content-type': 'text/markdown', 'content-length': String(bytes.byteLength) }, body: bytes,
       signal: AbortSignal.timeout(10_000),

@@ -20,6 +20,7 @@ export const T3_RPC = {
   subscribeShell: 'orchestration.subscribeShell',
   subscribeThread: 'orchestration.subscribeThread',
   getServerConfig: 'server.getConfig',
+  refreshProviders: 'server.refreshProviders',
   subscribeServerConfig: 'subscribeServerConfig',
   createAttachmentUploadUrl: 'attachments.createUploadUrl',
 } as const
@@ -183,8 +184,26 @@ export const dispatchResult = z.object({ sequence: nonNegativeInt }).passthrough
 
 export const providerUsageWindow = z.object({ usedPercent: z.number().min(0).max(100), resetsAt: isoDate.nullable(), measuredAt: isoDate, source: z.enum(['probe', 'session']) }).passthrough()
 export const providerUsage = z.object({ session: providerUsageWindow.nullable(), weekly: providerUsageWindow.nullable(), planLabel: id.optional(), applicable: z.boolean() }).passthrough()
-export const serverProvider = z.object({ instanceId: id, driver: id, enabled: z.boolean(), installed: z.boolean(), usage: providerUsage.optional() }).passthrough()
+export const serverProviderAuth = z.object({ status: z.enum(['authenticated', 'unauthenticated', 'unknown']), type: id.optional(), label: id.optional(), email: id.optional() }).passthrough()
+export const serverProvider = z.object({
+  instanceId: id, driver: id, displayName: id.optional(), enabled: z.boolean(), installed: z.boolean(), version: id.nullable().optional(),
+  status: z.string(), auth: serverProviderAuth, message: id.optional(), availability: z.string().optional(), unavailableReason: id.optional(),
+  usage: providerUsage.optional(),
+}).passthrough()
+/**
+ * The slice of `server.getConfig` Accounts reads (§5.13). Providers decode one
+ * by one so a provider this build cannot read drops out instead of failing the
+ * whole config, the same forward-compatible rule T3's own clients follow.
+ */
+export const serverConfigSlice = z.object({
+  providers: z.array(z.unknown()).transform((items) => items.flatMap((item) => { const parsed = serverProvider.safeParse(item); return parsed.success ? [parsed.data] : [] })),
+  settings: z.object({
+    providerInstances: z.record(z.string(), z.object({ config: z.object({ homePath: z.string().optional() }).passthrough().optional() }).passthrough()).optional(),
+  }).passthrough().optional(),
+}).passthrough()
 
 export type T3ShellSnapshot = z.infer<typeof shellSnapshot>
 export type T3ThreadDetailSnapshot = z.infer<typeof threadDetailSnapshot>
 export type T3ThreadStreamItem = z.infer<typeof threadStreamItem>
+export type T3ServerProvider = z.infer<typeof serverProvider>
+export type T3ServerConfigSlice = z.infer<typeof serverConfigSlice>
