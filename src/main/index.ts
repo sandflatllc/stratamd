@@ -251,7 +251,8 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
       unsubscribeState?.()
       unsubscribeState = null
     })
-    await window.loadURL(`app://${APP_HOST}/`)
+    const explicitDocument = documentPathsFromArgv(options.argv ?? process.argv.slice(1)).length > 0
+    await window.loadURL(`app://${APP_HOST}/${explicitDocument ? '?openDocument=1' : ''}`)
     return window
   }
 
@@ -288,9 +289,11 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
     void openLaunchDocuments(argv, workingDirectory).then(showAndFocus)
   })
 
-  mainWindow = await ensureWindow()
-  // Last run's tabs come back first; anything named on the command line opens after them and takes focus.
+  // Restore documents before the renderer's first view, so restoration cannot
+  // look like a new file-open intent and replace its saved center placement.
   await options.api.restoreOpenDocuments?.()
+  mainWindow = await ensureWindow()
+  // Anything named on the command line opens after restored tabs and takes focus.
   await openLaunchDocuments(options.argv ?? process.argv.slice(1))
   adoptOpenFileHandler((path) => {
     void options.api.openDocument(path).then(showAndFocus)

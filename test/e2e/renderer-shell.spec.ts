@@ -12,12 +12,7 @@ test('blank shell opens the first document from the explorer and drag and drop',
 
   try {
     const page = await value.launchEmpty()
-    await expect(page.locator('.stratamd-logo')).toBeVisible()
-    await expect(page.locator('.strata-loader')).toBeVisible()
-    expect(await page.locator('.stratamd-logo, .strata-loader').evaluateAll((images) => images.every((image) => {
-      const value = image as HTMLImageElement
-      return value.complete && value.naturalWidth > 0
-    }))).toBe(true)
+    await expect(page.getByText('No conversation open.', { exact: false })).toBeVisible()
     const explorer = page.getByRole('complementary', { name: /File explorer/i })
     await expect(explorer).toBeVisible()
     await expect(page.getByRole('button', { name: /^Add folder$/i })).toBeVisible()
