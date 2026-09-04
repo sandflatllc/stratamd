@@ -71,7 +71,7 @@ test('5 and 6. quick send carries one comment while held drafts stay private and
     let send = page.getByRole('dialog', { name: /Send changes/i })
     await expect(send.getByText(/^Your changes/)).toBeVisible()
     await expect(send.locator('.send-item[data-author="user"]')).not.toHaveCount(0)
-    await expect(send.getByText(/^Annotations/)).toHaveCount(0)
+    await expect(send.getByText(/^Items/)).toHaveCount(0)
     await expect(send.getByText(/^Your comments · 2$/)).toBeVisible()
     await expect(send.locator('.send-item-draft')).toHaveCount(2)
     const rows = send.locator('.send-item-draft')

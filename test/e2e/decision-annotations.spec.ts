@@ -9,7 +9,7 @@ test('owner decisions keep choice, discussion, delivery, and edits separate', as
     const page = await scenario.launch()
     expect((await scenario.attach('agent-a', 'Agent A')).event).toBe('initial')
 
-    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
     const annotations = page.locator('.annotations-panel')
     await annotations.getByRole('button', { name: 'New decision' }).click()
     await annotations.getByRole('combobox', { name: 'Decision anchor' }).selectOption({ label: '## Delivery' })
@@ -111,7 +111,7 @@ test('keyboard passage and rail document decisions expose explicit anchors', asy
     await composer.getByRole('button', { name: 'Add', exact: true }).click()
     await expect(composer).toHaveCount(0)
 
-    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
     const annotations = page.locator('.annotations-panel')
     await annotations.getByRole('button', { name: 'New decision' }).click()
     await expect(annotations.getByRole('combobox', { name: 'Decision anchor' })).toHaveValue('document')
@@ -157,7 +157,7 @@ test('an orphaned decision remains answerable', async ({}, testInfo) => {
     await selectTextInVisualEditor(page, 'Choose the release gate.')
     await page.keyboard.press('Backspace')
     await expect.poll(async () => (await scenario.state()).annotations?.find((item) => item.id === id)?.status).toBe('orphaned')
-    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
     await page.locator('.annotation-row').filter({ hasText: 'Which gate?' }).click()
     const thread = page.getByRole('region', { name: /decision thread/i })
     await expect(thread.getByRole('button', { name: 'Answer decision' })).toBeVisible()

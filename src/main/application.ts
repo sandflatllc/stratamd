@@ -35,6 +35,7 @@ import type {
 } from '../shared/contracts'
 import { createDraftStore, discardDraft as removeDraft, holdDraft as addHeldDraft, relocateDraft, type DraftStore } from '../core/drafts'
 import { blockOutcomeLines, parseStrataBlock, resolveBlock } from '../core/blocks'
+import { deriveItems } from '../core/items'
 import { logError } from './log'
 import {
   acceptAllSuggestions as acceptAllAnnotationSuggestions,
@@ -267,6 +268,8 @@ interface OpenDocumentSession {
    * age matters most. Written to meta.json with the hunk and restored from it.
    */
   hunkTimes: Map<string, number>
+  /** Provenance for hunks created by an in-the-loop strata edit. */
+  hunkItemSources: Map<string, { threadId: string; turnId: string; messageId: string }>
   /** Object ids of delivery payloads proven written this session, by payload identity. */
   payloadBlobs: WeakMap<object, string>
 }
@@ -779,7 +782,7 @@ export class StrataApplication implements StrataApi {
           session.attachments[threadId] = attachment
           const engineThread = view.projects.flatMap((project) => project.threads).find((thread) => thread.id === threadId)
           for (const message of engineThread?.messages ?? []) {
-            if (message.role === 'assistant' && !message.streaming) changed = await this.#applyStrataMessage(session, threadId, message.id, message.text) || changed
+            if (message.role === 'assistant' && !message.streaming) changed = await this.#applyStrataMessage(session, threadId, message.id, message.turnId ?? message.id, message.text) || changed
           }
         }
         if (changed) await this.#persist(session)
@@ -789,7 +792,7 @@ export class StrataApplication implements StrataApi {
     this.#publish()
   }
 
-  async #applyStrataMessage(session: OpenDocumentSession, threadId: string, messageId: string, text: string): Promise<boolean> {
+  async #applyStrataMessage(session: OpenDocumentSession, threadId: string, messageId: string, turnId: string, text: string): Promise<boolean> {
     let attachment = session.attachments[threadId]
     if (!attachment || attachment.processedMessageIds?.includes(messageId)) return false
     const parsed = parseStrataBlock(text)
@@ -820,6 +823,7 @@ export class StrataApplication implements StrataApi {
             createdAt: this.#now(), id: itemId, kind: entry.verb === 'suggest' ? 'suggestion' : entry.verb,
             author: 'agent', agent: threadId, name: attachment.name, quote,
             text: entry.verb === 'suggest' ? entry.replacement : entry.text, start,
+            source: { threadId, turnId, messageId },
             ...(entry.verb === 'decision' ? { anchorKind: 'quote' as const, options: entry.options } : {}),
           })
           session.annotations = created.log
@@ -830,8 +834,12 @@ export class StrataApplication implements StrataApi {
           const relative = quote.indexOf(entry.match)
           if (relative < 0 || quote.indexOf(entry.match, relative + Math.max(1, entry.match.length)) >= 0) throw new Error('edit match is missing or ambiguous in the block')
           const from = start + relative
+          const beforeHunks = new Set(session.state.pendingHunks.map((hunk) => hunk.id))
           session.state = setExternalTag(session.state, threadId, attachment.name, this.#now())
           await this.#mergeExternalText(session, 'buffer', session.state.shadow.slice(0, from) + entry.replace + session.state.shadow.slice(from + entry.match.length))
+          for (const hunk of session.state.pendingHunks) {
+            if (!beforeHunks.has(hunk.id)) session.hunkItemSources.set(hunk.id, { threadId, turnId, messageId })
+          }
           outcomes.push({ index: result.index, status: 'applied' })
           continue
         }
@@ -958,6 +966,7 @@ export class StrataApplication implements StrataApi {
         metaTimer: null,
         segmentTimes: new Map(),
         hunkTimes: new Map(),
+        hunkItemSources: new Map(),
         payloadBlobs: new WeakMap(),
         documentHandle: tracked.handle,
         identity: tracked.identity,
@@ -1070,6 +1079,7 @@ export class StrataApplication implements StrataApi {
       metaTimer: null,
       segmentTimes: new Map(meta.segments.flatMap((segment) => segment.id ? [[segment.id, segment.time] as const] : [])),
       hunkTimes: restoredHunkTimes(meta, state, this.#now()),
+      hunkItemSources: new Map(),
       payloadBlobs,
     }
     session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
@@ -3930,7 +3940,7 @@ function agentIdentity(id: string, name: string, index: number): AgentIdentity {
   return { id, name, color: colors[index % colors.length]! }
 }
 
-function annotationView(log: AnnotationLog, attachments: Record<string, Attachment>): AnnotationView[] {
+function annotationView(log: AnnotationLog, attachments: Record<string, Attachment>, document: string): AnnotationView[] {
   const ids = Object.keys(attachments)
   return Object.values(log.annotations).map((annotation) => ({
     id: annotation.id,
@@ -3951,6 +3961,11 @@ function annotationView(log: AnnotationLog, attachments: Record<string, Attachme
     to: annotation.status === 'orphaned' || annotation.anchor.kind === 'document' ? null : annotation.anchor.end,
     ...(annotation.kind === 'suggestion' ? { replacement: annotation.text, inline: suggestionRendersInline(annotation.quote, annotation.text) } : {}),
     ...optionalTime(annotation),
+    ...(annotation.source ? { source: annotation.source } : {}),
+    review: annotation.reviewedText === undefined
+      ? 'unreviewed'
+      : annotation.anchor.kind === 'document' || document.slice(annotation.anchor.start, annotation.anchor.end) === annotation.reviewedText ? 'reviewed' : 'revisit',
+    replySeqs: annotation.replies.map((reply) => reply.seq),
     replies: annotation.replies.map((reply) => ({
       id: reply.id,
       author: reply.author === 'user'
@@ -4011,7 +4026,8 @@ function hunkViews(session: OpenDocumentSession, now: number): HunkView[] {
       saved: !unsavedRanges.some((range) => rangesTouch(range, pending.shadow)),
       // Every change persists before it publishes, so a hunk without a stamp
       // was recorded since the last #persist pass: it is new.
-      changedAt: session.hunkTimes.get(pending.id) ?? now
+      changedAt: session.hunkTimes.get(pending.id) ?? now,
+      ...(session.hunkItemSources.has(pending.id) ? { itemSource: session.hunkItemSources.get(pending.id)! } : {}),
     }
   })
 }
@@ -4028,6 +4044,7 @@ function documentView(session: OpenDocumentSession, store: GhostStore, now: numb
       queuedSendCount: attachment.deliveries.filter((delivery) => !isMessageDelivery(delivery)).length,
       // Metadata from before calls were timed restores as zero; that is no time at all.
       lastCallAt: attachment.lastCallAt > 0 ? attachment.lastCallAt : null
+      ,cursor: deliveryStart(attachment).cursor
     }
   })
   const drafts: DraftView[] = session.drafts.drafts.map((draft) => {
@@ -4066,7 +4083,12 @@ function documentView(session: OpenDocumentSession, store: GhostStore, now: numb
       time: save.time,
       authors: save.authors.map((author) => ({ ...author })),
     })),
-    annotations: annotationView(session.annotations, session.attachments),
+    annotations: annotationView(session.annotations, session.attachments, session.state.shadow),
+    items: deriveItems({
+      annotations: annotationView(session.annotations, session.attachments, session.state.shadow),
+      hunks: hunkViews(session, now),
+      attachments,
+    }),
     drafts,
     attachments,
     canSend:

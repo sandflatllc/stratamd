@@ -143,7 +143,7 @@ test('composer and reply drafts survive Escape, and Escape closes one surface at
       '--as', 'agent-a',
     ])
     expect(annotation.code, annotation.stderr).toBe(0)
-    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
     const row = page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'Reply to this sentence.' })
     await row.click()
     const thread = page.getByRole('region', { name: /comment thread/i })

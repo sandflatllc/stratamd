@@ -141,7 +141,7 @@ test('2 conversation: moves between placements and dispatches a message, approva
 
     const path = (await page.evaluate(async () => (await window.strata.getState()).activeDocument?.path))!
     await page.evaluate(async ({ path }) => window.strata.addAnnotation(path, { kind: 'comment', quote: 'Engine-safe', text: 'Passage context', from: 2, to: 13 }), { path })
-    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
     await page.locator('.annotations-panel .annotation-row').filter({ hasText: 'Engine-safe' }).click()
     await expect(moved.getByRole('tab', { name: 'This passage' })).toBeEnabled()
     await expect(moved.getByRole('tab', { name: 'This passage' })).toHaveAttribute('aria-selected', 'true')

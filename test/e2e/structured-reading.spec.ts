@@ -46,7 +46,7 @@ test('tab hosts preserve the shell, expose counts, and keep Agents visible while
   await expect(review.getByRole('tab', { name: /^Changes/ }).locator('.rail-tab-count')).toHaveText('1')
   await expect(page.getByText('1 attached', { exact: true })).toBeVisible()
 
-  const annotations = review.getByRole('tab', { name: /^Annotations/ })
+  const annotations = review.getByRole('tab', { name: /^Items/ })
   await annotations.focus()
   await page.keyboard.press('Home')
   await expect(review.getByRole('tab', { name: /^Changes/ })).toHaveAttribute('aria-selected', 'true')
@@ -112,7 +112,7 @@ test('Contents follows the live document, centers jumps, and restores each docum
   await expect(page.getByRole('button', { name: /Live heading/ })).toBeVisible()
   expect(Number(await page.locator('html').getAttribute('data-heading-index-ms'))).toBeLessThan(50)
 
-  await review.getByRole('tab', { name: /^Annotations/ }).click()
+  await review.getByRole('tab', { name: /^Items/ }).click()
   await page.evaluate(async (path) => window.strata.openDocument(path), second)
   await expect(navigation.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true')
   await expect(review.getByRole('tab', { name: /^Changes/ })).toHaveAttribute('aria-selected', 'true')
@@ -121,11 +121,11 @@ test('Contents follows the live document, centers jumps, and restores each docum
 
   await page.getByRole('tab', { name: /guide\.md/i }).click()
   await expect(navigation.getByRole('tab', { name: 'Contents' })).toHaveAttribute('aria-selected', 'true')
-  await expect(review.getByRole('tab', { name: /^Annotations/ })).toHaveAttribute('aria-selected', 'true')
+  await expect(review.getByRole('tab', { name: /^Items/ })).toHaveAttribute('aria-selected', 'true')
   await value.stop()
 
   const restarted = await value.launch()
   await expect(restarted.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' })).toHaveAttribute('aria-selected', 'true')
-  await expect(restarted.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ })).toHaveAttribute('aria-selected', 'true')
+  await expect(restarted.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ })).toHaveAttribute('aria-selected', 'true')
   expect(await readFile(value.file, 'utf8')).toBe(DOCUMENT)
 })

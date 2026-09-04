@@ -79,7 +79,7 @@ test('a thread reply is a text box where Enter sends and Shift+Enter breaks the 
     const page = value.page!
     const created = await value.cli(['annotate', value.file, '--kind', 'question', '--quote', 'Quote this sentence.', '--text', 'Which way?', '--as', 'agent-a'])
     expect(created.code, created.stderr).toBe(0)
-    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
     await page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'Quote this sentence.' }).click()
     const thread = page.getByRole('region', { name: /question thread/i })
     const reply = thread.getByRole('textbox', { name: 'Reply' })

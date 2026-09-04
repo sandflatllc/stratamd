@@ -274,8 +274,8 @@ export function App({ createEditor }: AppProps) {
   }
   const threadEmpty = (
     <div className="empty-subtle thread-empty">
-      No thread open.
-      <small>Click a highlighted passage, or a row under Annotations, to read it here.</small>
+      No item open.
+      <small>Click a highlighted passage, or a row under Items, to read it here.</small>
     </div>
   )
   const resolveThread = (current: DocumentView, open: AnnotationView) => void perform(async () => { await window.strata.resolveAnnotation(current.path, open.id); showThread(null) }, 'Thread resolved. It stays until cleared.')
@@ -310,8 +310,21 @@ export function App({ createEditor }: AppProps) {
     else setEngineTab('conversation')
   })
   const projectsNode = <ProjectsPanel engine={view.engine} onReconnect={reconnectEngine} onOpenThread={openEngineThread} />
-  const sideConversation = <Conversation engine={view.engine} passage={thread && document ? threadNode(document, thread) : undefined} placement="side" {...runConversation} onMove={() => { if (view.engine.activeThreadId) setCenterConversationId(view.engine.activeThreadId); setEngineTab(null) }} />
-  const centerConversation = <Conversation engine={view.engine} placement="center" {...runConversation} onMove={() => { setCenterConversationId(null); setEngineTab('conversation') }} />
+  const conversationItems = document?.items ?? []
+  const itemActions = document ? {
+    items: conversationItems,
+    onReplyItem: (item: import('../shared/contracts').ItemView, text: string) => item.annotationId && void perform(() => window.strata.reply(document.path, item.annotationId!, text)),
+    onOpenItem: (item: import('../shared/contracts').ItemView) => { const annotation = item.annotationId ? document.annotations.find((candidate) => candidate.id === item.annotationId) : null; if (annotation) showThread(annotation) },
+    onActItem: (item: import('../shared/contracts').ItemView, action: 'accept' | 'reject' | 'keep' | 'revert') => {
+      if (item.annotationId && action === 'accept') void perform(() => window.strata.acceptSuggestion(document.path, item.annotationId!), 'Suggestion accepted.')
+      if (item.annotationId && action === 'reject') void perform(() => window.strata.rejectSuggestion(document.path, item.annotationId!), 'Suggestion rejected.')
+      const hunk = item.hunkId ? document.pendingHunks.find((candidate) => candidate.id === item.hunkId) : null
+      if (hunk && action === 'keep') void perform(() => window.strata.keepHunk(document.path, hunk.id), 'Kept.')
+      if (hunk && action === 'revert') revert(hunk)
+    },
+  } : {}
+  const sideConversation = <Conversation engine={view.engine} passage={thread && document ? threadNode(document, thread) : undefined} placement="side" {...runConversation} {...itemActions} onMove={() => { if (view.engine.activeThreadId) setCenterConversationId(view.engine.activeThreadId); setEngineTab(null) }} />
+  const centerConversation = <Conversation engine={view.engine} placement="center" {...runConversation} {...itemActions} onMove={() => { setCenterConversationId(null); setEngineTab('conversation') }} />
   const conversationNode = sideConversation
 
   const flushBuffer = useCallback(async () => {

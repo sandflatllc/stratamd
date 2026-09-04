@@ -170,7 +170,7 @@ test('cell discussion uses the exact row and hidden review targets reveal tempor
   await page.getByRole('button', { name: 'Close find' }).click()
   await block.getByRole('button', { name: 'Return to table view' }).click()
 
-  await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
+  await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
   await page.locator('.annotation-row').first().click()
   await expect(block.locator('.strata-source-table')).toBeVisible()
   await expect(page.getByRole('region', { name: 'question thread' })).toBeVisible()

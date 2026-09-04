@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
-import type { EngineActivityView, EngineThreadView, EngineView } from '../../shared/contracts'
+import type { EngineActivityView, EngineThreadView, EngineView, ItemView } from '../../shared/contracts'
+import { turnItems } from '../../core/items'
 import { InlineMarkdown } from '../inlineMarkdown'
 
 function activeThread(engine: EngineView): { thread: EngineThreadView; project: string } | null {
@@ -64,9 +65,31 @@ interface ConversationProps {
   onStop(threadId: string): void
   onApproval(threadId: string, requestId: string, decision: 'accept' | 'decline'): void
   onUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): void
+  items?: readonly ItemView[]
+  onReplyItem?(item: ItemView, text: string): void
+  onOpenItem?(item: ItemView): void
+  onActItem?(item: ItemView, action: 'accept' | 'reject' | 'keep' | 'revert', option?: string): void
 }
 
-export function Conversation({ engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput }: ConversationProps) {
+function TurnChecklist({ items, onReply, onOpen, onAct }: { items: readonly ItemView[]; onReply?(item: ItemView, text: string): void; onOpen?(item: ItemView): void; onAct?(item: ItemView, action: 'accept' | 'reject' | 'keep' | 'revert', option?: string): void }) {
+  const [replies, setReplies] = useState<Record<string, string>>({})
+  const done = items.filter((item) => item.status === 'done').length
+  if (items.length === 0) return null
+  return <section className="turn-checklist" aria-label="Turn items">
+    <header><strong>Items</strong><span>{done} of {items.length} done</span></header>
+    {items.map((item) => <div className="turn-item" data-kind={item.kind} data-status={item.status} key={item.id}>
+      <button type="button" className="turn-item-open" onClick={() => onOpen?.(item)}><span>{item.status === 'done' ? '✓' : item.status === 'drafted' ? '◌' : '○'}</span><strong>{item.kind}</strong><span>{item.text || item.quote}</span>{item.status === 'drafted' && <em>Drafted</em>}</button>
+      <div className="turn-item-actions">
+        {item.kind === 'suggestion' && <><button type="button" onClick={() => onAct?.(item, 'accept')}>Accept</button><button type="button" onClick={() => onAct?.(item, 'reject')}>Reject</button></>}
+        {item.kind === 'edit' && <><button type="button" onClick={() => onAct?.(item, 'keep')}>Keep</button><button type="button" onClick={() => onAct?.(item, 'revert')}>Revert</button></>}
+        <input aria-label={`Reply to ${item.kind}`} value={replies[item.id] ?? ''} onChange={(event) => setReplies((value) => ({ ...value, [item.id]: event.target.value }))} placeholder="Reply" />
+        <button type="button" disabled={!(replies[item.id] ?? '').trim()} onClick={() => { const text = (replies[item.id] ?? '').trim(); if (text) { onReply?.(item, text); setReplies((value) => ({ ...value, [item.id]: '' })) } }}>Queue reply</button>
+      </div>
+    </div>)}
+  </section>
+}
+
+export function Conversation({ engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput, items = [], onReplyItem, onOpenItem, onActItem }: ConversationProps) {
   const selected = activeThread(engine)
   const [scope, setScope] = useState<'whole' | 'passage'>(passage ? 'passage' : 'whole')
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
@@ -133,6 +156,7 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
           {turn.activities.filter((activity) => !activity.kind.endsWith('.requested') && !activity.kind.endsWith('.resolved')).map((activity) => <article className="conversation-tool" key={activity.id} data-tone={activity.tone}><strong>{activity.summary}</strong></article>)}
           {approvals.filter((activity) => (activity.turnId ?? 'thread') === turn.id).map((activity) => { const payload = record(activity.payload); const requestId = String(payload.requestId ?? ''); return <section className="conversation-request" data-kind="approval" key={activity.id}><strong>{typeof payload.detail === 'string' ? payload.detail : activity.summary}</strong><div className="conversation-actions"><button type="button" onClick={() => onApproval(thread.id, requestId, 'accept')}>Approve</button><button type="button" onClick={() => onApproval(thread.id, requestId, 'decline')}>Decline</button></div></section> })}
           {userInputs.filter((activity) => (activity.turnId ?? 'thread') === turn.id).map((activity) => <UserInputCard key={activity.id} activity={activity} onAnswer={(requestId, answers) => onUserInput(thread.id, requestId, answers)} />)}
+          <TurnChecklist items={turnItems(items, thread.id, turn.id)} {...(onReplyItem ? { onReply: onReplyItem } : {})} {...(onOpenItem ? { onOpen: onOpenItem } : {})} {...(onActItem ? { onAct: onActItem } : {})} />
         </section>
       })}
     </div>}

@@ -88,7 +88,7 @@ test('the Mesa-style review reads as numbered sections with Contents, the walkth
 
   // The review column: Annotations with populated cards and a visible Agents window.
   const reviewTabs = page.getByRole('tablist', { name: 'Document review' })
-  await reviewTabs.getByRole('tab', { name: /^Annotations/ }).click()
+  await reviewTabs.getByRole('tab', { name: /^Items/ }).click()
   const decision = page.locator('.annotation-row.kind-decision')
   await expect(decision).toContainText('Should deploys wait for green CI?')
   await expect(decision.locator('.decision-chips > span')).toHaveCount(2)
@@ -104,7 +104,7 @@ test('the Mesa-style review reads as numbered sections with Contents, the walkth
   await expect(page.locator('.changes-panel .change-row').first()).toContainText('Claude')
   await expect(page.locator('.changes-panel .change-avatar').first()).toBeVisible()
   await capture(page, 'shell-changes-tab')
-  await reviewTabs.getByRole('tab', { name: /^Annotations/ }).click()
+  await reviewTabs.getByRole('tab', { name: /^Items/ }).click()
   await page.getByRole('button', { name: 'Pin changes' }).click()
   const pinned = page.getByLabel('Pinned changes')
   await expect(pinned).toContainText('Pinned changes')

@@ -190,7 +190,7 @@ test('3. the review board is a map: centered spans, rich rows, capped change row
     expect(annotated.code, annotated.stderr).toBe(0)
 
     // A quote containing **bold** renders bold in the row, never raw syntax.
-    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
     const row = page.locator('.annotations-panel .annotation-row').first()
     await expect(row.locator('strong')).toHaveText('bold')
     await expect(row).not.toContainText('**')
@@ -287,7 +287,7 @@ test('4. a thread pages below the fold opens in the Thread tab with the span cen
     expect(annotated.code, annotated.stderr).toBe(0)
 
     // A rail click centers the span in the editor and opens the thread in the left window.
-    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
     await page.locator('.annotations-panel .annotation-row').first().click()
     const panel = page.getByRole('region', { name: /comment thread/i })
     const navigation = page.getByRole('tablist', { name: 'Document navigation' })
@@ -358,7 +358,7 @@ test('4. a thread pages below the fold opens in the Thread tab with the span cen
     await page.keyboard.press('Escape')
 
     // Resolve from the panel: the row leaves the rail, Clear resolved empties storage.
-    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
     await page.locator('.annotations-panel .annotation-row').first().click()
     await expect(panel).toBeVisible()
     await panel.getByRole('button', { name: /Resolve thread/i }).click()
@@ -391,7 +391,7 @@ test('5. an orphaned thread keeps every affordance except the jump', async ({}, 
     await setSource(page, rewritten)
     await value.waitForBuffer(rewritten)
 
-    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
     const row = page.locator('.annotations-panel .annotation-row').first()
     await expect(row.locator('.annotation-chip')).toHaveText('text removed')
 

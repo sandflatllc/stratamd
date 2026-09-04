@@ -43,6 +43,7 @@ export interface HunkView {
   saved: boolean
   /** When the change was recorded (ms epoch); the rail shows it as relative time. */
   changedAt: number
+  itemSource?: { threadId: string; turnId: string; messageId: string }
 }
 
 export interface ReplyView {
@@ -87,6 +88,29 @@ export interface AnnotationView {
   /** When the annotation was made, once the annotation log records it; absent until then. */
   createdAt?: number
   replies: ReplyView[]
+  /** Event sequence for each reply, parallel to replies; used to show Drafted until delivery acknowledgment. */
+  replySeqs?: number[]
+  source?: { threadId: string; turnId: string; messageId: string }
+  review?: 'unreviewed' | 'reviewed' | 'revisit'
+}
+
+export type ItemKind = 'decision' | 'question' | 'suggestion' | 'edit' | 'comment'
+export type ItemStatus = 'open' | 'drafted' | 'done'
+
+export interface ItemView {
+  id: string
+  kind: ItemKind
+  status: ItemStatus
+  review: 'unreviewed' | 'reviewed' | 'revisit'
+  text: string
+  quote: string
+  order: number
+  threadId: string | null
+  turnId: string | null
+  messageId: string | null
+  annotationId: string | null
+  hunkId: string | null
+  inferred: boolean
 }
 
 export type DraftKind = 'comment' | 'question' | 'suggestion'
@@ -115,6 +139,7 @@ export interface AttachmentView {
   queuedSendCount: number
   /** When the agent last called in (ms epoch); null when no call has been recorded. */
   lastCallAt: number | null
+  cursor?: number
 }
 
 export interface ExplorerFileView {
@@ -306,6 +331,7 @@ export interface DocumentView {
   /** Save history summaries, oldest first (PRD §6.7); hunks come from saveRound on demand. */
   saves: SaveRoundView[]
   annotations: AnnotationView[]
+  items?: ItemView[]
   drafts: DraftView[]
   attachments: AttachmentView[]
   canSend: boolean

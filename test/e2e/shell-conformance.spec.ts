@@ -418,7 +418,7 @@ test('keyboard operates composer recipient previews and an annotation thread', a
       '--as', 'agent-a',
     ])
     expect(annotation.code, annotation.stderr).toBe(0)
-    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
     const row = page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'Reply to this sentence.' })
     await expect(row).toBeVisible()
     await tabTo(page, row)

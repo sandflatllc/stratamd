@@ -292,7 +292,7 @@ function annotationPlace(annotation: AnnotationView): string {
   return annotation.status === 'resolved' ? 'Resolved' : ''
 }
 
-/** One populated Annotations row: kind and place, the text, the exact quote, and a decision's choices. */
+/** One populated Items row: kind and place, the text, the exact quote, and a decision's choices. */
 function AnnotationCard({ annotation, onOpen }: { annotation: AnnotationView; onOpen(): void }) {
   const orphaned = annotation.status === 'orphaned'
   const place = annotationPlace(annotation)
@@ -322,7 +322,7 @@ function AnnotationCard({ annotation, onOpen }: { annotation: AnnotationView; on
   )
 }
 
-function AnnotationsPanel(props: RightRailProps & { pinChanges: boolean; onPinChanges(): void }) {
+function ItemsPanel(props: RightRailProps & { pinChanges: boolean; onPinChanges(): void }) {
   const [filter, setFilter] = useState<AnnotationFilter>('all')
   const [creating, setCreating] = useState(false)
   const [prompt, setPrompt] = useState('')
@@ -347,14 +347,14 @@ function AnnotationsPanel(props: RightRailProps & { pinChanges: boolean; onPinCh
     setFilter('decisions')
   }
   return (
-    <section className="rail-panel annotations-panel" aria-labelledby="annotations-heading">
+    <section className="rail-panel annotations-panel" aria-labelledby="items-heading">
       <div className="panel-heading">
-        <h2 id="annotations-heading">Annotations</h2>
-        <span className="panel-counts">{counts.open} open{counts.removedText > 0 ? ` · ${counts.removedText} on removed text` : ''}</span>
+        <h2 id="items-heading">Items</h2>
+        <span className="panel-counts">{(props.document.items ?? []).filter((item) => item.status === 'done').length} of {(props.document.items ?? []).length} done{counts.removedText > 0 ? ` · ${counts.removedText} on removed text` : ''}</span>
         <button type="button" className={`text-action pin-toggle ${props.pinChanges ? 'positive' : ''}`} aria-pressed={props.pinChanges} onClick={props.onPinChanges}>Pin changes</button>
       </div>
       <div className="panel-scroll">
-        <div className="annotation-filter" role="toolbar" aria-label="Filter annotations">
+        <div className="annotation-filter" role="toolbar" aria-label="Filter items">
           {filters.map(([value, label]) => <button type="button" aria-pressed={filter === value} className={filter === value ? 'active' : ''} key={value} onClick={() => setFilter(value)}>{label}</button>)}
         </div>
         <button type="button" className="text-action new-decision" aria-expanded={creating} onClick={() => setCreating((value) => !value)}>New decision</button>
@@ -447,7 +447,7 @@ export function RightRail(props: RightRailProps) {
         <AmbientDecor variant={props.selectedTab === 'changes' ? 'changes' : 'annotations'} />
         <RailTabs label="Document review" idPrefix="review" selected={props.selectedTab} onSelect={props.onSelectTab} tabs={[
           { id: 'changes', label: 'Changes', count: pendingCount(props.document) },
-          { id: 'annotations', label: 'Annotations', count: annotationCounts(props.document).open + annotationCounts(props.document).removedText },
+          { id: 'annotations', label: 'Items', count: (props.document.items ?? []).filter((item) => item.status !== 'done').length },
         ]} />
         <section role="tabpanel" id="review-panel-changes" aria-labelledby="review-tab-changes" hidden={props.selectedTab !== 'changes'}>
           <ChangesPanel {...props} now={now} />
@@ -460,7 +460,7 @@ export function RightRail(props: RightRailProps) {
               {pinned.length === 0 && <span>Nothing waiting for review.</span>}
             </div>
           )}
-          <AnnotationsPanel {...props} pinChanges={pinChanges} onPinChanges={() => setPinChanges((value) => !value)} />
+          <ItemsPanel {...props} pinChanges={pinChanges} onPinChanges={() => setPinChanges((value) => !value)} />
         </section>
       </section>
       <Resizer axis="horizontal" label="Resize review window" value={props.upperReviewHeight} min={180} max={954} onChange={(value) => props.onHeight(value, false)} onCommit={(value) => props.onHeight(value, true)} />

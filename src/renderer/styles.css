@@ -1068,7 +1068,7 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
   .strata-table-title { max-width: 100%; }
 }
 
-/* Right column: populated Changes, Annotations, Pin Changes, and Agents as cards. */
+/* Right column: populated Changes, Items, pinned changes, and Attached as cards. */
 .change-row, .annotation-row { display: flex; width: 100%; flex-direction: column; align-items: stretch; gap: 7px; margin: 0 0 8px; border: 1px solid var(--border-soft); border-left: 4px solid var(--controls-primary); border-radius: 15px; padding: 10px 11px; background: color-mix(in srgb, var(--surfaces-inset) 56%, transparent); color: var(--body); text-align: left; cursor: pointer; transition: background .15s ease, border-color .15s ease; }
 .change-row:hover, .annotation-row:hover { border-color: color-mix(in srgb, var(--controls-primary) 45%, var(--border-soft)); background: color-mix(in srgb, var(--surfaces-inset) 82%, transparent); }
 .change-row:active, .annotation-row:active { transform: scale(.985); }
@@ -1338,3 +1338,13 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .conversation-compose-row textarea { min-width: 0; min-height: 42px; flex: 1; resize: vertical; border: 1px solid var(--borders-subtle); border-radius: 8px; padding: 7px; background: var(--surfaces-inset); color: var(--text-primary); font: inherit; }
 .conversation-panel[data-placement="center"] { border-radius: 24px; background: var(--surfaces-window); }
 .conversation-panel[data-placement="center"] .conversation-messages { padding-inline: clamp(18px, 7vw, 90px); }
+.turn-checklist { display: grid; gap: 6px; margin: 10px 8px 16px; padding: 9px; border: 1px solid var(--borders-subtle); border-radius: 10px; background: var(--surfaces-inset); }
+.turn-checklist > header { display: flex; justify-content: space-between; color: var(--text-muted); font-size: .78rem; }
+.turn-item { display: grid; gap: 5px; padding: 6px; border-radius: 7px; background: var(--surfaces-window); }
+.turn-item[data-status="done"] { opacity: .58; }
+.turn-item-open { display: grid; grid-template-columns: auto auto 1fr auto; gap: 6px; align-items: start; padding: 0; border: 0; background: none; color: var(--text-primary); text-align: left; cursor: pointer; }
+.turn-item-open strong { color: var(--text-muted); font-size: .72rem; text-transform: uppercase; }
+.turn-item-open em { color: var(--controls-warning); font-size: .72rem; }
+.turn-item-actions { display: flex; gap: 5px; padding-left: 18px; }
+.turn-item-actions input { min-width: 0; flex: 1; }
+.turn-item-actions button { border: 1px solid var(--borders-subtle); border-radius: 6px; background: transparent; color: var(--text-primary); }

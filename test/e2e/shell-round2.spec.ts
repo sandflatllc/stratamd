@@ -21,7 +21,7 @@ test('the thread panel focuses its reply and hands focus back on close; F8 steps
       expect(result.code, result.stderr).toBe(0)
     }
 
-    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Annotations/ }).click()
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
     const row = page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'First point to discuss.' })
     await row.click()
     const thread = page.getByRole('region', { name: /comment thread/i })

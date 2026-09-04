@@ -88,17 +88,23 @@ describe('cockpit delivery turns', () => {
     for (let attempt = 0; attempt < 200 && (await store.loadMeta(path)).attachments.t1?.deliveries.length; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 10))
     const blockId = /- (b[0-9a-f]+): Original\./.exec(engine.turns[0]!.attachment!.text)![1]!
     engine.assistant('assistant-1', `Done.\n\n\`\`\`strata\n${JSON.stringify([
+      { verb: 'decision', anchor: { document: path, block: blockId }, text: 'Which?', options: ['Keep', 'Change'] },
       { verb: 'question', anchor: { document: path, block: blockId }, text: 'Keep this?' },
-      { verb: 'comment', anchor: { document: path, block: blockId }, text: 'Checked.' },
+      { verb: 'suggest', anchor: { document: path, block: blockId }, replacement: 'Suggested.' },
+      { verb: 'edit', anchor: { document: path, block: blockId }, match: 'Original', replace: 'Revised' },
       { verb: 'edit', anchor: { document: path, block: 'b-stale' }, match: 'Original', replace: 'Revised' },
     ])}\n\`\`\``)
-    for (let attempt = 0; attempt < 200 && (await app.getState()).activeDocument!.annotations.length < 2; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 10))
-    expect((await app.getState()).activeDocument!.annotations.map((item) => item.text)).toEqual(['Keep this?', 'Checked.'])
+    for (let attempt = 0; attempt < 200 && ((await app.getState()).activeDocument!.items?.length ?? 0) < 4; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 10))
+    expect((await app.getState()).activeDocument!.items?.map((item) => [item.kind, item.turnId])).toEqual([
+      ['decision', 'turn-1'], ['question', 'turn-1'], ['suggestion', 'turn-1'], ['edit', 'turn-1'],
+    ])
 
     await app.send(path, { recipients: ['t1'], note: 'Continue.', includeExternal: false })
     expect(engine.turns[1]!.attachment!.text).toContain('1. applied as a_')
     expect(engine.turns[1]!.attachment!.text).toContain('2. applied as a_')
-    expect(engine.turns[1]!.attachment!.text).toContain('3. failed: block b-stale changed')
+    expect(engine.turns[1]!.attachment!.text).toContain('3. applied as a_')
+    expect(engine.turns[1]!.attachment!.text).toContain('4. applied')
+    expect(engine.turns[1]!.attachment!.text).toContain('5. failed: block b-stale changed')
   })
 
   it('accepts an attach-only block from an unattached thread and starts its first delivery', async () => {
