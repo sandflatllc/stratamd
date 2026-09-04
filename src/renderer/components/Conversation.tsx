@@ -3,6 +3,7 @@ import type { EngineActivityView, EngineThreadView, EngineView, ItemView } from 
 import { deriveWorkEntries, groupWorkRows, type WorkEntry } from '../../core/work-log'
 import { ConversationComposer } from './ConversationComposer'
 import { ConversationHistory } from './ConversationHistory'
+import { Resizer } from './Resizer'
 import { InlineMarkdown } from '../inlineMarkdown'
 
 function activeThread(engine: EngineView): { thread: EngineThreadView; project: string } | null {
@@ -58,6 +59,8 @@ function UserInputCard({ activity, onAnswer }: { activity: EngineActivityView; o
 }
 
 interface ConversationProps {
+  documentMeasure?: number
+  onDocumentMeasure?(value: number, commit: boolean): void
   engine: EngineView
   placement?: 'side' | 'center'
   passage?: ReactNode
@@ -113,7 +116,7 @@ function TurnChecklist({ items, onReply, onOpen, onAct, onDismiss }: { items: re
   </section>
 }
 
-export function Conversation({ engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput, items = [], onReplyItem, onQueueReply, onDismissItem, onOpenItem, onActItem }: ConversationProps) {
+export function Conversation({ documentMeasure = 860, onDocumentMeasure, engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput, items = [], onReplyItem, onQueueReply, onDismissItem, onOpenItem, onActItem }: ConversationProps) {
   const selected = activeThread(engine)
   const [scope, setScope] = useState<'whole' | 'passage'>(passage ? 'passage' : 'whole')
   const [expandedWork, setExpandedWork] = useState<Record<string, boolean>>({})
@@ -164,6 +167,8 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
       <div className="conversation-scope" role="tablist" aria-label="Conversation scope"><button type="button" role="tab" aria-selected={scope === 'whole'} onClick={() => setScope('whole')}>Whole thread</button><button type="button" role="tab" aria-selected={scope === 'passage'} disabled={!passage} onClick={() => setScope('passage')}>This passage</button></div>
     </header>
     {scope === 'passage' && passage ? <div className="conversation-passage">{passage}</div> : <ConversationHistory key={thread.id} className="conversation-messages">
+      <div className="conversation-column" style={placement === 'center' ? { width: `min(${documentMeasure}px, 100%)` } : undefined}>
+        {placement === 'center' && onDocumentMeasure && <Resizer axis="vertical" label="Resize conversation measure" value={documentMeasure} min={620} max={1600} onChange={(value) => onDocumentMeasure(value, false)} onCommit={(value) => onDocumentMeasure(value, true)} />}
       {turns.toReversed().map((turn) => {
         const groups = workGroups.filter((candidate) => candidate.turnId === turn.id)
         const timeline = [
@@ -202,6 +207,7 @@ export function Conversation({ engine, placement = 'side', passage, onReconnect,
           <TurnChecklist items={allItems.filter((item) => item.threadId === thread.id && item.turnId === turn.id)} onReply={(item, value) => { if (item.annotationId && onReplyItem) onReplyItem(item, value); else onQueueReply?.(thread.id, item, value) }} onDismiss={(item) => onDismissItem?.(thread.id, item)} {...(onOpenItem ? { onOpen: onOpenItem } : {})} {...(onActItem ? { onAct: onActItem } : {})} />
         </section>
       })}
+      </div>
     </ConversationHistory>}
     <ConversationComposer key={thread.id} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} queuedCount={queuedCount} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} onSend={(input) => onStart(thread.id, input)} />
   </section>

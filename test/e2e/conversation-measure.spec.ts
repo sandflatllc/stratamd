@@ -1,0 +1,41 @@
+import { expect, test } from '@playwright/test'
+import { seededScenario, startEngine } from './cockpit-engine-harness'
+
+test('center conversation shares the saved document measure and fits the side pane', async ({}, testInfo) => {
+  const engine = await startEngine()
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    const page = await scenario.launch()
+    await scenario.app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1900, 1000))
+    const navigation = page.getByRole('tablist', { name: 'Document navigation' })
+    await navigation.getByRole('tab', { name: 'Projects' }).click()
+    await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
+    await page.getByRole('button', { name: 'Open in center' }).click()
+    const center = page.locator('.conversation-panel[data-placement="center"]')
+    const handle = center.getByRole('button', { name: 'Resize conversation measure' })
+    const before = Number(await handle.getAttribute('aria-valuenow'))
+    const column = center.locator('.conversation-column')
+    const initialWidth = (await column.boundingBox())!.width
+    const box = (await handle.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2 - 120, box.y + box.height / 2, { steps: 8 })
+    await page.mouse.up()
+    const measure = before - 120
+    await expect(handle).toHaveAttribute('aria-valuenow', String(measure))
+    await expect.poll(async () => (await column.boundingBox())!.width).toBeLessThan(initialWidth)
+    await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).settings.panelSizes.documentMeasure).toBe(measure)
+    await page.screenshot({ path: testInfo.outputPath('conversation-width.png') })
+    await center.getByRole('button', { name: 'Move to side' }).click()
+    await expect(page.getByRole('button', { name: 'Resize document measure' })).toHaveAttribute('aria-valuenow', String(measure))
+    const side = page.locator('.conversation-panel[data-placement="side"]')
+    await expect(side.getByRole('button', { name: 'Resize conversation measure' })).toHaveCount(0)
+    expect(await side.locator('.conversation-column').evaluate((element) => element.getBoundingClientRect().width <= element.parentElement!.clientWidth)).toBe(true)
+    await scenario.stop()
+    const restored = await scenario.launch()
+    await expect(restored.getByRole('button', { name: 'Resize document measure' })).toHaveAttribute('aria-valuenow', String(measure))
+  } finally {
+    await scenario.dispose()
+    await engine.close()
+  }
+})
