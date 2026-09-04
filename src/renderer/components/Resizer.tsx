@@ -7,13 +7,16 @@ interface ResizerProps {
   min: number
   max: number
   invert?: boolean
+  expanded?: boolean
+  onToggle?(): void
   onChange(value: number): void
   onCommit(value: number): void
 }
 
-export function Resizer({ axis, label, value, min, max, invert = false, onChange, onCommit }: ResizerProps) {
+export function Resizer({ axis, label, value, min, max, invert = false, expanded, onToggle, onChange, onCommit }: ResizerProps) {
   const start = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     event.preventDefault()
+    if (expanded === false) return
     event.currentTarget.setPointerCapture(event.pointerId)
     const origin = axis === 'vertical' ? event.clientX : event.clientY
     let latest = value
@@ -32,7 +35,7 @@ export function Resizer({ axis, label, value, min, max, invert = false, onChange
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', finish, { once: true })
     window.addEventListener('pointercancel', finish, { once: true })
-  }, [axis, invert, max, min, onChange, onCommit, value])
+  }, [axis, expanded, invert, max, min, onChange, onCommit, value])
 
   return (
     <button
@@ -42,6 +45,15 @@ export function Resizer({ axis, label, value, min, max, invert = false, onChange
       aria-valuemin={min}
       aria-valuemax={max}
       aria-valuenow={value}
+      aria-expanded={expanded}
+      title={onToggle ? `Double-click to ${expanded ? 'collapse' : 'expand'}. Enter or Space also toggles.` : undefined}
+      onDoubleClick={onToggle}
+      onKeyDown={onToggle ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onToggle()
+        }
+      } : undefined}
       onPointerDown={start}
     ><span /></button>
   )
