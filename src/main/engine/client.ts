@@ -11,6 +11,7 @@ import {
   turnStartCommand,
   turnInterruptCommand,
   threadCreateCommand,
+  projectCreateCommand,
   threadActionCommand,
   approvalRespondCommand,
   userInputRespondCommand,
@@ -62,7 +63,8 @@ export interface EngineReadClient {
   interrupt(threadId: string): Promise<void>
   respondApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
   respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
-  createThread?(input: { projectId: string; title: string; model: string; effort: string | null; access: EngineThreadView['access'] }): Promise<string>
+  createThread?(input: { projectId: string; title: string; model: string; effort: string | null; access: EngineThreadView['access']; instanceId?: string | null }): Promise<string>
+  createProject?(input: { title: string; workspaceRoot: string }): Promise<string>
   actOnThread?(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void>
 }
 
@@ -287,14 +289,25 @@ export class T3EngineClient implements EngineReadClient {
     await this.#dispatch(command, `turn:${command.message.messageId}`, command.message.messageId)
   }
 
-  async createThread(input: { projectId: string; title: string; model: string; effort: string | null; access: EngineThreadView['access'] }): Promise<string> {
+  async createThread(input: { projectId: string; title: string; model: string; effort: string | null; access: EngineThreadView['access']; instanceId?: string | null }): Promise<string> {
     if (!this.#shell?.projects.some((project) => project.id === input.projectId)) throw new Error(`Project was not found: ${input.projectId}`)
     const threadId = randomUUID()
+    const instanceId = input.instanceId ?? this.#shell.threads.find((thread) => thread.projectId === input.projectId)?.modelSelection.instanceId ?? this.#shell.threads[0]?.modelSelection.instanceId ?? 'codex'
     await this.#dispatch(threadCreateCommand.parse({ type: 'thread.create', commandId: randomUUID(), threadId, projectId: input.projectId, title: input.title,
-      modelSelection: { instanceId: 'codex', model: input.model, options: input.effort ? { effort: input.effort } : {} }, runtimeMode: input.access,
+      modelSelection: { instanceId, model: input.model, options: input.effort ? { effort: input.effort } : {} }, runtimeMode: input.access,
       interactionMode: 'default', branch: null, worktreePath: null, createdAt: new Date(this.#now()).toISOString() }))
     await this.openThread(threadId)
     return threadId
+  }
+
+  async createProject(input: { title: string; workspaceRoot: string }): Promise<string> {
+    const projectId = randomUUID()
+    await this.#dispatch(projectCreateCommand.parse({
+      type: 'project.create', commandId: randomUUID(), projectId, title: input.title, workspaceRoot: input.workspaceRoot,
+      createdAt: new Date(this.#now()).toISOString(),
+    }))
+    if (!this.#shell?.projects.some((project) => project.id === projectId)) throw new Error(`The engine did not list the new project for ${input.workspaceRoot}`)
+    return projectId
   }
 
   async actOnThread(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void> {

@@ -23,6 +23,7 @@ function makeDocument(content: string, overrides: Partial<DocumentView> = {}): D
     annotations: [],
     drafts: [],
     attachments: [],
+    recipients: [],
     canSend: false,
     conflicts: [],
     problems: [],

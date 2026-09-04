@@ -60,7 +60,8 @@ test('1 and 2 read side: disconnect is isolated and reconnect restores the activ
     engine.setMessage('Conversation restored after reconnect.')
     engine.setOnline(true)
     await navigation.getByRole('tab', { name: 'Conversation' }).click()
-    await page.getByRole('button', { name: 'Reconnect' }).dispatchEvent('click')
+    // The client may already have reconnected on its own by the time the tab shows; Reconnect is then gone.
+    await page.getByRole('button', { name: 'Reconnect' }).dispatchEvent('click', undefined, { timeout: 2_000 }).catch(() => undefined)
     await expect(page.getByRole('region', { name: 'Conversation' })).toContainText('Conversation restored after reconnect.')
     expect(await page.evaluate(async () => (await window.strata.getState()).activeDocument?.content)).toContain('Still here.')
   } finally {

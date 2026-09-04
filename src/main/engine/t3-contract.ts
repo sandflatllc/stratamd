@@ -172,6 +172,10 @@ export const threadCreateCommand = z.object({
   type: z.literal('thread.create'), commandId: id, threadId: id, projectId: id, title: id, modelSelection,
   runtimeMode, interactionMode, branch: id.nullable(), worktreePath: id.nullable(), createdAt: isoDate,
 }).passthrough()
+export const projectCreateCommand = z.object({
+  type: z.literal('project.create'), commandId: id, projectId: id, title: id, workspaceRoot: id,
+  createWorkspaceRootIfMissing: z.boolean().optional(), defaultModelSelection: modelSelection.nullable().optional(), createdAt: isoDate,
+}).passthrough()
 export const threadActionCommand = z.object({ type: z.enum(['thread.delete', 'thread.archive', 'thread.settle']), commandId: id, threadId: id }).passthrough()
 export const approvalRespondCommand = z.object({ type: z.literal('thread.approval.respond'), ...commandBase, requestId: id, decision: z.enum(['accept', 'acceptForSession', 'acceptAlways', 'decline', 'cancel']) }).passthrough()
 export const userInputRespondCommand = z.object({ type: z.literal('thread.user-input.respond'), ...commandBase, requestId: id, answers: z.record(z.string(), z.unknown()) }).passthrough()

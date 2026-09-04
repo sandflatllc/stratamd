@@ -11,9 +11,14 @@ const at = '2026-09-03T12:00:00.000Z'
 export interface FakeEngineOptions {
   /** The one-time codes the fake accepts at the token endpoint; each returns a session token derived from it. */
   pairingCodes?: string[]
+  /** The workspace root of the one seeded project; a scenario's document folder makes it the containing project (§5.7). */
+  workspaceRoot?: string
 }
 
-export async function startEngine(options: FakeEngineOptions = {}): Promise<{ server: Server; origin: string; commands: Array<Record<string, unknown>>; uploads: string[]; tokenRequests: string[]; setOnline(value: boolean): void; setMessage(value: string): void; finish(): void; close(): Promise<void> }> {
+interface CreatedThread { id: string; projectId: string; title: string; modelSelection: unknown; runtimeMode: string }
+interface CreatedProject { id: string; title: string; workspaceRoot: string }
+
+export async function startEngine(options: FakeEngineOptions = {}): Promise<{ server: Server; origin: string; commands: Array<Record<string, unknown>>; uploads: string[]; tokenRequests: string[]; setOnline(value: boolean): void; setMessage(value: string): void; setWorkspaceRoot(value: string): void; finish(): void; close(): Promise<void> }> {
   let online = true
   const pairingCodes = new Set(options.pairingCodes ?? ['pair-code-1'])
   const tokenRequests: string[] = []
@@ -23,6 +28,9 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<{ se
   let inputOpen = true
   const commands: Array<Record<string, unknown>> = []
   const uploads: string[] = []
+  const createdThreads: CreatedThread[] = []
+  const createdProjects: CreatedProject[] = []
+  let workspaceRoot = options.workspaceRoot ?? '/tmp/cockpit'
   const sockets = new Set<Socket>()
   const server = createServer((request, response) => {
     if (!online) {
@@ -63,6 +71,8 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<{ se
         if (command.type === 'thread.turn.interrupt') status = 'stopped'
         if (command.type === 'thread.approval.respond') approvalOpen = false
         if (command.type === 'thread.user-input.respond') inputOpen = false
+        if (command.type === 'thread.create') createdThreads.push({ id: String(command.threadId), projectId: String(command.projectId), title: String(command.title), modelSelection: command.modelSelection, runtimeMode: String(command.runtimeMode) })
+        if (command.type === 'project.create') createdProjects.push({ id: String(command.projectId), title: String(command.title), workspaceRoot: String(command.workspaceRoot) })
         response.end(JSON.stringify({ sequence: commands.length + 2 }))
       })
       return
@@ -70,13 +80,23 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<{ se
     if (request.url === '/api/orchestration/shell') {
       response.end(JSON.stringify({
         snapshotSequence: 1,
-        projects: [{ id: 'p1', title: 'Cockpit project', workspaceRoot: '/tmp/cockpit', defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at }],
+        projects: [
+          { id: 'p1', title: 'Cockpit project', workspaceRoot, defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at },
+          ...createdProjects.map((project) => ({ id: project.id, title: project.title, workspaceRoot: project.workspaceRoot, defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at })),
+        ],
         threads: [
+          ...createdThreads.map((thread) => ({ id: thread.id, projectId: thread.projectId, title: thread.title, modelSelection: thread.modelSelection, runtimeMode: thread.runtimeMode, interactionMode: 'default', branch: null, worktreePath: null, latestTurn: null, createdAt: at, updatedAt: at, session: { threadId: thread.id, status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: thread.runtimeMode, activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: null, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false })),
           { id: 't1', projectId: 'p1', title: 'Live engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: { turnId: 'turn-1', state: status === 'running' ? 'running' : 'interrupted', requestedAt: at, startedAt: at, completedAt: null, assistantMessageId: 'm1' }, createdAt: at, updatedAt: at, session: { threadId: 't1', status, providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: approvalOpen, hasPendingUserInput: inputOpen, hasActionableProposedPlan: false },
           { id: 't2', projectId: 'p1', title: 'Second engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: null, createdAt: at, updatedAt: at, session: { threadId: 't2', status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false },
         ],
         updatedAt: at,
       }))
+      return
+    }
+    const created = createdThreads.find((thread) => request.url === `/api/orchestration/threads/${thread.id}`)
+    if (created) {
+      const sent = commands.filter((command) => command.type === 'thread.turn.start' && command.threadId === created.id).map((command, index) => ({ id: ((command.message as { messageId?: string }).messageId ?? `sent-${index}`), role: 'user', text: (command.message as { text: string }).text, attachments: (command.message as { attachments?: unknown[] }).attachments ?? [], turnId: `turn-${created.id}`, streaming: false, createdAt: at, updatedAt: at }))
+      response.end(JSON.stringify({ snapshotSequence: commands.length + 2, thread: { id: created.id, projectId: created.projectId, title: created.title, modelSelection: created.modelSelection, runtimeMode: created.runtimeMode, interactionMode: 'default', branch: null, worktreePath: null, latestTurn: null, createdAt: at, updatedAt: at, session: { threadId: created.id, status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: created.runtimeMode, activeTurnId: null, lastError: null, updatedAt: at }, deletedAt: null, messages: sent, activities: [], checkpoints: [] }, page: { beforeCursor: null, hasMore: false, snapshotSequence: commands.length + 2, threadSequence: commands.length + 2 } }))
       return
     }
     if (request.url === '/api/orchestration/threads/t1' || request.url === '/api/orchestration/threads/t2') {
@@ -132,6 +152,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<{ se
     tokenRequests,
     setOnline: (value) => { online = value },
     setMessage: (value) => { message = value },
+    setWorkspaceRoot: (value) => { workspaceRoot = value },
     finish: () => { status = 'stopped' },
     close: async () => {
       for (const socket of sockets) socket.destroy()

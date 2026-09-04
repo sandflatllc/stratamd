@@ -39,6 +39,8 @@ function fakeApi(): StrataApi {
     pairEngine: vi.fn(async () => undefined),
     reconnectEngine: vi.fn(async () => undefined),
     createEngineThread: vi.fn(async () => 'thread-new'),
+    createEngineProject: vi.fn(async () => 'project-new'),
+    startThreadFromDocument: vi.fn(async () => 'thread-new'),
     actOnEngineThread: vi.fn(async () => undefined),
     openConversation: vi.fn(async () => undefined),
     startConversationTurn: vi.fn(async () => undefined),

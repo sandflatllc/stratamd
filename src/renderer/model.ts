@@ -6,10 +6,13 @@ import type {
   AttachmentView,
   DocumentTabView,
   DocumentView,
+  EngineProjectView,
+  EngineView,
   ExplorerFileView,
   HunkView,
   PaneZoom,
   PanelSizes,
+  RecipientView,
   RoundHunkView,
   SaveRoundAuthorView,
   SpellingContext,
@@ -66,16 +69,28 @@ export function leftWindowWidth(sizes: PanelSizes, threadShown: boolean, windowW
 }
 export const COMPOSER_LIMITS = { minWidth: 330, maxWidth: 900, minHeight: 160, maxHeight: 1200 } as const
 
-/** One deliberate default: Lead first, otherwise the active attached conversation. */
+/** One deliberate default (§5.6): the Lead when a thread holds it, otherwise the active conversation. */
 export function defaultRecipientIds(
-  attachments: readonly AttachmentView[],
+  recipients: readonly RecipientView[],
   leadAgentId: string | null,
   activeConversationId: string | null,
 ): string[] {
-  const ids = new Set(attachments.map((attachment) => attachment.agent.id))
+  const ids = new Set(recipients.map((recipient) => recipient.id))
   if (leadAgentId && ids.has(leadAgentId)) return [leadAgentId]
   if (activeConversationId && ids.has(activeConversationId)) return [activeConversationId]
   return []
+}
+
+/** The T3 project whose workspace contains the document, by path segments (§5.7). */
+export function projectForPath(engine: Pick<EngineView, 'projects'>, path: string): EngineProjectView | null {
+  const normalized = path.replace(/\/+$/u, '')
+  let best: EngineProjectView | null = null
+  for (const project of engine.projects) {
+    const root = project.workspaceRoot.replace(/\/+$/u, '')
+    if (normalized !== root && !normalized.startsWith(`${root}/`)) continue
+    if (!best || root.length > best.workspaceRoot.replace(/\/+$/u, '').length) best = project
+  }
+  return best
 }
 
 export const EMPTY_VIEW: AppView = {

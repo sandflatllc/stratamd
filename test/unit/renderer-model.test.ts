@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DocumentView, HunkView } from '../../src/shared/contracts'
-import { activeAnnotations, activitySnapshot, agentActivity, agentActivityMessage, annotationCounts, attachmentStatusLine, bannerFor, bulkRevertGroups, changeGroups, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, explorerTree, filteredAnnotations, hasResolvedAnnotations, hasUnsavedCounted, hunkAction, hunkAuthor, hunkSnippet, leftWindowWidth, nextReviewTarget, pendingCount, previewTabIndex, rendererThemeStyle, reviewTargets, saveStateSentence, shouldAdoptPushed, sideWindowCeiling, spellingForSelection, tabsToClose, threadTargets, threadTime, timeAgoShort } from '../../src/renderer/model'
+import { activeAnnotations, activitySnapshot, agentActivity, agentActivityMessage, annotationCounts, attachmentStatusLine, bannerFor, bulkRevertGroups, changeGroups, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, explorerTree, filteredAnnotations, hasResolvedAnnotations, hasUnsavedCounted, hunkAction, hunkAuthor, hunkSnippet, leftWindowWidth, nextReviewTarget, pendingCount, previewTabIndex, rendererThemeStyle, reviewTargets, saveStateSentence, shouldAdoptPushed, sideWindowCeiling, spellingForSelection, tabsToClose, threadTargets, threadTime, timeAgoShort, projectForPath } from '../../src/renderer/model'
 import { INFO_TOAST_MS, nextToast, toastLifetime } from '../../src/renderer/toasts'
 import { formatKeys, shortcutGroups } from '../../src/renderer/shortcuts'
 import { ancestorFolders } from '../../src/renderer/components/Explorer'
@@ -19,7 +19,7 @@ function document(overrides: Partial<DocumentView> = {}): DocumentView {
     path: '/tmp/plan.md', bufferPath: '/tmp/buffer.md', leadAgentId: null, content: '# Plan', sourceMode: false,
     reading: { formatVersion: 4, navigationTab: 'files', reviewTab: 'changes', walkthrough: { active: false, level: 'h2', current: null, excluded: [], markers: [] }, tables: [], foldedHeadings: [] },
     sourceOnly: false, readOnly: false, dirty: false, deleted: false, invalidUtf8: false,
-    lastSavedAt: null, historyStep: 0, pendingHunks: [], saves: [], annotations: [], drafts: [], attachments: [],
+    lastSavedAt: null, historyStep: 0, pendingHunks: [], saves: [], annotations: [], drafts: [], attachments: [], recipients: [],
     canSend: false, conflicts: [], problems: [], ...overrides
   }
 }
@@ -403,6 +403,18 @@ describe('rail relative time and attachment status (plan 5.5, 5.6)', () => {
     expect(timeAgoShort(3 * 24 * 60 * MINUTE)).toBe('3 days ago')
     // A clock that runs ahead of the stamp never reads as the future.
     expect(timeAgoShort(-5_000)).toBe('just now')
+  })
+
+  it('finds the project whose workspace contains a document by path segments, preferring the deepest', () => {
+    const engine = { projects: [
+      { id: 'root', title: 'Root', workspaceRoot: '/work', threads: [] },
+      { id: 'deep', title: 'Deep', workspaceRoot: '/work/docs/', threads: [] },
+      { id: 'other', title: 'Other', workspaceRoot: '/workspace', threads: [] },
+    ] }
+    expect(projectForPath(engine, '/work/docs/plan.md')?.id).toBe('deep')
+    expect(projectForPath(engine, '/work/plan.md')?.id).toBe('root')
+    expect(projectForPath(engine, '/workshop/plan.md')).toBeNull()
+    expect(projectForPath(engine, '/workspace/notes.md')?.id).toBe('other')
   })
 
   it('shows engine state and a pending delivery count', () => {

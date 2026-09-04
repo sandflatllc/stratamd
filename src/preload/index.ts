@@ -68,6 +68,8 @@ const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyn
   reconnectEngine: () => invoke<void>(IPC.reconnectEngine),
   openConversation: (threadId) => invoke<void>(IPC.openConversation, threadId),
   createEngineThread: (input) => invoke<string>(IPC.createEngineThread, input),
+  createEngineProject: (input) => invoke<string>(IPC.createEngineProject, input),
+  startThreadFromDocument: (path, input) => invoke<string>(IPC.startThreadFromDocument, path, input),
   actOnEngineThread: (threadId, action) => invoke<void>(IPC.actOnEngineThread, threadId, action),
   startConversationTurn: (threadId, input) => invoke<void>(IPC.startConversationTurn, threadId, input),
   stopConversationTurn: (threadId) => invoke<void>(IPC.stopConversationTurn, threadId),

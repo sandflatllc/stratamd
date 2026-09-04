@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
-import type { AnnotationContext, AnnotationKind, AnnotationView, BufferOrigin, CreateDraftRequest, DocumentView, HunkView, PanelSize, QuickSendRequest, RedoResult, SpellingContext, TableViewState, UndoResult, WalkthroughAction, WalkthroughState } from '../../shared/contracts'
+import type { AnnotationContext, AnnotationKind, AnnotationView, BufferOrigin, CreateDraftRequest, DocumentView, DraftKind, HunkView, PanelSize, QuickSendRequest, RedoResult, SpellingContext, TableViewState, UndoResult, WalkthroughAction, WalkthroughState } from '../../shared/contracts'
 import type { EditorSelection, RendererEditorFactory, RendererEditorHandle } from '../editorAdapter'
 import { bannerFor, currentAnnotation } from '../model'
 import { NO_MATCHES, type FindResult } from '../../editor/find'
@@ -37,6 +37,10 @@ interface EditorPaneProps {
   onAddDecision(quote: string, prompt: string, options: string[], from: number, to: number): void
   onHoldDraft(draft: CreateDraftRequest): void
   onQuickSend(draft: QuickSendRequest): void
+  /** Start thread from the popover with this comment pending (§5.7). */
+  onStartThread?(draft: CreateDraftRequest): void
+  /** The active conversation, for the popover's default recipient (§5.6). */
+  activeConversationId?: string | null
   onTableView(state: TableViewState): void
   onAdjustAnnotation(id: string, quote: string, from: number, to: number): void
   onAccept(id: string): void
@@ -250,9 +254,14 @@ export function EditorPane(props: EditorPaneProps) {
           zoom={props.zoom}
           onSize={props.onComposerSize}
           onDismiss={dismissComposer}
-          attachments={document.attachments}
+          recipients={document.recipients}
           leadAgentId={document.leadAgentId}
-          activeConversationId={document.attachments[0]?.agent.id ?? null}
+          activeConversationId={props.activeConversationId ?? null}
+          {...(props.onStartThread ? { onStartThread: (kind: DraftKind, text: string) => {
+            if (!selection || !props.onStartThread) return
+            props.onStartThread({ kind, text, quote: selection.quote, from: selection.from, to: selection.to, ...(selection.annotationContext ? { context: selection.annotationContext } : {}) })
+            dismissComposer()
+          } } : {})}
           onHold={(kind, text) => {
             if (!selection) return
             props.onHoldDraft({ kind, text, quote: selection.quote, from: selection.from, to: selection.to, ...(selection.annotationContext ? { context: selection.annotationContext } : {}) })

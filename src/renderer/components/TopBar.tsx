@@ -21,6 +21,8 @@ interface TopBarProps {
   onCloseAll?(): void
   onCloseSaved?(): void
   onSend(): void
+  /** A document with no attached thread offers Start thread in place of Send (§5.7). */
+  onStartThread?(): void
   zoomed: boolean
   onResetZoom(): void
   onOpenTheme(): void
@@ -31,7 +33,7 @@ interface TopBarProps {
   onOpenEngine?(): void
 }
 
-export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onSend, zoomed, onResetZoom, onOpenTheme, conversationTab, onCloseConversation, engine, onOpenEngine }: TopBarProps) {
+export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onSend, onStartThread, zoomed, onResetZoom, onOpenTheme, conversationTab, onCloseConversation, engine, onOpenEngine }: TopBarProps) {
   const tabStrip = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState<PathContextMenuState | null>(null)
   const activePath = conversationTab ? `conversation:${conversationTab.id}` : tabs.find((tab) => tab.active)?.path
@@ -106,7 +108,9 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
       {zoomed && <button type="button" className="text-action reset-zoom" onClick={onResetZoom}>Reset zoom</button>}
       <span className="pending-status" data-unsaved={pendingUnsaved} title="Next change · F7. Previous change · Shift+F7. All shortcuts · F1">{pending} pending</span>
       <kbd>{primaryModifierLabel()}+Enter</kbd>
-      <button type="button" className="send-button" data-enabled={canSend} onClick={onSend} disabled={!canSend}>{hasAgents ? 'Send ↗' : 'Start thread'}</button>
+      {hasAgents || !onStartThread
+        ? <button type="button" className="send-button" data-enabled={canSend} onClick={onSend} disabled={!canSend}>Send ↗</button>
+        : <button type="button" className="send-button" data-enabled onClick={onStartThread}>Start thread</button>}
     </header>
   )
 }

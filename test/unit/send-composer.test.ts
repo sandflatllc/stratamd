@@ -181,10 +181,6 @@ describe('send composer commitment', () => {
 })
 
 describe('send composer drafts (PRD §6.9)', () => {
-  const attachments = [
-    { agent: { id: 'agent-a', name: 'Agent A', color: 'grape' as const }, attachedAt: 0, state: 'idle' as const, queuedDeliveries: [], queuedSendCount: 0 },
-    { agent: { id: 'agent-b', name: 'Agent B', color: 'sky' as const }, attachedAt: 0, state: 'idle' as const, queuedDeliveries: [], queuedSendCount: 0 },
-  ]
 
   it('keeps the note and item choices per document until the send goes through', () => {
     const draft = { note: 'Please review', checkedExternal: ['s1:0'], uncheckedUser: ['s2:1'], uncheckedEvents: [4] }
@@ -204,9 +200,16 @@ describe('send composer drafts (PRD §6.9)', () => {
   })
 
   it('preselects only the active conversation, with the Lead taking priority', () => {
-    expect(draftRecipients(attachments, null, 'agent-a')).toEqual(['agent-a'])
-    expect(draftRecipients(attachments, 'agent-b', 'agent-a')).toEqual(['agent-b'])
-    expect(draftRecipients(attachments, null, null)).toEqual([])
+    const recipients = [
+      { id: 'agent-a', name: 'Agent A', color: 'grape' as const, attached: true },
+      { id: 'agent-b', name: 'Agent B', color: 'sky' as const, attached: true },
+      // The active conversation counts before its first Send attaches it (§5.6).
+      { id: 'agent-c', name: 'Agent C', color: 'mint' as const, attached: false },
+    ]
+    expect(draftRecipients(recipients, null, 'agent-a')).toEqual(['agent-a'])
+    expect(draftRecipients(recipients, 'agent-b', 'agent-a')).toEqual(['agent-b'])
+    expect(draftRecipients(recipients, null, 'agent-c')).toEqual(['agent-c'])
+    expect(draftRecipients(recipients, null, null)).toEqual([])
   })
 
   it('checks a newly attached draft without rechecking one the user unchecked', () => {

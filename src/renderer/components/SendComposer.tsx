@@ -1,12 +1,13 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import type { AttachmentView, DraftView, PanelSize, SendChangeItem, SendDocumentToken, SendEventItem, SendItems, SendPreview, SendPreviewRequest } from '../../shared/contracts'
+import type { DraftView, PanelSize, RecipientView, SendChangeItem, SendDocumentToken, SendEventItem, SendItems, SendPreview, SendPreviewRequest } from '../../shared/contracts'
 import { AGENT_COLORS, defaultRecipientIds, previewTabIndex } from '../model'
 import { InlineMarkdown } from '../inlineMarkdown'
 import { useDialogFocus } from '../useDialogFocus'
 import { hasPrimaryModifier, primaryModifierLabel } from '../../shared/primary-modifier'
 
 interface SendComposerProps {
-  attachments: AttachmentView[]
+  /** Attached threads and the active conversation in this project (§5.6). */
+  recipients: RecipientView[]
   drafts: DraftView[]
   leadAgentId: string | null
   activeConversationId: string | null
@@ -99,8 +100,8 @@ export function forgetComposerDrafts(openPaths: ReadonlySet<string>): void {
 }
 
 /** The one approved default recipient for this composer opening. */
-export function draftRecipients(attachments: readonly AttachmentView[], leadAgentId: string | null, activeConversationId: string | null): string[] {
-  return defaultRecipientIds(attachments, leadAgentId, activeConversationId)
+export function draftRecipients(recipients: readonly RecipientView[], leadAgentId: string | null, activeConversationId: string | null): string[] {
+  return defaultRecipientIds(recipients, leadAgentId, activeConversationId)
 }
 
 export function reconcileSelectedDrafts(
@@ -334,12 +335,12 @@ const SendItemList = memo(function SendItemList({
   )
 })
 
-export function SendComposer({ attachments, drafts, leadAgentId, activeConversationId, documentPath, size, zoom, onSize, onCancel, onPreview, onSend, onDiscardDraft }: SendComposerProps) {
+export function SendComposer({ recipients, drafts, leadAgentId, activeConversationId, documentPath, size, zoom, onSize, onCancel, onPreview, onSend, onDiscardDraft }: SendComposerProps) {
   const dialogRef = useRef<HTMLElement>(null)
   const previewId = useId()
   const draft = readComposerDraft(documentPath)
   const [note, setNote] = useState(draft.note)
-  const [selected, setSelected] = useState(() => draftRecipients(attachments, leadAgentId, activeConversationId))
+  const [selected, setSelected] = useState(() => draftRecipients(recipients, leadAgentId, activeConversationId))
   const [selectedDrafts, setSelectedDrafts] = useState<ReadonlySet<string>>(() => new Set(drafts.filter((item) => item.status === 'attached').map((item) => item.id)))
   const draftStatuses = useRef<ReadonlyMap<string, DraftView['status']>>(new Map(drafts.map((item) => [item.id, item.status])))
   const touchedDrafts = useRef<Set<string>>(new Set())
@@ -524,13 +525,13 @@ export function SendComposer({ attachments, drafts, leadAgentId, activeConversat
         <h2 id="send-title">Send changes</h2>
         <p className="modal-subtitle">Shares what you changed with the agents you pick · does not save</p>
         <textarea data-dialog-initial-focus value={note} onChange={(event) => setNote(event.target.value)} placeholder="Note for the recipients (optional)…" aria-label="Note for recipients" />
-        {attachments.length > 1 ? (
-          <fieldset className="recipients"><legend>Recipients</legend>{attachments.map((attachment) => {
-            const checked = selected.includes(attachment.agent.id)
-            const color = AGENT_COLORS[attachment.agent.color]
-            return <label key={attachment.agent.id} data-selected={checked} style={{ borderColor: checked ? color : undefined, '--recipient-color': color } as CSSProperties}><input type="checkbox" checked={checked} onChange={() => setSelected((ids) => checked ? ids.filter((id) => id !== attachment.agent.id) : [...ids, attachment.agent.id])} /><i style={{ background: checked ? color : undefined }} />{attachment.agent.name}</label>
+        {recipients.length > 1 ? (
+          <fieldset className="recipients"><legend>Recipients</legend>{recipients.map((recipient) => {
+            const checked = selected.includes(recipient.id)
+            const color = AGENT_COLORS[recipient.color]
+            return <label key={recipient.id} data-selected={checked} data-attached={recipient.attached} style={{ borderColor: checked ? color : undefined, '--recipient-color': color } as CSSProperties}><input type="checkbox" checked={checked} onChange={() => setSelected((ids) => checked ? ids.filter((id) => id !== recipient.id) : [...ids, recipient.id])} /><i style={{ background: checked ? color : undefined }} />{recipient.name}{!recipient.attached && <small className="recipient-note">not attached yet</small>}</label>
           })}</fieldset>
-        ) : attachments[0] ? <div className="single-recipient">To <strong>{attachments[0].agent.name}</strong></div> : null}
+        ) : recipients[0] ? <div className="single-recipient">To <strong>{recipients[0].name}</strong>{!recipients[0].attached && <small className="recipient-note"> · attaches on this Send</small>}</div> : null}
         {previews.filter((item) => item.queuedAfter).map((item) => <div className="queued-notice" key={item.recipient.id}>{item.recipient.name} still has an earlier update waiting. This one arrives after it.</div>)}
         <div className="preview-heading" role="tablist" aria-label="What each agent receives">
           <strong aria-hidden="true">What each agent gets</strong>

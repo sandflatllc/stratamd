@@ -1377,3 +1377,17 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .engine-pairing label { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 10px; }
 .engine-pairing input { min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; background: var(--surfaces-inset); color: var(--text); font: inherit; }
 .engine-or { color: var(--dim); font-size: 12px; text-align: center; }
+
+/* Thread picker (cockpit §5.7). */
+.thread-picker-modal { width: min(520px, 92vw); }
+.thread-picker-modal .thread-picker { margin: 0; border: 0; padding: 0; }
+.thread-picker-modal .thread-picker h2 { margin: 0 0 6px; }
+.thread-picker-modal .thread-picker label { align-items: center; }
+.thread-picker-modal .thread-picker :is(input, select) { min-width: 0; flex: 1; max-width: 62%; border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; background: var(--surfaces-inset); color: var(--text); font: inherit; }
+.thread-picker-note { margin: 0; color: var(--controls-warning); font-size: 13px; }
+.thread-picker-project { display: grid; gap: 7px; margin: 0; border: 1px solid var(--line); border-radius: 9px; padding: 10px; }
+.thread-picker-project > div { display: flex; justify-content: flex-end; gap: 8px; }
+.recipient-note { margin-left: 6px; color: var(--dim); font-size: 11px; font-weight: 600; }
+.composer-recipients label[data-attached="false"] { border-style: dashed; }
+.recipients label[data-attached="false"] { border-style: dashed; }
+.composer-start-thread { color: var(--controls-primary); }

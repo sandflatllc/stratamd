@@ -5,6 +5,8 @@ export const IPC = {
   reconnectEngine: 'strata:reconnect-engine',
   openConversation: 'strata:open-conversation',
   createEngineThread: 'strata:create-engine-thread',
+  createEngineProject: 'strata:create-engine-project',
+  startThreadFromDocument: 'strata:start-thread-from-document',
   actOnEngineThread: 'strata:act-on-engine-thread',
   startConversationTurn: 'strata:start-conversation-turn',
   stopConversationTurn: 'strata:stop-conversation-turn',

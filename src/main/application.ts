@@ -33,6 +33,9 @@ import type {
   LocalImageResolution,
   PairEngineRequest,
   QuickSendRequest,
+  RecipientView,
+  StartThreadFromDocumentInput,
+  StartThreadInput,
 } from '../shared/contracts'
 import { resolvePairingTarget } from './engine/pairing'
 import { createDraftStore, discardDraft as removeDraft, holdDraft as addHeldDraft, relocateDraft, type DraftStore } from '../core/drafts'
@@ -681,9 +684,48 @@ export class StrataApplication implements StrataApi {
     await this.#engine.openThread(threadId)
   }
 
-  async createEngineThread(input: { projectId: string; title: string; model: string; effort: string | null; access: import('../shared/contracts').EngineThreadView['access'] }): Promise<string> {
+  async createEngineThread(input: StartThreadInput): Promise<string> {
     if (!this.#engine.createThread) throw new Error('This engine cannot create threads')
     return this.#engine.createThread(input)
+  }
+
+  async createEngineProject(input: { title: string; workspaceRoot: string }): Promise<string> {
+    if (!this.#engine.createProject) throw new Error('This engine cannot add projects')
+    return this.#engine.createProject(input)
+  }
+
+  /**
+   * Start thread from a document (§5.7): the picker's thread is created,
+   * attached, and its first turn carries the popover's pending comment, the
+   * checked drafts, and the document form §5.14 calls for.
+   */
+  startThreadFromDocument(path: string, input: StartThreadFromDocumentInput): Promise<string> {
+    return this.#withSession(path, async () => {
+      const session = this.#writable(path)
+      if (!this.#engine.createThread) throw new Error('This engine cannot create threads')
+      const { comment, draftIds, ...picker } = input
+      const threadId = await this.#engine.createThread(picker)
+      const attachment = this.#newThreadAttachment(session, threadId)
+      if (!attachment) throw new Error('The engine did not list the new thread')
+      session.attachments[threadId] = attachment
+      let annotations = session.annotations
+      if (comment) {
+        if (!comment.text.trim()) throw new Error('Write a comment before starting a thread with it')
+        const start = this.#anchorQuote(session, comment)
+        annotations = createAnnotation(annotations, session.state.shadow, {
+          createdAt: this.#now(),
+          id: `a_${randomUUID().slice(0, 12)}`,
+          kind: comment.kind,
+          author: 'user',
+          quote: comment.quote,
+          text: comment.text,
+          start,
+          ...(comment.context ? { context: comment.context } : {}),
+        }).log
+      }
+      await this.#sendLocked(session, { recipients: [threadId], note: '', includeExternal: false, draftIds: draftIds ?? session.drafts.drafts.map((draft) => draft.id) }, annotations)
+      return threadId
+    })
   }
 
   async actOnEngineThread(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void> {
@@ -1458,8 +1500,8 @@ export class StrataApplication implements StrataApi {
     return relocated
   }
 
-  #materializeDrafts(session: OpenDocumentSession, ids: readonly string[]): AnnotationLog {
-    let log = session.annotations
+  #materializeDrafts(session: OpenDocumentSession, ids: readonly string[], base: AnnotationLog = session.annotations): AnnotationLog {
+    let log = base
     for (const id of [...new Set(ids)]) {
       const draft = session.drafts.drafts.find((item) => item.id === id)
       if (!draft) throw new Error(`Draft ${id} was not found`)
@@ -1706,6 +1748,14 @@ export class StrataApplication implements StrataApi {
     return this.#withSession(path, async () => {
       const session = this.#writable(path)
       if (request.recipients.length === 0) throw new Error('Select at least one recipient')
+      return this.#sendLocked(session, request)
+    })
+  }
+
+  /** One Send inside the session turn: attach unknown recipients, freeze, persist, dispatch. */
+  async #sendLocked(session: OpenDocumentSession, request: SendPreviewRequest, annotations: AnnotationLog = session.annotations): Promise<string[]> {
+    {
+      const path = session.path
       await session.mirror?.flush()
       for (const recipient of new Set(request.recipients)) {
         if (!session.attachments[recipient]) {
@@ -1726,7 +1776,7 @@ export class StrataApplication implements StrataApi {
         }
       }
       const materializedIds = [...new Set(request.draftIds ?? [])]
-      const nextAnnotations = this.#materializeDrafts(session, materializedIds)
+      const nextAnnotations = this.#materializeDrafts(session, materializedIds, annotations)
       let nextDrafts = session.drafts
       for (const id of materializedIds) nextDrafts = removeDraft(nextDrafts, id)
       const deliveries = await this.#enqueueDeliveries(session, request, request.recipients, 'send', nextAnnotations)
@@ -1745,7 +1795,7 @@ export class StrataApplication implements StrataApi {
       for (const id of request.recipients) void this.#dispatchEngineDelivery(session, id)
       this.#publish()
       return deliveries.map((delivery) => delivery.id)
-    })
+    }
   }
 
   async copyText(text: string): Promise<void> {
@@ -3044,6 +3094,11 @@ function documentView(session: OpenDocumentSession, store: GhostStore, now: numb
       createdAt: draft.createdAt,
     }
   })
+  const recipients: RecipientView[] = attachments.map((attachment) => ({ id: attachment.agent.id, name: attachment.agent.name, color: attachment.agent.color, attached: true }))
+  const activeConversation = activeConversationInProject(session.path, engine)
+  if (activeConversation && !session.attachments[activeConversation.id]) {
+    recipients.push({ id: activeConversation.id, name: activeConversation.title, color: agentIdentity(activeConversation.id, activeConversation.title, ids.length).color, attached: false })
+  }
   return {
     path: session.path,
     bufferPath: store.pathsForDocument(session.path).buffer,
@@ -3072,6 +3127,7 @@ function documentView(session: OpenDocumentSession, store: GhostStore, now: numb
     }),
     drafts,
     attachments,
+    recipients,
     canSend:
       session.state.segments.some((segment, index) =>
         session.segmentOffset + index > session.lastSentSegmentIndex
@@ -3092,6 +3148,24 @@ function documentView(session: OpenDocumentSession, store: GhostStore, now: numb
       incoming: conflict.incoming
     }))
   }
+}
+
+/** The active conversation when its project's workspace contains the document (§5.6, §5.7). */
+function activeConversationInProject(path: string, engine: AppView['engine']): { id: string; title: string } | null {
+  if (!engine.activeThreadId) return null
+  for (const project of engine.projects) {
+    const thread = project.threads.find((candidate) => candidate.id === engine.activeThreadId)
+    if (!thread) continue
+    return pathWithin(path, project.workspaceRoot) ? { id: thread.id, title: thread.title } : null
+  }
+  return null
+}
+
+/** True when `path` sits inside `root` (or is it), by path segments, never by prefix alone. */
+export function pathWithin(path: string, root: string): boolean {
+  const normalizedRoot = resolve(root)
+  const normalizedPath = resolve(path)
+  return normalizedPath === normalizedRoot || normalizedPath.startsWith(normalizedRoot.endsWith('/') ? normalizedRoot : `${normalizedRoot}/`)
 }
 
 function explorerView(scan: ExplorerScanResult, sessions: Map<string, OpenDocumentSession>): ExplorerFolderView[] {

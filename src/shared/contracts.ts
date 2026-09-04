@@ -130,6 +130,17 @@ export interface DraftView {
   createdAt: number
 }
 
+/**
+ * One recipient pill (§5.6): a thread attached to the document, or the active
+ * conversation in the same project, which the first Send attaches.
+ */
+export interface RecipientView {
+  id: string
+  name: string
+  color: AgentIdentity['color']
+  attached: boolean
+}
+
 export interface AttachmentView {
   agent: AgentIdentity
   attachedAt: number
@@ -337,6 +348,8 @@ export interface DocumentView {
   items?: ItemView[]
   drafts: DraftView[]
   attachments: AttachmentView[]
+  /** Attached threads plus the active conversation in this document's project (§5.6). */
+  recipients: RecipientView[]
   canSend: boolean
   recovery?: {
     diskUpdatedAt: number
@@ -561,6 +574,25 @@ export interface ErrorReport {
   componentStack?: string
 }
 
+/** The picker's choices when a thread starts (§5.7, §5.13). */
+export interface StartThreadInput {
+  projectId: string
+  title: string
+  model: string
+  effort: string | null
+  access: EngineThreadView['access']
+  /** A provider instance id, or null for Auto (§5.13). */
+  instanceId?: string | null
+}
+
+/** Start thread from a document (§5.7): the picker's choices plus what the first turn carries. */
+export interface StartThreadFromDocumentInput extends StartThreadInput {
+  /** The popover's pending comment, materialized as the first annotation. */
+  comment?: CreateDraftRequest
+  /** Held drafts to materialize into the first delivery. */
+  draftIds?: string[]
+}
+
 /** How the owner pairs (§5.1): a pairing link from T3, or the host plus the code shown beside it. */
 export type PairEngineRequest = { link: string } | { host: string; code: string }
 
@@ -574,7 +606,11 @@ export interface StrataApi {
   stopConversationTurn(threadId: string): Promise<void>
   answerEngineApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
   answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
-  createEngineThread(input: { projectId: string; title: string; model: string; effort: string | null; access: EngineThreadView['access'] }): Promise<string>
+  createEngineThread(input: StartThreadInput): Promise<string>
+  /** Adds a T3 project for a folder no project contains yet (§5.7 Add project); returns its id. */
+  createEngineProject(input: { title: string; workspaceRoot: string }): Promise<string>
+  /** Creates the thread, attaches it to the document, and sends the pending comment and drafts as its first turn (§5.7, §5.14). */
+  startThreadFromDocument(path: string, input: StartThreadFromDocumentInput): Promise<string>
   actOnEngineThread(threadId: string, action: 'archive' | 'settle' | 'delete'): Promise<void>
   openDocument(path?: string): Promise<void>
   /** Renderer-only bridge: preload resolves Electron File objects with webUtils. */

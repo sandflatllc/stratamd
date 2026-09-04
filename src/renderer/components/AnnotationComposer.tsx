@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import type { AnnotationKind, AttachmentView, DraftKind, PanelSize, SpellingContext } from '../../shared/contracts'
+import type { AnnotationKind, DraftKind, PanelSize, RecipientView, SpellingContext } from '../../shared/contracts'
 import type { EditorSelection } from '../editorAdapter'
 import { COMPOSER_LIMITS, spellingForSelection } from '../model'
 import { claimEscape, isEscapeClaimed } from '../escape'
@@ -17,11 +17,14 @@ interface AnnotationComposerProps {
   onSize(size: PanelSize, commit: boolean): void
   onDismiss(): void
   onSubmit(kind: AnnotationKind, text: string, options?: string[]): void
-  attachments: AttachmentView[]
+  /** Attached threads and the active conversation in this project (§5.6). */
+  recipients: RecipientView[]
   leadAgentId: string | null
   activeConversationId: string | null
   onHold(kind: DraftKind, text: string): void
   onSend(kind: DraftKind, text: string, recipients: string[]): void
+  /** No recipient exists yet: Start thread opens the picker with this comment pending (§5.7). */
+  onStartThread?(kind: DraftKind, text: string): void
   onReplaceWord(suggestion: string): void
   onAddToDictionary(word: string): void
   /** Edit actions on a right-click selection (§5.15). */
@@ -103,7 +106,7 @@ function claimedByTextField(target: EventTarget | null): boolean {
     || (target instanceof HTMLElement && target.isContentEditable)
 }
 
-export function AnnotationComposer({ selection, spelling, size, zoom, onSize, onDismiss, onSubmit, attachments, leadAgentId, activeConversationId, onHold, onSend, onReplaceWord, onAddToDictionary, onCut, onCopy, onPaste, onSelectAll }: AnnotationComposerProps) {
+export function AnnotationComposer({ selection, spelling, size, zoom, onSize, onDismiss, onSubmit, recipients: candidates, leadAgentId, activeConversationId, onHold, onSend, onStartThread, onReplaceWord, onAddToDictionary, onCut, onCopy, onPaste, onSelectAll }: AnnotationComposerProps) {
   const [kind, setKind] = useState<AnnotationKind | null>(null)
   const [text, setText] = useState('')
   const [options, setOptions] = useState(['', ''])
@@ -111,7 +114,7 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
   const textarea = useRef<HTMLTextAreaElement>(null)
   const form = useRef<HTMLFormElement>(null)
   const pill = useRef<HTMLDivElement>(null)
-  const attachmentIds = attachments.map((attachment) => attachment.agent.id).join('\0')
+  const candidateIds = candidates.map((recipient) => recipient.id).join('\0')
   const outsideState = useRef({ kind, text, onHold, onDismiss })
   outsideState.current = { kind, text, onHold, onDismiss }
 
@@ -121,8 +124,8 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
     setOptions(['', ''])
   }, [selection])
   useEffect(() => {
-    setRecipients(defaultRecipientIds(attachments, leadAgentId, activeConversationId))
-  }, [activeConversationId, attachmentIds, leadAgentId, selection?.from, selection?.to])
+    setRecipients(defaultRecipientIds(candidates, leadAgentId, activeConversationId))
+  }, [activeConversationId, candidateIds, leadAgentId, selection?.from, selection?.to])
   useEffect(() => { if (kind) textarea.current?.focus() }, [kind])
   useEffect(() => {
     if (!selection) return
@@ -259,12 +262,12 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
               </>}
         </div>
       )}
-      {kind !== 'decision' && attachments.length > 0 && (
-        <fieldset className="composer-recipients"><legend>Recipients</legend>{attachments.map((attachment) => {
-          const checked = recipients.includes(attachment.agent.id)
-          const color = AGENT_COLORS[attachment.agent.color]
-          return <label key={attachment.agent.id} data-selected={checked} style={{ '--recipient-color': color } as CSSProperties}><input type="checkbox" checked={checked} onChange={() => setRecipients((current) => checked ? current.filter((id) => id !== attachment.agent.id) : [...current, attachment.agent.id])} /><i />{attachment.agent.name}</label>
-        })}</fieldset>
+      {kind !== 'decision' && (
+        <fieldset className="composer-recipients"><legend>Recipients</legend>{candidates.map((recipient) => {
+          const checked = recipients.includes(recipient.id)
+          const color = AGENT_COLORS[recipient.color]
+          return <label key={recipient.id} data-selected={checked} data-attached={recipient.attached} title={recipient.attached ? undefined : 'Not attached yet: sending attaches it'} style={{ '--recipient-color': color } as CSSProperties}><input type="checkbox" checked={checked} onChange={() => setRecipients((current) => checked ? current.filter((id) => id !== recipient.id) : [...current, recipient.id])} /><i />{recipient.name}</label>
+        })}{candidates.length === 0 && onStartThread && <button type="button" className="text-action composer-start-thread" disabled={!text.trim()} onClick={() => onStartThread(kind, text)}>Start thread</button>}</fieldset>
       )}
       <textarea
         ref={textarea}
@@ -285,7 +288,9 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
       )}
       {kind === 'decision'
         ? <div className="composer-actions"><button type="button" className="quiet-button" onClick={onDismiss}>Cancel</button><button type="submit" className="primary-button">Add</button></div>
-        : <><div className="composer-hint">{attachments.length === 0 ? 'A held comment is sent once an agent is attached.' : 'Esc discards · Shift+Enter new line'}</div><div className="composer-actions"><button type="button" className="quiet-button" disabled={!text.trim()} onClick={() => onHold(kind, text)}>Hold</button><button type="button" className="primary-button" disabled={!text.trim() || recipients.length === 0} onClick={() => onSend(kind, text, recipients)}>Send</button></div></>}
+        : <><div className="composer-hint">{candidates.length === 0 ? 'Hold keeps this private. Start thread sends it as the first turn.' : 'Esc discards · Shift+Enter new line'}</div><div className="composer-actions"><button type="button" className="quiet-button" disabled={!text.trim()} onClick={() => onHold(kind, text)}>Hold</button>{candidates.length === 0 && onStartThread
+          ? <button type="button" className="primary-button" disabled={!text.trim()} onClick={() => onStartThread(kind, text)}>Start thread</button>
+          : <button type="button" className="primary-button" disabled={!text.trim() || recipients.length === 0} onClick={() => onSend(kind, text, recipients)}>Send</button>}</div></>}
       <button type="button" className="composer-resize" aria-label="Resize annotation composer" onPointerDown={startResize} />
     </form>
   )

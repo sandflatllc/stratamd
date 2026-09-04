@@ -80,6 +80,14 @@ const draftRequestSchema = z.object({
 const quickSendRequestSchema = draftRequestSchema.extend({
   recipients: z.array(idSchema).max(128),
 }).strict()
+const startThreadSchema = z.object({
+  projectId: idSchema,
+  title: idSchema,
+  model: idSchema,
+  effort: idSchema.nullable(),
+  access: z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access']),
+  instanceId: idSchema.nullable().optional(),
+}).strict()
 const settingsSchema = z.object({
   animatedBackground: z.boolean().optional(),
   panelSizes: z.object({
@@ -122,7 +130,9 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   ])]),
   [IPC.reconnectEngine]: z.tuple([]),
   [IPC.openConversation]: z.tuple([idSchema]),
-  [IPC.createEngineThread]: z.tuple([z.object({ projectId: idSchema, title: idSchema, model: idSchema, effort: idSchema.nullable(), access: z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access']) }).strict()]),
+  [IPC.createEngineThread]: z.tuple([startThreadSchema]),
+  [IPC.createEngineProject]: z.tuple([z.object({ title: z.string().trim().min(1).max(512), workspaceRoot: pathSchema }).strict()]),
+  [IPC.startThreadFromDocument]: z.tuple([pathSchema, startThreadSchema.extend({ comment: draftRequestSchema.optional(), draftIds: z.array(idSchema).max(4_096).optional() }).strict()]),
   [IPC.actOnEngineThread]: z.tuple([idSchema, z.enum(['archive', 'settle', 'delete'])]),
   [IPC.startConversationTurn]: z.tuple([idSchema, conversationTurnSchema]),
   [IPC.stopConversationTurn]: z.tuple([idSchema]),
@@ -299,6 +309,8 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.reconnectEngine]: () => options.api.reconnectEngine(),
     [IPC.openConversation]: (threadId: string) => options.api.openConversation(threadId),
     [IPC.createEngineThread]: (input: Parameters<StrataApi['createEngineThread']>[0]) => options.api.createEngineThread(input),
+    [IPC.createEngineProject]: (input: Parameters<StrataApi['createEngineProject']>[0]) => options.api.createEngineProject(input),
+    [IPC.startThreadFromDocument]: (path: string, input: Parameters<StrataApi['startThreadFromDocument']>[1]) => options.api.startThreadFromDocument(path, input),
     [IPC.actOnEngineThread]: (threadId: string, action: Parameters<StrataApi['actOnEngineThread']>[1]) => options.api.actOnEngineThread(threadId, action),
     [IPC.startConversationTurn]: (threadId: string, input: Parameters<StrataApi['startConversationTurn']>[1]) => options.api.startConversationTurn(threadId, input),
     [IPC.stopConversationTurn]: (threadId: string) => options.api.stopConversationTurn(threadId),
