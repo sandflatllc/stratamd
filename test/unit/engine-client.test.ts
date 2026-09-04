@@ -84,7 +84,7 @@ describe('T3 engine read client', () => {
     await client.pair('http://engine.test', 'code')
     const id = await client.createThread({ projectId: 'p1', title: 'From document', model: 'gpt-5.6', effort: 'high', access: 'full-access' })
     expect(client.view().activeThreadId).toBe(id)
-    expect(created).toMatchObject({ type: 'thread.create', threadId: id, projectId: 'p1', title: 'From document', modelSelection: { model: 'gpt-5.6', options: { effort: 'high' } }, runtimeMode: 'full-access' })
+    expect(created).toMatchObject({ type: 'thread.create', threadId: id, projectId: 'p1', title: 'From document', modelSelection: { model: 'gpt-5.6', options: [{ id: 'effort', value: 'high' }] }, runtimeMode: 'full-access' })
     await client.shutdown()
   })
   it('pairs, keeps the credential private, projects the shell, and persists visits', async () => {
@@ -176,7 +176,7 @@ describe('T3 engine read client', () => {
     ])
     expect(commands[0]).toMatchObject({
       threadId: 't1', message: { role: 'user', text: 'Continue the work', attachments: [] },
-      modelSelection: { instanceId: 'codex-main', model: 'gpt-5.6', options: { effort: 'high' } },
+      modelSelection: { instanceId: 'codex-main', model: 'gpt-5.6', options: [{ id: 'effort', value: 'high' }] },
       runtimeMode: 'full-access', interactionMode: 'default',
     })
     expect(commands[1]).toMatchObject({ requestId: 'approval-1', decision: 'accept' })

@@ -172,8 +172,12 @@ function cleanServer(value: string): string {
   return url.origin
 }
 
+function optionValue(options: ReadonlyArray<{ id: string; value: unknown }> | undefined, ...ids: string[]): unknown {
+  return options?.find((option) => ids.includes(option.id))?.value
+}
+
 function effortOf(thread: T3ShellSnapshot['threads'][number]): string | null {
-  const value = thread.modelSelection.options?.effort ?? thread.modelSelection.options?.reasoningEffort
+  const value = optionValue(thread.modelSelection.options, 'effort', 'reasoningEffort')
   return typeof value === 'string' ? value : null
 }
 
@@ -522,7 +526,7 @@ export class T3EngineClient implements EngineReadClient {
     const command = turnStartCommand.parse({
       type: 'thread.turn.start', commandId: input.commandId ?? (queued ? `strata-${messageId}` : randomUUID()), threadId, createdAt: new Date(this.#now()).toISOString(),
       message: { messageId, role: 'user', text, attachments },
-      modelSelection: { instanceId: thread.modelSelection.instanceId, model: input.model, options: input.effort ? { effort: input.effort } : {} },
+      modelSelection: { instanceId: thread.modelSelection.instanceId, model: input.model, options: input.effort ? [{ id: 'effort', value: input.effort }] : [] },
       runtimeMode: input.access, interactionMode: thread.interactionMode,
     })
     await this.#dispatch(command, `turn:${command.message.messageId}`, command.message.messageId)
@@ -566,7 +570,7 @@ export class T3EngineClient implements EngineReadClient {
     const threadId = randomUUID()
     const instanceId = await this.#resolveInstance(input.projectId, input.instanceId ?? null)
     await this.#dispatch(threadCreateCommand.parse({ type: 'thread.create', commandId: randomUUID(), threadId, projectId: input.projectId, title: input.title,
-      modelSelection: { instanceId, model: input.model, options: input.effort ? { effort: input.effort } : {} }, runtimeMode: input.access,
+      modelSelection: { instanceId, model: input.model, options: input.effort ? [{ id: 'effort', value: input.effort }] : [] }, runtimeMode: input.access,
       interactionMode: 'default', branch: null, worktreePath: null, createdAt: new Date(this.#now()).toISOString() }))
     await this.openThread(threadId)
     return threadId

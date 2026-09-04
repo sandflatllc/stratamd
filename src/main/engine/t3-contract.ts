@@ -46,7 +46,13 @@ export const tokenExchangeResult = z.object({
 export const websocketTicketResult = z.object({ ticket: id, expiresAt: isoDate }).passthrough()
 export const attachmentUploadResult = z.object({ attachmentId: id, relativeUrl: id, expiresAt: z.number() }).passthrough()
 
-export const modelSelection = z.object({ instanceId: id, model: id, options: z.record(z.string(), z.unknown()).optional() }).passthrough()
+export const modelOption = z.object({ id: z.string(), value: z.unknown() }).passthrough()
+/** Canonical model options are an array of `{id, value}` (T3 migration 026); a legacy object form still appears on old rows, so accept both and normalize to the array. */
+export const modelOptions = z.union([
+  z.array(modelOption),
+  z.record(z.string(), z.unknown()).transform((record) => Object.entries(record).map(([optionId, value]) => ({ id: optionId, value }))),
+]).optional()
+export const modelSelection = z.object({ instanceId: id, model: id, options: modelOptions }).passthrough()
 export const chatAttachment = z.object({
   type: id,
   id,

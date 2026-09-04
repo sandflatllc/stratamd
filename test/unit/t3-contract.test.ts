@@ -1,13 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import {
   T3_HTTP, T3_RPC, dispatchResult, messageSentEvent,
-  providerUsage, shellSnapshot, subscribeThreadInput, turnDiffCompletedEvent, turnStartCommand,
+  modelSelection, providerUsage, shellSnapshot, subscribeThreadInput, turnDiffCompletedEvent, turnStartCommand,
 } from '../../src/main/engine/t3-contract'
 
 const now = '2026-09-03T20:00:00.000Z'
 const eventBase = { sequence: 4, eventId: 'event-4', aggregateKind: 'thread', aggregateId: 'thread-1', occurredAt: now, commandId: 'command-1', causationEventId: null, correlationId: 'command-1', metadata: {} }
 
 describe('vendored T3 cockpit contract', () => {
+  it('reads model options from the live array shape and the legacy object shape alike', () => {
+    // The running T3 server (migration 026) sends options as an array of {id, value}; older rows still send an object.
+    const fromArray = modelSelection.parse({ instanceId: 'claudeAgent', model: 'claude-opus-5', options: [{ id: 'effort', value: 'high' }, { id: 'contextWindow', value: '1m' }] })
+    expect(fromArray.options).toEqual([{ id: 'effort', value: 'high' }, { id: 'contextWindow', value: '1m' }])
+    const fromObject = modelSelection.parse({ instanceId: 'codex', model: 'gpt-5.6', options: { reasoningEffort: 'medium' } })
+    expect(fromObject.options).toEqual([{ id: 'reasoningEffort', value: 'medium' }])
+  })
+
   it('names the HTTP and RPC paths', () => {
     expect(T3_HTTP.thread('thread:a/b')).toBe('/api/orchestration/threads/thread%3Aa%2Fb')
     expect(T3_HTTP.dispatch).toBe('/api/orchestration/dispatch')
