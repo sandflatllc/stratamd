@@ -13,15 +13,13 @@ import { describe, expect, it } from 'vitest'
 const e2eDir = join(__dirname, '../e2e')
 
 // Lines that touch the native clipboard. Electron's clipboard module, the
-// copy/cut/paste shortcuts, the app's copy buttons and menu items, and the
-// Copy for agent helper.
+// copy/cut/paste shortcuts and the app's copy buttons and menu items.
 const triggers: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /\bclipboard\.(readText|writeText|read|write|clear)\b/, reason: "Electron's clipboard module" },
   { pattern: /primaryKey\('[cvx]'\)/, reason: 'a copy, cut, or paste shortcut' },
   { pattern: /(Control|Meta)\+[CVX]\b/i, reason: 'a copy, cut, or paste shortcut' },
   { pattern: /(Shift|Control)\+Insert\b/i, reason: 'a copy or paste shortcut' },
-  { pattern: /name: (['"])(Copy full path|Copy the prompt for your agent|Cut|Paste)\1/, reason: 'a menu item or button that uses the clipboard' },
-  { pattern: /copyForAgent\(|name: \/Copy for agent/, reason: 'Copy for agent' }
+  { pattern: /name: (['"])(Copy full path|Cut|Paste)\1/, reason: 'a menu item or button that uses the clipboard' }
 ]
 
 const tagPattern = /\btag: (?:\[[^\]]*)?['"]@clipboard['"]/
@@ -92,6 +90,6 @@ describe('e2e clipboard tags', () => {
     }
     // Guards the scanner itself: a regex change that stops recognizing test
     // declarations would otherwise pass the first check vacuously.
-    expect(tagged).toBeGreaterThanOrEqual(8)
+    expect(tagged).toBeGreaterThanOrEqual(7)
   })
 })

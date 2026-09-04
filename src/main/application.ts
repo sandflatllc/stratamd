@@ -34,6 +34,7 @@ import type {
   QuickSendRequest,
 } from '../shared/contracts'
 import { createDraftStore, discardDraft as removeDraft, holdDraft as addHeldDraft, relocateDraft, type DraftStore } from '../core/drafts'
+import { blockOutcomeLines, parseStrataBlock, resolveBlock } from '../core/blocks'
 import { logError } from './log'
 import {
   acceptAllSuggestions as acceptAllAnnotationSuggestions,
@@ -321,6 +322,7 @@ export class StrataApplication implements StrataApi {
   readonly #watch: boolean
   readonly #engine: EngineReadClient
   #unsubscribeEngine: (() => void) | null = null
+  readonly #engineDispatching = new Set<string>()
   readonly #sessions = new Map<string, OpenDocumentSession>()
   /** The tail of each document's turn queue; see #withSession. */
   readonly #sessionTurns = new Map<string, Promise<void>>()
@@ -406,7 +408,10 @@ export class StrataApplication implements StrataApi {
 
   async initialize(): Promise<this> {
     await this.#store.initialize()
-    this.#unsubscribeEngine = this.#engine.subscribe(() => this.#publish())
+    this.#unsubscribeEngine = this.#engine.subscribe((view) => {
+      this.#publish()
+      void this.#reconcileEngineView(view).catch((error: unknown) => logError('engine', 'Engine delivery reconciliation failed', error))
+    })
     await this.#engine.initialize()
     this.#settings = await this.#settingsStore.load()
     await this.#themeStore.ensureDirectory()
@@ -726,6 +731,157 @@ export class StrataApplication implements StrataApi {
     await this.#engine.respondUserInput(threadId, requestId, answers)
   }
 
+  #newThreadAttachment(session: OpenDocumentSession, threadId: string): Attachment | null {
+    const thread = this.#engine.view().projects.flatMap((project) => project.threads).find((candidate) => candidate.id === threadId)
+    if (!thread) return null
+    const current = deliverySnapshot(session)
+    return createAttachment({
+      id: threadId,
+      name: thread.title,
+      now: this.#now(),
+      snapshot: { ...current, snapshotId: `unseen:${threadId}:${randomUUID()}`, segmentIndex: -1, cursor: 0 },
+    })
+  }
+
+  async #reconcileEngineView(view: AppView['engine']): Promise<void> {
+    const acknowledged = new Set(view.projects.flatMap((project) => project.threads.flatMap((thread) => thread.messages.map((message) => message.id))))
+    for (const session of [...this.#sessions.values()]) {
+      await this.#withSession(session.path, async () => {
+        if (this.#sessions.get(session.path) !== session) return
+        let changed = false
+        for (const thread of view.projects.flatMap((project) => project.threads)) {
+          if (session.attachments[thread.id]) continue
+          const bootstrap = thread.messages.find((message) => {
+            if (message.role !== 'assistant' || message.streaming) return false
+            const block = parseStrataBlock(message.text)
+            return block?.results.length === 1 && block.results[0]?.entry?.verb === 'attach' && block.results[0].entry.document === session.path
+          })
+          if (!bootstrap) continue
+          const attachment = this.#newThreadAttachment(session, thread.id)
+          if (!attachment) continue
+          session.attachments[thread.id] = attachment
+          await this.#enqueueDeliveries(session, { recipients: [thread.id], note: '', includeExternal: false }, [thread.id], 'send')
+          session.attachments[thread.id] = {
+            ...session.attachments[thread.id]!, processedMessageIds: [bootstrap.id], pendingBlockOutcomes: ['1. applied'],
+          }
+          changed = true
+        }
+        for (const [threadId, current] of Object.entries(session.attachments)) {
+          let attachment = current
+          while (attachment.deliveries[0] && acknowledged.has(attachment.deliveries[0].id)) {
+            const deliveryId = attachment.deliveries[0].id
+            const result = acknowledgeDelivery(attachment, deliveryId)
+            if (!result.acknowledged) break
+            attachment = result.attachment
+            this.#engineDispatching.delete(`${session.path}\0${threadId}\0${deliveryId}`)
+            changed = true
+          }
+          session.attachments[threadId] = attachment
+          const engineThread = view.projects.flatMap((project) => project.threads).find((thread) => thread.id === threadId)
+          for (const message of engineThread?.messages ?? []) {
+            if (message.role === 'assistant' && !message.streaming) changed = await this.#applyStrataMessage(session, threadId, message.id, message.text) || changed
+          }
+        }
+        if (changed) await this.#persist(session)
+        await this.#dispatchEngineDeliveries(session)
+      })
+    }
+    this.#publish()
+  }
+
+  async #applyStrataMessage(session: OpenDocumentSession, threadId: string, messageId: string, text: string): Promise<boolean> {
+    let attachment = session.attachments[threadId]
+    if (!attachment || attachment.processedMessageIds?.includes(messageId)) return false
+    const parsed = parseStrataBlock(text)
+    if (!parsed) return false
+    const outcomes: Array<{ index: number; status: 'applied' | 'failed'; itemId?: string; reason?: string; candidates?: string[] }> = []
+    for (const result of parsed.results) {
+      if (!result.entry) { outcomes.push({ index: result.index, status: 'failed', reason: result.error ?? 'Malformed entry' }); continue }
+      const entry = result.entry
+      try {
+        if (entry.verb === 'attach') throw new Error('attach must be the only entry in an unattached thread')
+        if (entry.verb === 'lead') {
+          if (entry.document !== session.path) throw new Error(`document is not open: ${entry.document}`)
+          session.leadAgentId = entry.action === 'claim' ? threadId : session.leadAgentId === threadId ? null : session.leadAgentId
+          outcomes.push({ index: result.index, status: 'applied' })
+          continue
+        }
+        if ('item' in entry.anchor) throw new Error(`item ${entry.anchor.item} was not found`)
+        if (!('document' in entry.anchor) || entry.anchor.document !== session.path) throw new Error('entry does not target this document')
+        const block = 'block' in entry.anchor && attachment.blockMap ? resolveBlock(attachment.blockMap, entry.anchor.block) : null
+        const quote = 'quote' in entry.anchor ? entry.anchor.quote : block?.text
+        const start = block?.from ?? (quote ? session.state.shadow.indexOf(quote) : -1)
+        if (!quote || start < 0 || session.state.shadow.slice(start, start + quote.length) !== quote) {
+          throw new Error(`block ${'block' in entry.anchor ? entry.anchor.block : 'quote'} changed`)
+        }
+        if (entry.verb === 'comment' || entry.verb === 'question' || entry.verb === 'decision' || entry.verb === 'suggest') {
+          const itemId = `a_${randomUUID().slice(0, 12)}`
+          const created = createAnnotation(session.annotations, session.state.shadow, {
+            createdAt: this.#now(), id: itemId, kind: entry.verb === 'suggest' ? 'suggestion' : entry.verb,
+            author: 'agent', agent: threadId, name: attachment.name, quote,
+            text: entry.verb === 'suggest' ? entry.replacement : entry.text, start,
+            ...(entry.verb === 'decision' ? { anchorKind: 'quote' as const, options: entry.options } : {}),
+          })
+          session.annotations = created.log
+          outcomes.push({ index: result.index, status: 'applied', itemId })
+          continue
+        }
+        if (entry.verb === 'edit') {
+          const relative = quote.indexOf(entry.match)
+          if (relative < 0 || quote.indexOf(entry.match, relative + Math.max(1, entry.match.length)) >= 0) throw new Error('edit match is missing or ambiguous in the block')
+          const from = start + relative
+          session.state = setExternalTag(session.state, threadId, attachment.name, this.#now())
+          await this.#mergeExternalText(session, 'buffer', session.state.shadow.slice(0, from) + entry.replace + session.state.shadow.slice(from + entry.match.length))
+          outcomes.push({ index: result.index, status: 'applied' })
+          continue
+        }
+        throw new Error(`${entry.verb} is not valid for this anchor`)
+      } catch (error) {
+        const candidates = attachment.blockMap?.blocks.slice(0, 3).map((candidate) => candidate.id)
+        outcomes.push({ index: result.index, status: 'failed', reason: error instanceof Error ? error.message : String(error), ...(candidates?.length ? { candidates } : {}) })
+      }
+    }
+    attachment = {
+      ...session.attachments[threadId]!,
+      processedMessageIds: [...(attachment.processedMessageIds ?? []), messageId],
+      pendingBlockOutcomes: blockOutcomeLines(outcomes),
+    }
+    session.attachments[threadId] = attachment
+    return true
+  }
+
+  async #dispatchEngineDeliveries(session: OpenDocumentSession): Promise<void> {
+    for (const threadId of Object.keys(session.attachments)) await this.#dispatchEngineDelivery(session, threadId)
+  }
+
+  async #dispatchEngineDelivery(session: OpenDocumentSession, threadId: string): Promise<void> {
+    const delivery = collectOldest(session.attachments[threadId]!)
+    if (!delivery) return
+    const thread = this.#engine.view().projects.flatMap((project) => project.threads).find((candidate) => candidate.id === threadId)
+    if (!thread) return
+    const key = `${session.path}\0${threadId}\0${delivery.id}`
+    if (this.#engineDispatching.has(key)) return
+    this.#engineDispatching.add(key)
+    const changes = delivery.payload.segments?.reduce((total, segment) => total + segment.hunks.length, 0) ?? 0
+    const items = (delivery.payload.annotations?.length ?? 0) + (delivery.payload.replies?.length ?? 0)
+      + (delivery.payload.answers?.length ?? 0) + (delivery.payload.resolved?.length ?? 0) + (delivery.payload.edits?.length ?? 0)
+    const note = `Delivery ${delivery.id}: ${changes} change${changes === 1 ? '' : 's'}, ${items} item${items === 1 ? '' : 's'}.`
+    try {
+      await this.#engine.startTurn(threadId, {
+        text: note,
+        model: thread.model,
+        effort: thread.effort,
+        access: thread.access,
+        messageId: delivery.id,
+        commandId: `strata-${delivery.id}`,
+        attachment: { name: `${delivery.id}.md`, text: delivery.payload.text },
+      })
+    } catch (error) {
+      this.#engineDispatching.delete(key)
+      logError('engine', `Delivery ${delivery.id} could not be dispatched to thread ${threadId}`, error)
+    }
+  }
+
   /** The paths of every open document whose buffer differs from the file. */
   dirtyDocumentPaths(): string[] {
     return [...this.#sessions.values()]
@@ -928,6 +1084,8 @@ export class StrataApplication implements StrataApi {
     }
     this.#sessions.set(canonical, session)
     await this.#tabs.open(canonical)
+    void this.#dispatchEngineDeliveries(session)
+    void this.#reconcileEngineView(this.#engine.view())
 
     if (!buffer || (!recovery && bufferText !== disk.text)) {
       await this.#store.writeBuffer(canonical, state.shadow)
@@ -1288,7 +1446,11 @@ export class StrataApplication implements StrataApi {
       if (!draft.text.trim()) throw new Error('Write a comment before sending it')
       await session.mirror?.flush()
       for (const recipient of new Set(draft.recipients)) {
-        if (!session.attachments[recipient]) throw new Error(`Attachment ${recipient} was not found`)
+        if (!session.attachments[recipient]) {
+          const created = this.#newThreadAttachment(session, recipient)
+          if (!created) throw new Error(`Thread ${recipient} was not found`)
+          session.attachments[recipient] = created
+        }
       }
       const start = this.#anchorQuote(session, draft)
       const id = `a_${randomUUID().slice(0, 12)}`
@@ -1321,10 +1483,7 @@ export class StrataApplication implements StrataApi {
         return [id, delivery === undefined ? next : enqueueDelivery(next, delivery)]
       }))
       await this.#persist(session)
-      for (const recipient of recipients) {
-        const delivery = collectOldest(session.attachments[recipient]!)
-        if (delivery) this.#attachWaits.deliver(attachKey(path, recipient), delivery.payload)
-      }
+      for (const recipient of recipients) void this.#dispatchEngineDelivery(session, recipient)
       this.#scheduleIdleExpiry()
       this.#publish()
       return deliveries.map((delivery) => delivery.id)
@@ -1568,9 +1727,9 @@ export class StrataApplication implements StrataApi {
       const token = this.#documentToken(session)
       const annotations = this.#materializeDrafts(session, request.draftIds ?? [])
       return Promise.all(request.recipients.map(async (id) => {
-        const attachment = session.attachments[id]
-        if (!attachment) throw new Error(`Attachment ${id} was not found`)
-        const delivery = freezeDelivery(attachment, await this.#deliverySource(session, request, id, 'send', annotations))
+        const attachment = session.attachments[id] ?? this.#newThreadAttachment(session, id)
+        if (!attachment) throw new Error(`Thread ${id} was not found`)
+        const delivery = freezeDelivery(attachment, await this.#deliverySource(session, request, id, 'send', annotations, attachment))
         return {
           recipient: agentIdentity(id, attachment.name, Object.keys(session.attachments).indexOf(id)),
           text: delivery.payload.text,
@@ -1594,7 +1753,11 @@ export class StrataApplication implements StrataApi {
       if (request.recipients.length === 0) throw new Error('Select at least one recipient')
       await session.mirror?.flush()
       for (const recipient of new Set(request.recipients)) {
-        if (!session.attachments[recipient]) throw new Error(`Attachment ${recipient} was not found`)
+        if (!session.attachments[recipient]) {
+          const created = this.#newThreadAttachment(session, recipient)
+          if (!created) throw new Error(`Thread ${recipient} was not found`)
+          session.attachments[recipient] = created
+        }
       }
       // A frozen delivery must equal the preview the user saw: an edit landing
       // between preview and click can add content never shown, and a segment
@@ -1624,10 +1787,7 @@ export class StrataApplication implements StrataApi {
           ? [writeDraftStore(this.#store.pathsForDocument(path).drafts, session.drafts)]
           : []),
       ])
-      for (const id of request.recipients) {
-        const delivery = collectOldest(session.attachments[id]!)
-        if (delivery) this.#attachWaits.deliver(attachKey(path, id), delivery.payload)
-      }
+      for (const id of request.recipients) void this.#dispatchEngineDelivery(session, id)
       this.#scheduleIdleExpiry()
       this.#publish()
       return deliveries.map((delivery) => delivery.id)
@@ -2980,6 +3140,7 @@ export class StrataApplication implements StrataApi {
         await this.#deliverySource(session, request, id, event, annotations),
       )
       session.attachments[id] = enqueueDelivery(attachment, delivery)
+      if (attachment.pendingBlockOutcomes?.length) session.attachments[id] = { ...session.attachments[id]!, pendingBlockOutcomes: [] }
       return delivery
     }))
     return deliveries
@@ -2991,21 +3152,23 @@ export class StrataApplication implements StrataApi {
     recipient: string | 'clipboard',
     event: 'send' | 'closed' = 'send',
     annotations: AnnotationLog = session.annotations,
+    attachmentOverride?: Attachment,
   ): Promise<DeliverySource> {
+    const targetAttachment = recipient === 'clipboard' ? null : (attachmentOverride ?? session.attachments[recipient]!)
     const cursor = annotations.nextSeq - 1
     const fromCursor = recipient === 'clipboard'
       ? (session.clipboardRecipient.pending?.to.cursor ?? session.clipboardRecipient.cursor)
-      : deliveryStart(session.attachments[recipient]!).cursor
+      : deliveryStart(targetAttachment!).cursor
     const start = recipient === 'clipboard'
       ? deliveryStartForClipboard(session.clipboardRecipient)
-      : deliveryStart(session.attachments[recipient]!)
+      : deliveryStart(targetAttachment!)
     const baselineWithinHistory = start.segmentIndex >= session.segmentOffset - 1
     const baselineAvailable = recipient === 'clipboard' && session.clipboardRecipient.baseline === null
       ? true
       : baselineWithinHistory && await this.#store.hasObject(start.snapshotId)
     const skippedEvents = recipient === 'clipboard' || !baselineAvailable
       ? new Set<number>()
-      : new Set(session.attachments[recipient]!.deliveredSeqs)
+      : new Set(targetAttachment!.deliveredSeqs)
     const slice = annotationDeliverySlice(
       annotations,
       baselineAvailable ? fromCursor : 0,
@@ -3028,7 +3191,7 @@ export class StrataApplication implements StrataApi {
       answers: slice.answers,
       resolved: slice.resolved,
       edits: slice.edits,
-      note: request.note,
+      note: [request.note, ...(targetAttachment?.pendingBlockOutcomes?.length ? ['Strata block outcomes:', ...targetAttachment.pendingBlockOutcomes] : [])].filter(Boolean).join('\n'),
       includeExternal: request.includeExternal,
       excludedHunks: request.excludedHunks ?? [],
       eventsLeftOut: slice.excluded > 0,
@@ -3651,6 +3814,9 @@ async function restoreAttachments(
         ? stored.deliveredSeqs.filter((seq): seq is number => typeof seq === 'number')
         : [],
       deliveries,
+      ...(stored.blockMap && typeof stored.blockMap === 'object' ? { blockMap: stored.blockMap as NonNullable<Attachment['blockMap']> } : {}),
+      processedMessageIds: Array.isArray(stored.processedMessageIds) ? stored.processedMessageIds.filter((id): id is string => typeof id === 'string') : [],
+      pendingBlockOutcomes: Array.isArray(stored.pendingBlockOutcomes) ? stored.pendingBlockOutcomes.filter((line): line is string => typeof line === 'string') : [],
     }
   }
   return attachments
@@ -3682,6 +3848,9 @@ async function persistAttachment(
     segmentIndex: attachment.baseline.segmentIndex,
     cursor: attachment.cursor,
     deliveredSeqs: attachment.deliveredSeqs,
+    blockMap: attachment.blockMap,
+    processedMessageIds: attachment.processedMessageIds ?? [],
+    pendingBlockOutcomes: attachment.pendingBlockOutcomes ?? [],
     deliveries,
   }
 }

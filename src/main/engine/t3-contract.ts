@@ -21,6 +21,7 @@ export const T3_RPC = {
   subscribeThread: 'orchestration.subscribeThread',
   getServerConfig: 'server.getConfig',
   subscribeServerConfig: 'subscribeServerConfig',
+  createAttachmentUploadUrl: 'attachments.createUploadUrl',
 } as const
 
 const id = z.string().trim().min(1)
@@ -45,6 +46,7 @@ export const tokenExchangeResult = z.object({
   scope: id,
 }).passthrough()
 export const websocketTicketResult = z.object({ ticket: id, expiresAt: isoDate }).passthrough()
+export const attachmentUploadResult = z.object({ attachmentId: id, relativeUrl: id, expiresAt: z.number() }).passthrough()
 
 export const modelSelection = z.object({ instanceId: id, model: id, options: z.record(z.string(), z.unknown()).optional() }).passthrough()
 export const chatAttachment = z.object({

@@ -245,8 +245,8 @@ test('3b. disconnect confirms only when queued sends would be discarded, and end
     await expect(page.locator('.agent-row').filter({ hasText: 'Agent B' })).toContainText('has an update waiting')
 
     // A queued Send delivery is the user's data: disconnect confirms first, and cancel keeps both.
-    await page.getByRole('button', { name: 'Disconnect Agent B' }).click()
-    const dialog = page.getByRole('dialog', { name: /Disconnect Agent B/i })
+    await page.getByRole('button', { name: 'Detach Agent B' }).click()
+    const dialog = page.getByRole('dialog', { name: /Detach Agent B/i })
     await expect(dialog).toBeVisible()
     await dialog.getByRole('button', { name: 'Cancel' }).click()
     await expect(dialog).toBeHidden()
@@ -256,8 +256,8 @@ test('3b. disconnect confirms only when queued sends would be discarded, and end
     // A message-only queue disconnects without a prompt.
     const sent = await value.cli(['send', value.file, '--as', 'agent-b', '--text', 'One note.', '--to', 'agent-a'])
     expect(sent.code, sent.stderr).toBe(0)
-    await page.getByRole('button', { name: 'Disconnect Agent A' }).click()
-    await expect(page.getByRole('dialog', { name: /Disconnect Agent A/i })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Detach Agent A' }).click()
+    await expect(page.getByRole('dialog', { name: /Detach Agent A/i })).toHaveCount(0)
     await expect(page.locator('.agent-row').filter({ hasText: 'Agent A' })).toHaveCount(0)
     const gone = await value.cli(['send', value.file, '--as', 'agent-a', '--text', 'Still here?'])
     expect(gone.code).toBe(2)

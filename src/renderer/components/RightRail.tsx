@@ -50,13 +50,12 @@ interface RightRailProps {
   onRevertAll(group: { name: string; hunks: HunkView[] }): void
   /** Keeps every pending change by one author (§5.5). */
   onKeepAll?(group: { name: string; hunks: HunkView[] }): void
-  /** Puts a one-line instruction for a new agent on the clipboard. */
-  onCopyAgentPrompt(): void
   onJumpAnnotation(annotation: AnnotationView): void
   onClearResolved(): void
   headings: readonly EditorHeading[]
   onAddDecision(prompt: string, options: string[], anchor: 'document' | EditorHeading): void
-  onNudge(agentId: string): void
+  onStop(agentId: string): void
+  onOpenConversation(agentId: string): void
   onSetLead(agentId: string | null): void
   onDisconnect(attachment: AttachmentView): void
   onSaveRound(index: number): Promise<{ hunks: RoundHunkView[] }>
@@ -380,12 +379,12 @@ function AnnotationsPanel(props: RightRailProps & { pinChanges: boolean; onPinCh
   )
 }
 
-function AttachmentsPanel({ document, now, onNudge, onSetLead, onDisconnect, onCopyAgentPrompt }: Pick<RightRailProps, 'document' | 'onNudge' | 'onSetLead' | 'onDisconnect' | 'onCopyAgentPrompt'> & { now: number }) {
+function AttachmentsPanel({ document, now, onStop, onOpenConversation, onSetLead, onDisconnect }: Pick<RightRailProps, 'document' | 'onStop' | 'onOpenConversation' | 'onSetLead' | 'onDisconnect'> & { now: number }) {
   return (
-    <section className="island rail-panel agents-panel" aria-labelledby="agents-heading">
+    <section className="island rail-panel agents-panel" aria-labelledby="attached-heading">
       <AmbientDecor variant="agents" />
       <div className="panel-heading">
-        <h2 id="agents-heading" title="What you send is never dropped. An agent's notes to other agents don't keep it attached.">Agents</h2>
+        <h2 id="attached-heading">Attached</h2>
         <span className="panel-counts">{document.attachments.length === 0 ? 'None attached' : `${document.attachments.length} attached`}</span>
       </div>
       {document.attachments.map((attachment) => {
@@ -410,22 +409,22 @@ function AttachmentsPanel({ document, now, onNudge, onSetLead, onDisconnect, onC
                 aria-label={leads ? `Remove the Lead from ${attachment.agent.name}` : `Make ${attachment.agent.name} the Lead`}
                 onClick={() => onSetLead(leads ? null : attachment.agent.id)}
               >♛</button>
+              <button type="button" className="agent-icon" title={`Open ${attachment.agent.name} as a tab`} aria-label={`Open ${attachment.agent.name} as a tab`} onClick={() => onOpenConversation(attachment.agent.id)}>↗</button>
+              <button type="button" className="agent-icon" title={`Stop ${attachment.agent.name}`} aria-label={`Stop ${attachment.agent.name}`} onClick={() => onStop(attachment.agent.id)}>■</button>
               <button
                 type="button"
                 className="agent-icon disconnect"
-                title={`Disconnect ${attachment.agent.name}`}
-                aria-label={`Disconnect ${attachment.agent.name}`}
+                title={`Detach ${attachment.agent.name}`}
+                aria-label={`Detach ${attachment.agent.name}`}
                 onClick={() => onDisconnect(attachment)}
               >⏻</button>
-              <button type="button" className="nudge" title={`Copies a short reminder that asks ${attachment.agent.name} to check in with this document. Paste it to the agent.`} onClick={() => onNudge(attachment.agent.id)}>nudge</button>
             </span>
           </div>
         )
       })}
       {document.attachments.length === 0 && (
         <div className="empty-subtle">
-          No agents attached.<br />Send becomes Copy for agent.
-          <button type="button" className="text-action positive agent-prompt" onClick={onCopyAgentPrompt}>Copy the prompt for your agent</button>
+          No threads attached. Start a thread from this document to send it.
         </div>
       )}
     </section>
@@ -465,7 +464,7 @@ export function RightRail(props: RightRailProps) {
         </section>
       </section>
       <Resizer axis="horizontal" label="Resize review window" value={props.upperReviewHeight} min={180} max={954} onChange={(value) => props.onHeight(value, false)} onCommit={(value) => props.onHeight(value, true)} />
-      <AttachmentsPanel document={props.document} now={now} onNudge={props.onNudge} onSetLead={props.onSetLead} onDisconnect={props.onDisconnect} onCopyAgentPrompt={props.onCopyAgentPrompt} />
+      <AttachmentsPanel document={props.document} now={now} onStop={props.onStop} onOpenConversation={props.onOpenConversation} onSetLead={props.onSetLead} onDisconnect={props.onDisconnect} />
       <div className="save-state-footer">{saveStateSentence(props.document.dirty, props.document.lastSavedAt, now)}</div>
     </aside>
   )

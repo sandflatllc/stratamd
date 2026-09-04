@@ -51,11 +51,12 @@ async function document(): Promise<string> {
 describe('agent contract', () => {
   it('prints section 7 verbatim', async () => {
     const prd = await readFile(join(process.cwd(), 'docs', 'PRD.md'), 'utf8')
-    const contract = prd.match(/## 7\. Agent contract[\s\S]*?```\n([\s\S]*?)\n```/)?.[1]
+    const contract = prd.match(/## 7\. Agent contract[\s\S]*?````\n([\s\S]*?)\n````/)?.[1]
     expect(contract).toBe(AGENT_HELP)
-    // A timeout is not an action: the contract says so in the loop and in the chat-conduct block.
-    expect(AGENT_HELP).toContain('run it again and say nothing about it in chat')
-    expect(AGENT_HELP).toContain('What to say in chat:')
+    expect(AGENT_HELP).toContain('one final fenced strata block')
+    expect(AGENT_HELP).toContain('Chat rule:')
+    const skill = await readFile(join(process.cwd(), 'skills', 'stratamd', 'SKILL.md'), 'utf8')
+    expect(skill.split('# StrataMD\n\n')[1]?.trim()).toBe(AGENT_HELP)
 
     const io = captureIo()
     expect(await runCli(['--agent-help'], io.runtime)).toBe(0)

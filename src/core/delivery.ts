@@ -10,6 +10,7 @@ import {
   type PayloadSegment,
   type StrataPayload,
 } from './payload'
+import type { BlockAnchorMap } from './blocks'
 
 export interface DeliveryBaseline {
   snapshotId: string
@@ -52,6 +53,10 @@ export interface Attachment {
   /** Event seqs settled outside the attachment's cursor range. */
   deliveredSeqs: readonly number[]
   deliveries: readonly FrozenDelivery[]
+  /** The last acknowledged delivery map, retained for the agent reply. */
+  blockMap?: BlockAnchorMap
+  processedMessageIds?: readonly string[]
+  pendingBlockOutcomes?: readonly string[]
 }
 
 export type AttachmentDisplayState = 'waiting' | 'working' | 'pending'
@@ -432,6 +437,7 @@ export function acknowledgeDelivery(
       cursor: oldest.to.cursor,
       deliveredSeqs: attachment.deliveredSeqs.filter((seq) => seq > oldest.to.cursor),
       deliveries: attachment.deliveries.slice(1),
+      ...(oldest.payload.blockMap ? { blockMap: oldest.payload.blockMap } : {}),
     },
   }
 }

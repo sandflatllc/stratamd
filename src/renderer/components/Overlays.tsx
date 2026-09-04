@@ -25,9 +25,9 @@ export function DisconnectDialog({ attachment, onCancel, onConfirm }: { attachme
   const count = attachment.queuedSendCount
   return (
     <Backdrop onCancel={onCancel}><section ref={dialogRef} tabIndex={-1} className="modal decision-modal disconnect-modal" role="dialog" aria-modal="true" aria-labelledby="disconnect-title">
-      <h2 id="disconnect-title">Disconnect {attachment.agent.name}?</h2>
-      <p>{attachment.agent.name} still has {count === 1 ? 'an update you sent that it has' : `${count} updates you sent that it has`} not picked up. Disconnecting <strong className="danger-text">throws {count === 1 ? 'it' : 'them'} away</strong>.</p>
-      <div className="modal-actions"><button type="button" className="quiet-button" onClick={onCancel}>Cancel</button><button type="button" className="danger-button" onClick={onConfirm}>Disconnect</button></div>
+      <h2 id="disconnect-title">Detach {attachment.agent.name}?</h2>
+      <p>{attachment.agent.name} still has {count === 1 ? 'an update you sent that it has' : `${count} updates you sent that it has`} not acknowledged. Detaching <strong className="danger-text">discards {count === 1 ? 'it' : 'them'}</strong> but leaves the thread untouched.</p>
+      <div className="modal-actions"><button type="button" className="quiet-button" onClick={onCancel}>Cancel</button><button type="button" className="danger-button" onClick={onConfirm}>Detach</button></div>
     </section></Backdrop>
   )
 }

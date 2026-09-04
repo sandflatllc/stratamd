@@ -4,7 +4,6 @@ import { basename, dirname, join } from 'node:path'
 import {
   Scenario,
   allHunks,
-  copyForAgent,
   expectPayload,
   externalText,
   lineEndKey,
@@ -407,24 +406,6 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     const retried = await value.attach('agent-a')
     expect(retried.deliveryId).toBe(interruptedId)
     expect(retried.text).toContain('Queued user edit.')
-  })
-
-  test('13. Save does not advance the Copy for agent baseline', { tag: '@clipboard' }, async ({}, testInfo) => {
-    const value = await scenario(testInfo, '# Clipboard\n\nOriginal.\n')
-    await value.launch()
-    await copyForAgent(value.page!)
-    const initialClipboard = await value.app!.evaluate(({ clipboard }) => clipboard.readText())
-    expect(initialClipboard).toContain('Original.')
-
-    const edited = '# Clipboard\n\nSaved since the prior copy.\n'
-    await setSource(value.page!, edited)
-    await value.waitForBuffer(edited)
-    await save(value.page!)
-    await copyForAgent(value.page!)
-
-    const secondClipboard = await value.app!.evaluate(({ clipboard }) => clipboard.readText())
-    expect(secondClipboard).toContain('Saved since the prior copy.')
-    expect(secondClipboard).not.toBe(initialClipboard)
   })
 
   test('14. one agent sees another agent edit only through changes or explicit inclusion', async ({}, testInfo) => {

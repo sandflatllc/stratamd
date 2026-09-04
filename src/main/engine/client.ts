@@ -6,6 +6,8 @@ import {
   shellSnapshot,
   threadDetailSnapshot,
   tokenExchangeResult,
+  websocketTicketResult,
+  attachmentUploadResult,
   turnStartCommand,
   turnInterruptCommand,
   approvalRespondCommand,
@@ -13,6 +15,7 @@ import {
   dispatchResult,
   T3_CONTRACT_REVISION,
   T3_HTTP,
+  T3_RPC,
   type T3ShellSnapshot,
   type T3ThreadDetailSnapshot,
 } from './t3-contract'
@@ -39,6 +42,7 @@ export interface EngineClientOptions {
   fetch?: typeof globalThis.fetch
   now?: () => number
   pollMs?: number
+  webSocket?: typeof WebSocket
 }
 
 export interface EngineReadClient {
@@ -49,7 +53,7 @@ export interface EngineReadClient {
   pair(server: string, pairingCode: string): Promise<void>
   reconnect(): Promise<void>
   openThread(threadId: string): Promise<void>
-  startTurn(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access'] }): Promise<void>
+  startTurn(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access']; messageId?: string; commandId?: string; attachment?: { name: string; text: string } }): Promise<void>
   interrupt(threadId: string): Promise<void>
   respondApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
   respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
@@ -86,6 +90,8 @@ export class T3EngineClient implements EngineReadClient {
   readonly #pollMs: number
   readonly #credentialPath: string
   readonly #readingPath: string
+  readonly #commandsPath: string
+  readonly #WebSocket: typeof WebSocket
   readonly #listeners = new Set<(view: EngineView) => void>()
   #credential: EngineCredential | null = null
   #reading: EngineReadingState = { formatVersion: 1, activeThreadId: null, lastVisited: {} }
@@ -97,6 +103,7 @@ export class T3EngineClient implements EngineReadClient {
   #timer: ReturnType<typeof setTimeout> | null = null
   #running = false
   #polling: Promise<void> | null = null
+  #pendingCommands: Array<{ key: string; command: unknown; messageId?: string }> = []
 
   constructor(options: EngineClientOptions) {
     this.#fetch = options.fetch ?? globalThis.fetch
@@ -104,14 +111,18 @@ export class T3EngineClient implements EngineReadClient {
     this.#pollMs = options.pollMs ?? 400
     this.#credentialPath = join(options.dataDirectory, 'engine-credential.json')
     this.#readingPath = join(options.dataDirectory, 'engine-reading.json')
+    this.#commandsPath = join(options.dataDirectory, 'engine-commands.json')
+    this.#WebSocket = options.webSocket ?? WebSocket
   }
 
   async initialize(): Promise<void> {
     this.#credential = await this.#readCredential()
     this.#reading = await this.#readReading()
+    this.#pendingCommands = await this.#readCommands()
     if (!this.#credential) return
     this.#running = true
     await this.reconnect()
+    await this.#retryPendingCommands()
   }
 
   async shutdown(): Promise<void> {
@@ -248,16 +259,17 @@ export class T3EngineClient implements EngineReadClient {
     this.#publish()
   }
 
-  async startTurn(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access'] }): Promise<void> {
+  async startTurn(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access']; messageId?: string; commandId?: string; attachment?: { name: string; text: string } }): Promise<void> {
     const thread = this.#shell?.threads.find((candidate) => candidate.id === threadId)
     if (!thread) throw new Error(`Thread was not found: ${threadId}`)
+    const attachments = input.attachment ? [await this.#uploadTextAttachment(input.attachment)] : []
     const command = turnStartCommand.parse({
-      type: 'thread.turn.start', commandId: randomUUID(), threadId, createdAt: new Date(this.#now()).toISOString(),
-      message: { messageId: randomUUID(), role: 'user', text: input.text.trim(), attachments: [] },
+      type: 'thread.turn.start', commandId: input.commandId ?? randomUUID(), threadId, createdAt: new Date(this.#now()).toISOString(),
+      message: { messageId: input.messageId ?? randomUUID(), role: 'user', text: input.text.trim(), attachments },
       modelSelection: { instanceId: thread.modelSelection.instanceId, model: input.model, options: input.effort ? { effort: input.effort } : {} },
       runtimeMode: input.access, interactionMode: thread.interactionMode,
     })
-    await this.#dispatch(command)
+    await this.#dispatch(command, `turn:${command.message.messageId}`, command.message.messageId)
   }
 
   async interrupt(threadId: string): Promise<void> {
@@ -330,7 +342,19 @@ export class T3EngineClient implements EngineReadClient {
     return response
   }
 
-  async #dispatch(command: unknown): Promise<void> {
+  async #dispatch(command: unknown, key?: string, messageId?: string): Promise<void> {
+    if (!this.#credential) throw new Error('No engine is paired')
+    if (key && !this.#pendingCommands.some((pending) => pending.key === key)) {
+      this.#pendingCommands.push({ key, command, ...(messageId ? { messageId } : {}) })
+      await this.#writeCommands()
+    }
+    await this.#postCommand(command)
+    if (!messageId && key) { this.#pendingCommands = this.#pendingCommands.filter((pending) => pending.key !== key); await this.#writeCommands() }
+    await this.#refresh()
+    await this.#settleAcknowledgedCommands()
+  }
+
+  async #postCommand(command: unknown): Promise<void> {
     if (!this.#credential) throw new Error('No engine is paired')
     const response = await this.#fetch(`${this.#credential.server}${T3_HTTP.dispatch}`, {
       method: 'POST',
@@ -340,7 +364,58 @@ export class T3EngineClient implements EngineReadClient {
     })
     if (!response.ok) throw new Error(response.status === 401 ? 'The engine pairing has expired' : `The engine refused the command (${response.status})`)
     dispatchResult.parse(await response.json())
-    await this.#refresh()
+  }
+
+  async #uploadTextAttachment(input: { name: string; text: string }): Promise<{ type: 'file'; id: string; name: string; mimeType: string; sizeBytes: number }> {
+    if (!this.#credential) throw new Error('No engine is paired')
+    const bytes = new TextEncoder().encode(input.text)
+    if (bytes.byteLength === 0) throw new Error('A delivery attachment cannot be empty')
+    const ticketResponse = await this.#fetch(`${this.#credential.server}${T3_HTTP.websocketTicket}`, {
+      method: 'POST', headers: { authorization: `Bearer ${this.#credential.accessToken}` }, signal: AbortSignal.timeout(3_000),
+    })
+    if (!ticketResponse.ok) throw new Error(`The engine could not authorize an attachment upload (${ticketResponse.status})`)
+    const ticket = websocketTicketResult.parse(await ticketResponse.json())
+    const socketUrl = new URL(T3_HTTP.websocket, this.#credential.server)
+    socketUrl.protocol = socketUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+    socketUrl.searchParams.set('wsTicket', ticket.ticket)
+    const upload = await new Promise<ReturnType<typeof attachmentUploadResult.parse>>((resolve, reject) => {
+      const socket = new this.#WebSocket(socketUrl)
+      const requestId = randomUUID()
+      const timeout = setTimeout(() => { socket.close(); reject(new Error('The engine attachment upload timed out')) }, 5_000)
+      socket.addEventListener('open', () => socket.send(JSON.stringify({
+        _tag: 'Request', id: requestId, tag: T3_RPC.createAttachmentUploadUrl,
+        payload: { type: 'file', name: input.name, mimeType: 'text/markdown', sizeBytes: bytes.byteLength },
+      })))
+      socket.addEventListener('message', (event) => {
+        try {
+          const message = JSON.parse(String(event.data)) as { _tag?: string; requestId?: string; exit?: { _tag?: string; value?: unknown; cause?: unknown } }
+          if (message._tag !== 'Exit' || message.requestId !== requestId) return
+          clearTimeout(timeout); socket.close()
+          if (message.exit?._tag !== 'Success') reject(new Error('The engine refused the attachment upload'))
+          else resolve(attachmentUploadResult.parse(message.exit.value))
+        } catch (error) { clearTimeout(timeout); socket.close(); reject(error) }
+      })
+      socket.addEventListener('error', () => { clearTimeout(timeout); reject(new Error('The engine attachment channel is unreachable')) })
+    })
+    const response = await this.#fetch(new URL(upload.relativeUrl, this.#credential.server), {
+      method: 'PUT', headers: { 'content-type': 'text/markdown', 'content-length': String(bytes.byteLength) }, body: bytes,
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!response.ok) throw new Error(`The engine refused the attachment bytes (${response.status})`)
+    return { type: 'file', id: upload.attachmentId, name: input.name, mimeType: 'text/markdown', sizeBytes: bytes.byteLength }
+  }
+
+  async #retryPendingCommands(): Promise<void> {
+    for (const pending of this.#pendingCommands) await this.#postCommand(pending.command)
+    if (this.#pendingCommands.length) { await this.#refresh(); await this.#settleAcknowledgedCommands() }
+  }
+
+  async #settleAcknowledgedCommands(): Promise<void> {
+    const ids = new Set(this.#detail?.thread.messages.map((message) => message.id) ?? [])
+    const next = this.#pendingCommands.filter((pending) => !pending.messageId || !ids.has(pending.messageId))
+    if (next.length === this.#pendingCommands.length) return
+    this.#pendingCommands = next
+    await this.#writeCommands()
   }
 
   #schedule(): void {
@@ -380,6 +455,17 @@ export class T3EngineClient implements EngineReadClient {
 
   async #writeReading(): Promise<void> {
     await atomicWriteFile(this.#readingPath, `${JSON.stringify(this.#reading, null, 2)}\n`, { mode: PRIVATE_FILE_MODE })
+  }
+
+  async #readCommands(): Promise<Array<{ key: string; command: unknown; messageId?: string }>> {
+    try {
+      const value = JSON.parse(await readFile(this.#commandsPath, 'utf8')) as { formatVersion?: number; pending?: unknown }
+      return value.formatVersion === 1 && Array.isArray(value.pending) ? value.pending.filter((item): item is { key: string; command: unknown; messageId?: string } => typeof item === 'object' && item !== null && typeof (item as { key?: unknown }).key === 'string') : []
+    } catch { return [] }
+  }
+
+  async #writeCommands(): Promise<void> {
+    await atomicWriteFile(this.#commandsPath, `${JSON.stringify({ formatVersion: 1, pending: this.#pendingCommands }, null, 2)}\n`, { mode: PRIVATE_FILE_MODE })
   }
 }
 

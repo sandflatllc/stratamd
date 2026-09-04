@@ -37,7 +37,7 @@ test('tab hosts preserve the shell, expose counts, and keep Agents visible while
   const review = page.getByRole('tablist', { name: 'Document review' })
   await expect(navigation.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true')
   await expect(review.getByRole('tab', { name: /^Changes/ })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByRole('heading', { name: 'Agents' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Attached' })).toBeVisible()
   await expect(page.getByText('None attached', { exact: true })).toBeVisible()
 
   expect((await value.attach('agent-a', 'Agent A')).event).toBe('initial')
@@ -58,7 +58,7 @@ test('tab hosts preserve the shell, expose counts, and keep Agents visible while
   expect((await pinned.boundingBox())!.height).toBeLessThanOrEqual(155)
   await pinned.getByRole('button').first().click()
   await expect(review.getByRole('tab', { name: /^Changes/ })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByRole('heading', { name: 'Agents' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Attached' })).toBeVisible()
   expect((await page.locator('.agents-panel').boundingBox())!.height).toBeGreaterThanOrEqual(140)
 })
 

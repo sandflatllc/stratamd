@@ -126,4 +126,73 @@ describe('T3 engine read client', () => {
     for (const command of commands) expect(command).toMatchObject({ commandId: expect.any(String), createdAt: at })
     await client.shutdown()
   })
+
+  it('reuses a persisted command id until the matching message is visible after restart', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'strata-engine-retry-'))
+    const commands: Array<Record<string, unknown>> = []
+    let acknowledged = false
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+      if (url.endsWith('/api/orchestration/dispatch')) {
+        commands.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+        return Response.json({ sequence: commands.length })
+      }
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(shell(), { headers: { 'x-t3-version': '0.0.33' } })
+      const snapshot = detail()
+      snapshot.thread.messages = acknowledged
+        ? [{ id: 'delivery-1', role: 'user', text: 'Delivery delivery-1', attachments: [], turnId: 'turn-1', streaming: false, createdAt: at, updatedAt: at }]
+        : []
+      return Response.json(snapshot)
+    }) as typeof globalThis.fetch
+
+    const first = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), pollMs: 60_000 })
+    await first.pair('http://engine.test', 'code')
+    await first.openThread('t1')
+    await first.startTurn('t1', { text: 'Delivery delivery-1', model: 'gpt-5.6', effort: 'medium', access: 'full-access', messageId: 'delivery-1', commandId: 'command-1' })
+    await first.shutdown()
+
+    acknowledged = true
+    const second = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), pollMs: 60_000 })
+    await second.initialize()
+    expect(commands).toHaveLength(2)
+    expect(commands[0]).toMatchObject({ commandId: 'command-1', message: { messageId: 'delivery-1' } })
+    expect(commands[1]).toEqual(commands[0])
+    expect(JSON.parse(await readFile(join(directory, 'engine-commands.json'), 'utf8')).pending).toEqual([])
+    await second.shutdown()
+  })
+
+  it('uploads a Markdown delivery before dispatching its file attachment', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'strata-engine-upload-'))
+    const commands: Array<Record<string, unknown>> = []
+    const uploads: Array<{ url: string; body: string }> = []
+    class UploadSocket {
+      static readonly CONNECTING = 0; static readonly OPEN = 1; static readonly CLOSING = 2; static readonly CLOSED = 3
+      readonly listeners = new Map<string, Array<(event: { data?: string }) => void>>()
+      constructor(readonly url: string | URL) { queueMicrotask(() => this.emit('open', {})) }
+      addEventListener(name: string, listener: (event: { data?: string }) => void) { this.listeners.set(name, [...(this.listeners.get(name) ?? []), listener]) }
+      send(value: string) {
+        const request = JSON.parse(value) as { id: string; tag: string; payload: unknown }
+        expect(request).toMatchObject({ tag: 'attachments.createUploadUrl', payload: { type: 'file', name: 'delivery.md', mimeType: 'text/markdown' } })
+        queueMicrotask(() => this.emit('message', { data: JSON.stringify({ _tag: 'Exit', requestId: request.id, exit: { _tag: 'Success', value: { attachmentId: 'pending-upload', relativeUrl: '/upload/signed', expiresAt: 1 } } }) }))
+      }
+      close() {}
+      emit(name: string, event: { data?: string }) { for (const listener of this.listeners.get(name) ?? []) listener(event) }
+    }
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+      if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
+      if (url.endsWith('/upload/signed')) { uploads.push({ url, body: new TextDecoder().decode(init?.body as Uint8Array) }); return new Response('', { status: 200 }) }
+      if (url.endsWith('/api/orchestration/dispatch')) { commands.push(JSON.parse(String(init?.body)) as Record<string, unknown>); return Response.json({ sequence: 1 }) }
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(shell(), { headers: { 'x-t3-version': '0.0.33' } })
+      return Response.json(detail())
+    }) as typeof globalThis.fetch
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: UploadSocket as unknown as typeof WebSocket, pollMs: 60_000 })
+    await client.pair('http://engine.test', 'code')
+    await client.startTurn('t1', { text: 'Delivery d1.', model: 'gpt-5.6', effort: 'medium', access: 'full-access', attachment: { name: 'delivery.md', text: '# Delivery' } })
+    expect(uploads).toEqual([{ url: 'http://engine.test/upload/signed', body: '# Delivery' }])
+    expect(commands[0]).toMatchObject({ message: { text: 'Delivery d1.', attachments: [{ type: 'file', id: 'pending-upload', name: 'delivery.md', mimeType: 'text/markdown', sizeBytes: 10 }] } })
+    await client.shutdown()
+  })
 })

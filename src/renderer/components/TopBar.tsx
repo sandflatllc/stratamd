@@ -20,7 +20,6 @@ interface TopBarProps {
   onCloseAll?(): void
   onCloseSaved?(): void
   onSend(): void
-  onCopy(): void
   zoomed: boolean
   onResetZoom(): void
   onOpenTheme(): void
@@ -28,7 +27,7 @@ interface TopBarProps {
   onCloseConversation?(): void
 }
 
-export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onSend, onCopy, zoomed, onResetZoom, onOpenTheme, conversationTab, onCloseConversation }: TopBarProps) {
+export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onSend, zoomed, onResetZoom, onOpenTheme, conversationTab, onCloseConversation }: TopBarProps) {
   const tabStrip = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState<PathContextMenuState | null>(null)
   const activePath = conversationTab ? `conversation:${conversationTab.id}` : tabs.find((tab) => tab.active)?.path
@@ -97,11 +96,7 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
       {zoomed && <button type="button" className="text-action reset-zoom" onClick={onResetZoom}>Reset zoom</button>}
       <span className="pending-status" data-unsaved={pendingUnsaved} title="Next change · F7. Previous change · Shift+F7. All shortcuts · F1">{pending} pending</span>
       <kbd>{primaryModifierLabel()}+Enter</kbd>
-      {hasAgents ? (
-        <button type="button" className="send-button" data-enabled={canSend} onClick={onSend} disabled={!canSend}>Send ↗</button>
-      ) : (
-        <button type="button" className="copy-button" onClick={onCopy}>Copy for agent ⧉</button>
-      )}
+      <button type="button" className="send-button" data-enabled={canSend} onClick={onSend} disabled={!canSend}>{hasAgents ? 'Send ↗' : 'Start thread'}</button>
     </header>
   )
 }

@@ -85,7 +85,7 @@ test('table views stay read-only, return to the selected source cell, and separa
   await page.keyboard.press('Enter')
   await expect(page.getByRole('heading', { name: 'Review', exact: true })).toBeHidden()
   await expect(page.getByRole('tablist', { name: 'Document navigation' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Agents' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Attached' })).toBeVisible()
 
   await page.evaluate(async (path) => window.strata.openDocument(path), other)
   await expect(page.getByRole('heading', { name: 'Other' })).toBeVisible()
@@ -198,6 +198,7 @@ test('a blank header cell accepts table state and survives reopen', async ({}, t
   await page.evaluate(async ({ path, tableView }) => {
     await window.strata.updateTableView(path, { ...tableView, focusedRow: 99, focusedColumn: 1, selectedRows: [0, 99] })
   }, { path: value.file, tableView })
+  await page.mouse.move(0, 0)
   await expect(block.getByRole('button', { name: 'Discuss row' })).toHaveCount(0)
   await expect(block.getByRole('button', { name: 'Discuss cell' })).toHaveCount(0)
   await value.stop()

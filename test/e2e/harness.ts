@@ -382,11 +382,6 @@ export async function send(page: Page, options: { note?: string; includeExternal
   await expect(dialog).toBeHidden()
 }
 
-export async function copyForAgent(page: Page): Promise<void> {
-  await page.getByRole('button', { name: /Copy for agent/i }).click()
-  await expect(page.getByRole('status')).toContainText(/Copied for your agent/i)
-}
-
 export async function selectTextInVisualEditor(page: Page, exactText: string): Promise<void> {
   const source = page.getByRole('textbox', { name: /source editor/i })
   if (await source.isVisible().catch(() => false)) await page.keyboard.press(primaryKey('/'))

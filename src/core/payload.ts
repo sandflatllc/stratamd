@@ -1,4 +1,5 @@
 import type { AnnotationAnchorKind, AnnotationContext, DecisionAnswer, DecisionData } from '../shared/contracts'
+import { mapMarkdownBlocks, type BlockAnchorMap } from './blocks'
 
 export const PAYLOAD_VERSION = 13 as const
 
@@ -140,6 +141,8 @@ export interface StrataPayload {
   edits?: readonly PayloadEditVerdict[]
   /** Present when the user left parts of the changed document out of this delivery. */
   partial?: boolean
+  /** Private delivery-time map used to resolve the block ids printed in `text`. */
+  blockMap?: BlockAnchorMap
   text: string
 }
 
@@ -490,6 +493,7 @@ export function renderPayloadText(input: PayloadInput, context: RenderContext = 
       : `Message from ${input.from.name} (${input.from.agent}):`
     sections.push(`${heading}\n${(input.notes ?? []).join('\n\n')}`)
     sections.push(MESSAGE_GUIDANCE_LINE)
+    if (input.blockMap) sections.push(renderBlockMap(input.blockMap))
     return sections.join('\n\n')
   }
 
@@ -506,6 +510,7 @@ export function renderPayloadText(input: PayloadInput, context: RenderContext = 
     if (fallbacks !== null) sections.push(fallbacks)
     sections.push(...renderOpenQuestions(annotations))
     sections.push(...renderOpenDecisions(annotations))
+    if (input.blockMap) sections.push(renderBlockMap(input.blockMap))
     return sections.filter((section) => section.length > 0).join('\n\n')
   }
 
@@ -537,13 +542,27 @@ export function renderPayloadText(input: PayloadInput, context: RenderContext = 
   if (input.partial === true) {
     sections.push('Parts of the document changed that are not included here.')
   }
+  if (input.blockMap) sections.push(renderBlockMap(input.blockMap))
   return sections.join('\n\n')
 }
 
+function renderBlockMap(map: BlockAnchorMap): string {
+  return ['Block ids:', ...map.blocks.map((block) => `- ${block.id}: ${block.text.replace(/\s+/g, ' ').slice(0, 120)}`)].join('\n')
+}
+
 export function createPayload(input: PayloadInput, context: RenderContext = {}): StrataPayload {
-  const normalized: PayloadInput = input.event === 'changes' && input.segments !== undefined
+  let normalized: PayloadInput = input.event === 'changes' && input.segments !== undefined
     ? { ...input, segments: input.segments.filter((segment) => segment.author === 'external') }
     : input
+  const document = context.currentDocument ?? input.document
+  if (document !== undefined && normalized.blockMap === undefined) {
+    const mapped = mapMarkdownBlocks(input.file, document)
+    const carriesDocument = ['initial', 'resync', 'state'].includes(input.event)
+    const quotes = new Set((normalized.annotations ?? []).map((annotation) => annotation.quote).filter(Boolean))
+    const changedText = (normalized.segments ?? []).flatMap((segment) => segment.hunks.flatMap((hunk) => hunk.added)).filter((line) => line.trim().length > 0)
+    const blocks = carriesDocument ? mapped.blocks : mapped.blocks.filter((block) => [...quotes, ...changedText].some((fragment) => block.text.includes(fragment)))
+    if (blocks.length > 0) normalized = { ...normalized, blockMap: { ...mapped, blocks } }
+  }
   const text = renderPayloadText(normalized, context)
   return { ...normalized, version: PAYLOAD_VERSION, text }
 }

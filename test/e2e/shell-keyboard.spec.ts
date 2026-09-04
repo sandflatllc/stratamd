@@ -171,7 +171,7 @@ test('composer and reply drafts survive Escape, and Escape closes one surface at
   }
 })
 
-test('a root folder can be removed from the explorer, and the empty agents panel offers the attach prompt', { tag: '@clipboard' }, async ({}, testInfo) => {
+test('a root folder can be removed from the explorer while the open document stays available', { tag: '@clipboard' }, async ({}, testInfo) => {
   const value = await Scenario.create(testInfo, '# Remove\n\nKeep me remembered.\n', 'remove.md')
   const folder = dirname(value.file)
   await value.writeSettings({ explorerFolders: [folder] })
@@ -195,10 +195,8 @@ test('a root folder can be removed from the explorer, and the empty agents panel
     // The open document is untouched.
     await expect(page.getByRole('tab', { name: /remove\.md/i })).toHaveAttribute('aria-selected', 'true')
 
-    await value.app!.evaluate(({ clipboard }) => clipboard.writeText('sentinel'))
-    await page.getByRole('button', { name: 'Copy the prompt for your agent' }).click()
-    await expect.poll(() => value.app!.evaluate(({ clipboard }) => clipboard.readText())).toContain('stratamd attach --name')
-    await expect(page.getByRole('status')).toContainText(/Prompt copied/)
+    await expect(page.getByRole('heading', { name: 'Attached' })).toBeVisible()
+    await expect(page.getByText('No threads attached. Start a thread from this document to send it.')).toBeVisible()
   } finally {
     await value.dispose()
   }
