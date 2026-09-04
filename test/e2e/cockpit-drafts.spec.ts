@@ -1,6 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { dirname } from 'node:path'
 import { selectTextInVisualEditor } from './harness'
+import { uploadsFor } from './cockpit-agent'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 
 async function openComment(page: Page, quote: string) {
@@ -173,6 +174,69 @@ test('5.6: the active conversation in the same project is a recipient before it 
     expect(engine.uploads[0]).toContain('Attach by sending.')
     expect(engine.commands.find((command) => command.type === 'thread.turn.start')).toMatchObject({ threadId: 't2' })
     await expect(page.locator('.agent-row')).toContainText('Second engine thread')
+  } finally {
+    await scenario.dispose()
+    await closeEngine(engine)
+  }
+})
+
+test('a held comment waits without a recipient: Hold keeps it private and Start thread is the only way out', async ({}, testInfo: TestInfo) => {
+  const engine = await startEngine()
+  const scenario = await seededScenario(testInfo, engine.origin, '# Draft review\n\nHold this passage.\n', 'cockpit-hold.md')
+  try {
+    const page = await scenario.launch()
+    const comment = await openComment(page, 'Hold this passage')
+    await comment.getByRole('textbox', { name: /Annotation text/i }).fill('Send this after a thread attaches.')
+    await expect(comment.getByRole('button', { name: 'Hold' })).toBeEnabled()
+    await expect(comment.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0)
+    await expect(comment.locator('.composer-actions').getByRole('button', { name: 'Start thread' })).toBeEnabled()
+    await expect(comment).toContainText('Hold keeps this private. Start thread sends it as the first turn.')
+    await comment.getByRole('button', { name: 'Hold' }).click()
+
+    const navigation = page.getByRole('tablist', { name: 'Document navigation' })
+    await navigation.getByRole('tab', { name: 'Contents' }).click()
+    await expect(page.locator('.outline-drafts')).toHaveText('1')
+    expect(await page.evaluate(async () => (await window.strata.getState()).activeDocument?.canSend)).toBe(false)
+    expect(engine.commands.filter((command) => command.type === 'thread.turn.start')).toHaveLength(0)
+  } finally {
+    await scenario.dispose()
+    await closeEngine(engine)
+  }
+})
+
+test('an orphaned held draft stays out of preview and can be discarded', async ({}, testInfo: TestInfo) => {
+  const quote = 'Orphan this passage.'
+  const engine = await startEngine()
+  const scenario = await seededScenario(testInfo, engine.origin, `# Draft review\n\n${quote}\n`, 'cockpit-orphan.md')
+  try {
+    const page = await scenario.launch()
+    await openThread(page, 'Live engine thread')
+    await attachThread(page, 't1')
+    await expect.poll(() => uploadsFor(engine, 't1').length).toBe(1)
+    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
+
+    const comment = await openComment(page, quote)
+    await comment.getByRole('textbox', { name: /Annotation text/i }).fill('This quote will disappear.')
+    await comment.getByRole('button', { name: 'Hold' }).click()
+    await expect(page.locator('.strata-draft')).toHaveCount(1)
+
+    await selectTextInVisualEditor(page, quote)
+    await page.keyboard.press('Backspace')
+    await expect(page.getByRole('textbox', { name: /document editor/i })).not.toContainText(quote)
+
+    await page.getByRole('button', { name: /^Send/i }).first().click()
+    const send = page.getByRole('dialog', { name: /Send changes/i })
+    const row = send.locator('.send-item-draft')
+    await expect(send.locator('.send-tab-body')).toHaveAttribute('aria-busy', 'false')
+    await expect(row).toHaveCount(1)
+    await expect(row).toHaveAttribute('data-status', 'orphaned')
+    await expect(row).toContainText('orphaned draft')
+    await expect(row.getByRole('checkbox')).not.toBeChecked()
+
+    await row.getByRole('button', { name: 'Discard' }).click()
+
+    await expect(row).toHaveCount(0)
+    await expect.poll(() => page.evaluate(async () => (await window.strata.getState()).activeDocument?.drafts.length)).toBe(0)
   } finally {
     await scenario.dispose()
     await closeEngine(engine)

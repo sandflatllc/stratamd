@@ -41,6 +41,43 @@ function engineFetch() {
 }
 
 describe('live engine subscriptions (§5.1)', () => {
+  it('a thread attached to a document streams too, so an agent block posted while another conversation is open still arrives', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'strata-engine-live-'))
+    const second = { ...thread, id: 't2', title: 'Attached thread' }
+    const shellWithTwo = { ...shell, threads: [thread, second] }
+    const server = fakeEngineServer((tag) => tag.startsWith('orchestration.subscribe') ? [{ kind: 'synchronized' }] : null)
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+      if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(shellWithTwo, { headers: { 'x-t3-version': '0.0.33' } })
+      if (url.endsWith('/api/orchestration/threads/t1')) return Response.json(detail)
+      if (url.endsWith('/api/orchestration/threads/t2')) return Response.json({ ...detail, thread: { ...detail.thread, ...second, messages: [] } })
+      return new Response('{}', { status: 404 })
+    }) as typeof globalThis.fetch
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket, now: () => Date.parse(at), publishDelayMs: 0 })
+    await client.pair('http://engine.test', 'code')
+    await client.openThread('t1')
+    await client.watchThreads(['t2'])
+    await settle()
+    const threadSubscriptions = () => server.requests.filter((request) => request.tag === 'orchestration.subscribeThread').map((request) => (request.payload as { threadId: string }).threadId)
+    expect(threadSubscriptions()).toEqual(['t1', 't2'])
+
+    const posted = { ...messageSent(11, 'a1', 'Done.\n\n```strata\n[]\n```', false), event: { ...messageSent(11, 'a1', 'Done.', false).event, aggregateId: 't2', payload: { threadId: 't2', messageId: 'a1', role: 'assistant', text: 'Done.', turnId: 'turn-2', streaming: false, createdAt: at, updatedAt: at } } }
+    server.push('orchestration.subscribeThread', [posted])
+    await settle()
+    const threads = client.view().projects[0]!.threads
+    expect(threads.find((candidate) => candidate.id === 't2')!.messages.map((message) => message.id)).toEqual(['a1'])
+    expect(threads.find((candidate) => candidate.id === 't1')!.messages.map((message) => message.id)).toEqual(['m1'])
+
+    // Detaching stops following: the subscription is interrupted and no new one opens.
+    await client.watchThreads([])
+    await settle()
+    expect(server.sockets[0]!.streams.map((stream) => (stream.payload as { threadId?: string }).threadId ?? 'shell')).toEqual(['shell', 't1'])
+    expect(threadSubscriptions()).toEqual(['t1', 't2'])
+    await client.shutdown()
+  })
+
   it('a streamed message appears in the view with no poll tick, token by token, and settles when streaming ends', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'strata-engine-live-'))
     const server = fakeEngineServer((tag) => tag.startsWith('orchestration.subscribe') ? [{ kind: 'synchronized' }] : null)

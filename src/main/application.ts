@@ -58,6 +58,7 @@ import {
   createAnnotation,
   createAnnotationLog,
   describeQuoteFailure,
+  locateQuote,
   locateEdit,
   mapAnnotationsThroughEdit,
   quoteCandidateForLines,
@@ -298,6 +299,7 @@ export class StrataApplication implements StrataApi {
   readonly #now: () => number
   readonly #watch: boolean
   readonly #engine: EngineReadClient
+  #followedThreadsKey = ''
   #unsubscribeEngine: (() => void) | null = null
   readonly #engineDispatching = new Set<string>()
   readonly #sessions = new Map<string, OpenDocumentSession>()
@@ -839,6 +841,8 @@ export class StrataApplication implements StrataApi {
             changed = true
           }
           session.attachments[threadId] = attachment
+          // Retention off (PRD §6.5): a resolved record goes once every attachment has received it, which an acknowledgment may complete.
+          if (changed) session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
           const engineThread = view.projects.flatMap((project) => project.threads).find((thread) => thread.id === threadId)
           for (const message of engineThread?.messages ?? []) {
             if (message.role === 'assistant' && !message.streaming) changed = await this.#applyStrataMessage(session, threadId, message.id, message.turnId ?? message.id, message.text) || changed
@@ -857,22 +861,87 @@ export class StrataApplication implements StrataApi {
     const parsed = parseStrataBlock(text)
     if (!parsed) return false
     const outcomes: Array<{ index: number; status: 'applied' | 'failed'; itemId?: string; reason?: string; candidates?: string[] }> = []
+    // Every edit in one message extends the same segment: one message is one round of the agent's work.
+    let editedInMessage = false
     for (const result of parsed.results) {
       if (!result.entry) { outcomes.push({ index: result.index, status: 'failed', reason: result.error ?? 'Malformed entry' }); continue }
       const entry = result.entry
       try {
         if (entry.verb === 'attach') throw new Error('attach must be the only entry in an unattached thread')
+        const holder = session.leadAgentId
+        const holderLabel = holder ? `${session.attachments[holder]?.name ?? holder} (${holder})` : null
+        const requireLead = () => { if (holder !== threadId) throw new Error(holderLabel ? `NOT_LEAD: ${holderLabel} holds the Lead` : 'NOT_LEAD: no agent holds the Lead') }
         if (entry.verb === 'lead') {
           if (entry.document !== session.path) throw new Error(`document is not open: ${entry.document}`)
-          session.leadAgentId = entry.action === 'claim' ? threadId : session.leadAgentId === threadId ? null : session.leadAgentId
+          if (entry.action === 'claim') {
+            // A claim while another thread holds the Lead is denied naming the holder; the owner transfers it (§5.6).
+            if (holder && holder !== threadId) throw new Error(`LEAD_TAKEN: ${holderLabel} already holds the Lead`)
+            session.leadAgentId = threadId
+          } else if (holder === threadId) session.leadAgentId = null
           outcomes.push({ index: result.index, status: 'applied' })
           continue
         }
-        if ('item' in entry.anchor) throw new Error(`item ${entry.anchor.item} was not found`)
+        if (entry.verb === 'save') {
+          if (entry.document !== session.path) throw new Error(`document is not open: ${entry.document}`)
+          requireLead()
+          try { await this.#saveLocked(session.path) } catch (error) { throw new Error(`SAVE_BLOCKED: ${error instanceof Error ? error.message : String(error)}`) }
+          outcomes.push({ index: result.index, status: 'applied' })
+          continue
+        }
+        if ('item' in entry.anchor) {
+          // Item-anchored verbs act on annotations the agent or its peers posted (§5.9); the Lead gates accept, reject, and resolving others' work.
+          const annotation = session.annotations.annotations[entry.anchor.item]
+          if (!annotation) throw new Error(`item ${entry.anchor.item} was not found`)
+          if (entry.verb === 'reply') {
+            session.annotations = replyToAnnotation(session.annotations, annotation.id, { id: `r_${randomUUID().slice(0, 12)}`, author: 'agent', agent: threadId, name: attachment.name, text: entry.text, createdAt: this.#now() }).log
+            outcomes.push({ index: result.index, status: 'applied', itemId: annotation.id })
+            continue
+          }
+          if (annotation.kind === 'decision' && (entry.verb === 'resolve' || entry.verb === 'accept' || entry.verb === 'reject')) throw new Error('DECISION_OWNER_REQUIRED: decision answers are owner-only')
+          if (entry.verb === 'resolve') {
+            if (annotation.agent !== threadId) requireLead()
+            session.annotations = resolveAnnotationThread(session.annotations, annotation.id, 'agent', threadId).log
+            session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
+            outcomes.push({ index: result.index, status: 'applied', itemId: annotation.id })
+            continue
+          }
+          if (entry.verb === 'accept') {
+            requireLead()
+            const accepted = acceptAnnotationSuggestion(session.annotations, session.state.shadow, annotation.id, 'agent', threadId)
+            if (accepted.userChange) {
+              const change = accepted.userChange
+              const beforeHunks = new Set(session.state.pendingHunks.map((hunk) => hunk.id))
+              // The Lead's accept lands like any agent edit: one application step the owner can undo (PRD §6.1).
+              const author = { agentId: threadId, name: attachment.name }
+              await this.#applyApplicationStep(session, () => {
+                session.state = acceptAgentReplacement(session.state, { from: change.start, to: change.end, insert: change.added }, author, { extend: editedInMessage })
+              })
+              editedInMessage = true
+              session.mirror?.schedule(session.state.shadow)
+              for (const hunk of session.state.pendingHunks) if (!beforeHunks.has(hunk.id)) session.hunkItemSources.set(hunk.id, { threadId, turnId, messageId })
+              session.annotations = relocateOpenAnnotations(mapAnnotationsThroughEdit(accepted.log, { start: change.start, deleteCount: change.end - change.start, insertText: change.added }), session.state.shadow)
+            } else {
+              session.annotations = accepted.log
+            }
+            session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
+            outcomes.push({ index: result.index, status: 'applied', itemId: annotation.id })
+            continue
+          }
+          if (entry.verb === 'reject') {
+            requireLead()
+            session.annotations = rejectAnnotationSuggestion(session.annotations, annotation.id, 'agent', threadId).log
+            session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
+            outcomes.push({ index: result.index, status: 'applied', itemId: annotation.id })
+            continue
+          }
+          throw new Error(`${entry.verb} needs a document anchor, not an item`)
+        }
+        if (entry.verb === 'reply') throw new Error('reply needs an item anchor')
         if (!('document' in entry.anchor) || entry.anchor.document !== session.path) throw new Error('entry does not target this document')
         const block = 'block' in entry.anchor && attachment.blockMap ? resolveBlock(attachment.blockMap, entry.anchor.block) : null
         const quote = 'quote' in entry.anchor ? entry.anchor.quote : block?.text
-        const start = block?.from ?? (quote ? session.state.shadow.indexOf(quote) : -1)
+        // A quoted-text anchor (plan §5.9 fallback) must occur exactly once; otherwise the outcome names the nearest places.
+        const start = 'quote' in entry.anchor ? locateQuoteAnchor(session.state.shadow, entry.anchor.quote) : block?.from ?? -1
         if (!quote || start < 0 || session.state.shadow.slice(start, start + quote.length) !== quote) {
           throw new Error(`block ${'block' in entry.anchor ? entry.anchor.block : 'quote'} changed`)
         }
@@ -894,7 +963,12 @@ export class StrataApplication implements StrataApi {
           if (relative < 0 || quote.indexOf(entry.match, relative + Math.max(1, entry.match.length)) >= 0) throw new Error('edit match is missing or ambiguous in the block')
           const from = start + relative
           const beforeHunks = new Set(session.state.pendingHunks.map((hunk) => hunk.id))
-          session.state = acceptAgentReplacement(session.state, { from, to: from + entry.match.length, insert: entry.replace }, { agentId: threadId, name: attachment.name })
+          // An agent edit is an application step: the owner's undo walks it in order with their typing (PRD §6.1).
+          const author = { agentId: threadId, name: attachment.name }
+          await this.#applyApplicationStep(session, () => {
+            session.state = acceptAgentReplacement(session.state, { from, to: from + entry.match.length, insert: entry.replace }, author, { extend: editedInMessage })
+          })
+          editedInMessage = true
           session.mirror?.schedule(session.state.shadow)
           for (const hunk of session.state.pendingHunks) {
             if (!beforeHunks.has(hunk.id)) session.hunkItemSources.set(hunk.id, { threadId, turnId, messageId })
@@ -904,8 +978,10 @@ export class StrataApplication implements StrataApi {
         }
         throw new Error(`${entry.verb} is not valid for this anchor`)
       } catch (error) {
-        const candidates = attachment.blockMap?.blocks.slice(0, 3).map((candidate) => candidate.id)
-        outcomes.push({ index: result.index, status: 'failed', reason: error instanceof Error ? error.message : String(error), ...(candidates?.length ? { candidates } : {}) })
+        const reason = error instanceof Error ? error.message : String(error)
+        // Nearest block ids help only when the anchor itself failed, not when the Lead or the owner rule refused the verb.
+        const candidates = reason.startsWith('block ') ? attachment.blockMap?.blocks.slice(0, 3).map((candidate) => candidate.id) : undefined
+        outcomes.push({ index: result.index, status: 'failed', reason, ...(candidates?.length ? { candidates } : {}) })
       }
     }
     attachment = {
@@ -2638,6 +2714,17 @@ export class StrataApplication implements StrataApi {
   #publish(): void {
     const state = this.#view()
     for (const listener of this.#listeners) listener(state)
+    this.#followAttachedThreads()
+  }
+
+  /** Every thread attached to an open document is followed live, so its blocks and acknowledgments arrive whether or not it is the active conversation (§5.9). */
+  #followAttachedThreads(): void {
+    if (!this.#engine.watchThreads) return
+    const ids = [...new Set([...this.#sessions.values()].flatMap((session) => Object.keys(session.attachments)))].sort()
+    const key = ids.join('\0')
+    if (key === this.#followedThreadsKey) return
+    this.#followedThreadsKey = key
+    void this.#engine.watchThreads(ids).catch((error: unknown) => logError('engine', 'Attached threads could not be followed', error))
   }
 }
 
@@ -2695,6 +2782,18 @@ function retainConfiguredResolvedAnnotations(
       .map((annotation) => annotation.id),
   )
   return pruneResolvedAnnotations(session.annotations, removable)
+}
+
+/** Where a quoted anchor sits, or a failure that lists the nearest excerpts the way the annotation core describes them. */
+function locateQuoteAnchor(document: string, quote: string): number {
+  try {
+    return locateQuote(document, quote).start
+  } catch (error) {
+    if (!(error instanceof AnnotationAnchorError)) throw error
+    const failure = describeQuoteFailure(document, quote, error)
+    const places = failure.candidates.slice(0, 3).map((candidate) => `line ${candidate.line}: ${JSON.stringify(candidate.quote)}`).join(' | ')
+    throw new Error(`quote ${failure.reason}${failure.total > 1 ? ` (${failure.total} places)` : ''}: ${JSON.stringify(quote)}${places ? `; nearest: ${places}` : ''}`)
+  }
 }
 
 /** An agent's own annotation events are never delivered back to it, so they alone do not enable Send. */
@@ -2877,6 +2976,9 @@ async function restoreDocumentState(
   }
   const snapshots: Record<string, string> = {}
   for (const id of snapshotIds) {
+    // An attachment created from a thread's first turn carries an `unseen:` baseline
+    // until its first delivery is acknowledged; it names no object.
+    if (!/^[a-f0-9]{64}$/.test(id)) continue
     try {
       snapshots[id] = await store.getObjectText(id)
     } catch (error) {

@@ -3,6 +3,8 @@ import { spawn } from 'node:child_process'
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { launchArgs, Scenario, mainEntry, projectRoot, setSource } from './harness'
+import { seededScenario, startEngine } from './cockpit-engine-harness'
+import { attachThread, openThread } from './cockpit-agent'
 
 test('blank shell opens the first document from the explorer and drag and drop', async ({}, testInfo) => {
   const value = await Scenario.create(testInfo, '# First document\n\nOpen from the shell.\n', 'first.md')
@@ -122,6 +124,35 @@ test('explorer and document tabs copy full paths from a right-click menu', { tag
 })
 
 
+
+test('send composer traps focus and Escape restores the trigger', async ({}, testInfo) => {
+  const engine = await startEngine({ titles: { t1: 'Agent A' } })
+  const value = await seededScenario(testInfo, engine.origin, '# Focus\n\nOriginal.\n', 'focus.md')
+
+  try {
+    const page = await value.launch()
+    await openThread(page, 'Agent A')
+    await attachThread(page, 't1', 'Agent A')
+    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
+    await setSource(page, '# Focus\n\nUser edit.\n')
+    await value.waitForBuffer('# Focus\n\nUser edit.\n')
+
+    const trigger = page.getByRole('button', { name: /^Send(?:\b|$)/i }).first()
+    await trigger.click()
+    const dialog = page.getByRole('dialog', { name: /Send changes/i })
+    await expect(dialog.getByRole('textbox', { name: /Note for recipients/i })).toBeFocused()
+    await expect(dialog.getByRole('button', { name: /^Send$/i })).toBeEnabled()
+
+    await page.keyboard.press('Shift+Tab')
+    await expect(dialog.getByRole('button', { name: /^Send$/i })).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
+    await expect(trigger).toBeFocused()
+  } finally {
+    await value.dispose()
+    await engine.close()
+  }
+})
 
 test('second-instance path launch opens a tab in the running instance', async ({}, testInfo) => {
   test.setTimeout(60_000)

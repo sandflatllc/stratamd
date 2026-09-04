@@ -327,7 +327,7 @@ End every completed reply with exactly one fenced strata block containing a JSON
 ]
 ```
 
-Available verbs are comment, question, decision, suggest, edit, reply, resolve, accept, reject, save, lead, and attach. A decision has at least two options. A suggestion proposes replacement text for the anchored passage. An edit supplies an exact match and replacement inside one block. Reply, resolve, accept, and reject use {"item":"item-id"} as the anchor. Accept, reject, and save require the Lead. Lead uses {"verb":"lead","document":"/absolute/file.md","action":"claim"} or "release".
+Available verbs are comment, question, decision, suggest, edit, reply, resolve, accept, reject, save, lead, and attach. A decision has at least two options. A suggestion proposes replacement text for the anchored passage. An edit supplies an exact match and replacement inside one block. Reply, resolve, accept, and reject use {"item":"item-id"} as the anchor. Accept, reject, and save require the Lead. Save uses {"verb":"save","document":"/absolute/file.md"}. Lead uses {"verb":"lead","document":"/absolute/file.md","action":"claim"} or "release".
 
 Use the block ids printed in the delivery. They belong to that delivery and document. A quoted-text anchor, {"document":"/absolute/file.md","quote":"exact text"}, is the fallback. Do not guess an old id after the passage changes. Strata reports every entry as applied or failed in the next delivery, with the created item id or nearest block candidates.
 

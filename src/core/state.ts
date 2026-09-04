@@ -168,6 +168,7 @@ function recordSegment(
   author: SegmentAuthor,
   attribution: ExternalAttribution | null,
   force = false,
+  extendExternal = false,
 ): DocumentState {
   if (before === after) return state
   let next = state
@@ -180,13 +181,12 @@ function recordSegment(
   // Extending across differing attributions would mis-attribute one side and
   // hide it from that agent's deliveries, so attributed and anonymous user
   // segments never fold together.
+  const sameAuthor = last !== undefined && last.author === author && (last.attribution?.agentId ?? null) === (attribution?.agentId ?? null)
   const mayExtend =
     !force &&
-    !next.forceNewUserSegment &&
-    author === 'user' &&
-    last?.author === 'user' &&
-    (last.attribution?.agentId ?? null) === (attribution?.agentId ?? null) &&
-    last.afterSnapshotId === beforeSnapshotId
+    sameAuthor &&
+    last.afterSnapshotId === beforeSnapshotId &&
+    (author === 'user' ? !next.forceNewUserSegment : extendExternal && attribution !== null)
 
   if (mayExtend && last !== undefined) {
     const segments = next.segments.slice()
@@ -399,10 +399,17 @@ export function acceptUserReplacement(
  * actor with a pending hunk the actor authored; the ghost does not move, so
  * the user still reviews the change with Keep or Revert.
  */
+/**
+ * An agent's edit lands as its own pending hunk. `extend` folds the edit into
+ * the agent's immediately preceding segment: one message with many edits is
+ * one round of that agent's work, which deliveries and the history cap treat
+ * as one segment, not one per edit.
+ */
 export function acceptAgentReplacement(
   state: DocumentState,
   edit: TextEdit,
   actor: ExternalAttribution,
+  options: { extend?: boolean } = {},
 ): DocumentState {
   assertRange(edit, state.shadow.length)
   const before = state.shadow
@@ -412,7 +419,7 @@ export function acceptAgentReplacement(
     conflicts: mapConflictsThroughEdit(state.conflicts, edit),
   }
   ;[next] = addPendingForEdit(next, before, edit, actor)
-  next = recordSegment(next, before, next.shadow, 'external', cloneAttribution(actor), true)
+  next = recordSegment(next, before, next.shadow, 'external', cloneAttribution(actor), !options.extend, options.extend === true)
   return { ...next, forceNewUserSegment: true }
 }
 

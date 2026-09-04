@@ -98,6 +98,8 @@ export interface EngineReadClient {
   pair(server: string, pairingCode: string): Promise<void>
   reconnect(): Promise<void>
   openThread(threadId: string): Promise<void>
+  /** Threads whose transcripts Strata must follow besides the active one: every thread attached to an open document (§5.9). */
+  watchThreads?(threadIds: readonly string[]): Promise<void>
   startTurn(threadId: string, input: { text: string; model: string; effort: string | null; access: EngineThreadView['access']; messageId?: string; commandId?: string; attachment?: { name: string; text: string } }): Promise<void>
   interrupt(threadId: string): Promise<void>
   respondApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
@@ -199,7 +201,9 @@ export class T3EngineClient implements EngineReadClient {
   readonly #isFocused: () => boolean
   readonly #notify: (notification: EngineNotification) => void
   #shell: T3ShellSnapshot | null = null
-  #detail: T3ThreadDetailSnapshot | null = null
+  /** Thread transcripts Strata follows: the active thread and every watched one, each with its own subscription. */
+  readonly #threads = new Map<string, { detail: T3ThreadDetailSnapshot | null; sequence: number; stream: EngineStream | null }>()
+  #watched = new Set<string>()
   #state: EngineView['state'] = 'unpaired'
   #problem: string | null = null
   #serverVersion: string | null = null
@@ -212,9 +216,7 @@ export class T3EngineClient implements EngineReadClient {
   readonly #publishDelayMs: number
   #socket: EngineSocket | null = null
   #shellStream: EngineStream | null = null
-  #threadStream: EngineStream | null = null
   #shellSequence = 0
-  #threadSequence = 0
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null
   #reconnectAttempt = 0
   #publishTimer: ReturnType<typeof setTimeout> | null = null
@@ -272,12 +274,12 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   view(): EngineView {
-    const detailThread = this.#detail?.thread
     const projects: EngineProjectView[] = (this.#shell?.projects ?? []).map((project) => ({
       id: project.id,
       title: project.title,
       workspaceRoot: project.workspaceRoot,
       threads: (this.#shell?.threads ?? []).filter((thread) => thread.projectId === project.id).map((thread) => {
+        const detailThread = this.#threads.get(thread.id)?.detail?.thread
         const messages = detailThread?.id === thread.id ? detailThread.messages.map((message) => ({
           id: message.id,
           role: message.role,
@@ -469,7 +471,27 @@ export class T3EngineClient implements EngineReadClient {
     await this.#writeReading()
     await this.#refreshThread(threadId)
     this.#publish()
-    await this.#subscribeThread()
+    await this.#subscribeThreads()
+  }
+
+  async watchThreads(threadIds: readonly string[]): Promise<void> {
+    const next = new Set(threadIds)
+    const added = [...next].filter((id) => !this.#watched.has(id) && !this.#threads.has(id))
+    this.#watched = next
+    if (!this.#reachable()) return
+    for (const id of added) {
+      if (!this.#shell?.threads.some((thread) => thread.id === id)) continue
+      try { await this.#refreshThread(id) } catch (error) { logError('engine', `Thread ${id} could not be loaded`, error) }
+    }
+    await this.#subscribeThreads()
+    this.#publish()
+  }
+
+  /** The active thread plus every watched thread the shell still lists. */
+  #followedThreadIds(): string[] {
+    const ids = new Set<string>(this.#watched)
+    if (this.#reading.activeThreadId) ids.add(this.#reading.activeThreadId)
+    return [...ids].filter((id) => this.#shell?.threads.some((thread) => thread.id === id))
   }
 
   /** Waits for the shell stream to show something, such as a thread or project a command just created. */
@@ -647,12 +669,12 @@ export class T3EngineClient implements EngineReadClient {
         this.#shell = shellSnapshot.parse(await response.json())
         this.#shellSequence = this.#shell.snapshotSequence
         const active = this.#reading.activeThreadId
-        if (active && this.#shell.threads.some((thread) => thread.id === active)) await this.#refreshThread(active)
-        else if (active) {
+        if (active && !this.#shell.threads.some((thread) => thread.id === active)) {
           this.#reading.activeThreadId = null
-          this.#detail = null
+          this.#threads.delete(active)
           await this.#writeReading()
         }
+        for (const id of this.#followedThreadIds()) await this.#refreshThread(id)
         this.#state = this.#serverVersion && this.#serverVersion !== T3_SUPPORTED_VERSION ? 'mismatch' : 'connected'
         this.#problem = this.#state === 'mismatch'
           ? `Server ${this.#serverVersion} is outside the tested ${T3_SUPPORTED_VERSION} contract (${T3_CONTRACT_REVISION.slice(0, 8)}).`
@@ -686,17 +708,26 @@ export class T3EngineClient implements EngineReadClient {
     this.#socket = socket
     await socket.open()
     this.#shellStream = await socket.stream(T3_RPC.subscribeShell, { afterSequence: this.#shellSequence, requestCompletionMarker: true }, (item) => this.#onShellItem(item), (error) => { if (error && this.#socket === socket) this.#onSocketClosed(socket, error.message) })
-    await this.#subscribeThread()
+    await this.#subscribeThreads()
     this.#scheduleConfigRefresh()
   }
 
-  async #subscribeThread(): Promise<void> {
-    this.#threadStream?.interrupt()
-    this.#threadStream = null
-    const threadId = this.#reading.activeThreadId
+  /** One subscription per followed thread; threads no longer followed are interrupted and forgotten. */
+  async #subscribeThreads(): Promise<void> {
+    const wanted = new Set(this.#followedThreadIds())
+    for (const [id, entry] of [...this.#threads]) {
+      if (wanted.has(id)) continue
+      entry.stream?.interrupt()
+      this.#threads.delete(id)
+    }
     const socket = this.#socket
-    if (!threadId || !socket || socket.closed) return
-    this.#threadStream = await socket.stream(T3_RPC.subscribeThread, { threadId, afterSequence: this.#threadSequence, requestCompletionMarker: true }, (item) => this.#onThreadItem(threadId, item), (error) => { if (error && this.#socket === socket) this.#onSocketClosed(socket, error.message) })
+    if (!socket || socket.closed) return
+    for (const threadId of wanted) {
+      const entry = this.#threads.get(threadId) ?? { detail: null, sequence: 0, stream: null }
+      this.#threads.set(threadId, entry)
+      if (entry.stream) continue
+      entry.stream = await socket.stream(T3_RPC.subscribeThread, { threadId, afterSequence: entry.sequence, requestCompletionMarker: true }, (item) => this.#onThreadItem(threadId, item), (error) => { if (error && this.#socket === socket) this.#onSocketClosed(socket, error.message) })
+    }
   }
 
   #onShellItem(raw: unknown): void {
@@ -727,7 +758,8 @@ export class T3EngineClient implements EngineReadClient {
       } else if (item.kind === 'thread-removed') {
         const threadId = (item as { threadId?: unknown }).threadId
         shell.threads = shell.threads.filter((candidate) => candidate.id !== threadId)
-        if (this.#reading.activeThreadId === threadId) { this.#reading.activeThreadId = null; this.#detail = null; void this.#writeReading() }
+        if (typeof threadId === 'string') { this.#threads.get(threadId)?.stream?.interrupt(); this.#threads.delete(threadId) }
+        if (this.#reading.activeThreadId === threadId) { this.#reading.activeThreadId = null; void this.#writeReading() }
       }
     }
     for (const waiter of [...this.#shellWaiters]) waiter()
@@ -735,21 +767,22 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   #onThreadItem(threadId: string, raw: unknown): void {
-    if (this.#reading.activeThreadId !== threadId) return
+    const entry = this.#threads.get(threadId)
+    if (!entry) return
     const parsed = threadStreamItem.safeParse(raw)
     if (!parsed.success) return
     const item = parsed.data
     if (item.kind === 'synchronized') return
     if (item.kind === 'snapshot') {
       if (item.snapshot.thread.id !== threadId) return
-      this.#detail = item.snapshot
-      this.#threadSequence = item.snapshot.snapshotSequence
+      entry.detail = item.snapshot
+      entry.sequence = item.snapshot.snapshotSequence
     } else {
       const event = item.event
-      if (event.sequence <= this.#threadSequence) return
-      this.#threadSequence = event.sequence
-      if (event.aggregateKind !== 'thread' || event.aggregateId !== threadId || !this.#detail) return
-      this.#detail = { ...this.#detail, thread: this.#applyThreadEvent(this.#detail.thread, event) }
+      if (event.sequence <= entry.sequence) return
+      entry.sequence = event.sequence
+      if (event.aggregateKind !== 'thread' || event.aggregateId !== threadId || !entry.detail) return
+      entry.detail = { ...entry.detail, thread: this.#applyThreadEvent(entry.detail.thread, event) }
     }
     void this.#settleAcknowledgedCommands()
     this.#publishSoon()
@@ -815,7 +848,7 @@ export class T3EngineClient implements EngineReadClient {
     if (this.#socket !== socket) return
     this.#socket = null
     this.#shellStream = null
-    this.#threadStream = null
+    for (const entry of this.#threads.values()) entry.stream = null
     if (this.#configTimer) clearTimeout(this.#configTimer)
     this.#configTimer = null
     if (!this.#running) return
@@ -829,7 +862,7 @@ export class T3EngineClient implements EngineReadClient {
     const socket = this.#socket
     this.#socket = null
     this.#shellStream = null
-    this.#threadStream = null
+    for (const entry of this.#threads.values()) entry.stream = null
     socket?.close()
   }
 
@@ -899,8 +932,11 @@ export class T3EngineClient implements EngineReadClient {
 
   async #refreshThread(threadId: string): Promise<void> {
     const response = await this.#request(T3_HTTP.thread(threadId))
-    this.#detail = threadDetailSnapshot.parse(await response.json())
-    this.#threadSequence = this.#detail.snapshotSequence
+    const detail = threadDetailSnapshot.parse(await response.json())
+    const entry = this.#threads.get(threadId) ?? { detail: null, sequence: 0, stream: null }
+    entry.detail = detail
+    entry.sequence = detail.snapshotSequence
+    this.#threads.set(threadId, entry)
   }
 
   async #request(path: string): Promise<Response> {
@@ -995,23 +1031,25 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async #settleAcknowledgedCommands(): Promise<void> {
-    const ids = new Set(this.#detail?.thread.messages.map((message) => message.id) ?? [])
+    const ids = new Set([...this.#threads.values()].flatMap((entry) => entry.detail?.thread.messages.map((message) => message.id) ?? []))
     const next = this.#pendingCommands.filter((pending) => !pending.messageId || !ids.has(pending.messageId))
     const commandsChanged = next.length !== this.#pendingCommands.length
     if (commandsChanged) this.#pendingCommands = next
     // Replies in flight become answered once the engine lists the message that carried them (§5.4).
-    const threadId = this.#detail?.thread.id
-    const state = threadId ? this.#conversations.threads[threadId] : undefined
-    const repliesChanged = threadId !== undefined && state !== undefined && state.pending.some((entry) => ids.has(entry.deliveryId))
-    if (repliesChanged) {
-      const acknowledged = state.pending.filter((entry) => ids.has(entry.deliveryId))
+    let repliesChanged = false
+    for (const [threadId, entry] of this.#threads) {
+      const listed = new Set(entry.detail?.thread.messages.map((message) => message.id) ?? [])
+      const state = this.#conversations.threads[threadId]
+      if (!state || !state.pending.some((pending) => listed.has(pending.deliveryId))) continue
+      const acknowledged = state.pending.filter((pending) => listed.has(pending.deliveryId))
       this.#conversations.threads[threadId] = {
         ...state,
-        pending: state.pending.filter((entry) => !ids.has(entry.deliveryId)),
-        answered: [...new Set([...state.answered, ...acknowledged.flatMap((entry) => entry.itemIds)])],
+        pending: state.pending.filter((pending) => !listed.has(pending.deliveryId)),
+        answered: [...new Set([...state.answered, ...acknowledged.flatMap((pending) => pending.itemIds)])],
       }
-      this.#publishSoon()
+      repliesChanged = true
     }
+    if (repliesChanged) this.#publishSoon()
     // The in-memory state is already current; the files catch up.
     if (commandsChanged) await this.#writeCommands()
     if (repliesChanged) await writeConversationsStore(this.#conversationsPath, this.#conversations)

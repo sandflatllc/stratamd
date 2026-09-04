@@ -78,6 +78,24 @@ describe('document state and external merges', () => {
     expect(choseIncoming.pendingHunks).toHaveLength(1)
   })
 
+  it('edits from one agent message extend one segment while each stays its own pending hunk', () => {
+    const original = 'one\ntwo\nthree\n'
+    const ada = { agentId: 'agent-1', name: 'Ada' }
+    let state = acceptAgentReplacement(createDocumentState(original, original), { from: 0, to: 3, insert: 'ONE' }, ada)
+    state = acceptAgentReplacement(state, { from: 8, to: 13, insert: 'THREE' }, ada, { extend: true })
+    expect(state.pendingHunks.map((hunk) => hunk.author)).toEqual([ada, ada])
+    expect(state.segments).toHaveLength(1)
+    expect(state.segments[0]).toMatchObject({ author: 'external', attribution: ada })
+    expect(state.snapshots[state.segments[0]!.beforeSnapshotId]).toBe(original)
+    expect(state.snapshots[state.segments[0]!.afterSnapshotId]).toBe('ONE\ntwo\nTHREE\n')
+
+    // A new message, or another agent, starts a new segment.
+    const next = acceptAgentReplacement(state, { from: 4, to: 7, insert: 'TWO' }, ada)
+    expect(next.segments).toHaveLength(2)
+    const grace = acceptAgentReplacement(state, { from: 4, to: 7, insert: 'TWO' }, { agentId: 'agent-2', name: 'Grace' }, { extend: true })
+    expect(grace.segments).toHaveLength(2)
+  })
+
   it('collapses consecutive writes to the same region into one pending hunk', () => {
     let state = externalBuffer(createDocumentState('one\n', 'one\n'), 'agent one\n')
     state = applyExternalChange(state, 'buffer', 'agent two\n', { now: 2_000 }).state
@@ -102,9 +120,12 @@ describe('document state and external merges', () => {
     }
   })
 
-  it('restores pending attribution from close-time text anchors', () => {
+  it('restores pending attribution and mixed status from close-time text anchors', () => {
     const original = 'one\ntwo\n'
     let state = acceptAgentReplacement(createDocumentState(original, original), { from: 0, to: 3, insert: 'ONE' }, { agentId: 'agent-1', name: 'Ada' })
+    // The owner types inside the agent's hunk: it is mixed, and stays mixed across close and reopen.
+    state = applyUserEdit(state, { from: 1, to: 1, insert: '!' })
+    expect(state.pendingHunks[0]).toMatchObject({ status: 'mixed' })
     const persisted = persistPendingHunkAnchors(state)
     const originalId = state.pendingHunks[0]!.id
     expect(relocatePendingHunkAnchors(state.ghost, state.shadow, persisted)).toMatchObject([
@@ -118,7 +139,7 @@ describe('document state and external merges', () => {
     expect(reopened.pendingHunks).toHaveLength(1)
     expect(reopened.pendingHunks[0]).toMatchObject({
       id: originalId,
-      status: 'pending',
+      status: 'mixed',
       author: { agentId: 'agent-1', name: 'Ada' },
     })
   })

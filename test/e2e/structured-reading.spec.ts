@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Scenario, setSource } from './harness'
+import { seededScenario, startEngine, type FakeEngine } from './cockpit-engine-harness'
+import { agentEdits, attachThread, openThread } from './cockpit-agent'
 
 const filler = (label: string) => Array.from({ length: 18 }, (_, index) => `${label} paragraph ${index + 1} keeps the document tall enough to exercise centered navigation.`).join('\n\n')
 const DOCUMENT = `# Reading guide
@@ -26,10 +28,12 @@ ${filler('Beta')}
 `
 
 let value: Scenario
-test.afterEach(async () => { await value?.dispose() })
+let engine: FakeEngine | undefined
+test.afterEach(async () => { await value?.dispose(); await engine?.close(); engine = undefined })
 
-test('tab hosts preserve the shell and expose counts while Changes is pinned', async ({}, testInfo) => {
-  value = await Scenario.create(testInfo, '# Review\n\nOriginal sentence.\n')
+test('tab hosts preserve the shell, expose counts, and keep Attached visible while Changes is pinned', async ({}, testInfo) => {
+  engine = await startEngine({ titles: { t1: 'Agent A' } })
+  value = await seededScenario(testInfo, engine.origin, '# Review\n\nOriginal sentence.\n', 'scenario.md')
   await value.writeSettings({ panels: { upperReviewHeight: 954 } })
   const page = await value.launch()
 
@@ -40,10 +44,12 @@ test('tab hosts preserve the shell and expose counts while Changes is pinned', a
   await expect(page.getByRole('heading', { name: 'Attached' })).toBeVisible()
   await expect(page.getByText('None attached', { exact: true })).toBeVisible()
 
-  const state = await value.inspectDocument()
-  await value.atomicWrite(state.buffer!, '# Review\n\nAgent proposal.\n')
+  await openThread(page, 'Agent A')
+  await attachThread(page, 't1', 'Agent A')
+  await navigation.getByRole('tab', { name: 'Files' }).click()
+  agentEdits(engine, 't1', value.file, 'Original sentence.', 'Original sentence.', 'Agent proposal.')
   await expect(review.getByRole('tab', { name: /^Changes/ }).locator('.rail-tab-count')).toHaveText('1')
-  await expect(page.getByText('None attached', { exact: true })).toBeVisible()
+  await expect(page.getByText('1 attached', { exact: true })).toBeVisible()
 
   const annotations = review.getByRole('tab', { name: /^Items/ })
   await annotations.focus()

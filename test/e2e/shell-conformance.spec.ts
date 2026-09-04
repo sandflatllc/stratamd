@@ -2,6 +2,8 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Scenario, lineEndKey, primaryKey, selectTextInVisualEditor, setSource } from './harness'
+import { seededScenario, startEngine, type FakeEngine } from './cockpit-engine-harness'
+import { agentActs, annotationByText, attachThread, openThread } from './cockpit-agent'
 
 async function tabTo(page: Page, target: Locator, limit = 120): Promise<void> {
   await expect(target).toBeVisible()
@@ -121,6 +123,74 @@ test('per-pane text zoom follows the hovered pane, resets from one button, and p
   }
 })
 
+
+/** Attaches the named threads by sending the document to each, then returns to Contents. */
+async function attachAgents(value: Scenario, threads: Array<['t1' | 't2', string]>): Promise<void> {
+  const page = value.page!
+  for (const [id, title] of threads) {
+    await openThread(page, title)
+    await attachThread(page, id, title)
+  }
+  await openThread(page, threads[0]![1])
+  await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
+}
+
+test('a theme file sets fonts and attribution colors, applies live when rewritten, and persists across restart', async ({}, testInfo) => {
+  const original = '# Typography\n\nOriginal.\n'
+  const engine = await startEngine({ titles: { t1: 'Agent A' } })
+  const value = await seededScenario(testInfo, engine.origin, original, 'appearance.md')
+  const themePath = join(String(value.env.XDG_CONFIG_HOME), 'stratamd', 'themes', 'dusk.json')
+  await mkdir(dirname(themePath), { recursive: true })
+  await writeFile(themePath, JSON.stringify({
+    name: 'Dusk',
+    fonts: { text: 'Nunito' },
+    surfaces: { window: '#f0e8f8', panel: '#fffbfd', border: '#e0c8d8' },
+    document: { body: '#221122' },
+    people: { you: '#102030', 'agent-1': '#405060', 'agent-4': '#d0e0f0' },
+  }))
+  await value.writeSettings({ theme: 'dusk' })
+  try {
+    const page = await value.launch()
+    await attachAgents(value, [['t1', 'Agent A']])
+    agentActs(engine, 't1', [{ verb: 'edit', anchor: { document: value.file, quote: 'Original.' }, match: 'Original.', replace: 'Agent proposal.' }])
+    await expect(page.getByRole('button', { name: /^Keep change /i }).first()).toBeVisible()
+    await page.evaluate(async ({ path, from, to }) => window.strata.addAnnotation(path, {
+      kind: 'comment', quote: 'Typography', text: 'Check the configured color.', from, to,
+    }), { path: value.file, from: original.indexOf('Typography'), to: original.indexOf('Typography') + 'Typography'.length })
+
+    const shell = page.locator('.app-shell')
+    const avatar = page.locator('.agent-avatar').filter({ hasText: 'AA' })
+    const badge = page.getByRole('tab', { name: /appearance\.md/i }).locator('.tab-badge')
+    const chip = page.locator('.annotation-row').filter({ hasText: 'Typography' }).locator('.annotation-chip')
+    await expect(shell).toHaveCSS('font-family', /Nunito/)
+    // Surfaces follow the theme too, not only fonts and attribution: a light theme lightens the panels.
+    await expect(page.locator('.navigation-rail')).toHaveCSS('background-color', 'rgb(255, 251, 253)')
+    await expect(page.locator('.navigation-rail')).toHaveCSS('border-color', 'rgb(224, 200, 216)')
+    await expect(page.locator('.editor-island .ProseMirror p').first()).toHaveCSS('color', 'rgb(34, 17, 34)')
+    await expect(avatar).toHaveCSS('background-color', 'rgb(64, 80, 96)')
+    await expect(badge).toHaveCSS('background-color', 'rgb(64, 80, 96)')
+    await expect(chip).toHaveCSS('color', 'rgb(16, 32, 48)')
+
+    // Another process rewrites the file: the app follows without restart.
+    await writeFile(themePath, JSON.stringify({
+      name: 'Dusk',
+      fonts: { text: 'Baloo 2' },
+      people: { you: '#203040', 'agent-1': '#506070' },
+    }))
+    await expect(shell).toHaveCSS('font-family', /Baloo 2/)
+    await expect(avatar).toHaveCSS('background-color', 'rgb(80, 96, 112)')
+    await expect(badge).toHaveCSS('background-color', 'rgb(80, 96, 112)')
+    await expect(chip).toHaveCSS('color', 'rgb(32, 48, 64)')
+
+    await value.stop()
+    const restarted = await value.launch()
+    await expect(restarted.locator('.app-shell')).toHaveCSS('font-family', /Baloo 2/)
+    await expect(restarted.locator('.annotation-row').filter({ hasText: 'Typography' }).locator('.annotation-chip')).toHaveCSS('color', 'rgb(32, 48, 64)')
+  } finally {
+    await value.dispose()
+    await engine.close()
+  }
+})
 
 test('the theme panel floats over a live app, writes only chosen keys, follows outside edits, reverts, and persists its geometry', async ({}, testInfo) => {
   const fixture = [
@@ -276,6 +346,86 @@ test('keyboard reaches and operates direct Keep and Revert actions', async ({}, 
   }
 })
 
+
+test('keyboard operates composer recipient previews and an item thread', async ({}, testInfo) => {
+  const original = '# Keyboard\n\nReply to this sentence.\n'
+  const edited = '# Keyboard\n\nReply to this sentence.\n\nOwner edit.\n'
+  const engine: FakeEngine = await startEngine({ titles: { t1: 'Agent A', t2: 'Agent B' } })
+  const value = await seededScenario(testInfo, engine.origin, original, 'keyboard.md')
+  try {
+    const page = await value.launch()
+    await attachAgents(value, [['t1', 'Agent A'], ['t2', 'Agent B']])
+    await setSource(page, edited)
+    await value.waitForBuffer(edited)
+
+    await page.keyboard.press(primaryKey('Enter'))
+    const composer = page.getByRole('dialog', { name: /Send changes/i })
+    await expect(composer).toBeVisible()
+    await composer.getByRole('checkbox', { name: 'Agent A' }).check()
+    await composer.getByRole('checkbox', { name: 'Agent B' }).check()
+    await expect(composer.getByRole('tabpanel')).toHaveAttribute('aria-busy', 'false')
+    const previewTabs = composer.getByRole('tablist', { name: /What each agent receives/i })
+    const agentAPreview = previewTabs.getByRole('tab', { name: 'Agent A' })
+    const agentBPreview = previewTabs.getByRole('tab', { name: 'Agent B' })
+    await expect(agentAPreview).toHaveAttribute('aria-selected', 'true')
+    await tabTo(page, agentAPreview)
+    await page.keyboard.press('ArrowRight')
+    await expect(agentBPreview).toBeFocused()
+    await expect(agentBPreview).toHaveClass(/active/)
+    await expect(agentBPreview).toHaveAttribute('aria-selected', 'true')
+    await expect(composer.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', await agentBPreview.getAttribute('id') ?? '')
+
+    const agentBRecipient = composer.getByRole('checkbox', { name: 'Agent B' })
+    await tabTo(page, agentBRecipient)
+    await page.keyboard.press('Space')
+    await expect(agentBRecipient).not.toBeChecked()
+    await page.keyboard.press('Escape')
+    await expect(composer).toBeHidden()
+
+    const editor = page.getByRole('textbox', { name: /Document editor/i })
+    await selectTextInVisualEditor(page, 'Reply to this sentence.')
+    const annotationMenu = page.getByRole('menu', { name: /Annotate selection/i })
+    await annotationMenu.getByRole('menuitem', { name: /Comment/i }).click()
+    const annotationText = page.getByRole('textbox', { name: /Annotation text/i })
+    await expect(annotationText).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(annotationText).toBeHidden()
+    await expect(annotationMenu).toBeHidden()
+    await expect(editor).toBeFocused()
+    await expect.poll(() => editor.evaluate(() => window.getSelection()?.toString() ?? '')).toBe('Reply to this sentence.')
+
+    agentActs(engine, 't1', [{ verb: 'comment', anchor: { document: value.file, quote: 'Reply to this sentence.' }, text: 'Use the thread from the keyboard.' }])
+    await annotationByText(value, 'Use the thread from the keyboard.')
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
+    const row = page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'Reply to this sentence.' })
+    await expect(row).toBeVisible()
+    await tabTo(page, row)
+    await page.keyboard.press('Enter')
+
+    const thread = page.getByRole('region', { name: /comment thread/i })
+    await expect(thread).toBeVisible()
+    const reply = thread.getByRole('textbox', { name: 'Reply' })
+    await tabTo(page, reply)
+    await page.keyboard.type('Keyboard reply')
+    await page.keyboard.press('Enter')
+    await expect(reply).toHaveValue('')
+    await expect(thread.getByText('Keyboard reply', { exact: true })).toBeVisible()
+    await expect.poll(async () => {
+      const payload = await value.inspectDocument() as unknown as {
+        annotations?: Array<{ replies?: Array<{ text: string }> }>
+      }
+      return payload.annotations?.flatMap((item) => item.replies ?? []).map((item) => item.text) ?? []
+    }).toContain('Keyboard reply')
+
+    const resolve = thread.getByRole('button', { name: /Resolve thread/i })
+    await tabTo(page, resolve)
+    await page.keyboard.press('Enter')
+    await expect.poll(async () => (await value.inspectDocument()).annotations?.find((item) => item.kind === 'comment')?.status).toBe('resolved')
+  } finally {
+    await value.dispose()
+    await engine.close()
+  }
+})
 
 for (const decision of ['mine', 'incoming'] as const) {
   test(`keyboard resolves a Save conflict by choosing ${decision}`, async ({}, testInfo) => {

@@ -1,6 +1,6 @@
 # PRD acceptance suite
 
-`prd-6.12.spec.ts` has one black-box test for each scenario in PRD §6.12. The tests launch the built Electron main process, invoke the repository's `bin/stratamd`, and inspect only visible UI, CLI JSON, clipboard output, and document/buffer files.
+`prd-6.12.spec.ts` has one black-box test for each document scenario in PRD §6.12; `cockpit-engine.spec.ts` and `cockpit-drafts.spec.ts` cover the engine scenarios. The tests launch the built Electron main process and inspect only visible UI, `window.strata.getState()`, document/buffer files, and what the fake engine received. Agents are T3 threads served by `cockpit-engine-harness.ts` (HTTP snapshots plus a real WebSocket subscription server); a test attaches a thread by sending the document to it and drives agent actions by posting an assistant message with a strata block through `postAssistant` (helpers in `cockpit-agent.ts`). A delivery is a `thread.turn.start` command whose uploaded attachment the harness keeps by id.
 
 Each test gets separate `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, and `XDG_RUNTIME_DIR` paths in its own temporary directory outside the repository — deliberately not under Playwright's output directory, which Playwright deletes at the start of every run and would yank a running app's store out from under a concurrent run. It never opens or changes the corpus originals or the owner's normal StrataMD store.
 

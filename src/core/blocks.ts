@@ -20,7 +20,8 @@ const entry = z.discriminatedUnion('verb', [
   z.object({ verb: z.literal('suggest'), ...anchored, replacement: z.string() }).strict(),
   z.object({ verb: z.literal('edit'), ...anchored, match: z.string(), replace: z.string() }).strict(),
   z.object({ verb: z.literal('reply'), anchor: z.object({ item: z.string().min(1) }).strict(), text: z.string().min(1) }).strict(),
-  z.object({ verb: z.enum(['resolve', 'accept', 'reject', 'save']), ...anchored }).strict(),
+  z.object({ verb: z.enum(['resolve', 'accept', 'reject']), ...anchored }).strict(),
+  z.object({ verb: z.literal('save'), document: z.string().min(1) }).strict(),
   z.object({ verb: z.literal('lead'), document: z.string().min(1), action: z.enum(['claim', 'release']) }).strict(),
   z.object({ verb: z.literal('attach'), document: z.string().min(1) }).strict(),
 ])

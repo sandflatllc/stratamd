@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test'
 import { chmod, readFile, readdir, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario, documentStartKey, lineEndKey, primaryKey, save, setSource, sourceEditor } from './harness'
+import { Scenario, documentStartKey, lineEndKey, primaryKey, save, send, setSource, sourceEditor } from './harness'
+import { seededScenario, startEngine } from './cockpit-engine-harness'
+import { attachThread, openThread, uploadsFor } from './cockpit-agent'
 
 test('Save permission failure keeps disk and shadow unchanged and shows the error', async ({}, testInfo) => {
   const original = '# Permission\n\nSaved on disk.\n'
@@ -30,13 +32,18 @@ test('Save permission failure keeps disk and shadow unchanged and shows the erro
   }
 })
 
-test('deleted while open keeps the tab, then Save recreates the exact shadow', async ({}, testInfo) => {
+test('deleted while open keeps the tab and attachment, then Save recreates the exact shadow', async ({}, testInfo) => {
   const original = '# Deleted document\n\nSaved on disk.\n'
   const shadow = '# Deleted document\n\nUnsaved shadow survives deletion.\n'
-  const value = await Scenario.create(testInfo, original, 'deleted.md')
+  const engine = await startEngine({ titles: { t1: 'Agent A' } })
+  const value = await seededScenario(testInfo, engine.origin, original, 'deleted.md')
 
   try {
     const page = await value.launch()
+    await openThread(page, 'Agent A')
+    await attachThread(page, 't1', 'Agent A')
+    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
+
     const source = await sourceEditor(page)
     await source.fill(shadow)
     await value.waitForBuffer(shadow)
@@ -45,13 +52,16 @@ test('deleted while open keeps the tab, then Save recreates the exact shadow', a
     const banner = page.getByRole('status').filter({ hasText: /was deleted/i })
     await expect(banner).toContainText(/tab stays open; Save will recreate it/i, { timeout: 10_000 })
     await expect(page.getByRole('tab', { name: /deleted\.md/i })).toBeVisible()
+    await expect(page.locator('.agents-panel .agent-row')).toContainText('Agent A')
 
     await save(page)
     expect(await readFile(value.file, 'utf8')).toBe(shadow)
     await expect(banner).toHaveCount(0)
     await expect(page.getByRole('tab', { name: /deleted\.md/i })).toBeVisible()
+    await expect(page.locator('.agents-panel .agent-row')).toContainText('Agent A')
   } finally {
     await value.dispose()
+    await engine.close()
   }
 })
 
@@ -101,13 +111,14 @@ test('a missing ghost stays struck through in the explorer until Forget', async 
   }
 })
 
-test('a document over 2 MB opens in the full visual editor while review still works', async ({}, testInfo) => {
+test('a document over 2 MB opens in the full visual editor while review and Send still work', async ({}, testInfo) => {
   test.slow()
   const filler = 'x'.repeat(2 * 1024 * 1024)
   const original = `# Oversized\n\nOriginal proposal.\n\n${filler}\n`
   const proposed = original.replace('Original proposal.', 'Agent proposal.')
   const withOwnerEdit = proposed.replace('# Oversized', '# Oversized updated')
-  const value = await Scenario.create(testInfo, original, 'oversized.md')
+  const engine = await startEngine({ titles: { t1: 'Agent A' } })
+  const value = await seededScenario(testInfo, engine.origin, original, 'oversized.md')
 
   try {
     const startedAt = Date.now()
@@ -123,6 +134,10 @@ test('a document over 2 MB opens in the full visual editor while review still wo
     await expect(page.getByRole('button', { name: /source/i })).toBeEnabled()
     await expect(page.getByRole('status').filter({ hasText: /size ceiling|source view only/i })).toHaveCount(0)
 
+    await openThread(page, 'Agent A')
+    await attachThread(page, 't1', 'Agent A')
+    await expect.poll(() => uploadsFor(engine, 't1').length, { timeout: 20_000 }).toBe(1)
+    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
     const state = await value.inspectDocument()
     expect(state.buffer).toBeTruthy()
     await value.atomicWrite(state.buffer!, proposed)
@@ -134,8 +149,16 @@ test('a document over 2 MB opens in the full visual editor while review still wo
     await page.keyboard.insertText(' updated')
     await value.waitForBuffer(withOwnerEdit)
     await expect(page.getByRole('button', { name: /^Keep change /i }).first()).toBeVisible()
+    await expect(page.getByRole('button', { name: /^Send(?:\b|$)/i })).toBeEnabled()
+
+    await send(page, { note: 'Review the oversized document.' })
+    await expect.poll(() => uploadsFor(engine, 't1').length, { timeout: 20_000 }).toBe(2)
+    const delivery = uploadsFor(engine, 't1')[1]!
+    expect(delivery).toContain('- Review the oversized document.')
+    expect(delivery).toContain('Oversized updated')
     expect(await readFile(value.file, 'utf8')).toBe(original)
   } finally {
     await value.dispose()
+    await engine.close()
   }
 })

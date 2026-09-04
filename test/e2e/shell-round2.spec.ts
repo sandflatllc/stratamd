@@ -2,11 +2,60 @@ import { expect, test } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Scenario } from './harness'
+import { seededScenario, startEngine } from './cockpit-engine-harness'
+import { agentActs, annotationByText, attachThread, openThread } from './cockpit-agent'
 
 // Shell details from usability round 2: Conversation focus (§5.11), the
 // F1 shortcut sheet and F8 stepping (§5.12), toolbar menu keys and the tree
 // (§5.13), and the tab menu's bulk close (§5.16).
 
+
+test('an item focuses its reply and hands focus back on close; F8 steps through comments and questions', async ({}, testInfo) => {
+  const engine = await startEngine({ titles: { t1: 'Agent A' } })
+  const scenario = await seededScenario(testInfo, engine.origin, '# Threads\n\nFirst point to discuss.\n\nSecond point to question.\n\nThird point to suggest.\n', 'threads.md')
+  try {
+    const page = await scenario.launch()
+    await openThread(page, 'Agent A')
+    await attachThread(page, 't1', 'Agent A')
+    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
+    agentActs(engine, 't1', [
+      { verb: 'question', anchor: { document: scenario.file, quote: 'Second point to question.' }, text: 'Is this right?' },
+      { verb: 'comment', anchor: { document: scenario.file, quote: 'First point to discuss.' }, text: 'Tighten this.' },
+      { verb: 'suggest', anchor: { document: scenario.file, quote: 'Third point to suggest.' }, replacement: 'Third point, suggested.' },
+    ])
+    await annotationByText(scenario, 'Third point, suggested.')
+
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
+    const row = page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'First point to discuss.' })
+    await row.click()
+    const thread = page.getByRole('region', { name: /comment thread/i })
+    await expect(thread).toBeVisible()
+    await expect(thread.getByRole('textbox', { name: 'Reply' })).toBeFocused()
+    // The jump selects the annotated span, which raises the annotate pill above the thread;
+    // Escape closes one surface at a time, so the pill goes first when it is up.
+    const pill = page.getByRole('menu', { name: /annotate selection/i })
+    if (await pill.isVisible()) {
+      await page.keyboard.press('Escape')
+      await expect(pill).toBeHidden()
+    }
+    await page.keyboard.press('Escape')
+    await expect(thread).toBeHidden()
+    await expect(row).toBeFocused()
+
+    // F8 walks comments and questions in document order, skipping the suggestion; Shift+F8 goes back.
+    await page.keyboard.press('F8')
+    await expect(page.getByRole('region', { name: /comment thread/i })).toContainText('Tighten this.')
+    await page.keyboard.press('F8')
+    await expect(page.getByRole('region', { name: /question thread/i })).toContainText('Is this right?')
+    await page.keyboard.press('F8')
+    await expect(page.getByRole('region', { name: /comment thread/i })).toContainText('Tighten this.')
+    await page.keyboard.press('Shift+F8')
+    await expect(page.getByRole('region', { name: /question thread/i })).toContainText('Is this right?')
+  } finally {
+    await scenario.dispose()
+    await engine.close()
+  }
+})
 
 test('F1 lists the shortcuts, toolbar menus take arrow keys, and source view explains the disabled tools', async ({}, testInfo) => {
   const scenario = await Scenario.create(testInfo, '# Keys\n\nA sentence.\n', 'keys.md')

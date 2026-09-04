@@ -2,6 +2,8 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Scenario, documentEndKey, lineEndKey, lineStartKey, primaryKey, selectTextInVisualEditor, selectToLineEndKey } from './harness'
+import { seededScenario, startEngine, type FakeEngine } from './cockpit-engine-harness'
+import { agentEdits, attachThread, openThread } from './cockpit-agent'
 
 /**
  * PRD §6.3 undo: one timeline of typing and application steps, in both
@@ -98,6 +100,42 @@ test.describe('undo and redo timeline', () => {
     await value.waitForBuffer(afterDelete)
     await expect(keepButtons(value.page!).first()).toBeVisible()
     expect(afterDelete.split('Second comment line.')).toHaveLength(1)
+  })
+
+  test('2b. pending agent hunk: undo and redo of later typing leave the hunk alone, and one more undo lifts the hunk itself', async ({}, testInfo) => {
+    const engine: FakeEngine = await startEngine({ titles: { t1: 'Agent A' } })
+    const value = await seededScenario(testInfo, engine.origin, BASE, 'scenario.md')
+    live.add(value)
+    try {
+      const page = await value.launch()
+      await openThread(page, 'Agent A')
+      await attachThread(page, 't1', 'Agent A')
+      await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
+      agentEdits(engine, 't1', value.file, 'Base.', 'Base.', 'Base.\n\nAgent line.')
+      await value.waitForBuffer(PROPOSAL)
+      await expect(keepButtons(page).first()).toBeVisible()
+      const { afterTyping, afterDelete } = await typeTwoLinesDeleteOne(value)
+
+      await undo(page)
+      await value.waitForBuffer(afterTyping)
+      await redo(page)
+      await value.waitForBuffer(afterDelete)
+      await expect(keepButtons(page).first()).toBeVisible()
+      expect(afterDelete.split('Second comment line.')).toHaveLength(1)
+
+      // Past the typing (the delete and two typed lines), undo reaches the agent's edit: it is one step in the same timeline (PRD §6.3).
+      for (let presses = 0; presses < 3; presses += 1) await undo(page)
+      await value.waitForBuffer(PROPOSAL)
+      await expect(keepButtons(page).first()).toBeVisible()
+      await undo(page)
+      await value.waitForBuffer(BASE)
+      await expect(keepButtons(page)).toHaveCount(0)
+      await redo(page)
+      await value.waitForBuffer(PROPOSAL)
+      await expect(keepButtons(page).first()).toBeVisible()
+    } finally {
+      await engine.close()
+    }
   })
 
   test('3. after Keep: typing undoes first, then the Keep itself, and redo re-keeps', async ({}, testInfo) => {

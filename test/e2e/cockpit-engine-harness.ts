@@ -15,6 +15,8 @@ export interface FakeEngineOptions {
   workspaceRoot?: string
   /** Provider instances `server.getConfig` reports (§5.13); defaults to a Codex account with usage and a Claude account without. */
   providers?: unknown[]
+  /** Titles for the seeded threads `t1` and `t2`, when a test reads better with agent names. */
+  titles?: Partial<Record<'t1' | 't2', string>>
 }
 
 const usageAt = '2026-09-03T11:59:00.000Z'
@@ -66,6 +68,8 @@ export interface FakeEngine {
   origin: string
   commands: Array<Record<string, unknown>>
   uploads: string[]
+  /** Upload text by attachment id, so a turn's attachment can be read back regardless of upload order. */
+  uploadsById: Map<string, string>
   tokenRequests: string[]
   rpcRequests: Array<{ tag: string; payload: unknown }>
   /** Offline refuses HTTP and drops every socket, as a stopped server would; online again accepts new connections. */
@@ -74,6 +78,13 @@ export interface FakeEngine {
   setWorkspaceRoot(value: string): void
   setProviders(value: unknown[]): void
   finish(): void
+  /**
+   * The agent replies in a thread with a completed assistant message and the
+   * transcript streams to the app (§5.9). A strata block in `text` is what
+   * the agent did; the app applies it to the attached document. Returns the
+   * message id. Posting into `t1` ends its running turn.
+   */
+  postAssistant(threadId: string, text: string): string
   /** Live sockets right now. */
   connections(): number
   close(): Promise<void>
@@ -96,10 +107,17 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   let sequence = 2
   const commands: Array<Record<string, unknown>> = []
   const uploads: string[] = []
+  const uploadsById = new Map<string, string>()
+  let uploadCount = 0
   const createdThreads: CreatedThread[] = []
   const createdProjects: CreatedProject[] = []
   /** Pin, snooze, and rename state per thread, as T3 would project it (§5.2). */
   const threadMeta = new Map<string, { pinnedAt?: string | null; snoozedUntil?: string | null; title?: string }>()
+  for (const [id, title] of Object.entries(options.titles ?? {})) if (title) threadMeta.set(id, { title })
+  /** Assistant messages posted by tests, per thread, after the seeded transcript. */
+  const posted = new Map<string, Array<Record<string, unknown>>>()
+  let postedCount = 0
+  const postedMessages = (threadId: string) => posted.get(threadId) ?? []
   const withMeta = <T extends { id: string; title: string }>(thread: T): T & { pinnedAt: string | null; snoozedUntil: string | null } => {
     const meta = threadMeta.get(thread.id)
     return { ...thread, title: meta?.title ?? thread.title, pinnedAt: meta?.pinnedAt ?? null, snoozedUntil: meta?.snoozedUntil ?? null }
@@ -131,17 +149,17 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     const page = { beforeCursor: null, hasMore: false, snapshotSequence: sequence, threadSequence: sequence }
     const created = createdThreads.find((thread) => thread.id === threadId)
     if (created) {
-      return { snapshotSequence: sequence, thread: { ...shellThread(created), deletedAt: null, messages: sentMessages(created.id, `turn-${created.id}`, true), activities: [], checkpoints: [] }, page }
+      return { snapshotSequence: sequence, thread: { ...shellThread(created), deletedAt: null, messages: [...sentMessages(created.id, `turn-${created.id}`, true), ...postedMessages(created.id)], activities: [], checkpoints: [] }, page }
     }
     if (threadId !== 't1' && threadId !== 't2') return null
-    const threadTitle = threadId === 't2' ? 'Second engine thread' : 'Live engine thread'
+    const threadTitle = threadMeta.get(threadId)?.title ?? (threadId === 't2' ? 'Second engine thread' : 'Live engine thread')
     const messageId = threadId === 't2' ? 'm2' : 'm1'
     const activities = [
       ...(approvalOpen ? [{ id: 'a1', tone: 'approval', kind: 'approval.requested', summary: 'Command approval requested', payload: { requestId: 'approval-1', detail: 'Run the cockpit verification?' }, turnId: 'turn-1', createdAt: at }] : [{ id: 'a2', tone: 'approval', kind: 'approval.resolved', summary: 'Approval resolved', payload: { requestId: 'approval-1' }, turnId: 'turn-1', createdAt: at }]),
       ...(inputOpen ? [{ id: 'u1', tone: 'info', kind: 'user-input.requested', summary: 'User input requested', payload: { requestId: 'input-1', questions: [{ id: 'release', question: 'Which release?', options: [{ label: 'Version one' }] }] }, turnId: 'turn-1', createdAt: at }] : [{ id: 'u2', tone: 'info', kind: 'user-input.resolved', summary: 'User input submitted', payload: { requestId: 'input-1' }, turnId: 'turn-1', createdAt: at }]),
       { id: 'tool-1', tone: 'tool', kind: 'tool.completed', summary: 'Updated cockpit files', payload: {}, turnId: 'turn-1', createdAt: at },
     ]
-    return { snapshotSequence: sequence, thread: { id: threadId, projectId: 'p1', title: threadTitle, modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: threadId === 't1' ? { turnId: 'turn-1', state: status === 'running' ? 'running' : 'interrupted', requestedAt: at, startedAt: at, completedAt: null, assistantMessageId: messageId } : null, createdAt: at, updatedAt: at, session: { threadId, status: threadId === 't1' ? status : 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: threadId === 't1' && status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, deletedAt: null, messages: threadId === 't1' ? [...sentMessages('t1', 'turn-1', false), { id: messageId, role: 'assistant', text: message, attachments: [], turnId: 'turn-1', streaming: status === 'running', createdAt: at, updatedAt: at }] : sentMessages('t2', 'turn-1', false), activities: threadId === 't1' ? activities : [], checkpoints: threadId === 't1' ? [{ turnId: 'turn-1', checkpointTurnCount: 1, checkpointRef: 'ref', status: 'ready', files: [{ path: 'notes/one.md', kind: 'created', additions: 4, deletions: 0 }, { path: 'src/two.ts', kind: 'created', additions: 8, deletions: 0 }], assistantMessageId: messageId, completedAt: at }] : [] }, page }
+    return { snapshotSequence: sequence, thread: { id: threadId, projectId: 'p1', title: threadTitle, modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: threadId === 't1' ? { turnId: 'turn-1', state: status === 'running' ? 'running' : 'interrupted', requestedAt: at, startedAt: at, completedAt: null, assistantMessageId: messageId } : null, createdAt: at, updatedAt: at, session: { threadId, status: threadId === 't1' ? status : 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: threadId === 't1' && status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, deletedAt: null, messages: threadId === 't1' ? [...sentMessages('t1', 'turn-1', false), { id: messageId, role: 'assistant', text: message, attachments: [], turnId: 'turn-1', streaming: status === 'running', createdAt: at, updatedAt: at }, ...postedMessages('t1')] : [...sentMessages('t2', 'turn-1', false), ...postedMessages('t2')], activities: threadId === 't1' ? activities : [], checkpoints: threadId === 't1' ? [{ turnId: 'turn-1', checkpointTurnCount: 1, checkpointRef: 'ref', status: 'ready', files: [{ path: 'notes/one.md', kind: 'created', additions: 4, deletions: 0 }, { path: 'src/two.ts', kind: 'created', additions: 8, deletions: 0 }], assistantMessageId: messageId, completedAt: at }] : [] }, page }
   }
 
   const send = (socket: Socket, frame: unknown) => { if (!socket.destroyed) socket.write(textFrame(JSON.stringify(frame))) }
@@ -159,7 +177,8 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   }
   function rpcValue(tag: string): unknown {
     if (tag === 'attachments.createUploadUrl') {
-      const attachmentId = `upload-${uploads.length + 1}`
+      uploadCount += 1
+      const attachmentId = `upload-${uploadCount}`
       return { attachmentId, relativeUrl: `/upload/${attachmentId}`, expiresAt: Date.now() + 60_000 }
     }
     if (tag === 'server.getConfig') return { providers, settings: { providerInstances: { codex: { config: { homePath: '/home/owner/.codex-work' } } } } }
@@ -192,8 +211,9 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     }
     if (request.url?.startsWith('/upload/') && request.method === 'PUT') {
       const chunks: Buffer[] = []
+      const attachmentId = request.url.slice('/upload/'.length)
       request.on('data', (piece) => chunks.push(Buffer.from(piece)))
-      request.on('end', () => { uploads.push(Buffer.concat(chunks).toString('utf8')); response.end('{}') })
+      request.on('end', () => { const text = Buffer.concat(chunks).toString('utf8'); uploads.push(text); uploadsById.set(attachmentId, text); response.end('{}') })
       return
     }
     if (request.url === '/api/orchestration/dispatch' && request.method === 'POST') {
@@ -201,6 +221,8 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       request.on('data', (piece) => chunks.push(Buffer.from(piece)))
       request.on('end', () => {
         const command = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>
+        // T3 applies a command once per commandId; a retry after a dropped connection is a no-op.
+        if (typeof command.commandId === 'string' && commands.some((known) => known.commandId === command.commandId)) { response.end(JSON.stringify({ sequence })); return }
         commands.push(command)
         if (command.type === 'thread.turn.start') status = 'running'
         if (command.type === 'thread.turn.interrupt') status = 'stopped'
@@ -277,6 +299,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     origin: `http://127.0.0.1:${address.port}`,
     commands,
     uploads,
+    uploadsById,
     tokenRequests,
     rpcRequests,
     setOnline: (value) => { online = value; if (!value) dropSockets() },
@@ -284,6 +307,14 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     setWorkspaceRoot: (value) => { workspaceRoot = value; broadcast() },
     setProviders: (value) => { providers = value; broadcast() },
     finish: () => { status = 'stopped'; broadcast() },
+    postAssistant: (threadId, text) => {
+      postedCount += 1
+      const id = `posted-${postedCount}`
+      posted.set(threadId, [...postedMessages(threadId), { id, role: 'assistant', text, attachments: [], turnId: `turn-posted-${postedCount}`, streaming: false, createdAt: at, updatedAt: at }])
+      if (threadId === 't1') status = 'stopped'
+      broadcast()
+      return id
+    },
     connections: () => connections.size,
     close: async () => {
       dropSockets()

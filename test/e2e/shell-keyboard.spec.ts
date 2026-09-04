@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test'
 import { chmod, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Scenario, primaryKey, selectTextInVisualEditor, setSource } from './harness'
+import { seededScenario, startEngine } from './cockpit-engine-harness'
+import { agentActs, annotationByText, attachThread, openThread } from './cockpit-agent'
 
 // Shell keyboard and drafts (PRD §6.9): tab shortcuts and middle-click,
 // error toasts that stay, drafts that survive Escape, Escape closing one
@@ -103,6 +105,72 @@ test('an error toast uses the danger color, outlives a success, and clears from 
   }
 })
 
+
+test('composer and reply drafts survive Escape, and Escape closes one surface at a time', async ({}, testInfo) => {
+  const original = '# Drafts\n\nReply to this sentence.\n\nSelect this other sentence.\n'
+  const engine = await startEngine({ titles: { t1: 'Agent A' } })
+  const value = await seededScenario(testInfo, engine.origin, original, 'drafts.md')
+  try {
+    const page = await value.launch()
+    await openThread(page, 'Agent A')
+    await attachThread(page, 't1', 'Agent A')
+    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
+    const edited = `${original}\nOwner edit.\n`
+    await setSource(page, edited)
+    await value.waitForBuffer(edited)
+
+    await page.keyboard.press(primaryKey('Enter'))
+    const composer = page.getByRole('dialog', { name: /Send changes/i })
+    await expect(composer).toBeVisible()
+    const note = composer.getByRole('textbox', { name: /Note for recipients/i })
+    await note.fill('Half-written note')
+    const item = composer.locator('.send-item[data-author="user"] input[type="checkbox"]').first()
+    await expect(item).toBeChecked()
+    await item.uncheck()
+    await page.keyboard.press('Escape')
+    await expect(composer).toBeHidden()
+
+    await page.keyboard.press(primaryKey('Enter'))
+    await expect(composer).toBeVisible()
+    await expect(composer.getByRole('textbox', { name: /Note for recipients/i })).toHaveValue('Half-written note')
+    await expect(composer.locator('.send-item[data-author="user"] input[type="checkbox"]').first()).not.toBeChecked()
+    // A stray click outside closes it; the draft still comes back.
+    await page.mouse.click(4, 4)
+    await expect(composer).toBeHidden()
+    await page.keyboard.press(primaryKey('Enter'))
+    await expect(composer.getByRole('textbox', { name: /Note for recipients/i })).toHaveValue('Half-written note')
+    await page.keyboard.press('Escape')
+
+    agentActs(engine, 't1', [{ verb: 'comment', anchor: { document: value.file, quote: 'Reply to this sentence.' }, text: 'Please reword this.' }])
+    await annotationByText(value, 'Please reword this.')
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
+    const row = page.locator('.annotations-panel').getByRole('button').filter({ hasText: 'Reply to this sentence.' })
+    await row.click()
+    const thread = page.getByRole('region', { name: /comment thread/i })
+    await expect(thread).toBeVisible()
+    const reply = thread.getByRole('textbox', { name: 'Reply' })
+    await reply.click()
+    await page.keyboard.type('Unsent reply')
+
+    // The annotate menu is above the thread: the first Escape closes only it.
+    await selectTextInVisualEditor(page, 'Select this other sentence.')
+    const menu = page.getByRole('menu', { name: /annotate selection/i })
+    await expect(menu).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(menu).toBeHidden()
+    await expect(thread).toBeVisible()
+    await expect(thread.getByRole('textbox', { name: 'Reply' })).toHaveValue('Unsent reply')
+
+    await page.keyboard.press('Escape')
+    await expect(thread).toBeHidden()
+    await row.click()
+    await expect(thread).toBeVisible()
+    await expect(thread.getByRole('textbox', { name: 'Reply' })).toHaveValue('Unsent reply')
+  } finally {
+    await value.dispose()
+    await engine.close()
+  }
+})
 
 test('a root folder can be removed from the explorer while the open document stays available', { tag: '@clipboard' }, async ({}, testInfo) => {
   const value = await Scenario.create(testInfo, '# Remove\n\nKeep me remembered.\n', 'remove.md')
