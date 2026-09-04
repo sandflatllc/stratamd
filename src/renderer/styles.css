@@ -1304,6 +1304,8 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .project-row-actions button { border: 0; background: none; color: var(--text-muted); font-size: .65rem; }
 .thread-picker { display: grid; gap: 7px; margin: 8px 0; padding: 10px; border: 1px solid var(--borders-subtle); border-radius: 9px; }
 .thread-picker label { display: flex; justify-content: space-between; gap: 8px; }
+.accounts-modal { position: fixed; z-index: 80; inset: 15% 25%; display: grid; align-content: start; gap: 10px; padding: 20px; border: 1px solid var(--borders-subtle); border-radius: 14px; background: var(--surfaces-window); box-shadow: 0 20px 60px color-mix(in srgb, var(--text-primary) 38%, transparent); }
+.accounts-modal > div { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; }
 .documents-panel { max-height: 220px; overflow: auto; }
 .documents-panel > button { display: flex; width: 100%; justify-content: space-between; gap: 8px; padding: 7px 10px; border: 0; background: none; color: var(--text-primary); text-align: left; }
 .documents-panel > button small { color: var(--text-muted); }

@@ -16,6 +16,8 @@ export function ProjectsPanel({ engine, onOpenThread, onReconnect, onCreate, onA
   const [model, setModel] = useState('gpt-5.6')
   const [effort, setEffort] = useState<string | null>('medium')
   const [access, setAccess] = useState<EngineThreadView['access']>('approval-required')
+  const [accounts, setAccounts] = useState(false)
+  const [parked, setParked] = useState<Set<string>>(() => new Set())
   if (engine.state === 'unpaired') return <div className="engine-empty">No engine paired.<small>Pair StrataMD in Settings to see projects.</small></div>
   if (engine.state === 'disconnected' || engine.state === 'connecting') return (
     <div className="engine-empty" data-testid="engine-disconnected">
@@ -25,6 +27,8 @@ export function ProjectsPanel({ engine, onOpenThread, onReconnect, onCreate, onA
   )
   return <div className="projects-panel">
     <button type="button" onClick={() => setCreating(true)}>New thread</button>
+    <button type="button" onClick={() => setAccounts(true)}>Accounts</button>
+    {accounts && <section className="accounts-modal" role="dialog" aria-modal="true" aria-label="Accounts"><h2>Accounts</h2>{[...new Map(engine.projects.flatMap((project) => project.threads).map((thread) => [thread.providerInstanceId, thread])).values()].map((thread) => <div key={thread.providerInstanceId}><strong>{thread.providerInstanceId}</strong><span>{parked.has(thread.providerInstanceId) ? 'Parked' : 'Ready · not measured'}</span><button type="button" onClick={() => setParked((current) => { const next = new Set(current); if (next.has(thread.providerInstanceId)) next.delete(thread.providerInstanceId); else next.add(thread.providerInstanceId); return next })}>{parked.has(thread.providerInstanceId) ? 'Unpark' : 'Park'}</button></div>)}<button type="button" onClick={() => setAccounts(false)}>Close</button></section>}
     {creating && <form className="thread-picker" aria-label="Start thread" onSubmit={(event) => { event.preventDefault(); onCreate({ projectId, title, model, effort, access }); setCreating(false) }}>
       <h3>Start thread</h3>
       <label>Project<select value={projectId} onChange={(event) => setProjectId(event.target.value)}>{engine.projects.map((project) => <option value={project.id} key={project.id}>{project.title}</option>)}</select></label>
@@ -32,6 +36,7 @@ export function ProjectsPanel({ engine, onOpenThread, onReconnect, onCreate, onA
       <label>Model<input value={model} onChange={(event) => setModel(event.target.value)} /></label>
       <label>Thinking<select value={effort ?? ''} onChange={(event) => setEffort(event.target.value || null)}><option value="">Default</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
       <label>Access<select value={access} onChange={(event) => setAccess(event.target.value as EngineThreadView['access'])}><option value="approval-required">Ask</option><option value="auto-accept-edits">Auto edits</option><option value="full-access">Full</option></select></label>
+      <label>Account<select aria-label="Account" defaultValue="auto"><option value="auto">Auto</option>{[...new Set(engine.projects.flatMap((project) => project.threads.map((thread) => thread.providerInstanceId)))].map((id) => <option value={id} key={id} disabled={parked.has(id)}>{id}{parked.has(id) ? ' · parked' : ''}</option>)}</select></label>
       <div><button type="button" onClick={() => setCreating(false)}>Cancel</button><button type="submit">Create</button></div>
     </form>}
     {engine.state === 'mismatch' && <p className="engine-mismatch">{engine.problem}</p>}

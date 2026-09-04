@@ -217,6 +217,7 @@ test('8 and 9 projects: picker is project-scoped, row actions dispatch, and turn
     const picker = page.getByRole('form', { name: 'Start thread' })
     await expect(picker.getByLabel('Project')).toHaveValue('p1')
     await expect(picker.getByLabel('Model')).toHaveValue('gpt-5.6')
+    await expect(picker.getByLabel('Account')).toHaveValue('auto')
     await picker.getByRole('button', { name: 'Cancel' }).click()
     await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
     await expect(page.getByRole('heading', { name: 'Documents' })).toBeVisible()
@@ -225,6 +226,27 @@ test('8 and 9 projects: picker is project-scoped, row actions dispatch, and turn
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
     await page.getByRole('button', { name: 'Settle Live engine thread' }).click()
     await expect.poll(() => engine.commands.some((command) => command.type === 'thread.settle')).toBe(true)
+  } finally {
+    await scenario.dispose()
+    await new Promise<void>((resolve) => engine.server.close(() => resolve()))
+  }
+})
+
+test('10 accounts: modal and picker show the same provider instance and parking state', async ({}, testInfo) => {
+  const engine = await startEngine()
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    const page = await scenario.launch()
+    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
+    await page.getByRole('button', { name: 'Accounts' }).click()
+    const modal = page.getByRole('dialog', { name: 'Accounts' })
+    await expect(modal).toContainText('codex')
+    await expect(modal).toContainText('Ready · not measured')
+    await modal.getByRole('button', { name: 'Park' }).dispatchEvent('click')
+    await expect(modal).toContainText('Parked')
+    await modal.getByRole('button', { name: 'Close' }).dispatchEvent('click')
+    await page.getByRole('button', { name: 'New thread' }).click()
+    await expect(page.getByLabel('Account').getByRole('option', { name: /codex · parked/ })).toBeDisabled()
   } finally {
     await scenario.dispose()
     await new Promise<void>((resolve) => engine.server.close(() => resolve()))
