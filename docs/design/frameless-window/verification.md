@@ -65,3 +65,9 @@ xvfb-run --server-num=971 --server-args='-screen 0 1920x1200x24' \
 ```
 
 The launcher target is `dist/linux-unpacked/stratamd`, as configured in `~/.local/share/applications/stratamd.desktop`. Installing this package does not require changing that desktop entry.
+
+## Continuous background refinement
+
+The owner requested a continuous background through the top bar. Removed its separate fill and bottom border so the shell gradient and ambient effects remain visible behind the controls. The implementation screenshots above and the shell baseline now show this refinement; the original mockup and KWin captures remain historical references.
+
+All six focused window and visual checks passed, followed by a shell-baseline refresh and packaged GUI smoke check. Reviewed the dark, light, narrow, menu-open, and packaged screenshots. TypeScript and the ordinary unit/integration run had already passed before the owner requested narrower verification. The full end-to-end suite was not rerun for this styling change.

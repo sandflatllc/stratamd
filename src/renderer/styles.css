@@ -171,7 +171,7 @@ button:disabled { opacity: .42; cursor: not-allowed; }
 }
 .app-shell { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; gap: 12px; padding: 0 26px 16px; overflow: hidden; color: var(--text); background: radial-gradient(1400px 900px at 30% -10%, color-mix(in srgb, var(--surfaces-window) 85%, var(--effects-primary)), var(--bg) 60%); font-family: var(--font-text), "Baloo 2", sans-serif; }
 
-.topbar { position: relative; z-index: 2; display: flex; flex: 0 0 52px; height: 52px; align-items: center; gap: 12px; margin-inline: -26px; padding: 0 0 0 16px; border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent); background: color-mix(in srgb, var(--bg) 92%, var(--effects-primary)); }
+.topbar { position: relative; z-index: 2; display: flex; flex: 0 0 52px; height: 52px; align-items: center; gap: 12px; margin-inline: -26px; padding: 0 0 0 16px; }
 .topbar[data-window-chrome="custom"], .topbar[data-window-chrome="traffic-lights"] { -webkit-app-region: drag; user-select: none; }
 .topbar button, .topbar .tab-navigation, .topbar .tab-menu-list, .topbar .context-menu, .topbar .pending-status { -webkit-app-region: no-drag; }
 .topbar[data-window-chrome="traffic-lights"] { padding-left: 86px; padding-right: 16px; }

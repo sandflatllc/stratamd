@@ -12,7 +12,7 @@ The product spec is `docs/PRD.md`. Every element in the design maps to a PRD req
 
 ## Integrated top bar
 
-The owner approved [the frameless-window mockup](./frameless-window/prototype.html) on September 4, 2026. It supersedes the original title-bar and toolbar arrangement. The production bar is 52 pixels high, keeps the fixed brand pill, and puts Open file, Accounts, Theme, and Reset zoom in its dropdown. Docs, Conversations, active/pinned tabs, engine status, Send, and separated Linux window controls share the row. The empty spacer moves the window; interactive controls and menus do not. macOS keeps native traffic lights. Use the existing theme tokens in production.
+The owner approved [the frameless-window mockup](./frameless-window/prototype.html) on September 4, 2026. It supersedes the original title-bar and toolbar arrangement. The production bar is 52 pixels high, keeps the fixed brand pill, and puts Open file, Accounts, Theme, and Reset zoom in its dropdown. Docs, Conversations, active/pinned tabs, engine status, Send, and separated Linux window controls share the row. The empty spacer moves the window; interactive controls and menus do not. macOS keeps native traffic lights. Use the existing theme tokens in production. The header has no separate fill or bottom border, so the shell background and ambient effects continue behind the top-bar controls.
 
 [Implementation screenshots](./frameless-window/captures/implementation/) cover the normal and 960-pixel layouts in Strata Vivid, Paper, and Strata, plus the logo menu. These are real Electron captures; the original browser mockup remains the approved design reference. Window behavior and close semantics are specified in PRD section 6.9.
 
