@@ -1764,12 +1764,16 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .conversation-panel[data-placement="side"] .conversation-messages { padding-left: 44px; }
 .conversation-navigator { position: absolute; inset: 0; z-index: 20; pointer-events: none; }
 .conversation-marker-list { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); max-height: calc(100% - 32px); width: 32px; overflow-y: auto; scrollbar-width: none; pointer-events: auto; padding-block: 4px; }
-.conversation-marker { display: flex; align-items: center; justify-content: flex-start; width: 32px; height: 10px; min-height: 0; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; }
-.conversation-marker span { display: block; width: 12px; height: 3px; border-radius: 2px; background: var(--muted); opacity: .55; }
-.conversation-marker[data-kind="comment"] span { width: 20px; background: var(--controls-primary); }
+/* Hovering a marker widens it and its two neighbours; rows never change height, so the rail holds still. */
+.conversation-marker { --marker-base: 12px; --marker-wave: 0px; display: flex; align-items: center; justify-content: flex-start; width: 32px; height: 10px; min-height: 0; padding: 0 4px; border: 0; border-radius: 4px; background: transparent; }
+.conversation-marker span { display: block; width: max(var(--marker-base), var(--marker-wave)); height: 3px; border-radius: 2px; background: var(--muted); opacity: .55; transition: width 150ms ease, background-color 150ms ease, opacity 150ms ease; }
+.conversation-marker[data-kind="comment"] { --marker-base: 20px; }
+.conversation-marker[data-kind="comment"] span { background: var(--controls-primary); }
 .conversation-marker[data-held] span { background: transparent; border: 1px solid var(--controls-primary); height: 4px; }
+.conversation-marker[data-distance="0"] { --marker-wave: 24px; }
+.conversation-marker[data-distance="1"] { --marker-wave: 18px; }
+.conversation-marker[data-distance="2"] { --marker-wave: 14px; }
 .conversation-marker[aria-current="location"] span, .conversation-marker:hover span, .conversation-marker:focus-visible span { opacity: 1; background: var(--text); }
-.conversation-marker-list:hover .conversation-marker, .conversation-marker-list:focus-within .conversation-marker { height: 24px; }
 .conversation-marker:focus-visible { outline: 1px solid var(--controls-primary); outline-offset: -1px; }
 .conversation-marker-preview { position: fixed; z-index: 32; width: min(320px, calc(100vw - 32px)); max-height: calc(100vh - 24px); overflow: auto; padding: 14px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px var(--shadow); pointer-events: auto; overflow-wrap: anywhere; }
 .conversation-marker-preview small { color: var(--muted); }

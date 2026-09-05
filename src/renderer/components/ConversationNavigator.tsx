@@ -21,6 +21,7 @@ export function ConversationNavigator({ thread, onJump }: { thread: EngineThread
   const [preview, setPreview] = useState<{ id: string; top: number; left: number }>()
   const tooltipId = useId()
   const shown = markers.find(marker => marker.id === preview?.id)
+  const hovered = markers.findIndex(marker => marker.id === preview?.id)
 
   useEffect(() => {
     const viewport = root.current?.parentElement?.querySelector('.conversation-messages')
@@ -68,7 +69,7 @@ export function ConversationNavigator({ thread, onJump }: { thread: EngineThread
     event.preventDefault(); buttons[next]?.focus({ preventScroll: true }); keepMarkerVisible(buttons[next])
   }}>
     <div className="conversation-marker-list">
-      {markers.map(marker => <button type="button" key={marker.id} className="conversation-marker" data-kind={marker.kind} data-marker-id={marker.id} data-held={marker.held || undefined} aria-label={`${marker.kind === 'message' ? 'Message' : 'Comment'}: ${marker.text.slice(0, 160)}`} aria-current={active === marker.id ? 'location' : undefined} aria-describedby={shown?.id === marker.id ? tooltipId : undefined} onMouseEnter={event => reveal(marker, event.currentTarget)} onFocus={event => reveal(marker, event.currentTarget)} onClick={() => { onJump(marker); setActive(marker.id); setPreview(undefined) }}><span /></button>)}
+      {markers.map((marker, index) => <button type="button" key={marker.id} className="conversation-marker" data-kind={marker.kind} data-marker-id={marker.id} data-held={marker.held || undefined} data-distance={hovered >= 0 && Math.abs(index - hovered) <= 2 ? Math.abs(index - hovered) : undefined} aria-label={`${marker.kind === 'message' ? 'Message' : 'Comment'}: ${marker.text.slice(0, 160)}`} aria-current={active === marker.id ? 'location' : undefined} aria-describedby={shown?.id === marker.id ? tooltipId : undefined} onMouseEnter={event => reveal(marker, event.currentTarget)} onFocus={event => reveal(marker, event.currentTarget)} onClick={() => { onJump(marker); setActive(marker.id); setPreview(undefined) }}><span /></button>)}
     </div>
     {shown && createPortal(<div id={tooltipId} role="tooltip" className="conversation-marker-preview" style={{ top: preview!.top, left: preview!.left }}>
       <small>{shown.kind === 'message' ? 'Your message' : shown.held ? 'Held comment' : 'Your comment'}</small>
