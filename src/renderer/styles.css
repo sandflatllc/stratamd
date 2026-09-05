@@ -344,7 +344,7 @@ kbd { color: var(--muted); font-family: var(--font-code), "JetBrains Mono", mono
 .banner-danger { color: var(--controls-danger); background: color-mix(in srgb, var(--controls-danger) 12%, transparent); }
 .editor-scroll { position: relative; flex: 1; overflow: auto; padding: 34px 46px 80px; cursor: text; }
 .document-column { position: relative; max-width: 100%; margin: 0 auto; }
-.document-column > .resizer, .conversation-column > .resizer { position: absolute; z-index: 5; top: 6px; right: -28px; height: 70px; }
+.document-column > .resizer, .conversation-measure > .resizer { position: absolute; z-index: 5; top: 6px; right: -28px; height: 70px; }
 .prosemirror-host { min-height: 400px; animation: slide-a .34s cubic-bezier(.3,1.2,.5,1); }
 .prosemirror-host .ProseMirror { min-height: 400px; outline: none; color: var(--document-body); font-size: calc(21px * var(--zoom, 1)); font-weight: 500; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 .prosemirror-host .ProseMirror h1 { margin: 0 0 20px; color: var(--document-headings); font-size: calc(40px * var(--zoom, 1)); font-weight: 800; letter-spacing: -.02em; }
@@ -1444,6 +1444,7 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .conversation-scope button[aria-selected="true"] { background: var(--surfaces-inset); color: var(--text); }
 .conversation-scope button:disabled { opacity: .45; cursor: default; }
 .conversation-messages, .conversation-passage { min-height: 0; flex: 1; overflow: auto; padding: 10px; }
+.conversation-measure { position: sticky; top: 6px; height: 0; margin: 0 auto; z-index: 5; }
 .conversation-column { position: relative; max-width: 100%; margin: 0 auto; }
 .conversation-panel[data-placement="center"] .conversation-messages { padding: 34px 46px 80px; }
 .conversation-passage { display: flex; flex-direction: column; overflow: hidden; }

@@ -3,6 +3,7 @@ import { seededScenario, startEngine } from './cockpit-engine-harness'
 
 test('center conversation shares the saved document measure and fits the side pane', async ({}, testInfo) => {
   const engine = await startEngine()
+  engine.postAssistant('t1', '# Long answer\n\n' + Array.from({ length: 45 }, (_, i) => `Paragraph ${i + 1}. The width control must remain available while reading the conversation.`).join('\n\n'))
   const scenario = await seededScenario(testInfo, engine.origin)
   try {
     const page = await scenario.launch()
@@ -13,6 +14,12 @@ test('center conversation shares the saved document measure and fits the side pa
     await page.getByRole('button', { name: 'Open in center' }).click()
     const center = page.locator('.conversation-panel[data-placement="center"]')
     const handle = center.getByRole('button', { name: 'Resize conversation measure' })
+    const history = center.locator('.conversation-messages')
+    await history.evaluate((element) => { element.scrollTop = element.scrollHeight })
+    await expect.poll(() => history.evaluate((element) => element.scrollTop)).toBeGreaterThan(500)
+    await expect(handle).toBeInViewport()
+    await history.evaluate((element) => { element.scrollTop = element.scrollHeight / 2 })
+    await expect(handle).toBeInViewport()
     const before = Number(await handle.getAttribute('aria-valuenow'))
     const column = center.locator('.conversation-column')
     const initialWidth = (await column.boundingBox())!.width

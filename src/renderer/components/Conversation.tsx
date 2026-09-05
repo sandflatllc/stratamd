@@ -208,8 +208,8 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
     </header>
     {passage && <div className="conversation-passage">{passage}</div>}
     <ConversationHistory active={visible} navigation={workspace.target?.serial} key={`history:${thread.id}`} className="conversation-messages">
+      {placement === 'center' && onDocumentMeasure && <div className="conversation-measure" style={{ width: `min(${documentMeasure}px, 100%)` }}><Resizer axis="vertical" label="Resize conversation measure" value={documentMeasure} min={620} max={1600} onChange={(value) => onDocumentMeasure(value, false)} onCommit={(value) => onDocumentMeasure(value, true)} /></div>}
       <div className="conversation-column" style={placement === 'center' ? { width: `min(${documentMeasure}px, 100%)` } : undefined}>
-        {placement === 'center' && onDocumentMeasure && <Resizer axis="vertical" label="Resize conversation measure" value={documentMeasure} min={620} max={1600} onChange={(value) => onDocumentMeasure(value, false)} onCommit={(value) => onDocumentMeasure(value, true)} />}
       {turns.toReversed().map((turn, turnIndex) => {
         const groups = workGroups.filter((candidate) => candidate.turnId === turn.id)
         const timeline = [
