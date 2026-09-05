@@ -1454,7 +1454,7 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .unread-dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--controls-primary-highlight); }
 .attention-badge { background: var(--controls-warning); color: var(--controls-selected-text); }
 .conversation-panel { display: flex; flex-direction: column; min-height: 0; height: 100%; }
-.conversation-panel > header { display: grid; gap: 6px; padding: 12px; border-bottom: 1px solid var(--line); }
+.conversation-panel > header { display: grid; gap: 6px; padding: 12px; }
 .conversation-panel > header small { color: var(--muted); }
 .conversation-title { position: relative; display: flex; align-items: center; gap: 8px; }
 .conversation-title strong { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1608,6 +1608,9 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .conversation-prose :is(th, td) { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
 .conversation-prose th { background: var(--surfaces-inset); color: var(--document-table-heading); font-weight: 800; }
 .conversation-island { padding: 0; }
+/* Conversations sit on the window itself: no panel color, edge, shadow, or card decoration in either placement. */
+.conversation-island, .navigation-rail:has(#navigation-panel-conversation:not([hidden])) { border-color: transparent; background: transparent; box-shadow: none; }
+.app-shell[data-motion] .conversation-island > .ambient-layer, .app-shell[data-motion] .navigation-rail:has(#navigation-panel-conversation:not([hidden])) > .ambient-layer { display: none; }
 
 /* Center placement: the transcript column and the composer share one measure, set by the width handle. The messages pane reserves a scrollbar gutter on both edges so the column and the composer center on the same axis. */
 .conversation-panel[data-placement="center"] { --conversation-gutter: clamp(18px, 7vw, 90px); }
@@ -1755,8 +1758,15 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .conversation-reply-composer textarea { width: 100%; min-height: 70px; }
 .conversation-rich-message, .conversation-rich-message > [data-prosemirror-host] { display: flow-root; }
 .conversation-rich-message { container-type: inline-size; overflow-wrap: anywhere; }
-.conversation-panel[data-placement="side"] .conversation-title { flex-wrap: wrap; }
-.conversation-panel[data-placement="side"] .conversation-tools { flex-basis: 100%; margin-left: 0; }
+/* Side placement reads as one row: the names, then Find stretching to fill, then the placement button on the right. */
+/* The names give up width first so Find, its match count, and its arrows stay inside a narrow pane. */
+.conversation-panel[data-placement="side"] .conversation-title strong { flex: 0 10 auto; min-width: 0; }
+.conversation-panel[data-placement="side"] .conversation-tools { flex: 1 1 auto; flex-wrap: nowrap; margin-left: 0; min-width: 0; }
+.conversation-panel[data-placement="side"] .conversation-items-tool { min-width: 0; }
+.conversation-panel[data-placement="side"] .conversation-items-tool > button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.conversation-panel[data-placement="side"] .conversation-find { flex: 1 1 auto; min-width: 0; }
+.conversation-panel[data-placement="side"] .conversation-find input { flex: 1 1 60px; width: auto; min-width: 24px; }
+.conversation-panel[data-placement="side"] .conversation-placement { order: 1; }
 @container (max-width: 400px) {
   .conversation-rich-message .strata-component--callout { display: block; }
   .conversation-rich-message .strata-component--callout .strata-component__eyebrow { flex-direction: row; padding: 12px 12px 0; }
