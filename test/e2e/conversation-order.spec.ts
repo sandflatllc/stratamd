@@ -61,8 +61,9 @@ for (const placement of ['side', 'center']) test(`latest response aligns long an
     await expectStart(short)
     await panel.getByRole('button', { name: 'Newest', exact: true }).click()
     await expectBottom(history)
-    await panel.getByRole('button', { name: 'Latest response', exact: true }).click()
-    await expectStart(short)
+    // Both controls show only while they would move the reader somewhere new.
+    await expect(panel.getByRole('button', { name: 'Newest', exact: true })).toHaveCount(0)
+    await expect(panel.getByRole('button', { name: 'Latest response', exact: true })).toHaveCount(0)
     if (placement === 'side') {
       await navigation.getByRole('tab', { name: 'Contents' }).click()
       await navigation.getByRole('tab', { name: 'Conversation', exact: true }).click()

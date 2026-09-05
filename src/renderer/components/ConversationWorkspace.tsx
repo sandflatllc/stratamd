@@ -9,7 +9,7 @@ import type { ConversationMarker } from '../conversationNavigation'
 import { AnnotationComposer } from './AnnotationComposer'
 import type { PassageTarget } from './ConversationMessage'
 
-export function useConversationWorkspace(thread: EngineThreadView | undefined, onStart: (id: string, input: ConversationInput) => Promise<void>, onNewest: () => void, panel: RefObject<HTMLElement | null>) {
+export function useConversationWorkspace(thread: EngineThreadView | undefined, onStart: (id: string, input: ConversationInput) => Promise<void>, panel: RefObject<HTMLElement | null>) {
   const [selection, setSelection] = useState<{ message: string; range: EditorSelection; id?: string } | null>(null)
   const [discussion, setDiscussion] = useState<string | null>(null)
   const returnPosition = useRef<{ message: string; offset: number } | null>(null)
@@ -18,12 +18,13 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   const [target, setTarget] = useState<PassageTarget | null>(null)
   const [excluded, setExcluded] = useState<string[]>([])
   const [reading, setReading] = useState<Record<string, string>>({})
-  const [menu, setMenu] = useState<'items' | 'find' | null>(null)
+  const [menu, setMenu] = useState<'items' | null>(null)
+  const findField = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
   const [matchIndex, setMatchIndex] = useState(0)
   const [error, setError] = useState('')
   const [previewId, setPreviewId] = useState(() => readDraft(`thread:${thread?.id}`).messageId ?? crypto.randomUUID())
-  useEffect(() => { setReading(readConversationReading(thread?.id ?? '')); setSelection(null); setDiscussion(null); setMenu(null); setTarget(null); setReplyItem(null); setExcluded([]); setReply(''); setPreviewId(readDraft(`thread:${thread?.id}`).messageId ?? crypto.randomUUID()) }, [thread?.id])
+  useEffect(() => { setReading(readConversationReading(thread?.id ?? '')); setSelection(null); setDiscussion(null); setMenu(null); setQuery(''); setTarget(null); setReplyItem(null); setExcluded([]); setReply(''); setPreviewId(readDraft(`thread:${thread?.id}`).messageId ?? crypto.randomUUID()) }, [thread?.id])
   useEffect(() => { const refresh = () => setReading(readConversationReading(thread?.id ?? '')); window.addEventListener('conversation-reading', refresh); return () => window.removeEventListener('conversation-reading', refresh) }, [thread?.id])
   const remember = (key: string, value: string) => { if (thread) writeConversationReading(thread.id, { ...readConversationReading(thread.id), [key]: value }) }
   const attempt = async (action: () => Promise<unknown>) => { try { await action(); setError('') } catch (error) { setError(error instanceof Error ? error.message : String(error)) } }
@@ -70,6 +71,8 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
     return (thread?.messages ?? []).flatMap(message => conversationMatches(message.id, message.prose ?? message.text, query).map(range => ({ message: message.id, ...range })))
   }, [query, thread?.messages])
   const findStep = (index: number) => { if (!matches.length) return; const next = (index + matches.length) % matches.length; setMatchIndex(next); const match = matches[next]!; jump(match.message, match.from, match.to) }
+  // Find as you type: the first match comes into view as soon as the query has one.
+  useEffect(() => { if (query.trim() && matches.length) findStep(0) }, [query])
   const activeComment = comments.find(comment => comment.id === discussion)
   const backToReading = () => {
     setDiscussion(null)
@@ -84,15 +87,24 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   const replyRecord = thread?.items?.find(item => item.id === replyItem)
   const focusReply = (id: string) => { setReplyItem(id); setReply(thread?.items?.find(item => item.id === id)?.draftReply ?? '') }
   const latestResponse = thread?.messages.findLast(message => message.role === 'assistant')
-  const toolbar = <div className="conversation-reading-tools">
-    <button type="button" onClick={() => setMenu(menu === 'items' ? null : 'items')}>Items</button>
-    <button type="button" onClick={() => setMenu(menu === 'find' ? null : 'find')}>Find</button>
-    <button type="button" disabled={!latestResponse} onClick={() => { setMenu(null); if (latestResponse) jump(latestResponse.id, 0, 0, 'start') }}>Latest response</button>
-    <button type="button" onClick={onNewest}>Newest</button>
-    {menu && <div className="conversation-navigation" role="region" aria-label={`Conversation ${menu}`}>
-      {menu === 'find' && <><input autoFocus aria-label="Find in conversation" value={query} onChange={event => { setQuery(event.target.value); setMatchIndex(0) }} onKeyDown={event => { if (event.key === 'Enter') findStep(matchIndex + (event.shiftKey ? -1 : 1)) }} /><span>{matches.length ? matchIndex + 1 : 0} of {matches.length}</span><button type="button" onClick={() => findStep(matchIndex - 1)}>Previous</button><button type="button" onClick={() => findStep(matchIndex + 1)}>Next</button></>}
-      {menu === 'items' && (thread?.items ?? []).filter(item => !isOwnerComment(item)).map(item => <button type="button" key={item.id} onClick={() => { open(item.id); setMenu(null) }}>{item.status} · {item.kind}: {item.text}</button>)}
+  const openItems = (thread?.items ?? []).filter(item => !isOwnerComment(item) && item.status !== 'done')
+  const kindLabel = (kind: string) => kind.charAt(0).toUpperCase() + kind.slice(1)
+  const tools = <div className="conversation-tools">
+    {openItems.length > 0 && <div className="conversation-items-tool">
+      <button type="button" aria-expanded={menu === 'items'} onClick={() => setMenu(menu === 'items' ? null : 'items')}>{openItems.length === 1 ? '1 item from the agent' : `${openItems.length} items from the agent`}</button>
+      {menu === 'items' && <div className="conversation-navigation" role="region" aria-label="Items from the agent">
+        <p>The agent is waiting on these. Choose one to read its passage or answer it.</p>
+        {openItems.map(item => <button type="button" key={item.id} onClick={() => { open(item.id); setMenu(null) }}><strong>{kindLabel(item.kind)}</strong> {item.text || item.quote}{item.status === 'drafted' && <em> Reply drafted</em>}</button>)}
+      </div>}
     </div>}
+    <div className="conversation-find" role="search">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.75" cy="6.75" r="4.5" /><path d="m10.25 10.25 3.75 3.75" /></svg>
+      <input ref={findField} type="search" aria-label="Find in conversation" placeholder="Find" value={query} onChange={event => { setQuery(event.target.value); setMatchIndex(0) }} onKeyDown={event => {
+        if (event.key === 'Enter') { event.preventDefault(); findStep(matchIndex + (event.shiftKey ? -1 : 1)) }
+        if (event.key === 'Escape' && query) { event.preventDefault(); event.stopPropagation(); setQuery('') }
+      }} />
+      {query.trim() && <><span>{matches.length ? `${matchIndex + 1} of ${matches.length}` : 'No matches'}</span><button type="button" aria-label="Previous" title="Previous match" disabled={!matches.length} onClick={() => findStep(matchIndex - 1)}>‹</button><button type="button" aria-label="Next" title="Next match" disabled={!matches.length} onClick={() => findStep(matchIndex + 1)}>›</button></>}
+    </div>
   </div>
   const tray = <>
     {(held.length > 0 || queued.length > 0 || preview) && <details className="conversation-context-tray" open><summary>Pending context · {held.length + queued.length + (thread?.outcomes?.length ?? 0)}</summary>
@@ -124,10 +136,10 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
     else { setDiscussion(null); jump(marker.message, 0, 0, 'start') }
   }
 
-  return { navigate, selection, target, toolbar, tray, overlay: overlay ? createPortal(overlay, document.querySelector('.app-shell') ?? document.body) : null, discussion: activeComment, discussionView, open, setReplyItem: focusReply, outgoing, previewId, sent: () => setPreviewId(crypto.randomUUID()), selectedCount: selectedComments.length + Object.keys(selectedReplies).length,
+  return { navigate, selection, target, tools, tray, latestResponse: latestResponse?.id, jumpToLatest: () => { setMenu(null); if (latestResponse) jump(latestResponse.id, 0, 0, 'start') }, overlay: overlay ? createPortal(overlay, document.querySelector('.app-shell') ?? document.body) : null, discussion: activeComment, discussionView, open, setReplyItem: focusReply, outgoing, previewId, sent: () => setPreviewId(crypto.randomUUID()), selectedCount: selectedComments.length + Object.keys(selectedReplies).length,
     select: (message: string, range: EditorSelection | null) => { if (range) setSelection(previous => previous?.message === message && previous.range.from === range.from && previous.range.to === range.to ? previous : { message, range }) },
     folds: (message: string): HeadingReference[] => { if (target?.message === message) return []; try { return JSON.parse(reading[`headings:${message}`] ?? '[]') } catch { return [] } },
     foldHeading: (message: string, heading: HeadingReference, folded: boolean) => { const previous: HeadingReference[] = JSON.parse(reading[`headings:${message}`] ?? '[]'); remember(`headings:${message}`, JSON.stringify([...previous.filter(value => JSON.stringify(value) !== JSON.stringify(heading)), ...(folded ? [heading] : [])])) },
-    onKeyDown: (event: React.KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.key === 'f') { event.preventDefault(); event.stopPropagation(); setMenu('find') } },
+    onKeyDown: (event: React.KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.key === 'f') { event.preventDefault(); event.stopPropagation(); findField.current?.focus(); findField.current?.select() } },
   }
 }

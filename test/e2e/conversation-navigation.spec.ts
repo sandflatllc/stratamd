@@ -37,7 +37,6 @@ for (const placement of ['center', 'side'] as const) test(`conversation markers 
     await expect(panel.locator('.turn-checklist').getByText(notes[0]!)).toHaveCount(0)
     if (placement === 'center') await expect(page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents', exact: true })).toHaveCount(0)
     await expect(panel.getByRole('button', { name: 'Contents', exact: true })).toHaveCount(0)
-    await panel.getByRole('button', { name: 'Latest response', exact: true }).click()
     await page.mouse.move(1300, 90)
     await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-strip.png`) })
     const third = navigator.locator(`[data-marker-id="${ids[2]}"]`)

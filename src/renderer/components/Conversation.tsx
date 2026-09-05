@@ -126,6 +126,16 @@ interface ConversationProps {
   onOpenDocument?(path: string): void
 }
 
+/** Where the conversation will land: an arrow toward it and a three-column window with that column filled. */
+function PlacementIcon({ target }: { target: 'side' | 'center' }) {
+  return <svg viewBox="0 0 30 14" aria-hidden="true">
+    {target === 'side' ? <path d="M9.5 7H1.5M4.5 4 1.5 7l3 3" /> : <path d="M1.5 7h8M6.5 4l3 3-3 3" />}
+    <rect x="13.5" y="1.5" width="15" height="11" rx="2" />
+    <path d="M18.5 1.5v11M23.5 1.5v11" />
+    <rect className="conversation-placement-fill" x={target === 'side' ? 13.5 : 18.5} y="1.5" width="5" height="11" />
+  </svg>
+}
+
 const workIcons = { terminal: '›_', search: '⌕', wrench: '⌘', hammer: '◆', bot: '◇', tone: '•' } as const
 
 function shouldCollapseUserMessage(text: string): boolean {
@@ -184,7 +194,33 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
 
   const panelRef = useRef<HTMLElement>(null)
   const history = useRef<ConversationHistory>(null)
-  const workspace = useConversationWorkspace(thread, onStart, () => history.current?.scrollToBottom(), panelRef)
+  const workspace = useConversationWorkspace(thread, onStart, panelRef)
+  /** Whether the reader sits at the bottom, and where the latest agent answer begins relative to the viewport. */
+  const [reading, setReading] = useState<{ atBottom: boolean; latest: 'above' | 'visible' | 'below' | null }>({ atBottom: true, latest: null })
+  const latestId = workspace.latestResponse
+  useEffect(() => {
+    const viewport = panelRef.current?.querySelector<HTMLElement>('.conversation-messages')
+    if (!viewport) return
+    let frame = 0
+    const update = () => {
+      const atBottom = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= 24
+      const row = latestId ? viewport.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(latestId)}"]`) : null
+      let latest: 'above' | 'visible' | 'below' | null = null
+      if (row) {
+        const top = row.getBoundingClientRect().top - viewport.getBoundingClientRect().top - Number.parseFloat(getComputedStyle(viewport).paddingTop)
+        latest = top < -2 ? 'above' : top > viewport.clientHeight - 40 ? 'below' : 'visible'
+      }
+      setReading((previous) => previous.atBottom === atBottom && previous.latest === latest ? previous : { atBottom, latest })
+    }
+    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update) }
+    const resize = new ResizeObserver(schedule)
+    resize.observe(viewport)
+    const column = viewport.querySelector('.conversation-column')
+    if (column) resize.observe(column)
+    viewport.addEventListener('scroll', schedule, { passive: true })
+    schedule()
+    return () => { cancelAnimationFrame(frame); resize.disconnect(); viewport.removeEventListener('scroll', schedule) }
+  }, [thread?.id, latestId, visible, engine.state])
   useEffect(() => {
     if (thread?.status !== 'running' && thread?.status !== 'starting') return
     const timer = window.setInterval(() => setNow(Date.now()), 1_000)
@@ -240,8 +276,11 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
   const revealedTurn = targetMessage ? targetMessage.turnId ?? 'thread' : null
   return <section ref={panelRef} className="conversation-panel" aria-label="Conversation" data-placement={placement} style={placement === 'center' ? { '--conversation-measure': `${documentMeasure}px` } as CSSProperties : undefined} onKeyDownCapture={workspace.onKeyDown}>
     <header>
-      <div className="conversation-title"><strong><span>{selected.project}</span><i aria-hidden="true">/</i>{thread.title}</strong>{running && <button type="button" className="stop-button" onClick={() => onStop(thread.id)}>Stop</button>}{onMove && <button type="button" onClick={onMove}>{placement === 'side' ? 'Open in center' : 'Move to side'}</button>}</div>
-      {workspace.toolbar}
+      <div className="conversation-title">
+        {onMove && <button type="button" className="conversation-placement" aria-label={placement === 'side' ? 'Open in center' : 'Move to side'} title={placement === 'side' ? 'Open in center' : 'Move to side'} onClick={onMove}><PlacementIcon target={placement === 'side' ? 'center' : 'side'} /></button>}
+        <strong><span>{selected.project}</span><i aria-hidden="true">/</i>{thread.title}</strong>
+        {workspace.tools}
+      </div>
     </header>
     {passage && <div className="conversation-passage">{passage}</div>}
     <div className="conversation-reading-area">
@@ -297,8 +336,10 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
     </ConversationHistory>
     {visible && workspace.discussionView}
     {visible && <ConversationNavigator key={thread.id} thread={thread} onJump={workspace.navigate} />}
+    {visible && reading.latest && reading.latest !== 'visible' && <button type="button" className="conversation-latest" data-direction={reading.latest === 'above' ? 'up' : 'down'} aria-label="Latest response" title="Read the latest response from its start" onClick={workspace.jumpToLatest}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 7.5 6 3.5l4 4" /></svg></button>}
+    {visible && !reading.atBottom && <button type="button" className="conversation-newest" aria-label="Newest" title="Jump to the newest message" onClick={() => history.current?.scrollToBottom()}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4.5 6 8.5l4-4" /></svg></button>}
     </div>
     {visible && workspace.overlay}
-    <ConversationComposer deliveryId={workspace.previewId} key={`composer:${thread.id}`} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} context={<div className="conversation-context">{placement === 'side' && onDocumentContext && <button type="button" onClick={onDocumentContext}>Document context</button>}{workspace.tray}</div>} queuedCount={workspace.selectedCount} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} onSend={async input => { await onStart(thread.id, { ...input, ...workspace.outgoing }); workspace.sent() }} />
+    <ConversationComposer deliveryId={workspace.previewId} key={`composer:${thread.id}`} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} context={<div className="conversation-context">{placement === 'side' && onDocumentContext && <button type="button" onClick={onDocumentContext}>Document context</button>}{workspace.tray}</div>} queuedCount={workspace.selectedCount} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} running={running} onStop={() => onStop(thread.id)} onSend={async input => { await onStart(thread.id, { ...input, ...workspace.outgoing }); workspace.sent() }} />
   </section>
 }

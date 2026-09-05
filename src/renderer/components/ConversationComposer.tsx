@@ -24,10 +24,13 @@ export interface ConversationComposerProps {
   canSendContext?: boolean
   workspace?: string
   branch?: string | null
+  /** While the agent works, the Send button becomes Stop, as in T3. Enter still sends. */
+  running?: boolean
+  onStop?(): void
   onSend(input: ConversationInput): Promise<void>
 }
 
-export function ConversationComposer({ deliveryId, engine, thread, projectId, draftKey, initial, centered = false, queuedCount = 0, context, canSendContext = false, workspace, branch, onSend }: ConversationComposerProps) {
+export function ConversationComposer({ deliveryId, engine, thread, projectId, draftKey, initial, centered = false, queuedCount = 0, context, canSendContext = false, workspace, branch, running = false, onStop, onSend }: ConversationComposerProps) {
   const [draft] = useState(() => readDraft(draftKey))
   const [text, setText] = useState(draft.text)
   const [attachment, setAttachment] = useState(draft.attachment)
@@ -133,7 +136,9 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
           const file = event.target.files?.[0]; event.target.value = ''; if (!file) return
           if (file.size > 2 * 1024 * 1024) { setError(`File ${file.name} exceeds the 2 MB attachment limit.`); return }
           try { const next = { name: file.name, text: await file.text() }; setAttachment(next); persist(text, selection, next) } catch { setError(`Could not read ${file.name}.`) }
-        }} /><button type="button" aria-label="Attach file" disabled={busy || canSendContext} onClick={() => fileInput.current?.click()}>＋</button><button className="chat-send" type="submit" aria-label="Send" disabled={busy || !valid || (!text.trim() && !attachment && !queuedCount && !canSendContext)}>{busy ? '…' : '↑'}</button></div>
+        }} /><button type="button" aria-label="Attach file" disabled={busy || canSendContext} onClick={() => fileInput.current?.click()}>＋</button>{running && !busy && onStop
+          ? <button className="chat-send chat-stop" type="button" aria-label="Stop" title="Stop the agent" onClick={onStop}><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7" rx="1.5" /></svg></button>
+          : <button className="chat-send" type="submit" aria-label="Send" disabled={busy || !valid || (!text.trim() && !attachment && !queuedCount && !canSendContext)}>{busy ? '…' : '↑'}</button>}</div>
       </div>
     </div>
     {(workspace || branch) && <div className="chat-workspace"><span title={workspace}>▱ Current checkout{workspace && <small>{workspace}</small>}</span>{branch && <span>{branch}</span>}</div>}
