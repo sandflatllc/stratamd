@@ -5,6 +5,8 @@ import { Readable, Writable } from 'node:stream'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AGENT_HELP } from '../../src/cli/agent-help.js'
 import { runCli, type CliRuntime } from '../../src/cli/commands.js'
+import { parseStrataBlock } from '../../src/core/blocks.js'
+import { parseMarkdown } from '../../src/core/markdown/index.js'
 
 const temporaryDirectories: string[] = []
 
@@ -36,17 +38,34 @@ async function environment() {
 }
 
 describe('agent contract', () => {
-  it('prints PRD section 7 and the bundled skill word for word', async () => {
+  it('prints PRD section 7 word for word', async () => {
     const prd = await readFile(join(process.cwd(), 'docs/PRD.md'), 'utf8')
     const contract = prd.match(/## 7\. Agent contract[\s\S]*?\`\`\`\`\n([\s\S]*?)\n\`\`\`\`/)?.[1]
     expect(contract).toBe(AGENT_HELP)
-    const skill = await readFile(join(process.cwd(), 'skills/stratamd/SKILL.md'), 'utf8')
-    expect(skill.split('# StrataMD\n\n')[1]?.trim()).toBe(AGENT_HELP)
-
     const io = capture()
     expect(await runCli(['--agent-help'], io.runtime)).toBe(0)
     expect(io.stdout()).toBe(`${AGENT_HELP}\n`)
     expect(io.stderr()).toBe('')
+  })
+
+  it('ships valid skill action examples covering every contract verb', async () => {
+    const skill = await readFile(join(process.cwd(), 'skills/stratamd/SKILL.md'), 'utf8')
+    const examples = parseMarkdown(skill).ast.children.filter((node) => node.type === 'code' && node.lang === 'strata')
+    expect(examples.length).toBeGreaterThan(0)
+    const verbs = new Set<string>()
+    for (const example of examples) {
+      if (example.type !== 'code') continue
+      const parsed = parseStrataBlock(`\`\`\`strata\n${example.value}\n\`\`\``)
+      expect(parsed).not.toBeNull()
+      for (const result of parsed!.results) {
+        expect(result.error).toBeUndefined()
+        expect(result.entry).toBeDefined()
+        verbs.add(result.entry!.verb)
+      }
+    }
+    const contractVerbs = /Available verbs are ([^.]+)\./.exec(AGENT_HELP)?.[1]
+    expect(contractVerbs).toBeDefined()
+    expect([...verbs].sort()).toEqual(contractVerbs!.replace(', and ', ', ').split(', ').sort())
   })
 
   it('documents only the four file-only jobs', async () => {

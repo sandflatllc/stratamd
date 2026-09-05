@@ -27,7 +27,7 @@ Unit and integration tests load `native/unix-support/build/Release/unix_support.
 ## Rules that tests enforce
 
 - `stratamd --agent-help` prints PRD §7 verbatim. `docs/PRD.md` §7, `src/cli/agent-help.ts`, and the relevant rows of `docs/PRD_CONFORMANCE.md` change together; `test/unit/cli.test.ts` fails when §7 and `agent-help.ts` drift.
-- The skill agents install is `skills/stratamd/SKILL.md`; `stratamd setup --skill` copies it. Edit the source, never a harness's installed copy.
+- `skills/` holds independent distribution copies of the collaboration skill, the optional review skill, and suggested global instructions. `stratamd setup --skill` explicitly installs `skills/stratamd/`, including its component reference. Repository work changes distribution files only. The owner's active skills remain canonical under `~/.agents/skills/` with harness symlinks, and may differ from the distribution. Never link distribution files to the owner's canonical directories or automatically synchronize them. Updating the owner's installation requires an explicit owner request.
 - Save is byte-preserving: untouched blocks are written from their original bytes. Serializer changes need a corpus round-trip test.
 - CLI errors are `CommandFailure(message, exitCode, CODE, detail)` with SCREAMING_CASE codes and exit codes 1 usage, 2 not found, 3 refused by the document's state, 4 app unreachable. Every command prints one JSON object on stdout; notices go to stderr.
 

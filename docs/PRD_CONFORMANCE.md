@@ -72,7 +72,7 @@ Scenarios the cockpit retired, with the plan line that removed them: killing the
 
 ## Removals audit (2026-09-04)
 
-The bundled skill and agent help describe the T3 attachment workflow. Retired attach-loop terms remain in historical explanations; they are not executable instructions. `test/unit/cli.test.ts` checks the current contract against PRD §7 and the bundled skill.
+The bundled skill and agent help describe the T3 attachment workflow. Retired attach-loop terms remain in historical explanations; they are not executable instructions. `test/unit/cli.test.ts` checks CLI help against PRD §7 verbatim and parses the bundled skill's action examples against the schema, covering every documented verb. `test/unit/components.test.ts` validates the companion reference's examples for all nine registered components. `test/unit/setup.test.ts` checks that setup installs the reference with the skill.
 
 ## Release use
 

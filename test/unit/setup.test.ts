@@ -57,9 +57,12 @@ describe('setup --skill', () => {
       status: 'installed'
     })
     expect(first.skill?.files).toContain('SKILL.md')
+    expect(first.skill?.files).toContain('COMPONENTS.md')
     expect(first.skill?.resolved).toBeUndefined()
     expect(first.hint).toBeUndefined()
     expect(await readFile(installed, 'utf8')).toBe(source)
+    expect(await readFile(join(dirname(installed), 'COMPONENTS.md'), 'utf8'))
+      .toBe(await readFile(join(dirname(skillSource), 'COMPONENTS.md'), 'utf8'))
 
     const second = await setup({ ...linuxOptions(home), skill: 'claude' })
     expect(second.skill?.status).toBe('unchanged')

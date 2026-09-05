@@ -35,7 +35,6 @@ describe('registered component tags', () => {
   it('does not activate component examples inside fences or lists', () => {
     const skill = readFileSync(resolve('skills/stratamd/SKILL.md'), 'utf8')
     const skillNodes = parseMarkdown(skill).ast.children
-    expect(skillNodes.filter((node) => node.type === 'code')).toHaveLength(3)
     expect(skillNodes.filter((node) => (node as { type: string }).type === 'mdxJsxFlowElement')).toHaveLength(0)
 
     const list = '- first\n  <Callout>\n  Kept as text.\n  </Callout>\n- second\n'
@@ -45,6 +44,24 @@ describe('registered component tags', () => {
 
     const fenced = '~~~~\n<Callout>\n```\n</Callout>\n~~~~\n'
     expect(parseMarkdown(fenced).ast.children).toEqual([expect.objectContaining({ type: 'code' })])
+  })
+
+  it('ships a valid reference example for every registered component', () => {
+    const reference = readFileSync(resolve('skills/stratamd/COMPONENTS.md'), 'utf8')
+    const nodes = parseMarkdown(reference).ast.children
+    expect(nodes.filter((node) => (node as { type: string }).type === 'mdxJsxFlowElement')).toHaveLength(0)
+    const names: string[] = []
+    for (const node of nodes) {
+      if (node.type !== 'code' || node.lang !== 'md') continue
+      const report = validateComponentMarkdown(node.value)
+      expect(report.problems, node.value).toEqual([])
+      expect(report.valid).toBe(true)
+      const parsed = parseMarkdownForEditor(node.value)
+      expect(parsed.doc.childCount).toBe(1)
+      expect(parsed.doc.firstChild?.type).toBe(strataSchema.nodes.component_block)
+      names.push(String(parsed.doc.firstChild?.attrs.name))
+    }
+    expect(names.sort()).toEqual([...COMPONENT_NAMES].sort())
   })
 
   it('validates with the same bounded parser used by the app', () => {

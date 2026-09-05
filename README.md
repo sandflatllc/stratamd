@@ -204,7 +204,9 @@ Or hand it to an agent: give it this repository's URL and say "install StrataMD 
 | `agents` | `~/.agents/skills/stratamd` (the shared directory some harnesses read) |
 | a directory | `<directory>/stratamd` |
 
-If the target is a symlink, setup writes through it and leaves the link alone. A harness with no skills directory can use one line in its instructions instead: "StrataMD is the user's markdown editor. When the user mentions a document open in Strata, run `stratamd --agent-help` first."
+If the target is a symlink, setup writes through it and leaves the link alone. The installed collaboration skill includes `COMPONENTS.md`, a reference with validated examples of all nine rendering components.
+
+The optional [plan-for-review skill](skills/plan-for-review/SKILL.md) prepares material a person intends to evaluate. The [suggested global instruction block](skills/GLOBAL_INSTRUCTIONS.md) describes rendering capabilities without invoking document attachment. These are opt-in additions; setup does not install them or edit global instructions. See [agent instruction installation](skills/README.md) for their locations and how to keep a personal installation independent of the repository.
 
 ### Updating
 

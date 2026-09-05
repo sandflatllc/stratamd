@@ -333,7 +333,7 @@ Each must hold before the product is done. `docs/PRD_CONFORMANCE.md` names the t
 
 ## 7. Agent contract
 
-This is the complete one-page contract for agents working through T3 threads. It ships verbatim as `stratamd --agent-help`; the bundled skill at `skills/stratamd/SKILL.md` contains the same contract.
+This is the complete one-page contract for agents working through T3 threads. It ships verbatim as `stratamd --agent-help`. The bundled skill at `skills/stratamd/SKILL.md` explains the workflow and provides action examples validated against the contract. Its companion `COMPONENTS.md` provides parser-validated rendering examples. The optional `skills/plan-for-review/` skill and `skills/GLOBAL_INSTRUCTIONS.md` rendering notice are distributed separately; setup does not install them or modify global instructions.
 
 ````
 StrataMD is the user's Markdown cockpit. T3 runs your thread and delivers the owner's document round as a Markdown file attachment. Read that delivery before responding.
