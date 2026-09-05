@@ -170,6 +170,18 @@ function sessionApplied<T extends { session: ShellThread['session']; latestTurn:
   return { ...thread, session, latestTurn, updatedAt: occurredAt }
 }
 
+/** T3's latest turn as the conversation folds it: id, lifecycle state, and both stamps when it has them (§6.9). */
+function turnView(latestTurn: Record<string, unknown> | null): import('../../shared/contracts').EngineTurnView | null {
+  if (typeof latestTurn?.turnId !== 'string') return null
+  const state = latestTurn.state
+  return {
+    id: latestTurn.turnId,
+    state: state === 'running' || state === 'interrupted' || state === 'error' ? state : 'completed',
+    startedAt: typeof latestTurn.startedAt === 'string' ? latestTurn.startedAt : typeof latestTurn.requestedAt === 'string' ? latestTurn.requestedAt : null,
+    completedAt: typeof latestTurn.completedAt === 'string' ? latestTurn.completedAt : null,
+  }
+}
+
 function cleanServer(value: string): string {
   const url = new URL(value)
   if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('The engine address must use http or https')
@@ -304,6 +316,7 @@ export class T3EngineClient implements EngineReadClient {
           turnId: message.turnId,
           streaming: message.streaming,
           createdAt: message.createdAt,
+          updatedAt: message.updatedAt,
           attachmentCount: message.attachments?.length ?? 0,
           ...(!message.streaming && message.role === 'assistant' ? (() => { let cached = this.#messageCache.get(message.id); if (!cached || cached.text !== message.text) { const prose = parseStrataBlock(message.text)?.prose ?? message.text; cached = { text: message.text, prose, blocks: mapMarkdownBlocks(`message:${message.id}`, prose).blocks }; this.#messageCache.set(message.id, cached) } return { prose: cached.prose, blocks: cached.blocks } })() : {}),
         })) : []
@@ -351,6 +364,7 @@ export class T3EngineClient implements EngineReadClient {
           turnStartedAt: typeof latestTurn?.startedAt === 'string'
             ? latestTurn.startedAt
             : typeof latestTurn?.requestedAt === 'string' ? latestTurn.requestedAt : null,
+          latestTurn: turnView(latestTurn),
           messages,
           activities,
           comments: this.#conversations.threads[thread.id]?.comments ?? [],

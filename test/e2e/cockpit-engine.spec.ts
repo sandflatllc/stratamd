@@ -327,9 +327,13 @@ test('cockpit parity: Conversation keeps prose visible and groups finished and l
 
     await expect(conversation).toContainText('First finished answer stays fully visible in the narrow placement.')
     await expect(conversation).toContainText('Second finished answer also stays visible.')
-    await expect(conversation.locator('.conversation-work-toggle')).toHaveCount(2)
-    const commandWork = conversation.getByRole('button', { name: /^Worked for \d+s/ }).first()
-    await expect(commandWork).toHaveAttribute('title', 'Ran 1 command')
+    // Each finished turn folds to one Worked for disclosure; its call groups appear only once the turn is open.
+    await expect(conversation.locator('.conversation-turn-toggle')).toHaveCount(2)
+    await expect(conversation.locator('.conversation-work-toggle')).toHaveCount(0)
+    const finishedTurn = conversation.getByRole('button', { name: /^Worked for [\d.]+s/ }).first()
+    await expect(finishedTurn).toHaveAttribute('aria-expanded', 'false')
+    await finishedTurn.click()
+    const commandWork = conversation.locator('.conversation-work-toggle').filter({ hasText: 'Ran 1 command' })
     await expect(commandWork).toHaveAttribute('aria-expanded', 'false')
     await commandWork.click()
     const finishedEntry = conversation.locator('.conversation-work-entry').filter({ hasText: 'Ran pnpm' })

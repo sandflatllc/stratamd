@@ -88,6 +88,8 @@ export interface FakeEngine {
   setWorkspaceRoot(value: string): void
   setProviders(value: unknown[]): void
   finish(): void
+  /** The live turn in `t1` completes normally: T3 reports the session idle and the turn completed with both stamps. */
+  complete(): void
   /**
    * The agent replies in a thread with a completed assistant message and the
    * transcript streams to the app (§5.9). A strata block in `text` is what
@@ -113,6 +115,10 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   const tokenRequests: string[] = []
   let message = 'Read-side conversation from T3.'
   let status: 'running' | 'stopped' = 'running'
+  /** How the live turn ended and when; T3 stamps `completedAt` as the session leaves `running`. */
+  let outcome: 'interrupted' | 'completed' = 'interrupted'
+  let stoppedAt: string | null = null
+  const stop = (how: 'interrupted' | 'completed' = 'interrupted') => { status = 'stopped'; outcome = how; stoppedAt = new Date().toISOString() }
   let approvalOpen = options.pendingRequests ?? true
   let inputOpen = options.pendingRequests ?? true
   let sequence = 2
@@ -156,7 +162,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     ],
     threads: ([
       ...createdThreads.map(shellThread),
-      { id: 't1', projectId: 'p1', title: 'Live engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: { turnId: 'turn-1', state: status === 'running' ? 'running' : 'interrupted', requestedAt: options.conversationParity ? liveAt : at, startedAt: options.conversationParity ? liveAt : at, completedAt: null, assistantMessageId: 'm1' }, createdAt: at, updatedAt: at, session: { threadId: 't1', status, providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: approvalOpen, hasPendingUserInput: inputOpen, hasActionableProposedPlan: false },
+      { id: 't1', projectId: 'p1', title: 'Live engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: { turnId: 'turn-1', state: status === 'running' ? 'running' : outcome, requestedAt: options.conversationParity ? liveAt : at, startedAt: options.conversationParity ? liveAt : at, completedAt: status === 'running' ? null : stoppedAt, assistantMessageId: 'm1' }, createdAt: at, updatedAt: at, session: { threadId: 't1', status: status === 'stopped' && outcome === 'completed' ? 'idle' : status, providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: approvalOpen, hasPendingUserInput: inputOpen, hasActionableProposedPlan: false },
       { id: 't2', projectId: 'p1', title: 'Second engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: null, createdAt: at, updatedAt: at, session: { threadId: 't2', status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false },
       ...(options.projectsParity ? [
         { id: 't3', projectId: 'p1', title: 'Settled engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: null, createdAt: at, updatedAt: '2026-09-02T12:00:00.000Z', session: { threadId: 't3', status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false },
@@ -198,13 +204,14 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       { id: 'old-user-1', role: 'user', text: 'Inspect the timeline.', attachments: [], turnId: 'turn-old-1', streaming: false, createdAt: '2026-09-03T09:00:00.000Z', updatedAt: '2026-09-03T09:00:00.000Z' },
       { id: 'old-agent-1', role: 'assistant', text: 'First finished answer stays fully visible in the narrow placement.', attachments: [], turnId: 'turn-old-1', streaming: false, createdAt: '2026-09-03T09:00:04.000Z', updatedAt: '2026-09-03T09:00:04.000Z' },
       { id: 'old-user-2', role: 'user', text: 'Check the grouping.', attachments: [], turnId: 'turn-old-2', streaming: false, createdAt: '2026-09-03T10:00:00.000Z', updatedAt: '2026-09-03T10:00:00.000Z' },
+      { id: 'old-agent-2-progress', role: 'assistant', text: 'Checking the grouping order first.', attachments: [], turnId: 'turn-old-2', streaming: false, createdAt: '2026-09-03T10:00:01.500Z', updatedAt: '2026-09-03T10:00:01.500Z' },
       { id: 'old-agent-2', role: 'assistant', text: 'Second finished answer also stays visible.', attachments: [], turnId: 'turn-old-2', streaming: false, createdAt: '2026-09-03T10:00:04.000Z', updatedAt: '2026-09-03T10:00:04.000Z' },
       { id: 'live-user', role: 'user', text: 'Run the build.', attachments: [], turnId: 'turn-1', streaming: false, createdAt: at, updatedAt: at },
       { id: messageId, role: 'assistant', text: message, attachments: [], turnId: 'turn-1', streaming: status === 'running', createdAt: at, updatedAt: at },
       ...sentMessages(threadId, 'turn-1', false),
       ...postedMessages(threadId),
     ] : null
-    return { snapshotSequence: sequence, thread: { id: threadId, projectId: threadId === 't4' ? 'p2' : 'p1', title: threadTitle, modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: threadId === 't1' ? { turnId: 'turn-1', state: status === 'running' ? 'running' : 'interrupted', requestedAt: options.conversationParity ? liveAt : at, startedAt: options.conversationParity ? liveAt : at, completedAt: null, assistantMessageId: messageId } : null, createdAt: at, updatedAt: at, session: { threadId, status: threadId === 't1' ? status : 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: threadId === 't1' && status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, deletedAt: null, messages: parityMessages ?? (threadId === 't1' ? [...longMessages, ...sentMessages('t1', 'turn-1', false), { id: messageId, role: 'assistant', text: message, attachments: [], turnId: 'turn-1', streaming: status === 'running', createdAt: at, updatedAt: at }, ...postedMessages('t1')] : [...sentMessages(threadId, 'turn-1', false), ...postedMessages(threadId)]), activities: threadId === 't1' ? activities : [], checkpoints: threadId === 't1' ? [{ turnId: 'turn-1', checkpointTurnCount: 1, checkpointRef: 'ref', status: 'ready', files: [{ path: 'notes/one.md', kind: 'created', additions: 4, deletions: 0 }, { path: 'src/two.ts', kind: 'created', additions: 8, deletions: 0 }], assistantMessageId: messageId, completedAt: at }] : [] }, page }
+    return { snapshotSequence: sequence, thread: { id: threadId, projectId: threadId === 't4' ? 'p2' : 'p1', title: threadTitle, modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: threadId === 't1' ? { turnId: 'turn-1', state: status === 'running' ? 'running' : outcome, requestedAt: options.conversationParity ? liveAt : at, startedAt: options.conversationParity ? liveAt : at, completedAt: status === 'running' ? null : stoppedAt, assistantMessageId: messageId } : null, createdAt: at, updatedAt: at, session: { threadId, status: threadId === 't1' ? (status === 'stopped' && outcome === 'completed' ? 'idle' : status) : 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: threadId === 't1' && status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, deletedAt: null, messages: parityMessages ?? (threadId === 't1' ? [...longMessages, ...sentMessages('t1', 'turn-1', false), { id: messageId, role: 'assistant', text: message, attachments: [], turnId: 'turn-1', streaming: status === 'running', createdAt: at, updatedAt: at }, ...postedMessages('t1')] : [...sentMessages(threadId, 'turn-1', false), ...postedMessages(threadId)]), activities: threadId === 't1' ? activities : [], checkpoints: threadId === 't1' ? [{ turnId: 'turn-1', checkpointTurnCount: 1, checkpointRef: 'ref', status: 'ready', files: [{ path: 'notes/one.md', kind: 'created', additions: 4, deletions: 0 }, { path: 'src/two.ts', kind: 'created', additions: 8, deletions: 0 }], assistantMessageId: messageId, completedAt: at }] : [] }, page }
   }
 
   const send = (socket: Socket, frame: unknown) => { if (!socket.destroyed) socket.write(textFrame(JSON.stringify(frame))) }
@@ -270,7 +277,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
         if (command.type === 'thread.turn.start' && rejectNextTurn) { rejectNextTurn = false; response.statusCode = 400; response.end(JSON.stringify({ error: 'Test refusal' })); return }
         commands.push(command)
         if (command.type === 'thread.turn.start') status = 'running'
-        if (command.type === 'thread.turn.interrupt') status = 'stopped'
+        if (command.type === 'thread.turn.interrupt') stop()
         if (command.type === 'thread.approval.respond') approvalOpen = false
         if (command.type === 'thread.user-input.respond') inputOpen = false
         if (command.type === 'thread.create') createdThreads.push({ id: String(command.threadId), projectId: String(command.projectId), title: String(command.title), modelSelection: command.modelSelection, runtimeMode: String(command.runtimeMode) })
@@ -355,12 +362,13 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     setWorkspaceRoot: (value) => { workspaceRoot = value; broadcast() },
     failNextTurn: () => { rejectNextTurn = true },
     setProviders: (value) => { providers = value; broadcast() },
-    finish: () => { status = 'stopped'; broadcast() },
+    finish: () => { stop(); broadcast() },
+    complete: () => { stop('completed'); broadcast() },
     postAssistant: (threadId, text) => {
       postedCount += 1
       const id = `posted-${postedCount}`
       posted.set(threadId, [...postedMessages(threadId), { id, role: 'assistant', text, attachments: [], turnId: `turn-posted-${postedCount}`, streaming: false, createdAt: at, updatedAt: at }])
-      if (threadId === 't1') status = 'stopped'
+      if (threadId === 't1') stop()
       broadcast()
       return id
     },

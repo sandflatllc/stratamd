@@ -7,7 +7,7 @@ const now = Date.parse('2026-09-04T12:00:00.000Z')
 function thread(id: string, overrides: Partial<EngineThreadView> = {}): EngineThreadView {
   return {
     id, projectId: 'p1', title: id, model: 'gpt-5.6', providerInstanceId: 'codex', effort: null, access: 'full-access', status: 'idle',
-    updatedAt: '2026-09-04T10:00:00.000Z', unread: false, pendingApprovals: false, pendingUserInput: false, activeTurnId: null, turnStartedAt: null,
+    updatedAt: '2026-09-04T10:00:00.000Z', unread: false, pendingApprovals: false, pendingUserInput: false, activeTurnId: null, turnStartedAt: null, latestTurn: null,
     messages: [], activities: [], items: [], documents: [], pinnedAt: null, snoozedUntil: null, lifecycle: 'active', archived: false, attention: 0, pendingWork: 0,
     ...overrides,
   }

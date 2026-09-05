@@ -1509,11 +1509,18 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .conversation-file-dir { min-width: 0; flex: 1; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; font-size: calc(11px * var(--zoom, 1)); }
 .conversation-file-row .conversation-delta { flex: none; margin-left: auto; }
 .conversation-work-group, .conversation-live-work { margin: 0 8px 10px; }
-.conversation-work-group { border-bottom: 1px solid var(--line); }
-.conversation-work-toggle { display: flex; width: 100%; min-height: 30px; align-items: center; gap: 6px; border: 0; border-radius: 6px 6px 0 0; padding: 3px 5px; background: none; color: var(--muted); cursor: pointer; text-align: left; }
-.conversation-work-toggle:hover { background: color-mix(in srgb, var(--card-2) 55%, transparent); }
+/* The turn's one disclosure: the whole stretch of work between the owner's message and the answer, with a line beneath separating them. */
+.conversation-turn-fold { margin: 0 8px 12px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+.conversation-turn-toggle { display: flex; width: 100%; min-height: 30px; align-items: center; gap: 6px; border: 0; border-radius: 6px; padding: 3px 5px; background: none; color: var(--muted); cursor: pointer; text-align: left; font-variant-numeric: tabular-nums; }
+.conversation-turn-toggle:hover { color: var(--text); background: color-mix(in srgb, var(--card-2) 55%, transparent); }
+.conversation-turn-toggle > .conversation-work-chevron { flex: 1; text-align: left; }
+.conversation-turn-toggle > b, .conversation-work-toggle > b { color: var(--controls-danger); }
+.conversation-turn-fold[data-interrupted] .conversation-turn-toggle { color: var(--dim); }
+/* Rows an open turn restores: intermediate prose and compact call groups, quieter than the answer. */
+.conversation-message[data-turn-trace] { color: var(--dim); }
+.conversation-work-toggle { display: flex; width: 100%; min-height: 28px; align-items: center; gap: 6px; border: 0; border-radius: 6px; padding: 3px 5px; background: none; color: var(--muted); cursor: pointer; text-align: left; font-size: calc(12px * var(--zoom, 1)); }
+.conversation-work-toggle:hover { color: var(--text); background: color-mix(in srgb, var(--card-2) 55%, transparent); }
 .conversation-work-toggle > .conversation-work-chevron { flex: 1; text-align: left; }
-.conversation-work-toggle > b { color: var(--controls-danger); }
 .conversation-work-list { display: grid; gap: 2px; margin-left: 16px; border-left: 1px solid var(--line); padding-left: 4px; }
 .conversation-work-entry { min-width: 0; }
 .conversation-work-entry > button { display: flex; width: 100%; min-width: 0; align-items: center; gap: 8px; border: 0; padding: 5px 7px; background: none; color: inherit; cursor: pointer; text-align: left; }

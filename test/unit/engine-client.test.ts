@@ -69,6 +69,30 @@ describe('T3 engine read client', () => {
     await client.shutdown()
   })
 
+  it('passes message update times and the latest turn stamps through for turn folds', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'strata-engine-turn-'))
+    const server = liveServer()
+    const snapshot = shell('Timed', 'idle', { latestTurn: { turnId: 'turn-1', state: 'interrupted', requestedAt: at, startedAt: '2026-09-03T12:00:01.000Z', completedAt: '2026-09-03T12:00:48.000Z', assistantMessageId: 'm1' } })
+    const page = detail()
+    page.thread.messages[0]!.updatedAt = '2026-09-03T12:00:46.000Z'
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+      if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(snapshot)
+      return Response.json(page)
+    }) as typeof globalThis.fetch
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
+    await client.pair('http://engine.test', 'code')
+    await client.openThread('t1')
+    const thread = () => client.view().projects[0]!.threads[0]!
+    await vi.waitFor(() => expect(thread().messages).toHaveLength(1))
+    expect(thread().latestTurn).toEqual({ id: 'turn-1', state: 'interrupted', startedAt: '2026-09-03T12:00:01.000Z', completedAt: '2026-09-03T12:00:48.000Z' })
+    expect(thread().turnStartedAt).toBe('2026-09-03T12:00:01.000Z')
+    expect(thread().messages[0]).toMatchObject({ id: 'm1', createdAt: at, updatedAt: '2026-09-03T12:00:46.000Z' })
+    await client.shutdown()
+  })
+
   it('projects markdown and code files from completed turn diffs without opening them', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'strata-engine-files-'))
     const server = liveServer()

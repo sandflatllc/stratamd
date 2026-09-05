@@ -1,9 +1,9 @@
 import { ConversationMessage } from './ConversationMessage'
 import { useConversationWorkspace } from './ConversationWorkspace'
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { EngineActivityView, EngineThreadView, EngineView, ItemView } from '../../shared/contracts'
 import { changedFilesLabel, formatDelta, summarizeChangedFiles, type ChangedFileInput, type ChangedFileView } from '../../core/changed-files'
-import { deriveWorkEntries, groupWorkRows, type WorkEntry, type WorkGroupRow } from '../../core/work-log'
+import { deriveTurnFold, deriveWorkEntries, groupWorkRows, turnRows, type WorkEntry, type WorkGroupRow } from '../../core/work-log'
 import { ConversationComposer } from './ConversationComposer'
 import { ConversationHistory } from './ConversationHistory'
 import { ConversationNavigator } from './ConversationNavigator'
@@ -69,11 +69,6 @@ function elapsed(startedAt: string | null, now: number): string {
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
 }
 
-/** How long a finished work group ran: from its first call to the answer that followed it, or to its last call when nothing followed. */
-function workDuration(group: WorkGroupRow, endedAt: string | undefined): string {
-  return elapsed(group.createdAt, Date.parse(endedAt ?? group.entries.at(-1)?.createdAt ?? group.createdAt))
-}
-
 function openRequests(activities: EngineActivityView[], kind: 'approval' | 'user-input'): EngineActivityView[] {
   const open = new Map<string, EngineActivityView>()
   for (const activity of activities) {
@@ -137,6 +132,17 @@ function shouldCollapseUserMessage(text: string): boolean {
   return text.length > 420 || text.split('\n').length > 7
 }
 
+/** A stretch of calls between prose: one summary line, its rows on request. Inside an open turn there is no second Worked for row. */
+function WorkGroup({ group, expanded, onToggle }: { group: WorkGroupRow; expanded: boolean; onToggle(): void }) {
+  return <div className="conversation-work-group" data-history-row>
+    <button type="button" className="conversation-work-toggle" aria-expanded={expanded} onClick={onToggle}>
+      <span className="conversation-work-icon" aria-hidden="true">{workIcons[group.summaryIcon]}</span>
+      <span>{group.summary}</span><span className="conversation-work-chevron" aria-hidden="true">{expanded ? '⌄' : '›'}</span>{group.hasFailure && <b aria-label="Failed">!</b>}
+    </button>
+    {expanded && <div className="conversation-work-list">{group.entries.map((entry) => <WorkEntryRow entry={entry} key={entry.id} />)}</div>}
+  </div>
+}
+
 function WorkEntryRow({ entry }: { entry: WorkEntry }) {
   const [expanded, setExpanded] = useState(false)
   return <article className="conversation-work-entry" data-tone={entry.failed ? 'error' : entry.tone} data-icon={entry.icon} data-active={entry.active || undefined}>
@@ -169,6 +175,9 @@ function TurnChecklist({ items, onReply, onOpen, onAct, onDismiss }: { items: re
 export function Conversation({ visible = true, onDocumentContext, documentMeasure = 860, onDocumentMeasure, engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput, items = [], onReplyItem, onQueueReply, onDismissItem, onOpenItem, onActItem, onOpenDocument }: ConversationProps) {
   const selected = activeThread(engine)
   const [expandedWork, setExpandedWork] = useState<Record<string, boolean>>({})
+  /** The owner's own turn disclosures. A navigation reveal is separate: it comes from the target and ends when the owner closes that turn. */
+  const [expandedTurns, setExpandedTurns] = useState<Record<string, boolean>>({})
+  const [dismissedReveal, setDismissedReveal] = useState<number | null>(null)
   const [expandedMessages, setExpandedMessages] = useState<Record<string, boolean>>({})
   const [now, setNow] = useState(Date.now())
   const thread = selected?.thread
@@ -181,6 +190,21 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
     const timer = window.setInterval(() => setNow(Date.now()), 1_000)
     return () => window.clearInterval(timer)
   }, [thread?.status])
+
+  // An in-session interrupt leaves its turn open so the reader keeps their place;
+  // the next turn folds it, and so does a reload, since this is component state.
+  const previousTurn = useRef(thread?.latestTurn ?? null)
+  useLayoutEffect(() => {
+    const previous = previousTurn.current
+    const latest = thread?.latestTurn ?? null
+    previousTurn.current = latest
+    if (!latest || !previous) return
+    if (latest.id === previous.id) {
+      if (previous.state === 'running' && latest.state === 'interrupted') setExpandedTurns((value) => ({ ...value, [latest.id]: true }))
+      return
+    }
+    setExpandedTurns((value) => { if (!(previous.id in value)) return value; const { [previous.id]: _closed, ...rest } = value; return rest })
+  }, [thread?.latestTurn])
 
   const approvals = useMemo(() => thread ? openRequests(thread.activities, 'approval') : [], [thread?.activities])
   const userInputs = useMemo(() => thread ? openRequests(thread.activities, 'user-input') : [], [thread?.activities])
@@ -196,7 +220,8 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
   const workEntries = useMemo(() => deriveWorkEntries(thread?.activities ?? []), [thread?.activities])
   const workGroups = useMemo(() => groupWorkRows(
     workEntries,
-    turns.map((turn) => ({ id: turn.id, running: Boolean(thread && (thread.status === 'running' || thread.status === 'starting') && (thread.activeTurnId === null || thread.activeTurnId === turn.id)), finished: thread?.activeTurnId !== turn.id })),
+    // Before T3 names the new turn, only the newest turn counts as running; older turns keep their folds.
+    turns.map((turn, index) => ({ id: turn.id, running: Boolean(thread && (thread.status === 'running' || thread.status === 'starting') && (thread.activeTurnId === turn.id || (thread.activeTurnId === null && index === turns.length - 1))), finished: thread?.activeTurnId !== turn.id })),
     thread?.messages ?? [],
   ), [workEntries, turns, thread?.status, thread?.activeTurnId, thread?.messages])
   const allItems = useMemo(() => thread ? [...items, ...(thread.items ?? []).filter(item => !isOwnerComment(item))] : [...items], [items, thread])
@@ -210,6 +235,9 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
   </section>
   if (!thread || !selected) return <div className="engine-empty">No conversation open.<small>Choose a thread under Projects.</small></div>
   const running = thread.status === 'running' || thread.status === 'starting'
+  // Find and comment markers reach into folded turns: the target's turn stays open for that navigation, apart from the owner's own disclosures.
+  const targetMessage = workspace.target && dismissedReveal !== workspace.target.serial ? thread.messages.find((message) => message.id === workspace.target?.message) : undefined
+  const revealedTurn = targetMessage ? targetMessage.turnId ?? 'thread' : null
   return <section ref={panelRef} className="conversation-panel" aria-label="Conversation" data-placement={placement} style={placement === 'center' ? { '--conversation-measure': `${documentMeasure}px` } as CSSProperties : undefined} onKeyDownCapture={workspace.onKeyDown}>
     <header>
       <div className="conversation-title"><strong><span>{selected.project}</span><i aria-hidden="true">/</i>{thread.title}</strong>{running && <button type="button" className="stop-button" onClick={() => onStop(thread.id)}>Stop</button>}{onMove && <button type="button" onClick={onMove}>{placement === 'side' ? 'Open in center' : 'Move to side'}</button>}</div>
@@ -222,36 +250,43 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
       <div className="conversation-column">
       {turns.map((turn) => {
         const groups = workGroups.filter((candidate) => candidate.turnId === turn.id)
-        const timeline = [
-          ...turn.messages.map((message) => ({ kind: 'message' as const, id: message.id, createdAt: message.createdAt, message })),
-          ...groups.map((group) => ({ kind: 'work' as const, id: group.id, createdAt: group.createdAt, group })),
-        ].sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+        const timeline = turnRows(turn.messages, groups)
+        const turnRunning = groups.some((group) => group.live) || (running && (thread.activeTurnId === turn.id || (thread.activeTurnId === null && turn.id === turns.at(-1)?.id)))
+        const fold = deriveTurnFold({ id: turn.id, messages: turn.messages, groups, running: turnRunning, latestTurn: thread.latestTurn ?? null })
+        const revealed = revealedTurn === turn.id
+        const open = fold === null || revealed || (expandedTurns[turn.id] ?? false)
+        const toggleTurn = () => {
+          setExpandedTurns((value) => ({ ...value, [turn.id]: !open }))
+          if (revealed && workspace.target) setDismissedReveal(workspace.target.serial)
+        }
         const lastAssistant = turn.messages.findLast((message) => message.role === 'assistant')?.id
         const changedFiles = thread.documents?.filter((file) => file.turnId === turn.id) ?? []
-        return <section className="conversation-turn" key={turn.id} data-running={groups.some((group) => group.live) || undefined}>
-          {timeline.map((row, rowIndex) => {
+        return <section className="conversation-turn" key={turn.id} data-running={turnRunning || undefined} data-folded={fold && !open ? '' : undefined}>
+          {timeline.map((row) => {
+            const foldRow = fold && row.id === fold.anchorId ? <div className="conversation-turn-fold" data-history-row data-interrupted={fold.interrupted || undefined}>
+              <button type="button" className="conversation-turn-toggle" aria-expanded={open} onClick={toggleTurn}>
+                <span>{fold.label}</span><span className="conversation-work-chevron" aria-hidden="true">{open ? '⌄' : '›'}</span>{fold.hasFailure && <b aria-label="Failed">!</b>}
+              </button>
+            </div> : null
+            const hidden = fold?.hiddenIds.includes(row.id) ?? false
+            if (hidden && !open) return <Fragment key={row.id}>{foldRow}</Fragment>
             if (row.kind === 'work') {
               const group = row.group
               const expanded = expandedWork[group.id] ?? !group.foldedByDefault
-              if (group.live) return <div className="conversation-live-work" data-history-row key={group.id}><div className="conversation-working-row"><span className="working-pulse" aria-hidden="true" />Working <time>{elapsed(thread.turnStartedAt, now)}</time></div>{group.entries.map((entry) => <WorkEntryRow entry={entry} key={entry.id} />)}{group.showThinking && <div className="conversation-thinking"><span aria-hidden="true" />Thinking</div>}</div>
-              return <div className="conversation-work-group" data-history-row key={group.id}>
-                <button type="button" className="conversation-work-toggle" title={group.summary} aria-expanded={expanded} onClick={() => setExpandedWork((value) => ({ ...value, [group.id]: !expanded }))}>
-                  <span>Worked for {workDuration(group, timeline[rowIndex + 1]?.createdAt)}</span><span className="conversation-work-chevron" aria-hidden="true">{expanded ? '⌄' : '›'}</span>{group.hasFailure && <b aria-label="Failed">!</b>}
-                </button>
-                {expanded && <div className="conversation-work-list">{group.entries.map((entry) => <WorkEntryRow entry={entry} key={entry.id} />)}</div>}
-              </div>
+              if (group.live) return <Fragment key={row.id}>{foldRow}<div className="conversation-live-work" data-history-row><div className="conversation-working-row"><span className="working-pulse" aria-hidden="true" />Working <time>{elapsed(thread.turnStartedAt, now)}</time></div>{group.entries.map((entry) => <WorkEntryRow entry={entry} key={entry.id} />)}{group.showThinking && <div className="conversation-thinking"><span aria-hidden="true" />Thinking</div>}</div></Fragment>
+              return <Fragment key={row.id}>{foldRow}<WorkGroup group={group} expanded={expanded} onToggle={() => setExpandedWork((value) => ({ ...value, [group.id]: !expanded }))} /></Fragment>
             }
             const message = row.message
             const prose = message.prose ?? message.text
             const blocks = message.blocks ?? []
             const longUserMessage = message.role === 'user' && shouldCollapseUserMessage(prose)
             const messageExpanded = expandedMessages[message.id] ?? false
-            return <article className={`conversation-message ${message.role}`} key={message.id} data-history-row data-message-id={message.id} data-streaming={message.streaming || undefined}>
+            return <Fragment key={row.id}>{foldRow}<article className={`conversation-message ${message.role}`} data-history-row data-message-id={message.id} data-streaming={message.streaming || undefined} data-turn-trace={hidden || undefined}>
               <small>{message.role === 'assistant' ? 'Agent' : message.role === 'user' ? 'You' : 'System'}{message.role === 'user' && <span className="conversation-chip">{message.attachmentCount > 0 ? `${message.attachmentCount} attached` : 'Message'}</span>}{message.role === 'assistant' && <button type="button" className="conversation-copy" aria-label="Copy assistant message" onClick={() => void navigator.clipboard.writeText(prose)}>Copy</button>}</small>
               <div className={longUserMessage && !messageExpanded ? 'conversation-user-collapsed' : undefined} data-annotatable={message.role === 'assistant' && !message.streaming || undefined} data-block-ids={blocks.map((block) => block.id).join(' ')}>{message.role === 'assistant' && !message.streaming ? <ConversationMessage message={message} comments={(thread.comments ?? []).filter(comment => comment.anchor.message === message.id)} pinned={workspace.selection?.message === message.id || workspace.discussion?.anchor.message === message.id} target={workspace.target} root={selected.root} folds={workspace.folds(message.id)} onFold={(heading, folded) => workspace.foldHeading(message.id, heading, folded)} onSelection={range => workspace.select(message.id, range)} onOpen={workspace.open} /> : <MessageMarkdown text={prose} />}</div>
               {longUserMessage && <button type="button" className="conversation-message-toggle" aria-expanded={messageExpanded} onClick={() => setExpandedMessages((value) => ({ ...value, [message.id]: !messageExpanded }))}>{messageExpanded ? 'Show less' : 'Show more'}</button>}
               {message.id === lastAssistant && changedFiles.length > 0 && <ChangedFilesCard files={changedFiles} root={selected.root} {...(onOpenDocument ? { onOpen: onOpenDocument } : {})} />}
-            </article>
+            </article></Fragment>
           })}
           {approvals.filter((activity) => (activity.turnId ?? 'thread') === turn.id).map((activity) => { const payload = record(activity.payload); const requestId = String(payload.requestId ?? ''); return <section className="conversation-request" data-kind="approval" key={activity.id}><strong>{typeof payload.detail === 'string' ? payload.detail : activity.summary}</strong><div className="conversation-actions"><button type="button" onClick={() => onApproval(thread.id, requestId, 'accept')}>Approve</button><button type="button" onClick={() => onApproval(thread.id, requestId, 'decline')}>Decline</button></div></section> })}
           {userInputs.filter((activity) => (activity.turnId ?? 'thread') === turn.id).map((activity) => <UserInputCard key={activity.id} activity={activity} onAnswer={(requestId, answers) => onUserInput(thread.id, requestId, answers)} />)}

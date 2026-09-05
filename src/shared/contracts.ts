@@ -194,6 +194,8 @@ export interface EngineMessageView {
   turnId: string | null
   streaming: boolean
   createdAt: string
+  /** T3's last write to the message; the end of a turn's final answer when timing a fold. */
+  updatedAt?: string
   attachmentCount: number
   /** Immutable markdown blocks, namespaced by the stable message id. */
   blocks?: Array<{ id: string; from: number; to: number; text: string }>
@@ -242,6 +244,14 @@ export interface ConversationInput {
   attachment?: { name: string; text: string }
 }
 
+/** T3's latest turn: the fold label, timing, and the stopped state come from here (§6.9). */
+export interface EngineTurnView {
+  id: string
+  state: 'running' | 'completed' | 'interrupted' | 'error'
+  startedAt: string | null
+  completedAt: string | null
+}
+
 export interface EngineThreadView {
   id: string
   projectId: string
@@ -259,6 +269,7 @@ export interface EngineThreadView {
   pendingUserInput: boolean
   activeTurnId: string | null
   turnStartedAt: string | null
+  latestTurn: EngineTurnView | null
   comments?: import("../core/conversation-delivery").MessageComment[]
   outcomes?: import("../core/conversation-delivery").ConversationOutcome[]
   deliveries?: Array<{ messageId: string; text: string; phase: 'uploading' | 'prepared' }>

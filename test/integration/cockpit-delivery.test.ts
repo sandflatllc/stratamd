@@ -27,7 +27,7 @@ class DeliveryEngine implements EngineReadClient {
       state: 'connected', server: 'http://engine.test', problem: null, credential: null, activeThreadId: 't1', accounts: [], terminalDefaults: {}, terminalShimDirectory: null,
       projects: [{ id: 'p1', title: 'Project', workspaceRoot: '/work', threads: [{
         id: 't1', projectId: 'p1', title: 'Reviewer', model: 'gpt-5.6', providerInstanceId: 'codex', effort: 'medium', access: 'full-access', status: 'idle',
-        updatedAt: new Date(0).toISOString(), unread: false, pendingApprovals: false, pendingUserInput: false, activeTurnId: null, turnStartedAt: null, pinnedAt: null, snoozedUntil: null, lifecycle: 'active', archived: false, attention: 0, pendingWork: 0,
+        updatedAt: new Date(0).toISOString(), unread: false, pendingApprovals: false, pendingUserInput: false, activeTurnId: null, turnStartedAt: null, latestTurn: null, pinnedAt: null, snoozedUntil: null, lifecycle: 'active', archived: false, attention: 0, pendingWork: 0,
         messages: this.#messages, activities: [],
       }] }],
     }

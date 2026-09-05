@@ -159,6 +159,12 @@ function finish(entry: Omit<WorkEntry, 'heading' | 'preview' | 'expandedBody' | 
   return { ...entry, heading, preview, expandedBody: body, icon: iconOf(entry.itemType, isTask), failed: failed(entry.status, entry.tone), active: isActive }
 }
 
+/** A call that never reported completion stops reading as live once its turn has settled. */
+function settle(entry: WorkEntry): WorkEntry {
+  if (!entry.active) return entry
+  return { ...entry, active: false, heading: entry.command ? `Ran ${programOf(entry.command)}` : entry.heading }
+}
+
 function fromActivity(activity: EngineActivityView): WorkEntry {
   const payload = record(activity.payload)
   const data = record(payload?.data)
@@ -265,9 +271,10 @@ export function groupWorkRows(entries: readonly WorkEntry[], turns: readonly Wor
     }
     if (segment.length) segments.push(segment)
     if (segments.length === 0 && turn.running) segments.push([])
-    return segments.map((grouped, index) => {
+    return segments.map((settledEntries, index) => {
       const lastTimelineRow = timeline.at(-1)
       const live = turn.running === true && index === segments.length - 1 && lastTimelineRow?.kind !== 'message'
+      const grouped = turn.running ? settledEntries : settledEntries.map(settle)
       const first = grouped[0]
       return {
         id: `${turn.id}:work:${first?.id ?? 'live'}`,
@@ -285,4 +292,129 @@ export function groupWorkRows(entries: readonly WorkEntry[], turns: readonly Wor
       }
     })
   })
+}
+
+export interface TurnFoldMessage {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  createdAt: string
+  updatedAt?: string | undefined
+  streaming: boolean
+}
+
+/** T3's latest turn as the fold reads it (`EngineTurnView`). */
+export interface TurnTiming {
+  id: string
+  state: 'running' | 'completed' | 'interrupted' | 'error'
+  startedAt: string | null
+  completedAt: string | null
+}
+
+export type TurnRow<M extends TurnFoldMessage = TurnFoldMessage> =
+  | { kind: 'message'; id: string; createdAt: string; endedAt: string; message: M }
+  | { kind: 'work'; id: string; createdAt: string; endedAt: string; group: WorkGroupRow }
+
+export interface TurnFoldInput<M extends TurnFoldMessage = TurnFoldMessage> {
+  id: string
+  messages: readonly M[]
+  groups: readonly WorkGroupRow[]
+  /** The session is working on this turn. */
+  running: boolean
+  latestTurn: TurnTiming | null
+}
+
+export interface TurnFold {
+  turnId: string
+  /** The first hidden row; the disclosure sits where it was. */
+  anchorId: string
+  hiddenIds: string[]
+  label: string
+  duration: string | null
+  interrupted: boolean
+  hasFailure: boolean
+}
+
+/** T3's duration format: tenths under ten seconds, whole seconds under a minute, then minutes and seconds. */
+export function formatWorkDuration(durationMs: number): string {
+  if (!Number.isFinite(durationMs) || durationMs < 0) return '0ms'
+  if (durationMs < 1_000) return `${Math.max(1, Math.round(durationMs))}ms`
+  if (durationMs < 10_000) {
+    const tenths = Math.round(durationMs / 100) / 10
+    return tenths >= 10 ? '10s' : `${tenths.toFixed(1)}s`
+  }
+  if (durationMs < 60_000) return `${Math.round(durationMs / 1_000)}s`
+  const minutes = Math.floor(durationMs / 60_000)
+  const seconds = Math.round((durationMs % 60_000) / 1_000)
+  if (seconds === 0) return `${minutes}m`
+  if (seconds === 60) return `${minutes + 1}m`
+  return `${minutes}m ${seconds}s`
+}
+
+function elapsedMs(startedAt: string, endedAt: string): number | null {
+  const start = Date.parse(startedAt)
+  const end = Date.parse(endedAt)
+  return Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, end - start) : null
+}
+
+function laterStamp(left: string, right: string): string {
+  const leftMs = Date.parse(left)
+  const rightMs = Date.parse(right)
+  if (!Number.isFinite(leftMs)) return right
+  if (!Number.isFinite(rightMs)) return left
+  return rightMs > leftMs ? right : left
+}
+
+/** Messages and work groups in transcript order, each with the time it ended. */
+export function turnRows<M extends TurnFoldMessage>(messages: readonly M[], groups: readonly WorkGroupRow[]): TurnRow<M>[] {
+  const rows: TurnRow<M>[] = [
+    ...messages.map((message) => ({ kind: 'message' as const, id: message.id, createdAt: message.createdAt, endedAt: message.updatedAt ?? message.createdAt, message })),
+    ...groups.map((group) => ({ kind: 'work' as const, id: group.id, createdAt: group.createdAt, endedAt: group.entries.at(-1)?.createdAt ?? group.createdAt, group })),
+  ]
+  return rows.sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+}
+
+/**
+ * T3's unsettled rule: the session's running turn, the latest turn while it is
+ * running or has no completion stamp, and any turn still streaming stay open.
+ * Keying on turn lifecycle keeps the previous turn folded in the moment after
+ * Send, before the server creates the new turn.
+ */
+export function turnSettled(turn: TurnFoldInput): boolean {
+  if (turn.running) return false
+  if (turn.messages.some((message) => message.streaming)) return false
+  if (turn.latestTurn?.id === turn.id && (turn.latestTurn.state === 'running' || turn.latestTurn.completedAt === null)) return false
+  return true
+}
+
+/**
+ * A settled turn keeps the owner's messages and its final assistant answer
+ * visible; every other row folds behind one disclosure labelled with the
+ * whole turn's duration (§6.9). Nothing to hide means no fold.
+ */
+export function deriveTurnFold<M extends TurnFoldMessage>(turn: TurnFoldInput<M>): TurnFold | null {
+  if (!turnSettled(turn)) return null
+  const rows = turnRows(turn.messages, turn.groups)
+  const terminal = rows.findLast((row) => row.kind === 'message' && row.message.role === 'assistant')
+  const hidden = rows.filter((row) => row.id !== terminal?.id && !(row.kind === 'message' && row.message.role === 'user'))
+  const anchor = hidden[0]
+  const first = rows[0]
+  const last = rows.at(-1)
+  if (!anchor || !first || !last) return null
+  const interrupted = turn.latestTurn?.id === turn.id && turn.latestTurn.state === 'interrupted'
+  const timed = turn.latestTurn?.id === turn.id && turn.latestTurn.startedAt && turn.latestTurn.completedAt
+    ? elapsedMs(turn.latestTurn.startedAt, turn.latestTurn.completedAt)
+    : elapsedMs(first.createdAt, terminal ? laterStamp(terminal.endedAt, last.endedAt) : last.endedAt)
+  const duration = timed === null ? null : formatWorkDuration(timed)
+  const label = interrupted
+    ? duration ? `You stopped after ${duration}` : 'You stopped this response'
+    : duration ? `Worked for ${duration}` : 'Worked'
+  return {
+    turnId: turn.id,
+    anchorId: anchor.id,
+    hiddenIds: hidden.map((row) => row.id),
+    label,
+    duration,
+    interrupted,
+    hasFailure: hidden.some((row) => row.kind === 'work' && row.group.hasFailure),
+  }
 }

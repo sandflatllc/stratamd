@@ -49,6 +49,8 @@ for (const placement of ['side', 'center'] as const) test(`owner holds and sends
     const id = annotations[0].id
     engine.postAssistant('t1', 'Here is the explanation.\n\n```strata\n' + JSON.stringify([{ verb: 'reply', anchor: { item: id }, text: 'A precise reply to your passage.' }]) + '\n```')
     await expect.poll(async () => page.evaluate(async id => (await window.strata.getState()).engine.projects.flatMap(p => p.threads).find(t => t.id === 't1')?.comments?.find(c => c.id === id)?.replies.length, id)).toBe(1)
+    // The reply ended the live turn; its Worked for row lands before the reading position is measured.
+    await expect(panel.locator('.conversation-turn-toggle')).toHaveCount(1)
     const beforeDiscussion = await panel.locator('.conversation-messages').evaluate(element => element.scrollTop)
     await panel.getByRole('navigation', { name: 'Conversation history' }).getByRole('button', { name: /^Comment: Please explain this/ }).click()
     await expect(page.getByRole('region', { name: 'Saved comment' })).toContainText('Please explain this.')
