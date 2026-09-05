@@ -352,6 +352,7 @@ export class T3EngineClient implements EngineReadClient {
         }
       }),
     }))
+    const accounts = this.#accountViews()
     return {
       state: this.#state,
       server: this.#credential?.server ?? null,
@@ -359,9 +360,10 @@ export class T3EngineClient implements EngineReadClient {
       credential: this.#credential ? { expiresAt: new Date(this.#credential.expiresAt).toISOString(), renews: this.#credential.scopes.includes(RENEWAL_SCOPE) } : null,
       projects,
       activeThreadId: this.#reading.activeThreadId,
-      accounts: this.#accountViews(),
+      accounts,
       models: this.#models,
       terminalDefaults: { ...this.#accounts.terminalDefaults },
+      autoInstanceIds: Object.fromEntries([...new Set(accounts.map((account) => account.driver))].map((driver) => [driver, chooseInstance(this.#accounts, accounts, null, driver)])),
       terminalShimDirectory: this.#shimDirectory,
     }
   }

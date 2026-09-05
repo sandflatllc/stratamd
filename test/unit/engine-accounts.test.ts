@@ -101,9 +101,12 @@ describe('accounts (§5.13)', () => {
     await first.pair('http://engine.test', 'code')
     await first.createThread({ projectId: 'p1', title: 'Least loaded', model: 'gpt-5.6', effort: null, access: 'full-access' })
     expect(commands.at(-1)).toMatchObject({ modelSelection: { instanceId: 'codex-work' } })
+    // Accounts shows the same choice as an Auto mark on the row (§5.13).
+    expect(first.view().autoInstanceIds).toEqual({ codex: 'codex-work' })
 
     await first.parkAccount('codex-work', true)
     expect(first.view().accounts.find((account) => account.instanceId === 'codex-work')).toMatchObject({ state: 'parked', parked: true, usable: false })
+    expect(first.view().autoInstanceIds).toEqual({ codex: 'codex-home' })
     await first.createThread({ projectId: 'p1', title: 'Parked skipped', model: 'gpt-5.6', effort: null, access: 'full-access' })
     expect(commands.at(-1)).toMatchObject({ modelSelection: { instanceId: 'codex-home' } })
 

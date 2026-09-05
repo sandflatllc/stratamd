@@ -336,6 +336,8 @@ export interface EngineView {
   accounts: AccountView[]
   /** Per driver: `auto`, an instance id, or null for the system default (§5.13 terminal defaults). */
   terminalDefaults: Record<string, string | null>
+  /** Per driver: the instance Auto would start a thread on right now, or null when none can take one (§5.13). */
+  autoInstanceIds?: Record<string, string | null>
   /** Where Strata writes terminal launchers, or null when this platform gets none. */
   terminalShimDirectory: string | null
 }
