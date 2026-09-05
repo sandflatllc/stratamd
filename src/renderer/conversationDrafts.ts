@@ -1,19 +1,41 @@
 import { flagshipModel } from '../shared/modelSelection'
-import type { ConversationInput, CreateDraftRequest, EngineModelView, EngineView, ModelOption } from '../shared/contracts'
+import type { ConversationAttachment, ConversationInput, CreateDraftRequest, EngineModelView, EngineView, ModelOption } from '../shared/contracts'
 
 export type ComposerSelection = Pick<ConversationInput, 'model' | 'effort' | 'access' | 'instanceId' | 'options'>
-export interface ConversationDraft { messageId?: string; text: string; attachment?: { name: string; text: string } | undefined; selection?: ComposerSelection; threadId?: string }
+/** An image's bytes sit in the main process; the draft keeps only a small preview beside the reference (§6.0). */
+export type DraftAttachment = ConversationAttachment & { thumbnail?: string }
+export interface ConversationDraft { messageId?: string; text: string; attachments?: DraftAttachment[] | undefined; selection?: ComposerSelection; threadId?: string }
 const memory = new Map<string, ConversationDraft>()
 const prefix = 'stratamd.conversation-draft.v1:'
 
+function parseDraft(raw: string | null): ConversationDraft | null {
+  try {
+    const value = JSON.parse(raw ?? 'null')
+    if (!value || typeof value.text !== 'string') return null
+    // Drafts written before images carried one text attachment under `attachment`.
+    if (value.attachment && !value.attachments) { const { attachment, ...rest } = value; return { ...rest, attachments: [{ kind: 'text', name: String(attachment.name), text: String(attachment.text) }] } }
+    return value
+  } catch { return null }
+}
+
 export function readDraft(key: string): ConversationDraft {
   if (memory.has(key)) return memory.get(key)!
-  try { const value = JSON.parse(localStorage.getItem(prefix + key) ?? 'null'); if (value && typeof value.text === 'string') return value } catch { /* A corrupt disposable draft cannot block conversation entry. */ }
-  return { text: '' }
+  // A corrupt disposable draft cannot block conversation entry.
+  return parseDraft(localStorage.getItem(prefix + key)) ?? { text: '' }
 }
-export function writeDraft(key: string, draft: ConversationDraft): void {
+/** False when local storage refused the draft; it then lives in memory only and will not survive reload. */
+export function writeDraft(key: string, draft: ConversationDraft): boolean {
   memory.set(key, draft)
-  try { localStorage.setItem(prefix + key, JSON.stringify(draft)) } catch { /* Keep the in-memory draft when storage is full. */ }
+  try { localStorage.setItem(prefix + key, JSON.stringify(draft)); return true } catch { return false }
+}
+/** Every staged image any saved draft still references, so the main process can delete the rest. */
+export function draftAttachmentIds(): string[] {
+  const ids = new Set<string>()
+  const keys: string[] = []
+  try { for (let index = 0; index < localStorage.length; index += 1) { const key = localStorage.key(index); if (key?.startsWith(prefix)) keys.push(key) } } catch { /* No storage means no saved drafts. */ }
+  for (const key of keys) for (const attachment of parseDraft(localStorage.getItem(key))?.attachments ?? []) if (attachment.kind === 'image') ids.add(attachment.id)
+  for (const draft of memory.values()) for (const attachment of draft.attachments ?? []) if (attachment.kind === 'image') ids.add(attachment.id)
+  return [...ids]
 }
 export function clearDraft(key: string): void {
   memory.delete(key)

@@ -57,7 +57,7 @@ for (const family of ['GPT', 'Claude'] as const) {
       for (const target of family === 'GPT' ? [{ instanceId: 'claude-main', model: 'claude-fable-5-1' }] : [{ instanceId: 'claude-personal', model: 'claude-fable-5-1' }, { instanceId: 'codex', model: 'gpt-6-astra' }]) {
         const uploads = engine.uploads.length
         const error = await page.evaluate(async ({ id, target }) => {
-          try { await window.strata.startConversationTurn(id, { ...target, text: 'Invalid switch', effort: null, access: 'full-access', attachment: { name: 'private.txt', text: 'Must not upload.' } }); return '' } catch (error) { return String(error) }
+          try { await window.strata.startConversationTurn(id, { ...target, text: 'Invalid switch', effort: null, access: 'full-access', attachments: [{ kind: 'text', name: 'private.txt', text: 'Must not upload.' }] }); return '' } catch (error) { return String(error) }
         }, { id: String(created.threadId), target })
         expect(error).toContain(family === 'GPT' ? 'only supports GPT' : 'stays on subscription')
         expect(engine.uploads).toHaveLength(uploads)

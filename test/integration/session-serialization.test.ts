@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 import type { DeliveryMeta } from '../../src/main/storage'
-import { attach, deliveryPayloads, fixture, settleDeliveries } from './support/cockpit'
+import { attach, deliveryPayloads, fixture, settleDeliveries, deliveryText } from './support/cockpit'
 
 describe('per-document turns (plan 2.3, 2.4, 4.7)', () => {
   it('serves two overlapping saves without a conflict and leaves the file clean', async () => {
@@ -142,7 +142,7 @@ describe('durability (plan 2.5, 2.6, 4.10, 4.11)', () => {
     await expect.poll(() => value.engine.deliveries('t1').length).toBe(3)
     const repeated = value.engine.deliveries('t1').at(-1)!
     expect(repeated).toMatchObject({ messageId: deliveryId, commandId: `strata-${deliveryId}` })
-    expect(repeated.attachment?.text).toContain('Look here.')
+    expect(deliveryText(repeated)).toContain('Look here.')
     expect((await deliveryPayloads(store, path, 't1'))[0]).toMatchObject({ id: deliveryId, payload: { notes: ['Look here.'] } })
     // The collector must keep the queued payload object alive; it may drop the
     // acknowledged attach delivery's payload, which nothing references any more.
@@ -178,7 +178,7 @@ describe('durability (plan 2.5, 2.6, 4.10, 4.11)', () => {
     await expect.poll(() => value.engine.deliveries('t1').length).toBe(3)
     const repeated = value.engine.deliveries('t1').at(-1)!
     expect(repeated).toMatchObject({ messageId: deliveryId })
-    expect(repeated.attachment?.text).toContain('Old style.')
+    expect(deliveryText(repeated)).toContain('Old style.')
     expect((await deliveryPayloads(store, path, 't1'))[0]).toMatchObject({ id: deliveryId, payload: { notes: ['Old style.'] } })
   })
 })

@@ -7,6 +7,7 @@ import type { EngineReadClient } from '../../src/main/engine/client'
 import type { EngineView } from '../../src/shared/contracts'
 import { GhostStore } from '../../src/main/storage'
 import { SettingsStore } from '../../src/main/settings'
+import { deliveryText } from './support/cockpit'
 
 class DeliveryEngine implements EngineReadClient {
   readonly turns: Array<Parameters<EngineReadClient['startTurn']>[1]> = []
@@ -62,9 +63,9 @@ describe('cockpit delivery turns', () => {
     const [deliveryId] = await app.send(path, { recipients: ['t1'], note: 'Review this.', includeExternal: false, token: preview[0]!.token })
 
     expect(engine.turns).toHaveLength(1)
-    expect(engine.turns[0]).toMatchObject({ messageId: deliveryId, commandId: `strata-${deliveryId}`, attachment: { name: `${deliveryId}.md` } })
+    expect(engine.turns[0]).toMatchObject({ messageId: deliveryId, commandId: `strata-${deliveryId}`, attachments: [{ name: `${deliveryId}.md` }] })
     expect(engine.turns[0]!.text).toMatch(/^Delivery .*: 0 changes, 0 items\.$/)
-    expect(engine.turns[0]!.attachment?.text).toContain('Original.')
+    expect(deliveryText(engine.turns[0]!)).toContain('Original.')
     expect((await store.loadMeta(path)).attachments.t1?.deliveries).toHaveLength(1)
 
     engine.acknowledge(deliveryId!)
@@ -86,7 +87,7 @@ describe('cockpit delivery turns', () => {
     const [first] = await app.send(path, { recipients: ['t1'], note: '', includeExternal: false })
     engine.acknowledge(first!)
     for (let attempt = 0; attempt < 200 && (await store.loadMeta(path)).attachments.t1?.deliveries.length; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 10))
-    const blockId = /- (b[0-9a-f]+): Original\./.exec(engine.turns[0]!.attachment!.text)![1]!
+    const blockId = /- (b[0-9a-f]+): Original\./.exec(deliveryText(engine.turns[0]!)!)![1]!
     engine.assistant('assistant-1', `Done.\n\n\`\`\`strata\n${JSON.stringify([
       { verb: 'decision', anchor: { document: path, block: blockId }, text: 'Which?', options: ['Keep', 'Change'] },
       { verb: 'question', anchor: { document: path, block: blockId }, text: 'Keep this?' },
@@ -102,11 +103,11 @@ describe('cockpit delivery turns', () => {
     expect((await app.getState()).engine.projects[0]!.threads[0]!.pendingWork).toBe(4)
 
     await app.send(path, { recipients: ['t1'], note: 'Continue.', includeExternal: false })
-    expect(engine.turns[1]!.attachment!.text).toContain('1. applied as a_')
-    expect(engine.turns[1]!.attachment!.text).toContain('2. applied as a_')
-    expect(engine.turns[1]!.attachment!.text).toContain('3. applied as a_')
-    expect(engine.turns[1]!.attachment!.text).toContain('4. applied')
-    expect(engine.turns[1]!.attachment!.text).toContain('5. failed: block b-stale changed')
+    expect(deliveryText(engine.turns[1]!)).toContain('1. applied as a_')
+    expect(deliveryText(engine.turns[1]!)).toContain('2. applied as a_')
+    expect(deliveryText(engine.turns[1]!)).toContain('3. applied as a_')
+    expect(deliveryText(engine.turns[1]!)).toContain('4. applied')
+    expect(deliveryText(engine.turns[1]!)).toContain('5. failed: block b-stale changed')
   })
 
   it('accepts an attach-only block from an unattached thread and starts its first delivery', async () => {
@@ -123,7 +124,7 @@ describe('cockpit delivery turns', () => {
     await app.openDocument(path)
     for (let attempt = 0; attempt < 50 && engine.turns.length === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 5))
     expect((await app.getState()).activeDocument!.attachments[0]?.agent.id).toBe('t1')
-    expect(engine.turns[0]!.attachment!.text).toContain('# Bootstrap')
+    expect(deliveryText(engine.turns[0]!)).toContain('# Bootstrap')
   })
 })
 
@@ -187,7 +188,7 @@ it('routes one mixed action block to two documents without duplicating conversat
     await app.openDocument(path)
     expect((await app.getState()).activeDocument!.annotations).toHaveLength(1)
     await app.send(path, { recipients: ['t1'], note: '', includeExternal: false })
-    const payload = engine.turns.at(-1)!.attachment!.text
+    const payload = deliveryText(engine.turns.at(-1)!)!
     expect(payload).toContain('applied as a_')
     expect(payload).not.toContain('failed:')
     expect(payload).not.toContain('A conversation reply.')

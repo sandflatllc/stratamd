@@ -132,7 +132,7 @@ it('reuses uploaded references and command identity after a lost dispatch respon
   const first = new T3EngineClient(options)
   await first.pair('http://engine.test', 'code'); await first.openThread('t1')
   fake.failDispatch(true)
-  await expect(first.startTurn('t1', { messageId: 'lost', text: 'Saved', attachment: { name: 'a.md', text: 'Original bytes' }, model: 'gpt-5.6', effort: null, access: 'full-access' })).rejects.toThrow()
+  await expect(first.startTurn('t1', { messageId: 'lost', text: 'Saved', attachments: [{ kind: 'text', name: 'a.md', text: 'Original bytes' }], model: 'gpt-5.6', effort: null, access: 'full-access' })).rejects.toThrow()
   await first.shutdown(); fake.failDispatch(false)
   const second = new T3EngineClient(options); await second.initialize()
   expect(fake.uploads).toEqual(['Original bytes'])

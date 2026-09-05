@@ -16,6 +16,11 @@ import { SettingsStore } from '../../../src/main/settings'
  * acknowledges it by listing the delivery's message, and an agent acts by
  * posting an assistant message whose strata block Strata applies (§5.9).
  */
+/** The Markdown a delivery carried: its first text attachment. */
+export function deliveryText(turn: { attachments?: Array<{ kind: string; text?: string }> } | undefined): string | undefined {
+  return turn?.attachments?.find((attachment) => attachment.kind === 'text')?.text
+}
+
 export class FakeEngine implements EngineReadClient {
   readonly turns: Array<{ threadId: string; input: Parameters<EngineReadClient['startTurn']>[1] }> = []
   readonly #listeners = new Set<(view: EngineView) => void>()

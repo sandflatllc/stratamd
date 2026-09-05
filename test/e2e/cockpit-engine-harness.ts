@@ -79,6 +79,8 @@ export interface FakeEngine {
   uploads: string[]
   /** Upload text by attachment id, so a turn's attachment can be read back regardless of upload order. */
   uploadsById: Map<string, string>
+  /** Each upload's declared content type and byte length, so a spec can tell an image upload from Markdown. */
+  uploadRequests: Array<{ attachmentId: string; contentType: string; byteLength: number }>
   tokenRequests: string[]
   rpcRequests: Array<{ tag: string; payload: unknown }>
   /** Offline refuses HTTP and drops every socket, as a stopped server would; online again accepts new connections. */
@@ -125,6 +127,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   const commands: Array<Record<string, unknown>> = []
   const uploads: string[] = []
   const uploadsById = new Map<string, string>()
+  const uploadRequests: FakeEngine['uploadRequests'] = []
   let uploadCount = 0
   let rejectNextTurn = false
   const createdThreads: CreatedThread[] = []
@@ -264,7 +267,13 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       const chunks: Buffer[] = []
       const attachmentId = request.url.slice('/upload/'.length)
       request.on('data', (piece) => chunks.push(Buffer.from(piece)))
-      request.on('end', () => { const text = Buffer.concat(chunks).toString('utf8'); uploads.push(text); uploadsById.set(attachmentId, text); response.end('{}') })
+      request.on('end', () => {
+        const bytes = Buffer.concat(chunks)
+        const text = bytes.toString('utf8')
+        uploads.push(text); uploadsById.set(attachmentId, text)
+        uploadRequests.push({ attachmentId, contentType: String(request.headers['content-type'] ?? ''), byteLength: bytes.byteLength })
+        response.end('{}')
+      })
       return
     }
     if (request.url === '/api/orchestration/dispatch' && request.method === 'POST') {
@@ -355,6 +364,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     commands,
     uploads,
     uploadsById,
+    uploadRequests,
     tokenRequests,
     rpcRequests,
     setOnline: (value) => { online = value; if (!value) dropSockets() },
