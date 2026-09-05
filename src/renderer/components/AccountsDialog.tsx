@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import type { AccountView, EngineView } from '../../shared/contracts'
 import { useDialogFocus } from '../useDialogFocus'
+import { ProviderGlyph } from './ProviderGlyph'
 
 interface AccountsDialogProps {
   engine: EngineView
@@ -137,7 +138,7 @@ export function AccountsDialog({ engine, onPark, onTerminalDefault, onClose, onO
             return (
               <section className="accounts-group" key={driver} aria-label={driverLabel(driver)}>
                 <div className="accounts-group-head">
-                  <h3>{driverLabel(driver)}</h3>
+                  <h3><ProviderGlyph driver={driver} />{driverLabel(driver)}</h3>
                   <span className="accounts-count">{ready} of {accounts.length} ready</span>
                   <label className="account-terminal">Terminal
                     <select aria-label={`${driverLabel(driver)} terminal default`} value={terminal ?? ''} onChange={(event) => onTerminalDefault(driver, event.target.value || null)}>

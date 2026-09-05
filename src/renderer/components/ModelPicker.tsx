@@ -1,5 +1,6 @@
 import type { AccountView, EngineModelView } from '../../shared/contracts'
-import { familyLabel, flagshipModel, modelFamily, type ModelScope } from '../../shared/modelSelection'
+import { familyLabel, flagshipModel, modelDesignation, modelFamily, type ModelScope } from '../../shared/modelSelection'
+import { hasProviderGlyph, ProviderGlyph } from './ProviderGlyph'
 import type { ComposerSelection } from '../conversationDrafts'
 
 interface ModelPickerProps {
@@ -33,9 +34,9 @@ export function ModelPicker({ models, accounts, selection, scope, onSelect }: Mo
     if (next) onSelect(next, false)
   }
   return <div className="model-picker">
-    {scope ? <div className="model-picker-fixed"><span>Model family</span><strong>{familyLabel(family)}</strong></div> :
+    {scope ? <div className="model-picker-fixed"><span>Model family</span><strong>{hasProviderGlyph(undefined, family) ? <ProviderGlyph family={family} label={familyLabel(family)} /> : familyLabel(family)}</strong></div> :
       <fieldset className="model-picker-families"><legend>Model family</legend><div>{families.map(value =>
-        <button type="button" key={value} aria-pressed={family === value} disabled={!models.some(model => modelFamily(model.driver, model.slug) === value && usable(model.instanceId))} onClick={() => chooseFamily(value)}>{familyLabel(value)}</button>
+        <button type="button" key={value} aria-pressed={family === value} disabled={!models.some(model => modelFamily(model.driver, model.slug) === value && usable(model.instanceId))} onClick={() => chooseFamily(value)} aria-label={familyLabel(value)} title={familyLabel(value)}>{hasProviderGlyph(undefined, value) ? <ProviderGlyph family={value} /> : familyLabel(value)}</button>
       )}</div></fieldset>}
     {scope?.instanceId ? <div className="model-picker-fixed"><span>Subscription</span><strong>{accountName}</strong></div> :
       <label className="model-picker-subscription">Subscription<select aria-label="Subscription" value={selection.instanceId ?? ''} onChange={event => chooseSubscription(event.target.value)}>
@@ -43,9 +44,9 @@ export function ModelPicker({ models, accounts, selection, scope, onSelect }: Mo
         {subscriptions.map(subscription => <option key={subscription.id} value={subscription.id} disabled={!usable(subscription.id)}>{subscription.name}{usable(subscription.id) ? '' : ' · Unavailable'}</option>)}
       </select></label>}
     <div className="model-picker-models"><span className="model-picker-label">Model</span>
-      {flagship && <button type="button" className="model-picker-flagship" aria-label={`Use ${flagship.name}`} aria-pressed={current === flagship} disabled={!usable(flagship.instanceId)} onClick={() => onSelect(flagship, true)}><strong>{flagship.name}</strong><small>Daily model</small></button>}
-      {others.length > 0 && <details className="model-picker-others" key={selection.instanceId}><summary>Other models <small>{current && current !== flagship ? current.name : `${others.length} available`}</small></summary><div role="group" aria-label="Other models">{others.map(model =>
-        <button type="button" key={model.slug} aria-pressed={current === model} disabled={!usable(model.instanceId)} onClick={() => onSelect(model, true)}>{model.name}</button>
+      {flagship && <button type="button" className="model-picker-flagship" aria-label={`Use ${flagship.name}`} aria-pressed={current === flagship} disabled={!usable(flagship.instanceId)} onClick={() => onSelect(flagship, true)}><strong><ProviderGlyph driver={flagship.driver} />{modelDesignation(flagship)}</strong><small>Daily model</small></button>}
+      {others.length > 0 && <details className="model-picker-others" key={selection.instanceId}><summary>Other models <small>{current && current !== flagship ? modelDesignation(current) : `${others.length} available`}</small></summary><div role="group" aria-label="Other models">{others.map(model =>
+        <button type="button" key={model.slug} aria-label={model.name} aria-pressed={current === model} disabled={!usable(model.instanceId)} onClick={() => onSelect(model, true)}><ProviderGlyph driver={model.driver} />{modelDesignation(model)}</button>
       )}</div></details>}
       {!flagship && <p>No models are available for this subscription.</p>}
     </div>

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { ConversationInput, EngineView, EngineThreadView } from '../../shared/contracts'
-import { continuationScope, permitsSelection } from '../../shared/modelSelection'
+import { continuationScope, modelDesignation, permitsSelection } from '../../shared/modelSelection'
+import { ProviderGlyph } from './ProviderGlyph'
 import { ModelPicker } from './ModelPicker'
 import { availableModels, clearDraft, readDraft, rememberSelection, selectionForModel, writeDraft, type ComposerSelection } from '../conversationDrafts'
 
@@ -118,7 +119,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
         if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); void send() }
       }} />
       <div className="chat-controls">
-        <div className="chat-control"><button type="button" className="chat-pill" aria-label="Choose model and account" aria-expanded={menu === 'models'} disabled={busy} onClick={() => setMenu(menu === 'models' ? null : 'models')} title={model?.accountName}>{model?.name ?? (selection.model || 'Choose model')}<small>{model?.accountName}</small><span aria-hidden="true">⌄</span></button>
+        <div className="chat-control"><button type="button" className="chat-pill" aria-label="Choose model and account" aria-expanded={menu === 'models'} disabled={busy} onClick={() => setMenu(menu === 'models' ? null : 'models')} title={model?.name ?? model?.accountName}>{model ? <><ProviderGlyph driver={model.driver} />{modelDesignation(model)}</> : (selection.model || 'Choose model')}<small>{model?.accountName}</small><span aria-hidden="true">⌄</span></button>
           {menu === 'models' && <div ref={popup} popover="manual" className="chat-menu chat-model-menu" aria-label="Models and accounts" role="region">
             <ModelPicker models={models} accounts={engine.accounts} selection={selection} scope={scope} onSelect={(next, close) => { choose(selectionForModel(next, selection.access)); if (close) { setMenu(null); input.current?.focus() } }} />
           </div>}
