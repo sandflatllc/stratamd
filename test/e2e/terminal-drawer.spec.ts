@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
+import { primaryKey } from './harness'
 
 test('terminal renders WASM, sends input, resizes and reattaches without closing the shell', async ({}, testInfo) => {
   const engine = await startEngine()
@@ -20,15 +21,15 @@ test('terminal renders WASM, sends input, resizes and reattaches without closing
     await scenario.app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1360, 960))
     await expect.poll(() => engine.rpcRequests.some(request => request.tag === 'terminal.resize')).toBe(true)
     await page.screenshot({ animations: 'disabled', path: 'docs/design/t3-parity/captures/terminal-open.png' })
-    await page.keyboard.press('Control+Backquote')
+    await page.keyboard.press(primaryKey('Backquote'))
     await expect(drawer).toHaveCount(0)
     expect(engine.rpcRequests.some(request => request.tag === 'terminal.close')).toBe(false)
-    await page.keyboard.press('Control+Backquote')
+    await page.keyboard.press(primaryKey('Backquote'))
     await expect(drawer.locator('.terminal-status')).toHaveText('running')
     expect(engine.rpcRequests.filter(request => request.tag === 'terminal.attach')).toHaveLength(2)
     await page.getByRole('button', { name: 'Close terminal', exact: true }).click()
     await page.getByRole('button', { name: 'Engine status' }).click()
-    await page.keyboard.press('Control+Backquote')
+    await page.keyboard.press(primaryKey('Backquote'))
     await expect(drawer).toHaveCount(0)
   } finally { await scenario.dispose(); await engine.close() }
 })
@@ -40,7 +41,7 @@ test('terminal follows the centered worktree and reattaches after an engine reco
     const page = await scenario.launchEmpty()
     await page.getByRole('button', { name: 'Open Second engine thread', exact: true }).click()
     await expect(page.locator('.conversation-title')).toContainText('Second engine thread')
-    await page.keyboard.press('Control+Backquote')
+    await page.keyboard.press(primaryKey('Backquote'))
     const drawer = page.getByRole('region', { name: 'Terminal', exact: true })
     await expect(drawer.locator('.terminal-status')).toHaveText('running')
     expect(engine.rpcRequests.filter(request => request.tag === 'terminal.attach').at(-1)?.payload).toMatchObject({ threadId: 't2', cwd: '/worktrees/previous', terminalId: 'term-1' })

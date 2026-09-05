@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import type { AnnotationContext, AnnotationKind, AnnotationView, BufferOrigin, CreateDraftRequest, DocumentView, DraftKind, HunkView, PanelSize, QuickSendRequest, RedoResult, SpellingContext, TableViewState, UndoResult, WalkthroughAction, WalkthroughState } from '../../shared/contracts'
 import type { EditorSelection, RendererEditorFactory, RendererEditorHandle } from '../editorAdapter'
 import { bannerFor, currentAnnotation } from '../model'
@@ -76,6 +76,8 @@ export function EditorPane(props: EditorPaneProps) {
   const localEditor = useRef<RendererEditorHandle | null>(null)
   const editor = props.editorRef ?? localEditor
   const scroll = useRef<HTMLDivElement>(null)
+  const scrollPath = useRef(document.path)
+  useLayoutEffect(() => { scrollPath.current = document.path }, [document.path])
   const dismissedSelection = useRef<string | null>(null)
   const banner = bannerDismissed ? null : bannerFor(document)
   const selectedAnnotation = currentAnnotation(document, props.selectedAnnotation)
@@ -160,8 +162,10 @@ export function EditorPane(props: EditorPaneProps) {
       node.addEventListener('touchstart', settle, { passive: true })
       node.addEventListener('keydown', settle)
     }
-    const recordPane = () => { if (restoreTarget === null) offsets.pane = node.scrollTop }
-    const recordSource = () => { if (sourceNode) offsets.source = sourceNode.scrollTop }
+    // A tab commit can collapse the old editor before passive effect cleanup.
+    // Its queued scroll must not overwrite that document's saved position.
+    const recordPane = () => { if (scrollPath.current === document.path && restoreTarget === null) offsets.pane = node.scrollTop }
+    const recordSource = () => { if (scrollPath.current === document.path && sourceNode) offsets.source = sourceNode.scrollTop }
     node.addEventListener('scroll', recordPane, { passive: true })
     sourceNode?.addEventListener('scroll', recordSource, { passive: true })
     return () => {

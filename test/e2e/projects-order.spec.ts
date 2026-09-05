@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
+import { selectNavigationTab } from './harness'
 
 /** PRD §6.9: the owner sets folder order by dragging a header; the order survives reload; Alt+Arrow moves a focused header. */
 test('project folders reorder by drag and keyboard, keep their open state, and remember the order across reload', async ({}, testInfo) => {
@@ -7,7 +8,7 @@ test('project folders reorder by drag and keyboard, keep their open state, and r
   const scenario = await seededScenario(testInfo, engine.origin)
   try {
     const page = await scenario.launch()
-    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
+    await selectNavigationTab(page, 'Projects')
     const projects = page.locator('.projects-panel')
     const headers = projects.locator('.project-folder-header')
     const titles = projects.locator('.project-folder-header strong')
@@ -29,7 +30,7 @@ test('project folders reorder by drag and keyboard, keep their open state, and r
     await expect(projects.locator('[data-drop], [data-dragging]')).toHaveCount(0)
 
     await page.reload()
-    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
+    await selectNavigationTab(page, 'Projects')
     await expect(titles).toHaveText(['Second project', 'Cockpit project'])
 
     await headers.nth(0).focus()

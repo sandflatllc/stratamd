@@ -11,6 +11,7 @@ import { hasPrimaryModifier } from '../../shared/primary-modifier'
 
 interface ItemPanelProps {
   annotation: AnnotationView
+  visible: boolean
   /** Keys the reply draft, so a draft survives closing and reopening the item while the app runs. */
   documentPath: string
   onReply(text: string): void
@@ -51,7 +52,7 @@ function ItemTime({ time, now }: { time: number | undefined; now: number }) {
   return <time className="thread-time" dateTime={new Date(time!).toISOString()} title={absoluteTime(time!)}>{relative}</time>
 }
 
-export function ItemPanel({ annotation, documentPath, onReply, onResolve, onAnswer, onReopen, onAccept, onReject, onClose, opener }: ItemPanelProps) {
+export function ItemPanel({ annotation, visible, documentPath, onReply, onResolve, onAnswer, onReopen, onAccept, onReject, onClose, opener }: ItemPanelProps) {
   const draftKey = replyDraftKey(documentPath, annotation.id)
   const [reply, setReply] = useState(() => replyDrafts.get(draftKey) ?? '')
   const [choice, setChoice] = useState('')
@@ -59,20 +60,25 @@ export function ItemPanel({ annotation, documentPath, onReply, onResolve, onAnsw
   const replyBox = useRef<HTMLTextAreaElement>(null)
   const now = useClock()
 
-  // The reply box takes focus on open; whatever opened the item gets it back
-  // on close (§5.11). The focus waits a frame: the editor's jump to the span
-  // runs in the same commit, after this effect, and would otherwise win.
+  // Capture the opener once; it receives focus when the item closes (§5.11).
   useEffect(() => {
     const active = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const restoreTo = opener?.current ?? active
-    const frame = window.requestAnimationFrame(() => replyBox.current?.focus({ preventScroll: true }))
     return () => {
-      window.cancelAnimationFrame(frame)
       if (restoreTo?.isConnected) restoreTo.focus({ preventScroll: true })
     }
     // Captured once per item; the opener is fixed at open time.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Opening an item mounts it before the navigation-tab update returns over
+  // IPC. A hidden textarea ignores focus, so wait for Conversation to show.
+  // The next frame also follows the editor's jump to the annotated span.
+  useEffect(() => {
+    if (!visible) return
+    const frame = window.requestAnimationFrame(() => replyBox.current?.focus({ preventScroll: true }))
+    return () => window.cancelAnimationFrame(frame)
+  }, [visible])
 
   useEffect(() => {
     if (reply) replyDrafts.set(draftKey, reply)

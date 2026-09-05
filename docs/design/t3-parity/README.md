@@ -5,6 +5,7 @@ The reference gallery is [t3-feature-comparison](../t3-feature-comparison/index.
 | Flow | Built app | Gallery reference |
 | --- | --- | --- |
 | Engine details | ![Engine details](captures/engine-details.png) | ![Reference](captures/reference-engine-details.png) |
+| Disconnected | ![Disconnected](captures/engine-disconnected.png) | ![Reference](captures/reference-engine-disconnected.png) |
 | Pair again | ![Pair again](captures/engine-pair.png) | ![Reference](captures/reference-engine-pair.png) |
 
 Engine facts use the gallery's order and right alignment. A nonrenewing credential needs a longer Session explanation. The expanded form scrolls inside short windows. The existing shell and modal type scale are retained.
@@ -64,3 +65,9 @@ Usage uses the gallery's header, toolbar, metrics, provider chart and breakdown 
 | ![API estimate](captures/usage-cost.png) | ![Reference](captures/reference-usage.png) |
 
 Ghostty receives foreground, background, cursor and selection colors from the active Strata theme. ANSI colors inside shell output remain terminal content. The theme source-literal scan excludes the unchanged vendor adapter.
+
+## Verification
+
+On 2026-09-05, the combined parity and updated master code passed TypeScript, 830 unit/integration tests (one existing skip), and all 187 Electron tests with the default worker count. The owner waived further stress testing after that clean full run. Failure mechanisms, fixes, repeats and artifact paths are recorded in `test/e2e/README.md`.
+
+Electron verification uses an isolated fixture engine over real HTTP and WebSocket transports, with the actual bundled Ghostty WASM. RPC contracts were checked against t3code revision `4e7359b07bcbed9a8adbea6451f4178e098a0201`.

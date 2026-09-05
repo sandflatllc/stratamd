@@ -47,6 +47,9 @@ for (const placement of ['side', 'center'] as const) test(`owner holds and sends
     expect(engine.uploads.at(-1)).toBe(preview)
     const annotations = JSON.parse(preview.match(/```json\n([\s\S]*?)\n```/)![1]!)
     const id = annotations[0].id
+    // Upload precedes dispatch. Finish the fake turn only after it has started,
+    // or a late dispatch changes the already-finished session back to running.
+    await expect.poll(() => engine.commands.some(command => command.type === 'thread.turn.start')).toBe(true)
     engine.postAssistant('t1', 'Here is the explanation.\n\n```strata\n' + JSON.stringify([{ verb: 'reply', anchor: { item: id }, text: 'A precise reply to your passage.' }]) + '\n```')
     await expect.poll(async () => page.evaluate(async id => (await window.strata.getState()).engine.projects.flatMap(p => p.threads).find(t => t.id === 't1')?.comments?.find(c => c.id === id)?.replies.length, id)).toBe(1)
     // The reply ended the live turn; its Worked for row lands before the reading position is measured.

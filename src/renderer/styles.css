@@ -1922,7 +1922,7 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .workspace-menu p { font-size: 12px; color: var(--dim); margin: 10px; }
 .workspace-menu input { width: 100%; margin: 10px 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surfaces-field); color: var(--text); font: inherit; }
 .workspace-ref-list { max-height: 230px; overflow-y: auto; }
-.workspace-refs { left: min(190px, 10vw); }
+.workspace-refs { left: auto; right: 0; }
 
 .center-column { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; gap: 12px; }
 .center-column > .editor-island { min-height: 0; flex: 1; }

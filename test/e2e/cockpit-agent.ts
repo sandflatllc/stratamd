@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test'
-import type { Annotation, Scenario } from './harness'
+import { selectNavigationTab, type Annotation, type Scenario } from './harness'
 import type { FakeEngine } from './cockpit-engine-harness'
 
 /**
@@ -9,9 +9,12 @@ import type { FakeEngine } from './cockpit-engine-harness'
  */
 
 export async function openThread(page: Page, name: string): Promise<void> {
-  const navigation = page.getByRole('tablist', { name: 'Document navigation' })
-  await navigation.getByRole('tab', { name: 'Projects' }).click()
+  await selectNavigationTab(page, 'Projects')
   await page.getByRole('button', { name: `Open ${name}`, exact: true }).click()
+  // Thread selection updates the title before its delayed navigation finishes.
+  const conversation = page.locator('.conversation-panel:visible')
+  await expect(conversation).toBeVisible()
+  await expect(conversation.locator('.conversation-title')).toContainText(name)
 }
 
 /** Attaches the thread by sending the active document to it, and waits until the row shows under Attached. */

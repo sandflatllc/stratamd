@@ -1,7 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { dirname } from 'node:path'
 import { selectTextInVisualEditor } from './harness'
-import { uploadsFor } from './cockpit-agent'
+import { openThread, uploadsFor } from './cockpit-agent'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 
 async function openComment(page: Page, quote: string) {
@@ -14,12 +14,6 @@ async function openComment(page: Page, quote: string) {
   const composer = page.locator('.annotation-composer')
   await expect(composer).toBeVisible()
   return composer
-}
-
-async function openThread(page: Page, name: string): Promise<void> {
-  const navigation = page.getByRole('tablist', { name: 'Document navigation' })
-  await navigation.getByRole('tab', { name: 'Projects' }).click()
-  await page.getByRole('button', { name: `Open ${name}`, exact: true }).click()
 }
 
 async function attachThread(page: Page, threadId: string): Promise<void> {
@@ -179,7 +173,8 @@ test('5.6: the active conversation in the same project is a recipient before it 
 
     await expect.poll(() => engine.uploads.length).toBe(1)
     expect(engine.uploads[0]).toContain('Attach by sending.')
-    expect(engine.commands.find((command) => command.type === 'thread.turn.start')).toMatchObject({ threadId: 't2' })
+    // Upload completes before the turn command is dispatched.
+    await expect.poll(() => engine.commands.find((command) => command.type === 'thread.turn.start')).toMatchObject({ threadId: 't2' })
     await expect(page.locator('.agent-row')).toContainText('Second engine thread')
   } finally {
     await scenario.dispose()

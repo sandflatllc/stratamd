@@ -23,5 +23,10 @@ test('connection details keep pairing collapsed and support keyboard dismissal',
     await page.keyboard.press('Escape')
     await expect(dialog).toBeHidden()
     await expect(page.getByRole('button', { name: 'Engine status' })).toBeFocused()
+    engine.setOnline(false)
+    await expect(page.getByRole('button', { name: 'Engine status' })).toContainText('Disconnected')
+    await page.getByRole('button', { name: 'Engine status' }).click()
+    await expect(dialog.getByRole('button', { name: 'Reconnect' })).toHaveClass(/primary-button/)
+    await page.screenshot({ animations: 'disabled', path: 'docs/design/t3-parity/captures/engine-disconnected.png' })
   } finally { await scenario.dispose(); await engine.close() }
 })

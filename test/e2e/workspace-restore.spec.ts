@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
-import type { Scenario } from './harness'
+import { selectNavigationTab, type Scenario } from './harness'
 
 // One test per restore aspect, so a late step fails alone instead of taking
 // a chain of five launches down with it (the chained form hit the 30 s test
@@ -22,7 +22,7 @@ async function restoreToSide(scenario: Scenario): Promise<Page> {
   await page.getByRole('button', { name: 'Docs menu', exact: true }).click()
   await page.getByRole('menu', { name: 'Open docs', exact: true }).getByRole('menuitem').click()
   await expect(page.getByRole('textbox', { name: /Document editor/i })).toBeVisible()
-  await page.getByRole('tab', { name: 'Conversation', exact: true }).click()
+  await selectNavigationTab(page, 'Conversation')
   await page.getByRole('button', { name: 'Open in center' }).click()
   await expect(page.locator('.conversation-island')).toBeVisible()
   await page.getByRole('button', { name: 'Open Second engine thread', exact: true }).click()
@@ -45,7 +45,7 @@ test('workspace restores center and side placement, open tabs, and thread switch
     const page = await scenario.launchEmpty()
     await expect(page.locator('.conversation-panel[data-placement="side"]')).toContainText('Second engine thread')
     await expect(page.getByRole('textbox', { name: /Document editor/i })).toBeVisible()
-    await page.getByRole('tab', { name: 'Projects', exact: true }).click()
+    await selectNavigationTab(page, 'Projects')
     // t1 already has a center tab. Selecting it from Projects must still stay on the left.
     await page.getByRole('button', { name: 'Open Live engine thread', exact: true }).click()
     // Thread selection navigates after the double-click delay; text also exists in the hidden tab.
@@ -63,9 +63,10 @@ test('losing the layout preference returns to the centered default, and a file n
   const scenario = await seededScenario(testInfo, engine.origin)
   try {
     let page = await restoreToSide(scenario)
-    await page.getByRole('tab', { name: 'Projects', exact: true }).click()
+    await selectNavigationTab(page, 'Projects')
     await page.getByRole('button', { name: 'Open Live engine thread', exact: true }).click()
     await expect(page.locator('.conversation-panel[data-placement="side"]')).toContainText('Live engine thread')
+    await expect(page.locator('.conversation-panel[data-placement="side"]')).toBeVisible()
     // Losing only the layout preference returns to the centered default even with a saved document.
     await page.evaluate(() => localStorage.removeItem('stratamd.workspace.v1'))
     await scenario.stop()
@@ -75,6 +76,8 @@ test('losing the layout preference returns to the centered default, and a file n
     await scenario.stop()
     page = await scenario.launch()
     await expect(page.getByRole('textbox', { name: /Document editor/i })).toBeVisible()
+    // The document also restores its selected navigation tab.
+    await selectNavigationTab(page, 'Conversation')
     await page.getByRole('button', { name: 'Open in center' }).click()
     await expect(page.locator('.conversation-island')).toBeVisible()
     await page.reload()

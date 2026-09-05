@@ -334,6 +334,7 @@ export function App({ createEditor }: AppProps) {
     <ItemPanel
       key={open.id}
       annotation={open}
+      visible={!conversationCentered && current.reading.navigationTab === 'conversation'}
       documentPath={current.path}
       onReply={(text) => void perform(() => window.strata.reply(current.path, open.id, text))}
       // Resolving an open suggestion is neither Accept nor Reject: confirm first (PRD §6.5).

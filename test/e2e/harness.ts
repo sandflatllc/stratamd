@@ -426,6 +426,14 @@ export function externalText(payload: DocumentInspection): string {
     .join('\n')
 }
 
+/** Waits for the persisted tab selection, including its panel becoming visible. */
+export async function selectNavigationTab(page: Page, name: 'Projects' | 'Conversation' | 'Contents'): Promise<void> {
+  const tab = page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name })
+  await tab.click()
+  await expect(tab).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator(`#navigation-panel-${name.toLowerCase()}`)).toBeVisible()
+}
+
 /**
  * Brings a document to the center (PRD §6.9, decided 2026-09-04). Pinned and
  * active documents are pills; every other open document sits in the Docs menu.
