@@ -104,6 +104,7 @@ test('2 conversation: moves between placements and dispatches a message, approva
     await center.getByRole('button', { name: 'Approve' }).click()
     await expect.poll(() => engine.commands.some((command) => command.type === 'thread.approval.respond')).toBe(true)
     await center.getByRole('button', { name: 'Version one' }).click()
+    await center.getByRole('button', { name: 'Answer', exact: true }).click()
     await expect.poll(() => engine.commands.some((command) => command.type === 'thread.user-input.respond')).toBe(true)
     await center.getByRole('button', { name: 'Stop' }).click()
     await expect.poll(() => engine.commands.some((command) => command.type === 'thread.turn.interrupt')).toBe(true)
@@ -117,9 +118,8 @@ test('2 conversation: moves between placements and dispatches a message, approva
     await page.evaluate(async ({ path }) => window.strata.addAnnotation(path, { kind: 'comment', quote: 'Engine-safe', text: 'Passage context', from: 2, to: 13 }), { path })
     await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
     await page.locator('.annotations-panel .annotation-row').filter({ hasText: 'Engine-safe' }).click()
-    await expect(moved.getByRole('tab', { name: 'Comment discussion' })).toBeEnabled()
-    await expect(moved.getByRole('tab', { name: 'Comment discussion' })).toHaveAttribute('aria-selected', 'true')
-    await moved.getByRole('tab', { name: 'Whole thread' }).click()
+    await expect(moved.getByRole('region', { name: 'comment thread' })).toBeVisible()
+    await moved.getByRole('button', { name: 'Close thread', exact: true }).click()
     await expect(moved).toContainText('Read-side conversation from T3.')
   } finally {
     await scenario.dispose()
@@ -164,8 +164,9 @@ test('4 inference: seven prose questions queue four keyed replies in one deliver
     await expect(checklist.getByText('inferred')).toHaveCount(7)
     for (const [index, answer] of ['Audience', 'Yes', '$10k', 'West'].entries()) {
       const row = checklist.locator('.turn-item').nth(index)
-      await row.getByRole('textbox').fill(answer)
-      await row.getByRole('button', { name: 'Queue reply' }).click()
+      await row.getByRole('button', { name: 'Reply', exact: true }).click()
+      await conversation.getByRole('textbox', { name: 'Discussion reply' }).fill(answer)
+      await conversation.getByRole('button', { name: 'Queue reply', exact: true }).click()
     }
     await expect(checklist.locator('.turn-item[data-status="drafted"]')).toHaveCount(4)
     await expect(checklist.getByText('Drafted: Audience')).toBeVisible()
@@ -176,9 +177,9 @@ test('4 inference: seven prose questions queue four keyed replies in one deliver
     expect(turn.text).toBe('Replies to 4 items.')
     expect(turn.attachments).toHaveLength(1)
     await expect.poll(() => engine.uploads.length).toBe(1)
-    expect(engine.uploads[0]!.match(/^inferred_[0-9a-f]+ ← user: /gmu)).toHaveLength(4)
-    expect(engine.uploads[0]).toContain('← user: Audience')
-    expect(engine.uploads[0]).toContain('about "Which audience should lead?"')
+    const replies = JSON.parse(engine.uploads[0]!.match(/```json\n([\s\S]*?)\n```/)![1]!)
+    expect(replies).toHaveLength(4)
+    expect(replies[0]).toMatchObject({ itemId: expect.stringMatching(/^inferred_/), text: 'Audience' })
     engine.finish()
     await expect(checklist.locator('.turn-item[data-status="done"]')).toHaveCount(4)
     await expect(checklist.locator('.turn-item[data-status="open"]')).toHaveCount(3)
@@ -393,12 +394,18 @@ test('conversation zoom: the side conversation follows the left window and the c
     await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
     const side = page.getByRole('region', { name: 'Conversation' })
     const prose = side.locator('.conversation-message.assistant .conversation-prose')
+    expect(await side.locator('.conversation-messages').evaluate(element => element.clientHeight)).toBeGreaterThanOrEqual(100)
     // Block structure survives: a heading, a fenced code block, and a list, not one flattened run.
     await expect(prose.getByRole('heading', { name: 'Plan' })).toBeVisible()
     await expect(prose.locator('pre code')).toHaveText('const a = 1')
     await expect(prose.getByRole('listitem')).toHaveCount(2)
     const fontSize = (locator: typeof prose) => locator.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
     const zoomOf = (selector: string) => page.locator(selector).evaluate((element) => getComputedStyle(element).getPropertyValue('--zoom').trim())
+    const hoverReading = async (panel: typeof side) => {
+      const viewport = panel.locator('.conversation-messages')
+      const height = await viewport.evaluate(element => element.clientHeight)
+      await viewport.hover({ position: { x: 20, y: height - 8 } })
+    }
     const sideBase = await fontSize(prose)
     expect(sideBase).toBeCloseTo(15, 0)
 
@@ -417,7 +424,7 @@ test('conversation zoom: the side conversation follows the left window and the c
     await expect(card.locator('.conversation-file-row')).toHaveCount(0)
 
     // Ctrl+= over the side conversation scales the left window's factor, and the message text with it (§6.9).
-    await prose.hover()
+    await hoverReading(side)
     await page.keyboard.press(primaryKey('Equal'))
     await expect.poll(() => zoomOf('[data-pane="explorer"]')).toBe('1.1')
     await expect.poll(() => fontSize(prose)).toBeCloseTo(16.5, 0)
@@ -425,7 +432,7 @@ test('conversation zoom: the side conversation follows the left window and the c
 
     // Ctrl+wheel works the same way.
     await page.mouse.wheel(0, -120).catch(() => undefined)
-    await prose.hover()
+    await hoverReading(side)
     await page.keyboard.down('Control')
     await page.mouse.wheel(0, -120)
     await page.keyboard.up('Control')
@@ -437,12 +444,12 @@ test('conversation zoom: the side conversation follows the left window and the c
     const centerProse = center.locator('.conversation-message.assistant .conversation-prose')
     await expect(centerProse.getByRole('heading', { name: 'Plan' })).toBeVisible()
     expect(await fontSize(centerProse)).toBeCloseTo(17, 0)
-    await centerProse.hover()
+    await hoverReading(center)
     await page.keyboard.press(primaryKey('Equal'))
     await expect.poll(() => zoomOf('[data-pane="editor"]')).toBe('1.1')
     await expect.poll(() => fontSize(centerProse)).toBeCloseTo(18.7, 0)
-    // The left window now offers Projects alone; Conversation and Contents return with a document in the center.
-    await expect(navigation.getByRole('tab')).toHaveText(['Projects'])
+    // Center conversations expose their outline in the left Contents tab.
+    await expect(navigation.getByRole('tab')).toHaveText(['Projects', 'Contents'])
 
     await page.getByRole('button', { name: 'Reset zoom' }).click()
     await expect.poll(() => zoomOf('[data-pane="editor"]')).toBe('1')

@@ -26,7 +26,7 @@ const entry = z.discriminatedUnion('verb', [
   z.object({ verb: z.literal('attach'), document: z.string().min(1) }).strict(),
 ])
 export type StrataEntry = z.infer<typeof entry>
-export interface StrataBlockResult { index: number; entry?: StrataEntry; error?: string }
+export interface StrataBlockResult { index: number; entry?: StrataEntry; error?: string; conversationTarget?: boolean }
 
 function shortId(namespace: string, index: number, text: string): string {
   return `b${createHash('sha256').update(`${namespace}\0${index}\0${text}`).digest('hex').slice(0, 8)}`
@@ -62,7 +62,7 @@ export function mapMarkdownBlocks(namespace: string, source: string): BlockAncho
 }
 
 /** Reads only a final fenced strata block. Bad entries do not discard valid siblings. */
-export function parseStrataBlock(message: string): { prose: string; results: StrataBlockResult[] } | null {
+function parseStrataBlockUncached(message: string): { prose: string; results: StrataBlockResult[] } | null {
   const match = /(?:^|\n)```strata\s*\n([\s\S]*?)\n```\s*$/.exec(message)
   if (!match) return null
   let parsed: unknown
@@ -73,9 +73,18 @@ export function parseStrataBlock(message: string): { prose: string; results: Str
     prose: message.slice(0, match.index).trimEnd(),
     results: parsed.map((value, index) => {
       const decoded = entry.safeParse(value)
-      return decoded.success ? { index, entry: decoded.data } : { index, error: decoded.error.issues.map((issue) => issue.message).join('; ') }
+      return decoded.success ? { index, entry: decoded.data } : { index, error: decoded.error.issues.map((issue) => issue.message).join('; '), ...(value && typeof value === 'object' && value.anchor && typeof value.anchor === 'object' && ('message' in value.anchor || (typeof value.anchor.item === 'string' && /^(c_|m_)/.test(value.anchor.item))) ? { conversationTarget: true } : {}) }
     }),
   }
+}
+
+const completedActions = new Map<string, ReturnType<typeof parseStrataBlockUncached>>()
+export function parseStrataBlock(message: string): ReturnType<typeof parseStrataBlockUncached> {
+  if (completedActions.has(message)) return completedActions.get(message)!
+  const result = parseStrataBlockUncached(message)
+  if (completedActions.size >= 1000) completedActions.delete(completedActions.keys().next().value!)
+  completedActions.set(message, result)
+  return result
 }
 
 export function resolveBlock(map: BlockAnchorMap, id: string): { from: number; to: number; text: string } | null {

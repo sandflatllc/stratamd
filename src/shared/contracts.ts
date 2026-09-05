@@ -98,6 +98,10 @@ export type ItemKind = 'decision' | 'question' | 'suggestion' | 'edit' | 'commen
 export type ItemStatus = 'open' | 'drafted' | 'done'
 
 export interface ItemView {
+  source?: { kind: "message"; anchor: import("../core/conversation-delivery").MessageAnchor } | { kind: "document"; path: string }
+  options?: string[]
+  discussion?: Array<{ author: "user" | "agent"; text: string }>
+  unavailable?: boolean
   id: string
   kind: ItemKind
   status: ItemStatus
@@ -224,6 +228,7 @@ export interface EngineModelView {
   options: ModelOptionDescriptor[]
 }
 export interface ConversationInput {
+  comments?: Record<string, number>
   /** Explicit frozen reply selection. Omission selects no private replies. */
   replies?: Record<string, string>
   messageId?: string
@@ -254,6 +259,9 @@ export interface EngineThreadView {
   pendingUserInput: boolean
   activeTurnId: string | null
   turnStartedAt: string | null
+  comments?: import("../core/conversation-delivery").MessageComment[]
+  outcomes?: import("../core/conversation-delivery").ConversationOutcome[]
+  deliveries?: Array<{ messageId: string; text: string; phase: 'uploading' | 'prepared' }>
   messages: EngineMessageView[]
   activities: EngineActivityView[]
   items?: ItemView[]
@@ -506,7 +514,6 @@ export interface PanelSizes {
   upperReviewHeight: number
   documentMeasure: number
   themePanel: ThemePanelGeometry
-  threadPanel: PanelSize
   annotationComposer: PanelSize
   sendComposer: PanelSize
 }
@@ -577,6 +584,7 @@ export interface SendDocumentToken {
 }
 
 export interface SendPreviewRequest {
+  conversation?: Record<string, { deliveryId: string; comments: Record<string, number>; replies: Record<string, string> }>
   recipients: string[]
   note: string
   includeExternal: boolean
@@ -710,6 +718,8 @@ export interface StrataApi {
   /** Sends the owner's note plus every queued item reply as one delivery (§5.4); either may be empty, not both. */
   startConversationTurn(threadId: string, input: ConversationInput): Promise<void>
   /** Queues a reply to a message-anchored item; the row shows Drafted until the Send carrying it is acknowledged (§5.4). */
+  holdMessageComment(threadId: string, input: { id?: string; messageId: string; from: number; to: number; kind: DraftKind; text: string }): Promise<string>
+  actMessageComment(threadId: string, itemId: string, action: "resolve" | "reopen" | "discard"): Promise<void>
   queueItemReply(threadId: string, itemId: string, text: string): Promise<void>
   discardItemReply(threadId: string, itemId: string): Promise<void>
   /** Hides an inferred item; remembered per message (§5.12). */

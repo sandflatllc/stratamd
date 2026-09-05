@@ -2,6 +2,7 @@ import type { AnnotationView, AttachmentView, EngineMessageView, HunkView, ItemV
 import { mapMarkdownBlocks, parseStrataBlock, resolveBlock } from './blocks'
 
 export interface ItemInputs {
+  documentPath?: string
   annotations: readonly AnnotationView[]
   hunks?: readonly HunkView[]
   attachments?: readonly AttachmentView[]
@@ -22,6 +23,9 @@ function annotationStatus(annotation: AnnotationView, cursors: ReadonlyMap<strin
 export function deriveItems(input: ItemInputs): ItemView[] {
   const cursors = new Map((input.attachments ?? []).map((attachment) => [attachment.agent.id, attachment.cursor ?? 0]))
   const annotations = input.annotations.map((annotation): ItemView => ({
+    ...(input.documentPath ? { source: { kind: 'document' as const, path: input.documentPath } } : {}),
+    ...(annotation.decision ? { options: [...annotation.decision.options] } : {}),
+    discussion: annotation.replies.map(reply => ({ author: reply.author === 'user' ? 'user' as const : 'agent' as const, text: reply.text })),
     id: annotation.id,
     kind: annotation.kind,
     status: annotationStatus(annotation, cursors),
@@ -37,6 +41,7 @@ export function deriveItems(input: ItemInputs): ItemView[] {
     inferred: false,
   }))
   const hunks = (input.hunks ?? []).map((hunk): ItemView => ({
+    ...(input.documentPath ? { source: { kind: 'document' as const, path: input.documentPath } } : {}),
     id: `hunk:${hunk.id}`,
     kind: 'edit',
     status: 'open',

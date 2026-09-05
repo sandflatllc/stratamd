@@ -1,6 +1,6 @@
 # PRD conformance ledger
 
-`docs/PRD.md`, draft v26 dated 2026-09-04, is the source of truth. This ledger maps the cockpit amendment and retains the full AGENTS.md gate as the release condition.
+`docs/PRD.md`, draft v27 dated 2026-09-04, is the source of truth. This ledger maps the cockpit amendment and retains the full AGENTS.md gate as the release condition.
 
 Verification keys:
 
@@ -25,7 +25,7 @@ Verification keys:
 | 6.9 | First launch and missing layout default to centered Conversation; restart restores placement and open conversation tabs; thread selection keeps the current placement. | `E` `test/e2e/workspace-restore.spec.ts`; `U` `test/unit/workspace-state.test.ts` |
 | 6.9 | Newest-first messages regardless of sender in both placements and Comment discussion; reopen at the newest message; incoming messages follow the top only when already there, otherwise preserve reading position; composer stays at the bottom. | `E` `test/e2e/conversation-order.spec.ts` |
 | 6.9 | Projects folders and lifecycle shelves; normalized Conversation work groups and full prose; center tabs, Items, Attached, picker, notifications, shared disconnected state, Accounts modal. | `E` `test/e2e/cockpit-engine.spec.ts` (pairing, conversation, Projects parity, Conversation parity, rows and notifications, accounts), `test/e2e/review-actions.spec.ts`, `test/e2e/decision-annotations.spec.ts`, `test/e2e/shell-round2.spec.ts`; `U` `test/unit/projects-rail.test.ts`, `test/unit/work-log.test.ts`, `test/unit/engine-accounts.test.ts`, `test/unit/engine-attention.test.ts`, `test/unit/engine-notifications.test.ts`; screenshot review recorded below |
-| 6.9 | Left window: Projects first, Conversation and Contents only with a document in the center, one width, no Files panel; Open file button; Docs and Conversations dropdown pills with pins; Conversation zoom and block-level message rendering; changed files fold into a count, delta, folder, and chip card with the list on request; no bare rem sizes or undefined tokens. | `E` `test/e2e/cockpit-engine.spec.ts` "conversation zoom", `test/e2e/renderer-shell.spec.ts` "blank shell opens a document", `test/e2e/shell-round2.spec.ts` "the tab menu closes", `test/e2e/tab-overflow.spec.ts`, `test/e2e/agent-collaboration.spec.ts` 4, `test/e2e/structured-reading.spec.ts`; `U` `test/unit/styles-zoom.test.ts`, `test/unit/message-markdown.test.ts`, `test/unit/changed-files.test.ts`, `test/unit/topbar-pins.test.ts`, `test/unit/renderer-model.test.ts` (one left width), `test/unit/reading.test.ts` |
+| 6.9 | Left window: Projects first, Conversation with a document in the center and Contents for either center reading mode, one width, no Files panel; Open file button; Docs and Conversations dropdown pills with pins; Conversation zoom and block-level message rendering; changed files fold into a count, delta, folder, and chip card with the list on request; no bare rem sizes or undefined tokens. | `E` `test/e2e/cockpit-engine.spec.ts` "conversation zoom", `test/e2e/renderer-shell.spec.ts` "blank shell opens a document", `test/e2e/shell-round2.spec.ts` "the tab menu closes", `test/e2e/tab-overflow.spec.ts`, `test/e2e/agent-collaboration.spec.ts` 4, `test/e2e/structured-reading.spec.ts`; `U` `test/unit/styles-zoom.test.ts`, `test/unit/message-markdown.test.ts`, `test/unit/changed-files.test.ts`, `test/unit/topbar-pins.test.ts`, `test/unit/renderer-model.test.ts` (one left width), `test/unit/reading.test.ts` |
 | 6.11 | One paired T3 server over HTTP/WebSocket with an owner-only credential and no other app network. | `U` engine-client credential/reconnect tests and `test/unit/engine-client.test.ts` "session renewal (§5.1)" (renews in the last week with `access:write`, never without it, a refusal changes nothing); renderer network-denial E2E |
 | 13 | Cockpit rationale and rejected alternatives. | PRD review plus removal audit |
 
@@ -70,7 +70,7 @@ Scenarios the cockpit retired, with the plan line that removed them: killing the
 
 ## Removals audit (2026-09-04)
 
-`grep -rni "copy for agent\|nudge\|attach loop\|stratamd attach\|changed tag\|socket server\|agent CLI" src docs/PRD.md docs/PRD_CONFORMANCE.md docs/internals skills README.md AGENTS.md` finds only the English word "nudged" in two editor comments about caret placement. No code, test, skill, or doc text for the socket server, the agent CLI, the attach loop, nudge, Copy for agent, or the `changed` tag remains; `test/unit/cli.test.ts` covers the file-only CLI.
+The bundled skill and agent help describe the T3 attachment workflow. Retired attach-loop terms remain in historical explanations; they are not executable instructions. `test/unit/cli.test.ts` checks the current contract against PRD §7 and the bundled skill.
 
 ## Release use
 
@@ -89,3 +89,28 @@ Then run the cockpit removal audit and build the launcher target with `./node_mo
 PRD §6.0 is covered by `test/e2e/new-conversation.spec.ts` for project entry, focus, deferred creation, draft restoration, model/account options, first-send retry, streamed titles, and visual captures; `test/e2e/cockpit-drafts.spec.ts` covers document context delivery. `test/unit/conversation-drafts.test.ts` covers saved defaults and account selection.
 
 The Family → Subscription → Model picker, daily flagships, GPT subscription switching, Claude subscription lock, and saved-draft and dispatch restrictions are covered by `test/unit/model-selection.test.ts` and `test/e2e/model-selector.spec.ts`.
+
+## Conversation passage integration
+
+| Requirement | Evidence |
+| --- | --- |
+| Message/block range identity, repeated prose, UTF-16 offsets, loose lists, fence variants, unavailable targets, and action-block exclusion | `U` `test/unit/conversation-message.test.ts`, “maps first and last selected source characters without changing the block algorithm” and “anchors repeated text to its selected occurrence and excludes the final action block” |
+| Frozen upload recovery, newer replies, and command identity after a lost dispatch response | `U` `test/unit/engine-conversation-state.test.ts`, “recovers rejected uploads after restart with frozen comments and replies, preserving later drafts”, “reuses uploaded references and command identity after a lost dispatch response”, and “a document-frozen context delivers the original reply while a newer revision remains queued” |
+| Held comments remain private across restart and independent Sends | `U` `test/unit/engine-conversation-state.test.ts`, “holds two comments through restart, quick-sends a third, then sends only one held comment” |
+| Legacy queued note acknowledgment preserves the document baseline | `U` `test/unit/delivery.test.ts`, “acknowledges a persisted legacy message without advancing the document baseline” |
+| Mixed action targets and standalone local references | `I` `test/integration/cockpit-delivery.test.ts`, “routes one mixed action block to two documents without duplicating conversation outcomes” and “resolves conversation Markdown from its registered project without an open document” |
+| Standalone agent items and replies, decision ownership, restart replay, and outcomes waiting for Send | `U` `test/unit/engine-conversation-state.test.ts`, “routes standalone conversation actions once, keeps decisions owner-controlled, and delivers outcomes on the next Send” |
+| Owner selects rich component prose, holds a comment, previews exact bytes, sends, receives a reply, jumps to its passage, and returns to the prior reading position | `E` `test/e2e/conversation-comments.spec.ts`, “owner holds and sends a rich message passage in side” and “owner holds and sends a rich message passage in center” |
+| Full-history Find and bounded rich mounting through stream updates | `E` `test/e2e/conversation-comments.spec.ts`, “100 exchanges mount only nearby editors and navigate old content” in both placements, including a held comment on the old answer and a Reviewed outline mark; `U` `test/unit/conversation-reading.test.ts`, “caches canonical completed parses across unrelated ticks and refreshes changed source” |
+| Explicit document/conversation selection and recipient isolation | `I` `test/integration/cockpit-delivery.test.ts`, “document preview freezes explicit conversation selections separately for each recipient” |
+| Newest-first ordering, incoming-message position protection, and reopening at newest | `E` `test/e2e/conversation-order.spec.ts` |
+
+The history fixture has 100 completed exchanges and one streaming answer. Its editor-count assertion is fewer than 12 mounted rich editors, independent of the 100-answer history. The cache test visits all 100 completed answers across ten ticks and verifies exactly 100 initial parses, then one additional parse for a changed source. The Electron scenarios record Find-and-mount timing samples alongside their captures; no timing threshold is claimed. T3's existing unwindowed HTTP and subscription contracts return the full thread.
+
+Visual captures come from the owner-comment and history scenarios. Agent screenshot inspection and automated checks are separate from owner visual approval. Installed skill refresh and an app restart are an owner-environment handoff; implementation does not rewrite installed skills or restart the running app.
+
+Conversation screenshot review (2026-09-04): the agent inspected the center and narrow side layouts, the passage composer and discussion, table and diagram rendering, an old held passage during streaming, and the seven bundled themes at 120% zoom. Captures are under `docs/design/conversation-integration/captures/`; this records agent inspection, not owner visual approval. Representative captures: [center composer](design/conversation-integration/captures/center-passage-composer.png), [side composer](design/conversation-integration/captures/side-passage-composer.png), [discussion](design/conversation-integration/captures/center-discussion.png), [diagram](design/conversation-integration/captures/center-diagram.png), and [old passage](design/conversation-integration/captures/center-long-history.png).
+
+The captured 100-exchange sample mounted two rich editors in each placement. Find-and-mount took 300 ms in the center and 676 ms in the side placement under Xvfb. These single-run diagnostic measurements are recorded in the adjacent `*-history-measurement.json` files; they are not timing budgets.
+
+Repository gate, 2026-09-04: `tsc --noEmit` passed; Vitest passed 760 tests in 87 files, with one existing skip; `electron-vite build` passed; Playwright passed all 156 tests under Xvfb in 6.6 minutes. The full Electron suite used `--workers 1` to prevent pointer interference between its ordinary and clipboard projects on the shared display. Existing document visual baselines passed without updates.

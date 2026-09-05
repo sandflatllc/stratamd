@@ -1,0 +1,120 @@
+import { writeFile } from 'node:fs/promises'
+import { expect, test } from '@playwright/test'
+import { seededScenario, startEngine } from './cockpit-engine-harness'
+
+const answer = '# Reading the answer\n\n<Callout kind="context">\n\nA useful **formatted passage** for a comment.\n\n</Callout>\n\n<Verdict outcome="recommended">\n\nKeep the source immutable.\n\n</Verdict>\n\n| Choice | Value |\n| --- | --- |\n| First | 12 |\n| Second | 24 |\n\n```mermaid\ngraph LR\nA --> B\n```\n\nRepeated passage.\n\nRepeated passage.\n'
+for (const placement of ['side', 'center'] as const) test(`owner holds and sends a rich message passage in ${placement}`, async ({}, testInfo) => {
+  const engine = await startEngine()
+  const scenario = await seededScenario(testInfo, engine.origin)
+  const messageId = engine.postAssistant('t1', answer)
+  try {
+    const page = await scenario.launch()
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
+    await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
+    if (placement === 'center') {
+      await page.getByRole('button', { name: 'Open in center' }).click()
+      await page.evaluate(async () => { const active = (await window.strata.getState()).activeDocument; if (active) await window.strata.closeDocument(active.path) })
+    }
+    const panel = page.locator(`.conversation-panel[data-placement="${placement}"]`)
+    const message = panel.locator(`[data-message-id="${messageId}"]`)
+    await expect(message.locator('.strata-prosemirror')).toBeVisible()
+    await expect(message.locator('.strata-prosemirror')).toContainText('A useful')
+    await expect(message.locator('.strata-mermaid-canvas svg')).toBeAttached()
+    await message.locator('.strata-mermaid-canvas').scrollIntoViewIfNeeded()
+    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-diagram.png`) })
+    await message.locator('.strata-table-block').scrollIntoViewIfNeeded()
+    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-table-diagram.png`) })
+    await message.locator('.strata-prosemirror p').filter({ hasText: 'A useful' }).scrollIntoViewIfNeeded()
+    await message.locator('.strata-prosemirror').evaluate(element => {
+      const text = Array.from(element.querySelectorAll('p')).find(p => p.textContent?.includes('A useful'))!
+      const range = document.createRange(); range.selectNodeContents(text)
+      const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range)
+      element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    })
+    await page.getByRole('menuitem', { name: /^Comment C$/ }).click()
+    const composer = page.locator('.annotation-composer')
+    await expect(composer).toBeVisible()
+    await composer.locator('textarea').fill('Please explain this.\nKeep both lines.')
+    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-passage-composer.png`) })
+    await composer.getByRole('button', { name: 'Hold', exact: true }).click()
+    await expect(panel.locator('.conversation-context-tray')).toContainText('Please explain this.')
+    await panel.getByText('Delivery preview', { exact: true }).click()
+    const preview = await panel.locator('.conversation-context-tray pre').innerText()
+    expect(preview).toContain('formatted passage')
+    await panel.getByRole('button', { name: 'Send', exact: true }).click()
+    await expect.poll(() => engine.uploads.length).toBeGreaterThan(0)
+    expect(engine.uploads.at(-1)).toBe(preview)
+    const annotations = JSON.parse(preview.match(/```json\n([\s\S]*?)\n```/)![1]!)
+    const id = annotations[0].id
+    engine.postAssistant('t1', 'Here is the explanation.\n\n```strata\n' + JSON.stringify([{ verb: 'reply', anchor: { item: id }, text: 'A precise reply to your passage.' }]) + '\n```')
+    await expect.poll(async () => page.evaluate(async id => (await window.strata.getState()).engine.projects.flatMap(p => p.threads).find(t => t.id === 't1')?.comments?.find(c => c.id === id)?.replies.length, id)).toBe(1)
+    const beforeDiscussion = await panel.locator('.conversation-messages').evaluate(element => element.scrollTop)
+    await panel.getByRole('button', { name: 'Items', exact: true }).click()
+    await panel.locator('.conversation-navigation').getByRole('button').filter({ hasText: 'Please explain this.' }).click()
+    await expect(panel.getByRole('region', { name: 'Passage discussion' })).toContainText('A precise reply to your passage.')
+    await panel.getByRole('button', { name: 'Back to reading', exact: true }).click()
+    await expect.poll(async () => Math.abs(await panel.locator('.conversation-messages').evaluate(element => element.scrollTop) - beforeDiscussion)).toBeLessThan(3)
+    await panel.getByRole('button', { name: 'Items', exact: true }).click()
+    await panel.locator('.conversation-navigation').getByRole('button').filter({ hasText: 'Please explain this.' }).click()
+    await panel.getByRole('region', { name: 'Passage discussion' }).scrollIntoViewIfNeeded()
+    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-discussion.png`) })
+    await panel.getByRole('button', { name: 'Jump to passage' }).click()
+    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-anchored-discussion.png`) })
+    const themes = await page.evaluate(async () => (await window.strata.getState()).settings.theme.available)
+    for (const theme of themes) {
+      await page.evaluate(async id => window.strata.selectTheme(id), theme.id)
+      await page.evaluate(async () => { const state = await window.strata.getState(); await window.strata.updateSettings({ zoom: { ...state.settings.zoom, explorer: 1.2, editor: 1.2 } }) })
+      await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-${theme.name.replace(/[^a-z0-9]+/gi, '-')}-zoom.png`) })
+    }
+
+  } finally { await scenario.dispose(); await engine.close() }
+})
+
+for (const placement of ['side', 'center'] as const) test(`100 exchanges mount only nearby editors and navigate old content in ${placement}`, async ({}, testInfo) => {
+  const engine = await startEngine({ longHistory: true })
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    const page = await scenario.launch()
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
+    await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
+    if (placement === 'center') {
+      await page.getByRole('button', { name: 'Open in center' }).click()
+      await page.evaluate(async () => { const active = (await window.strata.getState()).activeDocument; if (active) await window.strata.closeDocument(active.path) })
+    }
+    const panel = page.locator(`.conversation-panel[data-placement="${placement}"]`)
+    await expect(panel.locator('[data-message-id]')).toHaveCount(201)
+    await expect.poll(() => panel.locator('[data-rich-mounted]').count()).toBeLessThan(12)
+    const navigationStarted = performance.now()
+    await panel.getByRole('button', { name: 'Find', exact: true }).click()
+    await panel.getByRole('textbox', { name: 'Find in conversation' }).fill('History passage 1.')
+    await panel.getByRole('button', { name: 'Next', exact: true }).click()
+    const old = panel.locator('[data-message-id="history-agent-0"]')
+    await expect(old.locator('.strata-prosemirror')).toBeVisible()
+    expect(await old.locator('.strata-prosemirror').evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize))).toBe(placement === 'center' ? 17 : 15)
+    await expect.poll(() => panel.locator('[data-rich-mounted]').count()).toBeLessThan(12)
+    await panel.getByRole('button', { name: 'Find', exact: true }).click()
+    await writeFile(testInfo.outputPath(`${placement}-history-measurement.json`), JSON.stringify({ exchanges: 100, mountedEditors: await panel.locator('[data-rich-mounted]').count(), findAndMountMs: Math.round(performance.now() - navigationStarted) }, null, 2))
+    const top = await old.evaluate(element => element.getBoundingClientRect().top)
+    engine.setMessage('Streaming update while the owner reads an old answer.')
+    await expect(panel.locator('[data-message-id="m1"]')).toContainText('Streaming update')
+    await expect.poll(async () => Math.abs(await old.evaluate(element => element.getBoundingClientRect().top) - top)).toBeLessThan(3)
+    await old.locator('.strata-prosemirror').evaluate(element => {
+      const text = Array.from(element.querySelectorAll('p')).find(p => p.textContent?.includes('History passage 1.'))!
+      const range = document.createRange(); range.selectNodeContents(text)
+      const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range)
+      element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    })
+    await page.getByRole('menuitem', { name: /^Comment C$/ }).click()
+    await page.locator('.annotation-composer textarea').fill('Comment on the oldest answer.')
+    await page.locator('.annotation-composer').getByRole('button', { name: 'Hold', exact: true }).click()
+    await expect(panel.locator('.conversation-context-tray')).toContainText('Comment on the oldest answer.')
+    await panel.getByRole('button', { name: 'Contents', exact: true }).click()
+    const mark = panel.getByRole('combobox', { name: 'Reading mark Answer 1', exact: true })
+    await mark.selectOption('Reviewed')
+    await expect(mark).toHaveValue('Reviewed')
+    await panel.getByRole('button', { name: 'Contents', exact: true }).click()
+    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-long-history.png`) })
+  } finally { await scenario.dispose(); await engine.close() }
+})

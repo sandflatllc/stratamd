@@ -25,7 +25,7 @@ import type { CSSProperties } from 'react'
 import { sameJson } from '../shared/view-sync'
 import { AMBIENT_STYLES, BUILT_IN_THEME_ID, BUILT_IN_THEME_NAME, contrastingText, DEFAULT_THEME_VALUES, mixHex, THEME_KEYS, type AmbientStyle } from '../shared/theme-keys'
 
-export type NumericPanelKey = Exclude<keyof PanelSizes, 'themePanel' | 'threadPanel' | 'annotationComposer' | 'sendComposer'>
+export type NumericPanelKey = Exclude<keyof PanelSizes, 'themePanel' | 'annotationComposer' | 'sendComposer'>
 
 /** Side windows have a floor but no ceiling: the owner decides how wide they get (decided 2026-09-02). */
 export const SIDE_WINDOW_MAX = 20_000
@@ -128,7 +128,6 @@ export const EMPTY_VIEW: AppView = {
       upperReviewHeight: 444,
       documentMeasure: 860,
       themePanel: { x: -1, y: -1, width: 360, height: 560 },
-      threadPanel: { width: 660, height: -1 },
       annotationComposer: { width: 330, height: -1 },
       sendComposer: { width: 680, height: -1 }
     },

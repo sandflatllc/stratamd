@@ -19,7 +19,6 @@ const view: AppView = {
       upperReviewHeight: 494,
       documentMeasure: 780,
       themePanel: { x: -1, y: -1, width: 360, height: 560 },
-      threadPanel: { width: 660, height: -1 },
       annotationComposer: { width: 330, height: -1 },
       sendComposer: { width: 680, height: -1 }
     },
@@ -42,6 +41,8 @@ function fakeApi(): StrataApi {
     createEngineProject: vi.fn(async () => 'project-new'),
     parkAccount: vi.fn(async () => undefined),
     updateEngineThread: vi.fn(async () => undefined),
+    holdMessageComment: vi.fn(async () => "c_test"),
+    actMessageComment: vi.fn(async () => undefined),
     queueItemReply: vi.fn(async () => undefined),
     discardItemReply: vi.fn(async () => undefined),
     dismissItem: vi.fn(async () => undefined),

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { memo, type ReactNode } from 'react'
 import { fromMarkdown } from 'mdast-util-from-markdown'
 import { gfmFromMarkdown } from 'mdast-util-gfm'
 import { gfm } from 'micromark-extension-gfm'
@@ -102,6 +102,6 @@ function block(node: MessageNode, key: string): ReactNode {
   }
 }
 
-export function MessageMarkdown({ text }: { text: string }) {
+export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: string }) {
   return <div className="conversation-prose">{parseMessageMarkdown(text).map((node, index) => block(node, String(index)))}</div>
-}
+})

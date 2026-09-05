@@ -1,7 +1,7 @@
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createStrataApplication, type StrataApplication } from '../../src/main/application'
 import type { EngineReadClient } from '../../src/main/engine/client'
 import type { EngineView } from '../../src/shared/contracts'
@@ -125,4 +125,84 @@ describe('cockpit delivery turns', () => {
     expect((await app.getState()).activeDocument!.attachments[0]?.agent.id).toBe('t1')
     expect(engine.turns[0]!.attachment!.text).toContain('# Bootstrap')
   })
+})
+
+it('document preview freezes explicit conversation selections separately for each recipient', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'strata-mixed-delivery-'))
+  const path = join(root, 'mixed.md')
+  await writeFile(path, '# Mixed document\n\nSource paragraph.\n')
+  const store = new GhostStore({ dataDirectory: join(root, 'data') })
+  const engine = new DeliveryEngine()
+  const originalView = engine.view.bind(engine)
+  engine.view = () => {
+    const view = originalView()
+    const base = view.projects[0]!.threads[0]!
+    view.projects[0]!.threads = ['t1', 't2'].map(id => ({ ...base, id, items: [{ id: `item-${id}`, kind: 'question', status: 'drafted', review: 'unreviewed', text: 'Question', quote: 'Source', order: 0, threadId: id, turnId: null, messageId: null, annotationId: null, hunkId: null, inferred: true, draftReply: `Private reply for ${id}` }] }))
+    return view
+  }
+  const app = await createStrataApplication({ store, settingsStore: new SettingsStore({ configDirectory: join(root, 'config') }), engine, watch: false })
+  applications.push(app)
+  await app.openDocument(path)
+  const request = { recipients: ['t1', 't2'], note: 'Read this', includeExternal: false, conversation: {
+    t1: { deliveryId: 'mixed-t1', comments: {}, replies: { 'item-t1': 'Private reply for t1' } },
+    t2: { deliveryId: 'mixed-t2', comments: {}, replies: {} },
+  } }
+  const previews = await app.previewSend(path, request)
+  expect(previews[0]!.text).toContain('Private reply for t1')
+  expect(previews[1]!.text).not.toContain('Private reply')
+  await app.send(path, { ...request, token: previews[0]!.token })
+  expect(engine.turns[0]!.context?.replies).toEqual([{ itemId: 'item-t1', text: 'Private reply for t1' }])
+  expect(engine.turns[1]!.context).toBeUndefined()
+  const saved = await store.loadMeta(path)
+  expect(saved.attachments.t1?.deliveries[0]).toHaveProperty('conversationContext')
+})
+
+it('routes one mixed action block to two documents without duplicating conversation outcomes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'strata-mixed-actions-'))
+  const paths = [join(root, 'first.md'), join(root, 'second.md')]
+  const store = new GhostStore({ dataDirectory: join(root, 'data') })
+  const engine = new DeliveryEngine()
+  const app = await createStrataApplication({ store, settingsStore: new SettingsStore({ configDirectory: join(root, 'config') }), engine, watch: false })
+  applications.push(app)
+  for (const path of paths) {
+    await writeFile(path, '# Document\n\nTarget paragraph.\n')
+    await app.openDocument(path)
+    const [delivery] = await app.send(path, { recipients: ['t1'], note: '', includeExternal: false })
+    engine.acknowledge(delivery!)
+    await vi.waitFor(async () => expect((await store.loadMeta(path)).attachments.t1?.deliveries).toHaveLength(0))
+  }
+  const text = 'Mixed.\n\n```strata\n' + JSON.stringify([
+    ...paths.map(document => ({ verb: 'comment', anchor: { document, quote: 'Target paragraph.' }, text: `Comment for ${document}` })),
+    { verb: 'reply', anchor: { item: 'c_owner' }, text: 'A conversation reply.' },
+    { verb: 'decision', anchor: { message: 'm_answer', block: 'b_missing' }, text: 'Malformed choices' },
+  ]) + '\n```'
+  engine.assistant('mixed-actions', text)
+  for (const path of paths) {
+    await app.openDocument(path)
+    await vi.waitFor(async () => expect((await app.getState()).activeDocument!.annotations).toHaveLength(1))
+    expect((await app.getState()).activeDocument!.annotations[0]!.text).toBe(`Comment for ${path}`)
+  }
+  engine.assistant('mixed-actions', text)
+  for (const path of paths) {
+    await app.openDocument(path)
+    expect((await app.getState()).activeDocument!.annotations).toHaveLength(1)
+    await app.send(path, { recipients: ['t1'], note: '', includeExternal: false })
+    const payload = engine.turns.at(-1)!.attachment!.text
+    expect(payload).toContain('applied as a_')
+    expect(payload).not.toContain('failed:')
+    expect(payload).not.toContain('A conversation reply.')
+  }
+})
+
+it('resolves conversation Markdown from its registered project without an open document', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'strata-conversation-reference-'))
+  await writeFile(join(root, 'notes.md'), '# Local notes\n')
+  const engine = new DeliveryEngine()
+  const original = engine.view.bind(engine)
+  engine.view = () => { const view = original(); view.projects[0]!.workspaceRoot = root; return view }
+  const app = await createStrataApplication({ store: new GhostStore({ dataDirectory: join(root, 'data') }), settingsStore: new SettingsStore({ configDirectory: join(root, 'config') }), engine, watch: false })
+  applications.push(app)
+  expect(await app.resolveLocalMarkdown(join(root, '.conversation.md'), 'notes.md')).toMatchObject({ source: '# Local notes\n' })
+  expect(await app.resolveLocalMarkdown(join(root, '.conversation.md'), '../outside.md')).toBeNull()
+  expect((await app.getState()).activeDocument).toBeNull()
 })

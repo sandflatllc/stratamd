@@ -1,3 +1,4 @@
+import { conversationDelivery, renderConversationDelivery } from '../core/conversation-delivery'
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, extname, join, resolve } from 'node:path'
 import { open, realpath, stat, type FileHandle } from 'node:fs/promises'
@@ -91,7 +92,6 @@ import {
   enqueueDelivery,
   freezeDelivery,
   freezeQuickSend,
-  freezeMessage,
   isMessageDelivery,
   type Attachment,
   type DeliverySource,
@@ -769,6 +769,16 @@ export class StrataApplication implements StrataApi {
     await this.#engine.startTurn(threadId, input)
   }
 
+  async holdMessageComment(threadId: string, input: Parameters<import('../shared/contracts').StrataApi['holdMessageComment']>[1]): Promise<string> {
+    if (input.id && [...this.#sessions.values()].some(session => session.attachments[threadId]?.deliveries.some(delivery => delivery.conversationContext?.annotations.some(comment => comment.id === input.id)))) throw new Error(`Comment ${input.id} is queued for delivery`)
+    if (!this.#engine.holdMessageComment) throw new Error('This engine cannot hold comments')
+    return this.#engine.holdMessageComment(threadId, input)
+  }
+  async actMessageComment(threadId: string, itemId: string, action: 'resolve' | 'reopen' | 'discard'): Promise<void> {
+    if ([...this.#sessions.values()].some(session => session.attachments[threadId]?.deliveries.some(delivery => delivery.conversationContext?.annotations.some(comment => comment.id === itemId)))) throw new Error(`Comment ${itemId} is queued for delivery`)
+    if (!this.#engine.actMessageComment) throw new Error('This engine cannot update comments')
+    await this.#engine.actMessageComment(threadId, itemId, action)
+  }
   async queueItemReply(threadId: string, itemId: string, text: string): Promise<void> {
     if (!this.#engine.queueItemReply) throw new Error('This engine cannot queue replies')
     await this.#engine.queueItemReply(threadId, itemId, text)
@@ -865,8 +875,15 @@ export class StrataApplication implements StrataApi {
     // Every edit in one message extends the same segment: one message is one round of the agent's work.
     let editedInMessage = false
     for (const result of parsed.results) {
+      if (result.conversationTarget) continue
       if (!result.entry) { outcomes.push({ index: result.index, status: 'failed', reason: result.error ?? 'Malformed entry' }); continue }
       const entry = result.entry
+      if ('anchor' in entry) {
+        if ('message' in entry.anchor) continue
+        if ('document' in entry.anchor && entry.anchor.document !== session.path) continue
+        if ('item' in entry.anchor && (entry.anchor.item.startsWith('c_') || entry.anchor.item.startsWith('m_') || [...this.#sessions.values()].some(other => other !== session && other.annotations.annotations[(entry.anchor as { item: string }).item]))) continue
+      }
+      if ('document' in entry && entry.document !== session.path) continue
       try {
         if (entry.verb === 'attach') throw new Error('attach must be the only entry in an unattached thread')
         const holder = session.leadAgentId
@@ -1012,6 +1029,8 @@ export class StrataApplication implements StrataApi {
     const note = `Delivery ${delivery.id}: ${changes} change${changes === 1 ? '' : 's'}, ${items} item${items === 1 ? '' : 's'}.`
     try {
       await this.#engine.startTurn(threadId, {
+        ...delivery.conversation,
+        ...(delivery.conversationContext ? { context: delivery.conversationContext } : {}),
         text: note,
         model: thread.model,
         effort: thread.effort,
@@ -1850,7 +1869,10 @@ export class StrataApplication implements StrataApi {
         const delivery = freezeDelivery(attachment, await this.#deliverySource(session, request, id, 'send', annotations, attachment))
         return {
           recipient: agentIdentity(id, attachment.name, Object.keys(session.attachments).indexOf(id)),
-          text: delivery.payload.text,
+          text: delivery.payload.text + (() => {
+            const context = this.#conversationContext(id, delivery.id, request)
+            return context ? '\n' + renderConversationDelivery(context) : ''
+          })(),
           token,
           items: delivery.payload.event === 'resync' ? { changes: [], events: [] } : this.#sendItems(session, attachment, annotations, new Set(request.draftIds ?? [])),
           ...(delivery.payload.event === 'resync' ? { resync: true } : {}),
@@ -1987,7 +2009,8 @@ export class StrataApplication implements StrataApi {
 
   async resolveLocalMarkdown(documentPath: string, source: string): Promise<LocalMarkdownPreview | null> {
     if (/^[a-z][a-z\d+.-]*:/i.test(source) || source.startsWith('//') || source.includes('\0')) return null
-    const session = this.#require(documentPath)
+    const projectBase = this.#engine.view().projects.some(project => join(project.workspaceRoot, '.conversation.md') === documentPath)
+    const basePath = projectBase ? documentPath : this.#require(documentPath).path
     let request: string
     try {
       request = decodeURIComponent(source.split(/[?#]/u, 1)[0] ?? '')
@@ -1996,7 +2019,7 @@ export class StrataApplication implements StrataApi {
     }
     if (!request || !['.md', '.markdown'].includes(extname(request).toLowerCase())) return null
     try {
-      const safe = await resolveAllowedLocalPath(request, session.path, this.#settings.explorerFolders)
+      const safe = await resolveAllowedLocalPath(request, basePath, this.#settings.explorerFolders)
       if (!safe || !['.md', '.markdown'].includes(extname(safe).toLowerCase())) return null
       const limit = 256 * 1024
       const handle = await open(safe, 'r')
@@ -2431,6 +2454,23 @@ export class StrataApplication implements StrataApi {
     return blob
   }
 
+  #conversationContext(threadId: string, deliveryId: string, request: SendPreviewRequest) {
+    const thread = this.#engine.view().projects.flatMap(project => project.threads).find(thread => thread.id === threadId)
+    if (!thread) return null
+    const selection = request.conversation?.[threadId]
+    const comments = Object.entries(selection?.comments ?? {}).map(([id, revision]) => {
+      const comment = thread.comments?.find(comment => comment.id === id && comment.revision === revision && comment.state === 'held')
+      if (!comment) throw new Error(`Comment ${id} changed. Review the delivery again.`)
+      return comment
+    })
+    const replies = Object.fromEntries(Object.entries(selection?.replies ?? {}).map(([id, text]) => {
+      if (thread.items?.find(item => item.id === id)?.draftReply !== text) throw new Error(`Reply ${id} changed. Review the delivery again.`)
+      return [id, { text }]
+    }))
+    if (!comments.length && !Object.keys(replies).length && !thread.outcomes?.length) return null
+    return structuredClone(conversationDelivery(threadId, deliveryId, comments, replies, thread.messages, thread.outcomes ?? []))
+  }
+
   async #enqueueDeliveries(
     session: OpenDocumentSession,
     request: SendPreviewRequest,
@@ -2438,17 +2478,19 @@ export class StrataApplication implements StrataApi {
     event: 'send' = 'send',
     annotations: AnnotationLog = session.annotations,
   ) {
-    const deliveries = await Promise.all(recipients.map(async (id) => {
+    const prepared = await Promise.all(recipients.map(async (id) => {
       const attachment = session.attachments[id]
       if (!attachment) throw new Error(`Attachment ${id} was not found`)
-      const delivery = freezeDelivery(
-        attachment,
-        await this.#deliverySource(session, request, id, event, annotations),
-      )
+      const delivery = freezeDelivery(attachment, await this.#deliverySource(session, request, id, event, annotations))
+      const context = this.#conversationContext(id, delivery.id, request)
+      return { id, attachment, delivery: { ...delivery, ...(request.conversation?.[id] ? { conversation: request.conversation[id] } : {}), ...(context ? { conversationContext: context } : {}) } }
+    }))
+    // Validate every recipient before consuming any selection or action outcomes.
+    for (const { id, attachment, delivery } of prepared) {
       session.attachments[id] = enqueueDelivery(attachment, delivery)
       if (attachment.pendingBlockOutcomes?.length) session.attachments[id] = { ...session.attachments[id]!, pendingBlockOutcomes: [] }
-      return delivery
-    }))
+    }
+    const deliveries = prepared.map(entry => entry.delivery)
     return deliveries
   }
 
@@ -2477,6 +2519,7 @@ export class StrataApplication implements StrataApi {
       skippedEvents,
     )
     return {
+      ...(request.conversation?.[recipient] ? { id: request.conversation[recipient].deliveryId } : {}),
       file: session.path,
       buffer: this.#store.pathsForDocument(session.path).buffer,
       snapshot: {
@@ -3280,6 +3323,7 @@ function documentView(session: OpenDocumentSession, store: GhostStore, now: numb
     })),
     annotations: annotationView(session.annotations, session.attachments, session.state.shadow),
     items: deriveItems({
+      documentPath: session.path,
       annotations: annotationView(session.annotations, session.attachments, session.state.shadow),
       hunks: hunkViews(session, now),
       attachments,

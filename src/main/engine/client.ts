@@ -1,3 +1,4 @@
+import { conversationDelivery, renderConversationDelivery, messageAnchor, resolveMessageAnchor, type MessageComment } from '../../core/conversation-delivery'
 import { continuationScope, familyLabel, modelFamily, permitsSelection } from '../../shared/modelSelection'
 import { chmod, readFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
@@ -39,7 +40,7 @@ import {
 } from './t3-contract'
 import { EngineSocket, type EngineStream } from './socket'
 import { decideAttention } from './notifications'
-import { applyConversationState, emptyConversationState, readConversationsStore, renderItemReplies, writeConversationsStore, type ConversationsStore } from './conversation-state'
+import { applyConversationState, emptyConversationState, readConversationsStore, writeConversationsStore, type ConversationsStore } from './conversation-state'
 import { accountViews, chooseInstance, emptyAccountsStore, providerInstancesOf, readAccountsStore, recordMeasurements, terminalShimTargets, writeAccountsStore, type AccountsStore, type EngineProviderInstance } from './accounts'
 import { writeTerminalShims } from '../account-shims'
 import { logError } from '../log'
@@ -106,7 +107,7 @@ export interface EngineReadClient {
   openThread(threadId: string): Promise<void>
   /** Threads whose transcripts Strata must follow besides the active one: every thread attached to an open document (§5.9). */
   watchThreads?(threadIds: readonly string[]): Promise<void>
-  startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string }): Promise<void>
+  startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string; context?: import("../../core/conversation-delivery").ConversationDelivery }): Promise<void>
   interrupt(threadId: string): Promise<void>
   respondApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
   respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
@@ -114,6 +115,8 @@ export interface EngineReadClient {
   createProject?(input: { title: string; workspaceRoot: string }): Promise<string>
   actOnThread?(threadId: string, action: 'archive' | 'settle' | 'unsettle' | 'delete'): Promise<void>
   updateThread?(threadId: string, change: EngineThreadChange): Promise<void>
+  holdMessageComment?(threadId: string, input: { id?: string; messageId: string; from: number; to: number; kind: import("../../shared/contracts").DraftKind; text: string }): Promise<string>
+  actMessageComment?(threadId: string, itemId: string, action: "resolve" | "reopen" | "discard"): Promise<void>
   queueItemReply?(threadId: string, itemId: string, text: string): Promise<void>
   discardItemReply?(threadId: string, itemId: string): Promise<void>
   dismissItem?(threadId: string, itemId: string): Promise<void>
@@ -229,6 +232,7 @@ export class T3EngineClient implements EngineReadClient {
   #renewalTimer: ReturnType<typeof setTimeout> | null = null
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null
   #reconnectAttempt = 0
+  #messageCache = new Map<string, { text: string; prose: string; blocks: ReturnType<typeof mapMarkdownBlocks>["blocks"] }>()
   #publishTimer: ReturnType<typeof setTimeout> | null = null
   #configTimer: ReturnType<typeof setTimeout> | null = null
   #connecting: Promise<void> | null = null
@@ -301,7 +305,7 @@ export class T3EngineClient implements EngineReadClient {
           streaming: message.streaming,
           createdAt: message.createdAt,
           attachmentCount: message.attachments?.length ?? 0,
-          ...(!message.streaming && message.role === 'assistant' ? (() => { const prose = parseStrataBlock(message.text)?.prose ?? message.text; return { prose, blocks: mapMarkdownBlocks(`message:${message.id}`, prose).blocks } })() : {}),
+          ...(!message.streaming && message.role === 'assistant' ? (() => { let cached = this.#messageCache.get(message.id); if (!cached || cached.text !== message.text) { const prose = parseStrataBlock(message.text)?.prose ?? message.text; cached = { text: message.text, prose, blocks: mapMarkdownBlocks(`message:${message.id}`, prose).blocks }; this.#messageCache.set(message.id, cached) } return { prose: cached.prose, blocks: cached.blocks } })() : {}),
         })) : []
         const activities = detailThread?.id === thread.id ? detailThread.activities.map((activity) => ({
           id: activity.id,
@@ -347,7 +351,10 @@ export class T3EngineClient implements EngineReadClient {
             : typeof latestTurn?.requestedAt === 'string' ? latestTurn.requestedAt : null,
           messages,
           activities,
-          items: (() => { const explicit = postedMessageItems(messages, thread.id); return applyConversationState([...explicit, ...messages.flatMap((message) => inferredMessageItems(message, thread.id, explicit))], this.#conversations.threads[thread.id]) })(),
+          comments: this.#conversations.threads[thread.id]?.comments ?? [],
+          outcomes: this.#conversations.threads[thread.id]?.outcomes ?? [],
+          deliveries: (this.#conversations.threads[thread.id]?.prepared ?? []).map(entry => ({ messageId: entry.messageId, text: entry.attachments.map(a => a.text).join('\n'), phase: entry.attachments.every(a => a.uploaded) ? 'prepared' as const : 'uploading' as const })),
+          items: (() => { const explicit = postedMessageItems(messages, thread.id); return applyConversationState([...explicit.filter(item => !this.#conversations.threads[thread.id]?.comments?.some(comment => comment.id === item.id)), ...(this.#conversations.threads[thread.id]?.comments ?? []).map((comment): import("../../shared/contracts").ItemView => ({ id: comment.id, kind: comment.kind, status: comment.state === "resolved" ? "done" : comment.state === "held" || comment.state === "pending" ? "drafted" : "open", review: "unreviewed", text: comment.text, quote: comment.selection, order: 0, threadId: thread.id, turnId: messages.find(message => message.id === comment.anchor.message)?.turnId ?? null, messageId: comment.anchor.message, annotationId: null, hunkId: null, inferred: false, source: { kind: "message", anchor: comment.anchor }, discussion: comment.replies, ...(comment.options ? { options: comment.options } : {}), unavailable: !resolveMessageAnchor(comment, messages.find(message => message.id === comment.anchor.message)) })), ...messages.flatMap((message) => inferredMessageItems(message, thread.id, explicit))], this.#conversations.threads[thread.id]) })(),
           documents,
         }
       }),
@@ -518,7 +525,7 @@ export class T3EngineClient implements EngineReadClient {
     })
   }
 
-  async startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string }): Promise<void> {
+  async startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string; context?: import("../../core/conversation-delivery").ConversationDelivery }): Promise<void> {
     const thread = this.#shell?.threads.find((candidate) => candidate.id === threadId)
     if (!thread) throw new Error(`Thread was not found: ${threadId}`)
     const existing = this.#conversations.threads[threadId]?.prepared?.find((entry) => entry.messageId === input.messageId)
@@ -539,13 +546,21 @@ export class T3EngineClient implements EngineReadClient {
     await this.#resolveInstance(thread.projectId, instanceId)
     // A conversation Send carries the queued item replies as its attachment (§5.4), keyed by item id; the text stays the owner's note.
     const state = this.#conversations.threads[threadId]
-    const selection = Object.entries(input.replies ?? {})
-    for (const [id, text] of selection) if (state?.replies[id]?.text !== text) throw new Error(`Reply ${id} changed. Review the selected reply before sending.`)
-    const queued = selection.length ? Object.fromEntries(selection.map(([id]) => [id, state!.replies[id]!])) : null
+    if (input.context && (input.context.threadId !== threadId || input.context.deliveryId !== input.messageId)) throw new Error('Conversation context belongs to another delivery')
+    const selection = input.context ? input.context.replies.map(reply => [reply.itemId, reply.text] as [string, string]) : Object.entries(input.replies ?? {})
+    for (const [id, text] of selection) if (!input.context && state?.replies[id]?.text !== text) throw new Error(`Reply ${id} changed. Review the selected reply before sending.`)
+    const queued = selection.length ? Object.fromEntries(selection.map(([id, text]) => [id, { ...(state?.replies[id] ?? { kind: 'comment' as const, quote: '', messageId: null }), text }])) : null
+    const comments = input.context?.annotations ?? Object.entries(input.comments ?? {}).map(([id, revision]) => {
+      const comment = state?.comments?.find(comment => comment.id === id)
+      if (!comment || comment.state !== 'held' || comment.revision !== revision) throw new Error(`Comment ${id} changed. Review it before sending.`)
+      return comment
+    })
+    const outcomes = input.context?.outcomes ?? state?.outcomes ?? []
+    const messages = this.view().projects.flatMap(project => project.threads).find(thread => thread.id === threadId)?.messages ?? []
     const messageId = input.messageId ?? randomUUID()
-    const text = input.text.trim() || (queued ? `Replies to ${Object.keys(queued).length} item${Object.keys(queued).length === 1 ? '' : 's'}.` : input.attachment ? `Attached ${input.attachment.name}.` : '')
+    const text = input.text.trim() || (queued ? `Replies to ${Object.keys(queued).length} item${Object.keys(queued).length === 1 ? '' : 's'}.` : comments.length ? `Comments on ${comments.length} passages.` : input.attachment ? `Attached ${input.attachment.name}.` : outcomes.length ? 'Conversation outcomes.' : '')
     if (!text) throw new Error('Write a message or queue a reply, or attach a file before sending')
-    const attachmentInputs = [input.attachment, queued ? { name: `replies-${messageId}.md`, text: renderItemReplies(queued) } : undefined].filter((value): value is { name: string; text: string } => value !== undefined)
+    const attachmentInputs = [input.attachment, (queued || comments.length || outcomes.length) ? { name: `conversation-${messageId}.md`, text: renderConversationDelivery(input.context ?? conversationDelivery(threadId, messageId, comments, queued ?? {}, messages, outcomes)) } : undefined].filter((value): value is { name: string; text: string } => value !== undefined)
     const command = turnStartCommand.parse({
       type: 'thread.turn.start', commandId: input.commandId ?? `strata-${messageId}`, threadId, createdAt: new Date(this.#now()).toISOString(),
       message: { messageId, role: 'user', text, attachments: [] },
@@ -555,8 +570,9 @@ export class T3EngineClient implements EngineReadClient {
     const current = state ?? emptyConversationState()
     this.#conversations.threads[threadId] = {
       ...current,
-      replies: Object.fromEntries(Object.entries(current.replies).filter(([id]) => !queued?.[id])),
-      pending: [...current.pending, ...(queued ? [{ deliveryId: messageId, itemIds: Object.keys(queued), replies: queued }] : [])],
+      replies: Object.fromEntries(Object.entries(current.replies).filter(([id, reply]) => !queued?.[id] || queued[id]!.text !== reply.text)),
+      comments: (current.comments ?? []).map(comment => comments.some(selected => selected.id === comment.id) ? { ...comment, state: 'pending' } : comment),
+      pending: [...current.pending, { deliveryId: messageId, itemIds: Object.keys(queued ?? {}), replies: queued ?? {}, commentIds: comments.map(comment => comment.id), outcomeKeys: outcomes.map(outcome => `${outcome.message}:${outcome.index}`) }],
       prepared: [...(current.prepared ?? []), { messageId, command, attachments: attachmentInputs }],
     }
     await writeConversationsStore(this.#conversationsPath, this.#conversations)
@@ -578,6 +594,34 @@ export class T3EngineClient implements EngineReadClient {
     const state = this.#conversations.threads[threadId]!
     state.prepared = (state.prepared ?? []).filter((entry) => entry.messageId !== messageId)
     await writeConversationsStore(this.#conversationsPath, this.#conversations)
+  }
+
+  async holdMessageComment(threadId: string, input: { id?: string; messageId: string; from: number; to: number; kind: import('../../shared/contracts').DraftKind; text: string }): Promise<string> {
+    const message = this.view().projects.flatMap(project => project.threads).find(thread => thread.id === threadId)?.messages.find(message => message.id === input.messageId)
+    if (!message) throw new Error(`Message ${input.messageId} was not found`)
+    if (!input.text.trim()) throw new Error('Write a comment before holding it')
+    const anchor = messageAnchor(message, input.from, input.to)
+    const state = this.#conversations.threads[threadId] ?? emptyConversationState()
+    const existing = state.comments?.find(comment => comment.id === input.id)
+    if (input.id && (!existing || existing.state !== 'held')) throw new Error(`Comment ${input.id} is not a held draft`)
+    const source = message.prose ?? message.text
+    const comment: MessageComment = { id: existing?.id ?? `c_${randomUUID()}`, kind: input.kind, anchor, source, selection: source.slice(input.from, input.to), text: input.text, revision: (existing?.revision ?? 0) + 1, state: 'held', replies: [] }
+    this.#conversations.threads[threadId] = { ...state, comments: [...(state.comments ?? []).filter(value => value.id !== comment.id), comment] }
+    await writeConversationsStore(this.#conversationsPath, this.#conversations)
+    this.#publish()
+    return comment.id
+  }
+
+  async actMessageComment(threadId: string, itemId: string, action: 'resolve' | 'reopen' | 'discard'): Promise<void> {
+    const state = this.#conversations.threads[threadId]
+    const comment = state?.comments?.find(comment => comment.id === itemId)
+    if (!comment || !state) throw new Error(`Comment ${itemId} was not found`)
+    if (action !== 'discard' && comment.state === 'held') throw new Error(`Comment ${itemId} is still private`)
+    state.answered = state.answered.filter(id => id !== itemId)
+    if (action === 'discard' && comment.state !== 'held') throw new Error(`Comment ${itemId} has already been sent`)
+    state.comments = action === 'discard' ? state.comments!.filter(value => value !== comment) : state.comments!.map(value => value === comment ? { ...value, state: action === 'resolve' ? 'resolved' : 'open' } : value)
+    await writeConversationsStore(this.#conversationsPath, this.#conversations)
+    this.#publish()
   }
 
   async queueItemReply(threadId: string, itemId: string, text: string): Promise<void> {
@@ -1087,18 +1131,20 @@ export class T3EngineClient implements EngineReadClient {
 
   async #retryPendingCommands(): Promise<void> {
     await this.#settleAcknowledgedCommands()
+    const resumed = new Set<string>()
     for (const [threadId, state] of Object.entries(this.#conversations.threads)) {
       // Old stores could strand replies before a command existed. Restore only those without a command or transcript receipt.
       const stranded = state.pending.filter((entry) => !state.prepared?.some((prepared) => prepared.messageId === entry.deliveryId) && !this.#pendingCommands.some((command) => command.messageId === entry.deliveryId))
       for (const entry of stranded) for (const [id, reply] of Object.entries(entry.replies)) state.replies[id] ??= reply
+      for (const comment of state.comments ?? []) if (stranded.some(entry => entry.commentIds?.includes(comment.id)) && comment.state === 'pending') comment.state = 'held'
       state.pending = state.pending.filter((entry) => !stranded.includes(entry))
       await writeConversationsStore(this.#conversationsPath, this.#conversations)
       for (const prepared of [...(state.prepared ?? [])]) {
-        try { await this.#resumePrepared(threadId, prepared.messageId) }
+        try { await this.#resumePrepared(threadId, prepared.messageId); resumed.add(prepared.messageId) }
         catch (error) { logError('engine', `Delivery ${prepared.messageId} remains available for retry`, error) }
       }
     }
-    for (const pending of this.#pendingCommands) await this.#postCommand(pending.command)
+    for (const pending of this.#pendingCommands) if (!pending.messageId || !resumed.has(pending.messageId)) await this.#postCommand(pending.command)
     if (this.#pendingCommands.length) await this.#settleAcknowledgedCommands()
   }
 
@@ -1118,6 +1164,8 @@ export class T3EngineClient implements EngineReadClient {
         ...state,
         pending: state.pending.filter((pending) => !listed.has(pending.deliveryId)),
         prepared: (state.prepared ?? []).filter((prepared) => !listed.has(prepared.messageId)),
+        comments: (state.comments ?? []).map(comment => ({ ...comment, state: acknowledged.some(pending => pending.commentIds?.includes(comment.id)) && comment.state === 'pending' ? 'open' : comment.state, replies: [...comment.replies, ...acknowledged.flatMap(pending => pending.replies[comment.id] ? [{ author: 'user' as const, text: pending.replies[comment.id]!.text }] : [])] })),
+        outcomes: (state.outcomes ?? []).filter(outcome => !acknowledged.some(pending => pending.outcomeKeys?.includes(`${outcome.message}:${outcome.index}`))),
         answered: [...new Set([...state.answered, ...acknowledged.flatMap((pending) => pending.itemIds)])],
       }
       repliesChanged = true
@@ -1128,7 +1176,61 @@ export class T3EngineClient implements EngineReadClient {
     if (repliesChanged) await writeConversationsStore(this.#conversationsPath, this.#conversations)
   }
 
+  #reconcilingComments = false
+  async #reconcileComments(): Promise<void> {
+    if (this.#reconcilingComments) return
+    this.#reconcilingComments = true
+    let changed = false
+    try {
+      for (const thread of this.view().projects.flatMap(project => project.threads)) {
+        const state = this.#conversations.threads[thread.id] ?? emptyConversationState()
+        state.comments ??= []; state.receipts ??= []; state.outcomes ??= []
+        for (const message of thread.messages) {
+          if (message.role !== 'assistant' || message.streaming) continue
+          for (const result of parseStrataBlock(message.text)?.results ?? []) {
+            const entry = result.entry
+            if (result.error && result.conversationTarget) {
+              const key = `${message.id}:${result.index}`
+              if (!state.receipts.includes(key)) { state.receipts.push(key); state.outcomes.push({ message: message.id, index: result.index, status: 'failed', reason: result.error }); changed = true }
+            }
+            if (!entry || !('anchor' in entry)) continue
+            const anchor = entry.anchor
+            const comment = 'item' in anchor ? state.comments.find(comment => comment.id === anchor.item) : undefined
+            if (!('message' in anchor) && !comment && !('item' in anchor && /^(c_|m_)/.test(anchor.item))) continue
+            const key = `${message.id}:${result.index}`
+            if (state.receipts.includes(key)) continue
+            let itemId: string | undefined
+            let reason: string | undefined
+            try {
+              if ('message' in anchor) {
+                if (!['comment', 'question', 'decision', 'suggest'].includes(entry.verb)) throw new Error(`Unsupported message action ${entry.verb}`)
+                const target = thread.messages.find(candidate => candidate.id === anchor.message)
+                const block = target?.blocks?.find(block => block.id === anchor.block)
+                if (!target || !block) throw new Error(`Message block ${anchor.message}/${anchor.block} was not found`)
+                itemId = `m_${message.id}_${result.index}`
+                if (!state.comments.some(comment => comment.id === itemId)) state.comments.push({ id: itemId, kind: entry.verb === 'suggest' ? 'suggestion' : entry.verb as MessageComment['kind'], anchor: messageAnchor(target, block.from, block.to), source: target.prose ?? target.text, selection: block.text, text: 'replacement' in entry ? entry.replacement : 'text' in entry ? entry.text : '', revision: 1, state: 'open', replies: [], ...('options' in entry ? { options: entry.options } : {}) })
+              } else if (!comment) { throw new Error(`Item ${"item" in anchor ? anchor.item : "unknown"} was not found`) } else if (comment) {
+                itemId = comment.id
+                if (comment.state === 'held') throw new Error(`Item ${itemId} is private`)
+                if (entry.verb === 'reply') comment.replies.push({ author: 'agent', text: entry.text })
+                else if (entry.verb === 'resolve' && comment.id.startsWith('m_') && comment.kind !== 'decision') comment.state = 'resolved'
+                else throw new Error(`Only the owner can ${entry.verb} item ${itemId}`)
+              }
+            } catch (error) { reason = error instanceof Error ? error.message : String(error) }
+            state.receipts.push(key)
+            state.outcomes.push({ message: message.id, index: result.index, status: reason ? 'failed' : 'applied', ...(reason ? { reason } : itemId ? { itemId } : {}) })
+            changed = true
+          }
+        }
+        this.#conversations.threads[thread.id] = state
+      }
+      if (changed) await writeConversationsStore(this.#conversationsPath, this.#conversations)
+    } finally { this.#reconcilingComments = false }
+    if (changed) this.#publish()
+  }
+
   #publish(): void {
+    void this.#reconcileComments().catch(error => logError('engine', 'Could not save conversation actions', error))
     let view = this.view()
     const threads = view.projects.flatMap((project) => project.threads)
     if (this.#reachable() && this.#lastThreads.length) {
@@ -1231,8 +1333,11 @@ export class T3EngineClient implements EngineReadClient {
     }
   }
 
+  #readingWrite: Promise<void> = Promise.resolve()
   async #writeReading(): Promise<void> {
-    await atomicWriteFile(this.#readingPath, `${JSON.stringify(this.#reading, null, 2)}\n`, { mode: PRIVATE_FILE_MODE })
+    const bytes = `${JSON.stringify(this.#reading, null, 2)}\n`
+    this.#readingWrite = this.#readingWrite.catch(() => undefined).then(() => atomicWriteFile(this.#readingPath, bytes, { mode: PRIVATE_FILE_MODE }))
+    await this.#readingWrite
   }
 
   async #readCommands(): Promise<Array<{ key: string; command: unknown; messageId?: string }>> {

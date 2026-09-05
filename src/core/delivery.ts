@@ -1,6 +1,5 @@
 import {
   createPayload,
-  type PayloadAgentTag,
   type PayloadAnnotation,
   type PayloadDecisionAnswer,
   type PayloadEditVerdict,
@@ -33,6 +32,8 @@ export interface DeliveryEndpoint extends DeliveryBaseline {
 }
 
 export interface FrozenDelivery {
+  conversation?: { comments: Record<string, number>; replies: Record<string, string> }
+  conversationContext?: import("./conversation-delivery").ConversationDelivery
   id: string
   createdAt: number
   includeExternal: boolean
@@ -96,7 +97,6 @@ export interface AcknowledgmentResult {
 }
 
 const MAX_NOTE_BYTES = 64 * 1024
-const MAX_MESSAGE_NOTE_BYTES = 4 * 1024
 function makeId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`
 }
@@ -119,12 +119,6 @@ function byteLength(value: string): number {
 function assertNote(note: string | undefined): void {
   if (note !== undefined && byteLength(note) > MAX_NOTE_BYTES) {
     throw new RangeError('Delivery note exceeds the 64 KB limit')
-  }
-}
-
-function assertMessageNote(note: string): void {
-  if (byteLength(note) > MAX_MESSAGE_NOTE_BYTES) {
-    throw new RangeError('Message note exceeds the 4 KB limit')
   }
 }
 
@@ -272,15 +266,6 @@ export function freezeDelivery(attachment: Attachment, source: DeliverySource): 
   })
 }
 
-export interface MessageSource {
-  file: string
-  buffer: string
-  sender: PayloadAgentTag
-  note: string
-  now: number
-  id?: string
-}
-
 export interface QuickSendSource {
   file: string
   buffer: string
@@ -310,34 +295,6 @@ export function freezeQuickSend(attachment: Attachment, source: QuickSendSource)
       event: 'send',
       deliveryId: id,
       annotations: [source.annotation],
-    }),
-  })
-}
-
-/**
- * Freezes an agent-to-agent message as a delivery whose endpoints both equal
- * the recipient's next delivery start, so acknowledging it writes the baseline
- * and cursor values they would hold anyway (PRD §6.7): nothing advances,
- * nothing is skipped, in either queue order.
- */
-export function freezeMessage(attachment: Attachment, source: MessageSource): FrozenDelivery {
-  assertMessageNote(source.note)
-  const id = source.id ?? makeId('d')
-  const endpoint = deliveryStart(attachment)
-  return cloneAndFreeze({
-    id,
-    createdAt: source.now,
-    includeExternal: false,
-    from: endpoint,
-    to: endpoint,
-    payload: createPayload({
-      file: source.file,
-      buffer: source.buffer,
-      agent: attachment.id,
-      event: 'message',
-      deliveryId: id,
-      from: source.sender,
-      notes: [source.note],
     }),
   })
 }

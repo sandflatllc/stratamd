@@ -32,7 +32,6 @@ describe('settings', () => {
       upperReviewHeight: 444,
       documentMeasure: 860,
       themePanel: { x: -1, y: -1, width: 360, height: 560 },
-      threadPanel: { width: 660, height: -1 },
       annotationComposer: { width: 330, height: -1 },
       sendComposer: { width: 680, height: -1 },
     })

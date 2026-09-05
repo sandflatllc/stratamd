@@ -8,14 +8,12 @@ import {
   enqueueDelivery,
   freezeDelivery,
   freezeQuickSend,
-  freezeMessage,
   isMessageDelivery,
   sendToRecipients,
   type Attachment,
   type DeliverySnapshot,
   type DeliverySource,
   type IndexedSegment,
-  type MessageSource,
   type QuickSendSource,
 } from '../../src/core/delivery'
 
@@ -206,65 +204,6 @@ describe('immutable delivery queue', () => {
   })
 })
 
-describe('agent-to-agent messages', () => {
-  function messageSource(overrides: Partial<MessageSource> = {}): MessageSource {
-    return {
-      file: '/docs/a.md',
-      buffer: '/data/buffer.md',
-      sender: { agent: 'ag_2', name: 'Peer' },
-      note: 'Round done. Ring when reviewed.',
-      now: 30,
-      id: 'm_1',
-      ...overrides,
-    }
-  }
-
-  it('freezes both endpoints at the next delivery start with an empty queue', () => {
-    const current = attachment()
-    const message = freezeMessage(current, messageSource())
-    expect(message.from).toEqual(deliveryStart(current))
-    expect(message.to).toEqual(deliveryStart(current))
-    expect(message.payload).toMatchObject({ event: 'message', from: { agent: 'ag_2', name: 'Peer' } })
-    expect(isMessageDelivery(message)).toBe(true)
-  })
-
-  it('freezes both endpoints at the queued tail when a Send delivery is ahead', () => {
-    const queued = sendToRecipients({ ag_1: attachment() }, source()).attachments.ag_1!
-    const message = freezeMessage(queued, messageSource())
-    expect(message.from).toEqual({ snapshotId: 'snap_2', segmentIndex: 2, cursor: 4 })
-    expect(message.to).toEqual(message.from)
-  })
-
-  it('acknowledging a message leaves the baseline and cursor bit-identical in both queue orders', () => {
-    // Message first, Send after.
-    let current = enqueueDelivery(attachment(), freezeMessage(attachment(), messageSource()))
-    current = sendToRecipients({ ag_1: current }, source()).attachments.ag_1!
-    const before = { baseline: current.baseline, cursor: current.cursor }
-    const messageAck = acknowledgeDelivery(current, 'm_1')
-    expect(messageAck.acknowledged).toBe(true)
-    expect(messageAck.attachment.baseline).toEqual(before.baseline)
-    expect(messageAck.attachment.cursor).toBe(before.cursor)
-    const sendAck = acknowledgeDelivery(messageAck.attachment, 'd_1')
-    expect(sendAck.attachment.baseline).toEqual({ snapshotId: 'snap_2', segmentIndex: 2 })
-    expect(sendAck.attachment.cursor).toBe(4)
-
-    // Send first, message after: acking both in order lands on the same state.
-    let other = sendToRecipients({ ag_1: attachment() }, source()).attachments.ag_1!
-    other = enqueueDelivery(other, freezeMessage(other, messageSource({ id: 'm_2' })))
-    const afterSend = acknowledgeDelivery(other, 'd_1')
-    expect(afterSend.attachment.baseline).toEqual({ snapshotId: 'snap_2', segmentIndex: 2 })
-    const afterMessage = acknowledgeDelivery(afterSend.attachment, 'm_2')
-    expect(afterMessage.attachment.baseline).toEqual(sendAck.attachment.baseline)
-    expect(afterMessage.attachment.cursor).toBe(sendAck.attachment.cursor)
-    expect(afterMessage.attachment.deliveries).toEqual([])
-  })
-
-  it('accepts a 4096-byte note and rejects 4097 bytes', () => {
-    expect(freezeMessage(attachment(), messageSource({ note: 'x'.repeat(4096) })).payload.notes).toEqual(['x'.repeat(4096)])
-    expect(() => freezeMessage(attachment(), messageSource({ note: 'x'.repeat(4097) }))).toThrow('4 KB')
-  })
-})
-
 describe('quick sends', () => {
   it('freezes one annotation at the next delivery start without a range or partial marker', () => {
     const empty = attachment()
@@ -375,4 +314,17 @@ describe('recipient filtering and item selection', () => {
     expect(delivery.payload.segments).toBeUndefined()
     expect(delivery.payload.partial).toBeUndefined()
   })
+})
+
+it('acknowledges a persisted legacy message without advancing the document baseline', () => {
+  const current = attachment()
+  const from = deliveryStart(current)
+  const legacy = { ...freezeDelivery(current, source()), id: 'legacy-message', from, to: from }
+  legacy.payload = { ...legacy.payload, event: 'message', deliveryId: legacy.id }
+  expect(isMessageDelivery(legacy)).toBe(true)
+  const settled = acknowledgeDelivery(enqueueDelivery(current, legacy), legacy.id)
+  expect(settled.acknowledged).toBe(true)
+  expect(settled.attachment.baseline).toEqual(current.baseline)
+  expect(settled.attachment.cursor).toBe(current.cursor)
+  expect(settled.attachment.deliveries).toEqual([])
 })

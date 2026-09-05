@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { readFile } from 'node:fs/promises'
 import { atomicWriteFile, isRecord, PRIVATE_FILE_MODE } from '../storage'
 import type { ItemView } from '../../shared/contracts'
@@ -9,10 +10,13 @@ import type { ItemView } from '../../shared/contracts'
  * per message. Lives in the ghost store; T3 never sees it.
  */
 export interface ConversationState {
+  comments?: import("../../core/conversation-delivery").MessageComment[]
+  outcomes?: import("../../core/conversation-delivery").ConversationOutcome[]
+  receipts?: string[]
   /** Queued replies keyed by item id, each carrying what the item asked so the delivery can quote it. */
   replies: Record<string, QueuedReply>
   /** Replies delivered but not yet acknowledged by the engine's message-sent event. */
-  pending: Array<{ deliveryId: string; itemIds: string[]; replies: Record<string, QueuedReply> }>
+  pending: Array<{ deliveryId: string; itemIds: string[]; replies: Record<string, QueuedReply>; commentIds?: string[]; outcomeKeys?: string[] }>
   /** Commands and bytes saved before the first upload. */
   prepared?: Array<{ messageId: string; command: unknown; attachments: Array<{ name: string; text: string; uploaded?: { type: 'file'; id: string; name: string; mimeType: string; sizeBytes: number } }> }>
   /** Items whose reply the engine acknowledged. */
@@ -52,14 +56,21 @@ function replies(value: unknown): Record<string, QueuedReply> {
   return result
 }
 
+const endpointSchema = z.object({ block: z.string().min(1), offset: z.number().int().nonnegative() })
+const commentSchema = z.object({ id: z.string(), kind: z.enum(['comment', 'question', 'suggestion', 'decision']), anchor: z.object({ message: z.string(), start: endpointSchema, end: endpointSchema }), source: z.string(), selection: z.string(), text: z.string(), revision: z.number().int().positive(), state: z.enum(['held', 'pending', 'open', 'resolved']), options: z.array(z.string()).optional(), replies: z.array(z.object({ author: z.enum(['user', 'agent']), text: z.string() })) })
+const outcomeSchema = z.object({ message: z.string(), index: z.number().int().nonnegative(), status: z.enum(['applied', 'failed']), itemId: z.string().optional(), reason: z.string().optional() })
+
 export function normalizeConversationsStore(value: unknown): ConversationsStore {
   const store: ConversationsStore = { formatVersion: 1, threads: {} }
   if (!isRecord(value) || value.formatVersion !== 1 || !isRecord(value.threads)) return store
   for (const [threadId, raw] of Object.entries(value.threads)) {
     if (!isRecord(raw)) continue
     store.threads[threadId] = {
+      comments: Array.isArray(raw.comments) ? raw.comments.flatMap(entry => { const parsed = commentSchema.safeParse(entry); return parsed.success ? [parsed.data as import('../../core/conversation-delivery').MessageComment] : [] }) : [],
+      outcomes: Array.isArray(raw.outcomes) ? raw.outcomes.flatMap(entry => { const parsed = outcomeSchema.safeParse(entry); return parsed.success ? [parsed.data as import('../../core/conversation-delivery').ConversationOutcome] : [] }) : [],
+      receipts: strings(raw.receipts),
       replies: replies(raw.replies),
-      pending: Array.isArray(raw.pending) ? raw.pending.flatMap((entry) => isRecord(entry) && typeof entry.deliveryId === 'string' ? [{ deliveryId: entry.deliveryId, itemIds: strings(entry.itemIds), replies: replies(entry.replies) }] : []) : [],
+      pending: Array.isArray(raw.pending) ? raw.pending.flatMap((entry) => isRecord(entry) && typeof entry.deliveryId === 'string' ? [{ deliveryId: entry.deliveryId, itemIds: strings(entry.itemIds), replies: replies(entry.replies), commentIds: strings(entry.commentIds), outcomeKeys: strings(entry.outcomeKeys) }] : []) : [],
       prepared: Array.isArray(raw.prepared) ? raw.prepared.filter((entry): entry is NonNullable<ConversationState['prepared']>[number] => isRecord(entry) && typeof entry.messageId === 'string' && isRecord(entry.command) && Array.isArray(entry.attachments)) : [],
       answered: strings(raw.answered),
       dismissed: strings(raw.dismissed),
@@ -83,24 +94,10 @@ export function applyConversationState(items: readonly ItemView[], state: Conver
   const answered = new Set(state.answered)
   const inFlight = new Set(state.pending.flatMap((entry) => entry.itemIds))
   return items.filter((item) => !dismissed.has(item.id)).map((item) => {
-    if (answered.has(item.id)) return { ...item, status: 'done' }
     const queued = state.replies[item.id]
     if (queued) return { ...item, status: 'drafted', draftReply: queued.text }
+    if (answered.has(item.id)) return { ...item, status: 'done' }
     if (inFlight.has(item.id)) return { ...item, status: 'drafted' }
     return item
   })
-}
-
-/**
- * The delivery attachment for message-anchored replies (§5.4): the same
- * `Replies:` section a document delivery uses, each line keyed by the item
- * id the agent posted or Strata inferred, then what the item asked.
- */
-export function renderItemReplies(replies: Readonly<Record<string, QueuedReply>>): string {
-  const lines = Object.entries(replies).map(([itemId, reply]) => {
-    const head = `${itemId} ← user: ${reply.text.replace(/\s+/gu, ' ').trim()}`
-    const about = reply.quote ? `\n  item: ${reply.kind}${reply.messageId ? ` in message ${reply.messageId}` : ''} about "${reply.quote.replace(/"/gu, '\\"').slice(0, 200)}"` : ''
-    return head + about
-  })
-  return `# Replies\n\nReplies:\n${lines.join('\n')}\n`
 }

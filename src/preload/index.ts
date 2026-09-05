@@ -75,6 +75,8 @@ const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyn
   updateEngineThread: (threadId, change) => invoke<void>(IPC.updateEngineThread, threadId, change),
   setTerminalDefault: (driver, selection) => invoke<void>(IPC.setTerminalDefault, driver, selection),
   refreshAccounts: () => invoke<void>(IPC.refreshAccounts),
+  holdMessageComment: (threadId, input) => invoke<string>(IPC.holdMessageComment, threadId, input),
+  actMessageComment: (threadId, itemId, action) => invoke<void>(IPC.actMessageComment, threadId, itemId, action),
   queueItemReply: (threadId, itemId, text) => invoke<void>(IPC.queueItemReply, threadId, itemId, text),
   discardItemReply: (threadId, itemId) => invoke<void>(IPC.discardItemReply, threadId, itemId),
   dismissItem: (threadId, itemId) => invoke<void>(IPC.dismissItem, threadId, itemId),

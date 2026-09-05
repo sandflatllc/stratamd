@@ -1,3 +1,5 @@
+import { ConversationMessage } from './ConversationMessage'
+import { useConversationWorkspace } from './ConversationWorkspace'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { EngineActivityView, EngineThreadView, EngineView, ItemView } from '../../shared/contracts'
 import { changedFilesLabel, formatDelta, summarizeChangedFiles, type ChangedFileInput, type ChangedFileView } from '../../core/changed-files'
@@ -79,26 +81,26 @@ function openRequests(activities: EngineActivityView[], kind: 'approval' | 'user
 function UserInputCard({ activity, onAnswer }: { activity: EngineActivityView; onAnswer(requestId: string, answers: Record<string, unknown>): void }) {
   const payload = record(activity.payload)
   const questions = Array.isArray(payload.questions) ? payload.questions.map(record) : []
-  const first = questions[0] ?? {}
   const requestId = typeof payload.requestId === 'string' ? payload.requestId : ''
-  const questionId = typeof first.id === 'string' ? first.id : typeof first.header === 'string' ? first.header : 'answer'
-  const prompt = typeof first.question === 'string' ? first.question : typeof first.prompt === 'string' ? first.prompt : activity.summary
-  const options = Array.isArray(first.options) ? first.options.map(record) : []
-  const [answer, setAnswer] = useState('')
-  return <section className="conversation-request" data-kind="user-input">
-    <strong>{prompt}</strong>
-    {options.length > 0 && <div className="conversation-actions">{options.map((option, index) => {
-      const label = typeof option.label === 'string' ? option.label : typeof option.value === 'string' ? option.value : `Option ${index + 1}`
-      return <button type="button" key={label} onClick={() => onAnswer(requestId, { [questionId]: label })}>{label}</button>
-    })}</div>}
-    <form onSubmit={(event) => { event.preventDefault(); if (answer.trim()) onAnswer(requestId, { [questionId]: answer.trim() }) }}>
-      <input aria-label="Answer user input" value={answer} onChange={(event) => setAnswer(event.target.value)} />
-      <button type="submit" disabled={!answer.trim()}>Answer</button>
-    </form>
-  </section>
+  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const rows = questions.length ? questions : [{ id: 'answer', question: activity.summary }]
+  const questionId = (question: Record<string, unknown>, index: number) => typeof question.id === 'string' ? question.id : typeof question.header === 'string' ? question.header : `answer-${index}`
+  return <section className="conversation-request" data-kind="user-input"><form onSubmit={event => { event.preventDefault(); onAnswer(requestId, answers) }}>
+    {rows.map((question, index) => {
+      const id = questionId(question, index)
+      const options = Array.isArray(question.options) ? question.options.map(record) : []
+      return <fieldset key={id}><legend>{String(question.question ?? question.prompt ?? activity.summary)}</legend>
+        {options.map((option, index) => { const label = String(option.label ?? option.value ?? `Option ${index + 1}`); return <button type="button" aria-pressed={answers[id] === label} key={label} onClick={() => setAnswers(previous => ({ ...previous, [id]: label }))}>{label}</button> })}
+        <input aria-label={`Answer ${id}`} placeholder="Other answer" value={answers[id] ?? ''} onChange={event => setAnswers(previous => ({ ...previous, [id]: event.target.value }))} />
+      </fieldset>
+    })}
+    <button type="submit" disabled={rows.some((question, index) => !answers[questionId(question, index)]?.trim())}>Answer</button>
+  </form></section>
 }
 
 interface ConversationProps {
+  visible?: boolean
+  onDocumentContext?(): void
   documentMeasure?: number
   onDocumentMeasure?(value: number, commit: boolean): void
   engine: EngineView
@@ -141,7 +143,6 @@ function WorkEntryRow({ entry }: { entry: WorkEntry }) {
 }
 
 function TurnChecklist({ items, onReply, onOpen, onAct, onDismiss }: { items: readonly ItemView[]; onReply?(item: ItemView, text: string): void; onOpen?(item: ItemView): void; onAct?(item: ItemView, action: 'accept' | 'reject' | 'keep' | 'revert', option?: string): void; onDismiss?(item: ItemView): void }) {
-  const [replies, setReplies] = useState<Record<string, string>>({})
   const done = items.filter((item) => item.status === 'done').length
   if (items.length === 0) return null
   return <section className="turn-checklist" aria-label="Turn items">
@@ -149,25 +150,23 @@ function TurnChecklist({ items, onReply, onOpen, onAct, onDismiss }: { items: re
     {items.map((item) => <div className="turn-item" data-kind={item.kind} data-status={item.status} key={item.id}>
       <button type="button" className="turn-item-open" onClick={() => onOpen?.(item)}><span>{item.status === 'done' ? '✓' : item.status === 'drafted' ? '◌' : '○'}</span><strong>{item.kind}</strong><span>{item.text || item.quote}</span>{item.inferred && <em>inferred</em>}{item.status === 'drafted' && <em>Drafted{item.draftReply ? `: ${item.draftReply}` : ''}</em>}</button>
       <div className="turn-item-actions">
-        {item.kind === 'suggestion' && <><button type="button" aria-label="Conversation item: Accept" onClick={() => onAct?.(item, 'accept')}>Accept</button><button type="button" aria-label="Conversation item: Reject" onClick={() => onAct?.(item, 'reject')}>Reject</button></>}
-        {item.kind === 'edit' && <><button type="button" aria-label="Conversation item: Keep" onClick={() => onAct?.(item, 'keep')}>Keep</button><button type="button" aria-label="Conversation item: Revert" onClick={() => onAct?.(item, 'revert')}>Revert</button></>}
-        <input aria-label={`Reply to ${item.kind}`} value={replies[item.id] ?? ''} onChange={(event) => setReplies((value) => ({ ...value, [item.id]: event.target.value }))} placeholder="Reply" />
-        <button type="button" disabled={!(replies[item.id] ?? '').trim()} onClick={() => { const text = (replies[item.id] ?? '').trim(); if (text) { onReply?.(item, text); setReplies((value) => ({ ...value, [item.id]: '' })) } }}>Queue reply</button>
+        {item.kind === 'suggestion' && item.annotationId && <><button type="button" aria-label="Conversation item: Accept" onClick={() => onAct?.(item, 'accept')}>Accept</button><button type="button" aria-label="Conversation item: Reject" onClick={() => onAct?.(item, 'reject')}>Reject</button></>}
+        {item.kind === 'edit' && item.hunkId && <><button type="button" aria-label="Conversation item: Keep" onClick={() => onAct?.(item, 'keep')}>Keep</button><button type="button" aria-label="Conversation item: Revert" onClick={() => onAct?.(item, 'revert')}>Revert</button></>}
+        <button type="button" onClick={() => onOpen?.(item)}>Reply</button>
         {item.inferred && <button type="button" onClick={() => onDismiss?.(item)}>Dismiss</button>}
       </div>
     </div>)}
   </section>
 }
 
-export function Conversation({ documentMeasure = 860, onDocumentMeasure, engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput, items = [], onReplyItem, onQueueReply, onDismissItem, onOpenItem, onActItem, onOpenDocument }: ConversationProps) {
+export function Conversation({ visible = true, onDocumentContext, documentMeasure = 860, onDocumentMeasure, engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput, items = [], onReplyItem, onQueueReply, onDismissItem, onOpenItem, onActItem, onOpenDocument }: ConversationProps) {
   const selected = activeThread(engine)
-  const [scope, setScope] = useState<'whole' | 'passage'>(passage ? 'passage' : 'whole')
   const [expandedWork, setExpandedWork] = useState<Record<string, boolean>>({})
   const [expandedMessages, setExpandedMessages] = useState<Record<string, boolean>>({})
   const [now, setNow] = useState(Date.now())
   const thread = selected?.thread
 
-  useEffect(() => { if (passage) setScope('passage') }, [passage])
+  const workspace = useConversationWorkspace(thread, onStart)
   useEffect(() => {
     if (thread?.status !== 'running' && thread?.status !== 'starting') return
     const timer = window.setInterval(() => setNow(Date.now()), 1_000)
@@ -202,15 +201,16 @@ export function Conversation({ documentMeasure = 860, onDocumentMeasure, engine,
   </section>
   if (!thread || !selected) return <div className="engine-empty">No conversation open.<small>Choose a thread under Projects.</small></div>
   const running = thread.status === 'running' || thread.status === 'starting'
-  return <section className="conversation-panel" aria-label="Conversation" data-placement={placement}>
+  return <section className="conversation-panel" aria-label="Conversation" data-placement={placement} onKeyDownCapture={workspace.onKeyDown}>
     <header>
       <div className="conversation-title"><strong><span>{selected.project}</span><i aria-hidden="true">/</i>{thread.title}</strong>{running && <button type="button" className="stop-button" onClick={() => onStop(thread.id)}>Stop</button>}{onMove && <button type="button" onClick={onMove}>{placement === 'side' ? 'Open in center' : 'Move to side'}</button>}</div>
-      {passage && <div className="conversation-scope" role="tablist" aria-label="Conversation scope"><button type="button" role="tab" aria-selected={scope === 'whole'} onClick={() => setScope('whole')}>Whole thread</button><button type="button" role="tab" aria-selected={scope === 'passage'} title="Show the discussion for the selected document comment or review item" onClick={() => setScope('passage')}>Comment discussion</button></div>}
+      {workspace.toolbar}
     </header>
-    {scope === 'passage' && passage ? <div className="conversation-passage">{passage}</div> : <ConversationHistory key={thread.id} className="conversation-messages">
+    {passage && <div className="conversation-passage">{passage}</div>}
+    <ConversationHistory active={visible} navigation={workspace.target?.serial} key={`history:${thread.id}`} className="conversation-messages">
       <div className="conversation-column" style={placement === 'center' ? { width: `min(${documentMeasure}px, 100%)` } : undefined}>
         {placement === 'center' && onDocumentMeasure && <Resizer axis="vertical" label="Resize conversation measure" value={documentMeasure} min={620} max={1600} onChange={(value) => onDocumentMeasure(value, false)} onCommit={(value) => onDocumentMeasure(value, true)} />}
-      {turns.toReversed().map((turn) => {
+      {turns.toReversed().map((turn, turnIndex) => {
         const groups = workGroups.filter((candidate) => candidate.turnId === turn.id)
         const timeline = [
           ...turn.messages.map((message) => ({ kind: 'message' as const, id: message.id, createdAt: message.createdAt, message })),
@@ -219,7 +219,9 @@ export function Conversation({ documentMeasure = 860, onDocumentMeasure, engine,
         const lastAssistant = turn.messages.findLast((message) => message.role === 'assistant')?.id
         const changedFiles = thread.documents?.filter((file) => file.turnId === turn.id) ?? []
         return <section className="conversation-turn" key={turn.id} data-running={groups.some((group) => group.live) || undefined}>
-          {timeline.map((row) => {
+          <header className="conversation-exchange-header"><button type="button" aria-label={`Fold exchange ${turns.length - turnIndex}`} aria-expanded={!workspace.folded(turn.id)} onClick={() => workspace.toggleFold(turn.id)}>{workspace.folded(turn.id) ? '▸' : '▾'}</button><strong>{turns.length - turnIndex}. {turn.messages.find(message => message.role === 'user')?.text.slice(0, 120) || (turn.messages.some(message => message.attachmentCount) ? 'Attached context' : 'Exchange')}</strong><small>{groups.some(group => group.live) ? 'Running' : turn.messages[0]?.createdAt.slice(11, 16)}</small><select aria-label={`Reading mark exchange ${turns.length - turnIndex}`} value={workspace.mark(turn.id)} onChange={event => workspace.setMark(turn.id, event.target.value)}><option value="">Unread</option><option>Reviewed</option><option>Revisit</option></select></header>
+          {workspace.folded(turn.id) && <small>{allItems.filter(item => item.turnId === turn.id && item.status !== 'done').length} open items and drafts</small>}
+          {!workspace.folded(turn.id) && timeline.map((row) => {
             if (row.kind === 'work') {
               const group = row.group
               const expanded = expandedWork[group.id] ?? !group.foldedByDefault
@@ -238,18 +240,20 @@ export function Conversation({ documentMeasure = 860, onDocumentMeasure, engine,
             const messageExpanded = expandedMessages[message.id] ?? false
             return <article className={`conversation-message ${message.role}`} key={message.id} data-history-row data-message-id={message.id} data-streaming={message.streaming || undefined}>
               <small>{message.role === 'assistant' ? 'Agent' : message.role === 'user' ? 'You' : 'System'}{message.role === 'user' && <span className="conversation-chip">{message.attachmentCount > 0 ? `${message.attachmentCount} attached` : 'Message'}</span>}{message.role === 'assistant' && <button type="button" className="conversation-copy" aria-label="Copy assistant message" onClick={() => void navigator.clipboard.writeText(prose)}>Copy</button>}</small>
-              <div className={longUserMessage && !messageExpanded ? 'conversation-user-collapsed' : undefined} data-annotatable={message.role === 'assistant' && !message.streaming || undefined} data-block-ids={blocks.map((block) => block.id).join(' ')}><MessageMarkdown text={prose} /></div>
+              <div className={longUserMessage && !messageExpanded ? 'conversation-user-collapsed' : undefined} data-annotatable={message.role === 'assistant' && !message.streaming || undefined} data-block-ids={blocks.map((block) => block.id).join(' ')}>{message.role === 'assistant' && !message.streaming ? <ConversationMessage message={message} comments={(thread.comments ?? []).filter(comment => comment.anchor.message === message.id)} pinned={workspace.selection?.message === message.id || workspace.discussion?.anchor.message === message.id} target={workspace.target} root={selected.root} folds={workspace.folds(message.id)} onFold={(heading, folded) => workspace.foldHeading(message.id, heading, folded)} onSelection={range => workspace.select(message.id, range)} onOpen={workspace.open} /> : <MessageMarkdown text={prose} />}</div>
+              {workspace.discussion?.anchor.message === message.id && workspace.discussionView}
               {longUserMessage && <button type="button" className="conversation-message-toggle" aria-expanded={messageExpanded} onClick={() => setExpandedMessages((value) => ({ ...value, [message.id]: !messageExpanded }))}>{messageExpanded ? 'Show less' : 'Show more'}</button>}
               {message.id === lastAssistant && changedFiles.length > 0 && <ChangedFilesCard files={changedFiles} root={selected.root} {...(onOpenDocument ? { onOpen: onOpenDocument } : {})} />}
             </article>
           })}
           {approvals.filter((activity) => (activity.turnId ?? 'thread') === turn.id).map((activity) => { const payload = record(activity.payload); const requestId = String(payload.requestId ?? ''); return <section className="conversation-request" data-kind="approval" key={activity.id}><strong>{typeof payload.detail === 'string' ? payload.detail : activity.summary}</strong><div className="conversation-actions"><button type="button" onClick={() => onApproval(thread.id, requestId, 'accept')}>Approve</button><button type="button" onClick={() => onApproval(thread.id, requestId, 'decline')}>Decline</button></div></section> })}
           {userInputs.filter((activity) => (activity.turnId ?? 'thread') === turn.id).map((activity) => <UserInputCard key={activity.id} activity={activity} onAnswer={(requestId, answers) => onUserInput(thread.id, requestId, answers)} />)}
-          <TurnChecklist items={allItems.filter((item) => item.threadId === thread.id && item.turnId === turn.id)} onReply={(item, value) => { if (item.annotationId && onReplyItem) onReplyItem(item, value); else onQueueReply?.(thread.id, item, value) }} onDismiss={(item) => onDismissItem?.(thread.id, item)} {...(onOpenItem ? { onOpen: onOpenItem } : {})} {...(onActItem ? { onAct: onActItem } : {})} />
+          <TurnChecklist items={allItems.filter((item) => item.threadId === thread.id && item.turnId === turn.id)} onReply={(item, value) => { if (item.annotationId && onReplyItem) onReplyItem(item, value); else onQueueReply?.(thread.id, item, value) }} onDismiss={(item) => onDismissItem?.(thread.id, item)} onOpen={item => { if (item.annotationId) onOpenItem?.(item); else workspace.open(item.id) }} {...(onActItem ? { onAct: onActItem } : {})} />
         </section>
       })}
       </div>
-    </ConversationHistory>}
-    <ConversationComposer key={thread.id} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} queuedCount={queuedCount} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} onSend={(input) => onStart(thread.id, { ...input, replies: Object.fromEntries((thread.items ?? []).filter((item) => item.draftReply !== undefined).map((item) => [item.id, item.draftReply!])) })} />
+    </ConversationHistory>
+    {workspace.overlay}
+    <ConversationComposer deliveryId={workspace.previewId} key={`composer:${thread.id}`} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} context={<div className="conversation-context">{onDocumentContext && <button type="button" onClick={onDocumentContext}>Document context</button>}{workspace.tray}</div>} queuedCount={workspace.selectedCount} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} onSend={async input => { await onStart(thread.id, { ...input, ...workspace.outgoing }); workspace.sent() }} />
   </section>
 }

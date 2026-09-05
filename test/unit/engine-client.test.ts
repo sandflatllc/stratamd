@@ -218,9 +218,8 @@ describe('T3 engine read client', () => {
     acknowledged = true
     const second = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), webSocket: server.WebSocket })
     await second.initialize()
-    expect(commands).toHaveLength(2)
+    expect(commands).toHaveLength(1)
     expect(commands[0]).toMatchObject({ commandId: 'command-1', message: { messageId: 'delivery-1' } })
-    expect(commands[1]).toEqual(commands[0])
     expect(JSON.parse(await readFile(join(directory, 'engine-commands.json'), 'utf8')).pending).toEqual([])
     await second.shutdown()
   })

@@ -36,7 +36,7 @@ describe('renderer model', () => {
     const sizes = { ...EMPTY_VIEW.settings.panelSizes, explorerWidth: 212, rightRailWidth: 300, threadPanel: { width: 780, height: -1 } }
     expect(leftWindowWidth(sizes, 1440)).toBe(212)
     // The legacy Conversation width is ignored: one width serves Projects, Conversation, and Contents (decided 2026-09-04).
-    expect(leftWindowWidth({ ...sizes, threadPanel: { width: 100, height: -1 } }, 1440)).toBe(212)
+    expect(leftWindowWidth({ ...sizes, explorerWidth: 212 }, 1440)).toBe(212)
     expect(leftWindowWidth({ ...sizes, explorerWidth: 100 }, 1440)).toBe(160)
     expect(leftWindowWidth({ ...sizes, explorerWidth: 1500 }, 2400)).toBe(1500)
     expect(clampPanelSize('explorerWidth', 1500)).toBe(1500)

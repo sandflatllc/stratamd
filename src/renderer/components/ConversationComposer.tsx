@@ -12,6 +12,7 @@ const accessModes = [
 ] as const
 
 export interface ConversationComposerProps {
+  deliveryId?: string
   engine: EngineView
   thread?: EngineThreadView | undefined
   projectId: string
@@ -26,7 +27,7 @@ export interface ConversationComposerProps {
   onSend(input: ConversationInput): Promise<void>
 }
 
-export function ConversationComposer({ engine, thread, projectId, draftKey, initial, centered = false, queuedCount = 0, context, canSendContext = false, workspace, branch, onSend }: ConversationComposerProps) {
+export function ConversationComposer({ deliveryId, engine, thread, projectId, draftKey, initial, centered = false, queuedCount = 0, context, canSendContext = false, workspace, branch, onSend }: ConversationComposerProps) {
   const [draft] = useState(() => readDraft(draftKey))
   const [text, setText] = useState(draft.text)
   const [attachment, setAttachment] = useState(draft.attachment)
@@ -96,7 +97,7 @@ export function ConversationComposer({ engine, thread, projectId, draftKey, init
     if (sending.current || !valid || (!text.trim() && !attachment && !queuedCount && !canSendContext)) return
     sending.current = true; setBusy(true); setError(''); setMenu(null)
     try {
-      const messageId = readDraft(draftKey).messageId ?? crypto.randomUUID()
+      const messageId = readDraft(draftKey).messageId ?? deliveryId ?? crypto.randomUUID()
       writeDraft(draftKey, { ...readDraft(draftKey), messageId })
       await onSend({ ...selection, messageId, commandId: `strata-${messageId}`, text: text.trim(), ...(attachment ? { attachment } : {}) })
       clearDraft(draftKey); setText(''); setAttachment(undefined)

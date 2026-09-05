@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import type { AnnotationKind, DraftKind, PanelSize, RecipientView, SpellingContext } from '../../shared/contracts'
 import type { EditorSelection } from '../editorAdapter'
 import { COMPOSER_LIMITS, spellingForSelection } from '../model'
@@ -7,6 +7,8 @@ import { hasPrimaryModifier } from '../../shared/primary-modifier'
 import { AGENT_COLORS, defaultRecipientIds } from '../model'
 
 interface AnnotationComposerProps {
+  initialText?: string
+  messageTarget?: boolean
   selection: EditorSelection | null
   /** The latest right-click misspelling; shown only when it is exactly the selection. */
   spelling: SpellingContext | null
@@ -106,7 +108,7 @@ function claimedByTextField(target: EventTarget | null): boolean {
     || (target instanceof HTMLElement && target.isContentEditable)
 }
 
-export function AnnotationComposer({ selection, spelling, size, zoom, onSize, onDismiss, onSubmit, recipients: candidates, leadAgentId, activeConversationId, onHold, onSend, onStartThread, onReplaceWord, onAddToDictionary, onCut, onCopy, onPaste, onSelectAll }: AnnotationComposerProps) {
+export function AnnotationComposer({ initialText = "", messageTarget = false, selection, spelling, size, zoom, onSize, onDismiss, onSubmit, recipients: candidates, leadAgentId, activeConversationId, onHold, onSend, onStartThread, onReplaceWord, onAddToDictionary, onCut, onCopy, onPaste, onSelectAll }: AnnotationComposerProps) {
   const [kind, setKind] = useState<AnnotationKind | null>(null)
   const [text, setText] = useState('')
   const [options, setOptions] = useState(['', ''])
@@ -114,13 +116,22 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
   const textarea = useRef<HTMLTextAreaElement>(null)
   const form = useRef<HTMLFormElement>(null)
   const pill = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    if (!messageTarget) return
+    const element = form.current ?? pill.current
+    if (!element) return
+    const bounds = { left: selection ? selection.left - 160 : 12, top: selection ? selection.top + (kind ? 42 : -54) : 12, width: element.offsetWidth, height: element.offsetHeight }
+    element.style.position = 'fixed'
+    element.style.left = `${Math.max(12, Math.min(bounds.left, window.innerWidth - bounds.width - 12))}px`
+    element.style.top = `${Math.max(12, Math.min(bounds.top, window.innerHeight - bounds.height - 12))}px`
+  }, [messageTarget, selection, kind, text, size])
   const candidateIds = candidates.map((recipient) => recipient.id).join('\0')
   const outsideState = useRef({ kind, text, onHold, onDismiss })
   outsideState.current = { kind, text, onHold, onDismiss }
 
   useEffect(() => {
     setKind(selection?.annotationKind ?? null)
-    setText('')
+    setText(initialText)
     setOptions(['', ''])
   }, [selection])
   useEffect(() => {
@@ -145,8 +156,8 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
       if (claimedByTextField(event.target)) return
       if (!bareHotkeysApply(selection, pill.current?.contains(document.activeElement) ?? false)) return
       const next = event.key.toLowerCase()
-      if (next === 'c' || next === 'q' || next === 's' || next === 'd') {
-        if (next === 's' && !selection.singleBlock) return
+      if (next === 'c' || next === 'q' || next === 's' || next === 'd' && !messageTarget) {
+        if (next === 's' && !selection.singleBlock && !messageTarget) return
         event.preventDefault()
         setKind(next === 'c' ? 'comment' : next === 'q' ? 'question' : next === 's' ? 'suggestion' : 'decision')
       }
@@ -204,7 +215,7 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
             type="button"
             role="menuitem"
             key={value}
-            disabled={value === 'suggestion' && !selection.singleBlock}
+            hidden={messageTarget && value === 'decision'} disabled={value === 'suggestion' && !selection.singleBlock && !messageTarget}
             title={value === 'suggestion' && !selection.singleBlock ? 'Suggestions must stay within one paragraph or block' : undefined}
             onClick={() => setKind(value)}
           >{label} <kbd>{key}</kbd></button>
@@ -248,7 +259,7 @@ export function AnnotationComposer({ selection, spelling, size, zoom, onSize, on
     }}>
       <div className="annotation-kinds" role="radiogroup" aria-label="Comment kind">
         {([['comment', 'Comment'], ['question', 'Question'], ['suggestion', 'Suggest'], ['decision', 'Decision']] as const).map(([value, label]) => (
-          <button type="button" role="radio" aria-checked={kind === value} disabled={value === 'suggestion' && !selection.singleBlock} key={value} onClick={() => setKind(value)}>{label}</button>
+          <button type="button" role="radio" aria-checked={kind === value} hidden={messageTarget && value === 'decision'} disabled={value === 'suggestion' && !selection.singleBlock && !messageTarget} key={value} onClick={() => setKind(value)}>{label}</button>
         ))}
       </div>
       <blockquote>{selection.quote}</blockquote>

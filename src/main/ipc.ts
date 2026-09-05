@@ -14,6 +14,8 @@ const idSchema = z.string().min(1).max(512)
 const textSchema = z.string().max(64 * 1_024)
 const modelOptionsSchema = z.array(z.object({ id: idSchema, value: z.union([idSchema, z.boolean()]) }).strict()).max(64)
 const conversationTurnSchema = z.object({
+  comments: z.record(idSchema, z.number().int().positive()).optional(),
+  replies: z.record(idSchema, textSchema).optional(),
   messageId: idSchema.optional(),
   commandId: idSchema.optional(),
   // Empty text is allowed: queued item replies alone make a Send (§5.4); the client refuses a turn with neither.
@@ -26,6 +28,7 @@ const conversationTurnSchema = z.object({
   attachment: z.object({ name: idSchema, text: z.string().max(2 * 1_024 * 1_024) }).strict().optional(),
 }).strict()
 const sendRequestSchema = z.object({
+  conversation: z.record(idSchema, z.object({ deliveryId: idSchema, comments: z.record(idSchema, z.number().int().positive()), replies: z.record(idSchema, textSchema) }).strict()).optional(),
   recipients: z.array(idSchema).max(128),
   note: textSchema,
   includeExternal: z.boolean(),
@@ -110,10 +113,6 @@ const settingsSchema = z.object({
       width: z.number().positive().finite(),
       height: z.number().positive().finite()
     }).strict(),
-    threadPanel: z.object({
-      width: z.number().positive().finite(),
-      height: z.number().finite().min(-1)
-    }).strict(),
     annotationComposer: z.object({
       width: z.number().positive().finite(),
       height: z.number().finite().min(-1)
@@ -147,6 +146,8 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.updateEngineThread]: z.tuple([idSchema, z.object({ pinned: z.boolean().optional(), snoozedUntil: z.iso.datetime({ offset: true }).nullable().optional(), title: z.string().trim().min(1).max(512).optional(), unread: z.boolean().optional() }).strict()]),
   [IPC.setTerminalDefault]: z.tuple([idSchema, idSchema.nullable()]),
   [IPC.refreshAccounts]: z.tuple([]),
+  [IPC.holdMessageComment]: z.tuple([idSchema, z.object({ id: idSchema.optional(), messageId: idSchema, from: z.number().int().nonnegative(), to: z.number().int().positive(), kind: z.enum(['comment', 'question', 'suggestion']), text: z.string().min(1).max(20000) }).strict()]),
+  [IPC.actMessageComment]: z.tuple([idSchema, idSchema, z.enum(['resolve', 'reopen', 'discard'])]),
   [IPC.queueItemReply]: z.tuple([idSchema, idSchema, z.string().max(20_000)]),
   [IPC.discardItemReply]: z.tuple([idSchema, idSchema]),
   [IPC.dismissItem]: z.tuple([idSchema, idSchema]),
@@ -332,6 +333,8 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.updateEngineThread]: (threadId: string, change: Parameters<StrataApi['updateEngineThread']>[1]) => options.api.updateEngineThread(threadId, change),
     [IPC.setTerminalDefault]: (driver: string, selection: string | null) => options.api.setTerminalDefault(driver, selection),
     [IPC.refreshAccounts]: () => options.api.refreshAccounts(),
+    [IPC.holdMessageComment]: (threadId: string, input: Parameters<StrataApi['holdMessageComment']>[1]) => options.api.holdMessageComment(threadId, input),
+    [IPC.actMessageComment]: (threadId: string, itemId: string, action: 'resolve' | 'reopen' | 'discard') => options.api.actMessageComment(threadId, itemId, action),
     [IPC.queueItemReply]: (threadId: string, itemId: string, text: string) => options.api.queueItemReply(threadId, itemId, text),
     [IPC.discardItemReply]: (threadId: string, itemId: string) => options.api.discardItemReply(threadId, itemId),
     [IPC.dismissItem]: (threadId: string, itemId: string) => options.api.dismissItem(threadId, itemId),

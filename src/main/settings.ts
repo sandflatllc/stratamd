@@ -36,7 +36,6 @@ export interface PanelSettings {
   readonly upperReviewHeight: number
   readonly documentMeasure: number
   readonly themePanel: ThemePanelGeometry
-  readonly threadPanel: PanelSize
   readonly annotationComposer: PanelSize
   readonly sendComposer: PanelSize
 }
@@ -85,7 +84,6 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
     upperReviewHeight: 444,
     documentMeasure: 860,
     themePanel: Object.freeze({ x: -1, y: -1, width: 360, height: 560 }),
-    threadPanel: Object.freeze({ width: 660, height: -1 }),
     annotationComposer: Object.freeze({ width: 330, height: -1 }),
     sendComposer: Object.freeze({ width: 680, height: -1 }),
   }),
@@ -192,7 +190,6 @@ export function normalizeSettings(value: unknown): Settings {
         width: numberInRange(themePanelValue.width, 360, 300, 900),
         height: numberInRange(themePanelValue.height, 560, 320, 1600),
       },
-      threadPanel: panelSize(panelValue.threadPanel, DEFAULT_SETTINGS.panels.threadPanel, 330, 20_000),
       annotationComposer: panelSize(panelValue.annotationComposer, DEFAULT_SETTINGS.panels.annotationComposer, 330, 900),
       sendComposer: panelSize(panelValue.sendComposer, DEFAULT_SETTINGS.panels.sendComposer, 460, 1600),
     },

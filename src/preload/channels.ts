@@ -12,6 +12,8 @@ export const IPC = {
   updateEngineThread: 'strata:update-engine-thread',
   setTerminalDefault: 'strata:set-terminal-default',
   refreshAccounts: 'strata:refresh-accounts',
+  holdMessageComment: 'strata:hold-message-comment',
+  actMessageComment: 'strata:act-message-comment',
   queueItemReply: 'strata:queue-item-reply',
   discardItemReply: 'strata:discard-item-reply',
   dismissItem: 'strata:dismiss-item',

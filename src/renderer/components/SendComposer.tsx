@@ -6,6 +6,7 @@ import { useDialogFocus } from '../useDialogFocus'
 import { hasPrimaryModifier, primaryModifierLabel } from '../../shared/primary-modifier'
 
 interface SendComposerProps {
+  threads?: import("../../shared/contracts").EngineThreadView[]
   /** Attached threads and the active conversation in this project (§5.6). */
   recipients: RecipientView[]
   drafts: DraftView[]
@@ -25,6 +26,7 @@ interface SendComposerProps {
 
 const SIZE_LIMITS = { minWidth: 460, maxWidth: 1600, minHeight: 420, maxHeight: 1600 }
 const SNIPPET_LINES = 3
+const EMPTY_THREADS: import("../../shared/contracts").EngineThreadView[] = []
 const EMPTY_KEYS: readonly string[] = []
 
 // Send is a committed decision, not a state the button can lose. A click captures
@@ -335,7 +337,7 @@ const SendItemList = memo(function SendItemList({
   )
 })
 
-export function SendComposer({ recipients, drafts, leadAgentId, activeConversationId, documentPath, size, zoom, onSize, onCancel, onPreview, onSend, onDiscardDraft }: SendComposerProps) {
+export function SendComposer({ threads = EMPTY_THREADS, recipients, drafts, leadAgentId, activeConversationId, documentPath, size, zoom, onSize, onCancel, onPreview, onSend, onDiscardDraft }: SendComposerProps) {
   const dialogRef = useRef<HTMLElement>(null)
   const previewId = useId()
   const draft = readComposerDraft(documentPath)
@@ -375,8 +377,15 @@ export function SendComposer({ recipients, drafts, leadAgentId, activeConversati
   const startedRequest = useRef<SendPreviewRequest | null>(null)
   const startedRefresh = useRef(-1)
 
+  const [contextIds, setContextIds] = useState<string[]>([])
+  const [contextDeliveryIds] = useState<Record<string, string>>(() => Object.fromEntries(recipients.map(recipient => [recipient.id, crypto.randomUUID()])))
+  const conversation = useMemo(() => Object.fromEntries(threads.filter(thread => selected.includes(thread.id)).map(thread => [thread.id, {
+    deliveryId: contextDeliveryIds[thread.id] ?? `context-${thread.id}`,
+    comments: Object.fromEntries((thread.comments ?? []).filter(comment => comment.state === 'held' && contextIds.includes(comment.id)).map(comment => [comment.id, comment.revision])),
+    replies: Object.fromEntries((thread.items ?? []).filter(item => item.draftReply !== undefined && contextIds.includes(item.id)).map(item => [item.id, item.draftReply!])),
+  }])), [threads, selected, contextIds, contextDeliveryIds])
   const previewExternalKeys = checkedExternal.size > 0 ? externalKeys : EMPTY_KEYS
-  const request = useMemo<SendPreviewRequest>(() => buildPreviewRequest({
+  const request = useMemo<SendPreviewRequest>(() => ({ ...buildPreviewRequest({
       recipients: selected,
       note,
       checkedExternal,
@@ -384,7 +393,7 @@ export function SendComposer({ recipients, drafts, leadAgentId, activeConversati
       uncheckedEvents,
       externalKeys: previewExternalKeys,
       draftIds: drafts.filter((item) => selectedDrafts.has(item.id)).map((item) => item.id),
-    }), [checkedExternal, drafts, note, previewExternalKeys, selected, selectedDrafts, uncheckedEvents, uncheckedUser])
+    }), conversation }), [conversation, checkedExternal, drafts, note, previewExternalKeys, selected, selectedDrafts, uncheckedEvents, uncheckedUser])
   const requestNeedsStart = startedRequest.current !== request || startedRefresh.current !== refresh
   const pending = requestNeedsStart || previewState.pending
   const submit = useCallback(() => setSend((state) => nextSendState(state, { type: 'submit', request })), [request])
@@ -522,6 +531,7 @@ export function SendComposer({ recipients, drafts, leadAgentId, activeConversati
         data-pane="composer"
         style={{ width: size.width, ...(size.height >= 0 ? { height: size.height } : {}), '--zoom': zoom } as CSSProperties}
       >
+        {threads.filter(thread => selected.includes(thread.id)).map(thread => <fieldset key={thread.id}><legend>Conversation context for {thread.title}</legend>{[...(thread.comments ?? []).filter(comment => comment.state === 'held').map(comment => ({ id: comment.id, text: comment.text })), ...(thread.items ?? []).filter(item => item.draftReply !== undefined).map(item => ({ id: item.id, text: item.draftReply! }))].map(item => <label key={item.id}><input type="checkbox" checked={contextIds.includes(item.id)} onChange={() => setContextIds(previous => previous.includes(item.id) ? previous.filter(id => id !== item.id) : [...previous, item.id])} />{item.text}</label>)}</fieldset>)}
         <h2 id="send-title">Send changes</h2>
         <p className="modal-subtitle">Shares what you changed with the agents you pick · does not save</p>
         <textarea data-dialog-initial-focus value={note} onChange={(event) => setNote(event.target.value)} placeholder="Note for the recipients (optional)…" aria-label="Note for recipients" />

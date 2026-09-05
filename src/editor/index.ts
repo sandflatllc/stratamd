@@ -85,8 +85,10 @@ export * from './components.js'
 
 export interface StrataEditorOptions {
   content: string
+  parsed?: ParsedEditorMarkdown
   sourceMode?: boolean
   readOnly?: boolean
+  ariaLabel?: string
   pendingHunks?: readonly (ReviewRange | HunkView)[]
   annotations?: readonly (AnnotationRange | AnnotationView)[]
   onChange?(markdown: string, origin: BufferOrigin): void
@@ -242,8 +244,7 @@ export function annotationInputs(
   return inputs.flatMap((input) => {
     if (!('seq' in input)) {
       const range = input as AnnotationRange
-      const sourceMapped = range.draft
-        && parsedMarkdown
+      const sourceMapped = parsedMarkdown
         && typeof range.sourceFrom === 'number'
         && typeof range.sourceTo === 'number'
         ? editorRangeForSource(parsedMarkdown, doc, range.sourceFrom, range.sourceTo)
@@ -343,7 +344,7 @@ function linkRangeAt(doc: ProseMirrorNode, pos: number, linkType: Mark['type']):
 export function createStrataEditor(element: HTMLElement, options: StrataEditorOptions): StrataEditorHandle {
   const cold = options.restore ? undefined : options.restoreCold
   let currentMarkdown = options.restore?.markdown ?? cold?.markdown ?? options.content
-  let parsed = options.restore?.parsed ?? parseMarkdownForEditor(currentMarkdown)
+  let parsed = options.restore?.parsed ?? options.parsed ?? parseMarkdownForEditor(currentMarkdown)
   // `parsed` is the open-time parse the byte-preserving serializer needs. Anything
   // that maps markdown offsets to editor positions must use the parse of the
   // markdown those offsets refer to, which after typing is `currentMarkdown`.
@@ -816,7 +817,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     state: options.restore ? options.restore.state.reconfigure({ plugins: freshState.plugins }) : freshState,
     attributes: {
       role: 'textbox',
-      'aria-label': 'Document editor',
+      'aria-label': options.ariaLabel ?? 'Document editor',
       'aria-multiline': 'true',
       class: 'strata-prosemirror',
     },
@@ -829,6 +830,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       return false
     },
     dispatchTransaction(transaction: Transaction) {
+      if (readOnly && transaction.docChanged && !suppressChange) return
       const transactionStarted = performance.now()
       const depthBefore = undoDepth(view.state) as number
       const next = view.state.apply(transaction)
@@ -948,7 +950,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
   let headingFrame: number | null = null
   let lastHeadingSignature = ''
   let lastActiveHeading: string | null = null
-  const editorScroll = element.closest<HTMLElement>('.editor-scroll')
+  const editorScroll = element.closest<HTMLElement>('.editor-scroll, .conversation-messages')
   const sourceOffsetRect = (offset: number): DOMRect | null => {
     if (sourceMirrorDirty) renderSourceMirror()
     const walker = document.createTreeWalker(sourceMirror, NodeFilter.SHOW_TEXT)
