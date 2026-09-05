@@ -45,7 +45,7 @@ interface TopBarProps {
   onOpenAccounts?(): void
 }
 
-type MenuKind = 'app' | 'documents' | 'conversations'
+type MenuKind = 'app' | 'documents'
 
 function CloseControl({ name, onClose }: { name: string; onClose(): void }) {
   return <span
@@ -199,20 +199,6 @@ export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, 
       </div>
     })}
   </div>
-  const conversationsMenu = <div ref={menuRoot} id="topbar-menu-conversations" className="tab-menu-list" role="menu" aria-label="Open conversations" onKeyDown={menuKeys}>
-    {strip.conversations.menu.length === 0 && <p className="tab-menu-empty">No conversations open. Choose a thread under Projects.</p>}
-    {strip.conversations.menu.map((tab) => {
-      const pinned = isPinned(pins, 'conversation', tab.id)
-      return <div className={`tab-menu-row ${tab.active ? 'tab-menu-row-active' : ''}`} key={tab.id} data-pinned={pinned || undefined}>
-        <button type="button" role="menuitem" className="tab-menu-open" aria-current={tab.active || undefined} title={tab.name} onClick={() => { setOpenMenu(null); onOpenConversationTab?.(tab.id) }}>
-          <span className="tab-name">{tab.name}</span>
-          {tab.attention > 0 && <span className="tab-badge attention-badge" aria-label={`${tab.attention} new`}>{tab.attention}</span>}
-        </button>
-        <button type="button" className="tab-pin" aria-pressed={pinned} aria-label={pinLabel(pinned, tab.name)} title={pinLabel(pinned, tab.name)} onClick={() => pin('conversation', tab.id)}>{pinned ? '★' : '☆'}</button>
-        <button type="button" className="tab-menu-close" aria-label={`Close ${tab.name}`} title={`Close ${tab.name}`} onClick={() => onCloseConversation?.(tab.id)}>×</button>
-      </div>
-    })}
-  </div>
 
   return (
     <header className="topbar" ref={navigation} data-window-chrome={windowState?.chrome} data-fullscreen={windowState?.fullscreen} data-maximized={windowState?.maximized} data-focused={windowState?.focused}>
@@ -233,10 +219,6 @@ export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, 
         <span className="tab-menu-anchor">
           <MenuPill kind="documents" label="Docs" count={tabs.length} activeName={activeDocument && !conversationTab && !strip.documents.pills.includes(activeDocument) ? activeDocument.name : null} open={openMenu === 'documents'} onToggle={() => setOpenMenu((current) => current === 'documents' ? null : 'documents')} />
           {openMenu === 'documents' && documentsMenu}
-        </span>
-        <span className="tab-menu-anchor">
-          <MenuPill kind="conversations" label="Conversations" count={conversationTabs.length} activeName={null} open={openMenu === 'conversations'} onToggle={() => setOpenMenu((current) => current === 'conversations' ? null : 'conversations')} />
-          {openMenu === 'conversations' && conversationsMenu}
         </span>
         <div
           className="tabs"

@@ -3,7 +3,7 @@ import type { DocumentTabView } from '../../src/shared/contracts'
 import { arrangeStrip, isPinned, PINS_KEY, readPins, togglePin, writePins } from '../../src/renderer/topbarPins'
 
 // PRD §6.9: pinned items and the active item are pills; everything else open
-// sits in the Docs or Conversations dropdown. Pins are a window preference,
+// is available through Docs or Projects. Pins are a window preference,
 // never a record of what is open.
 const tab = (path: string, active = false): DocumentTabView => ({ path, name: path.split('/').pop()!, pendingCount: 0, active, dirty: false })
 

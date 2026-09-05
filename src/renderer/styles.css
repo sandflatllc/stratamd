@@ -222,7 +222,7 @@ button:disabled { opacity: .42; cursor: not-allowed; }
 .tab-close:hover { color: var(--controls-danger); background: color-mix(in srgb, var(--controls-danger) 20%, transparent); }
 .tab-close:active { transform: scale(.82); }
 .topbar-spacer, .toolbar-spacer, .explorer-spacer { flex: 1; }
-/* Dropdown pills (§6.9, decided 2026-09-04): Docs and Conversations hold every open item; pinned and active items are pills. */
+/* Dropdown pills (§6.9, decided 2026-09-04): Docs holds every open document; pinned and active items are pills. */
 .open-file-button { flex: none; white-space: nowrap; }
 .tab-navigation { display: flex; flex: 0 1 590px; min-width: 0; align-items: center; gap: 8px; }
 .tab-menu-anchor { position: relative; display: flex; flex: 0 0 auto; }

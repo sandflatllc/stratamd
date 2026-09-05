@@ -2,8 +2,8 @@ import type { DocumentTabView } from '../shared/contracts'
 
 // The top bar (PRD §6.9, decided 2026-09-04) shows pinned documents and
 // conversations as pills, the active one of each kind as a pill, and every
-// other open item inside a Docs or Conversations dropdown. Pins are a
-// preference of this window, kept in local storage; they never decide what is
+// other document inside the Docs dropdown. Conversations remain available in
+// Projects. Pins are a preference of this window, kept in local storage; they never decide what is
 // open. A pinned item that closes leaves the bar, and pins again when reopened.
 
 export interface TopBarPins {

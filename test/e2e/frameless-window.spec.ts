@@ -58,7 +58,7 @@ test('the integrated bar keeps navigation, a drag area, and keyboard-accessible 
     expect(metrics.drag).toBe('drag')
     expect(metrics.navigation).toBe('no-drag')
     await expect(page.getByRole('button', { name: 'Docs menu' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Conversations menu' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Conversations menu' })).toHaveCount(0)
   }
   await openAppMenu(page)
   await expect(page.getByRole('menuitem', { name: /^Open file/ })).toBeFocused()
