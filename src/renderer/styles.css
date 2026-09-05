@@ -396,7 +396,19 @@ kbd { color: var(--muted); font-family: var(--font-code), "JetBrains Mono", mono
 .strata-prosemirror blockquote { margin: 22px 0; border-left: 4px solid var(--document-quote); padding: 4px 0 4px 20px; color: var(--document-quote); }
 .strata-prosemirror a { color: var(--document-link); }
 .strata-prosemirror hr { margin: 30px 0; border: 0; border-top: 2px solid var(--line); }
-.strata-prosemirror li[data-task-item="true"] { display: flex; align-items: flex-start; gap: 12px; list-style: none; }
+/* Tailwind's preflight strips every list's marker and gutter; the editor puts them back (PRD §6.1 lists). */
+.strata-prosemirror :is(ul, ol) { margin: 0 0 18px; padding-left: 1.6em; }
+.strata-prosemirror ul { list-style: disc; }
+.strata-prosemirror ul ul { list-style: circle; }
+.strata-prosemirror ul ul ul { list-style: square; }
+.strata-prosemirror ol { list-style: decimal; }
+.strata-prosemirror ol ol { list-style: lower-alpha; }
+.strata-prosemirror ol > li::marker { font-variant-numeric: tabular-nums; }
+.prosemirror-host .strata-prosemirror li > p { margin: 0; }
+.strata-prosemirror li + li { margin-top: .25em; }
+.strata-prosemirror [data-tight="false"] > li + li, .prosemirror-host .strata-prosemirror [data-tight="false"] > li > p + p { margin-top: .75em; }
+.strata-prosemirror li > :is(ul, ol) { margin: .25em 0 0; }
+.strata-prosemirror li[data-task-item="true"] { display: flex; align-items: flex-start; gap: 12px; margin-left: -1.6em; list-style: none; }
 .strata-prosemirror [data-task-checkbox="true"]:hover { transform: scale(1.2) rotate(6deg); }
 .strata-review-change, .strata-suggestion, .strata-suggestion-replacement { border-radius: 6px; padding: 1px 5px; background: var(--changes-added-background); color: var(--changes-added-tint); font-weight: 700; }
 .strata-review-change, .strata-suggestion, .strata-suggestion-replacement, .strata-source-review-insertion { box-shadow: inset 0 -2px 0 var(--changes-added); box-decoration-break: clone; -webkit-box-decoration-break: clone; }
@@ -1199,6 +1211,7 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .strata-component--metricstrip .strata-component__body > ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 4px 0 0; padding: 0; list-style: none; }
 .strata-component--metricstrip .strata-component__body > ul > li { min-width: 0; border: 1px solid var(--border-soft); border-radius: 13px; padding: 12px 14px; background: color-mix(in srgb, var(--surfaces-window) 42%, transparent); }
 .strata-component--metricstrip .strata-component__body > ul > li::marker { content: ""; }
+.strata-component--metricstrip .strata-component__body > ul > li { margin: 0; }
 .strata-component--metricstrip .strata-component__body > ul > li > p { margin: 0; color: var(--text); font-size: calc(24px * var(--zoom, 1)); font-weight: 800; line-height: 1.15; overflow-wrap: anywhere; }
 .strata-component--metricstrip .strata-component__body > ul > li strong { display: block; margin-bottom: 5px; color: var(--muted); font-family: var(--mono); font-size: calc(9px * var(--zoom, 1)); font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
 
