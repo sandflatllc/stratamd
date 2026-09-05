@@ -790,6 +790,11 @@ export class StrataApplication implements StrataApi {
     return this.#engine.setModelPreference(instanceId, slug, preference)
   }
 
+  async listEngineRefs(cwd: string, query?: string) {
+    if (!this.#engine.listRefs) throw new Error('The engine cannot list refs')
+    return this.#engine.listRefs(cwd, query)
+  }
+
   async refreshAccounts(): Promise<void> {
     if (!this.#engine.refreshAccounts) throw new Error('This engine does not report accounts')
     await this.#engine.refreshAccounts()

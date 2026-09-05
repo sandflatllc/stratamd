@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { worktreeRequest } from './t3-contract'
 import { readFile } from 'node:fs/promises'
 import { atomicWriteFile, isRecord, PRIVATE_FILE_MODE } from '../storage'
 import { logWarn } from '../log'
@@ -11,6 +12,7 @@ import type { ItemView } from '../../shared/contracts'
  * per message. Lives in the ghost store; T3 never sees it.
  */
 export interface ConversationState {
+  workspace?: import('../../shared/contracts').WorktreeRequest
   comments?: import("../../core/conversation-delivery").MessageComment[]
   outcomes?: import("../../core/conversation-delivery").ConversationOutcome[]
   receipts?: string[]
@@ -91,7 +93,9 @@ export function normalizeConversationsStore(value: unknown): ConversationsStore 
   if (!isRecord(value) || value.formatVersion !== 1 || !isRecord(value.threads)) return store
   for (const [threadId, raw] of Object.entries(value.threads)) {
     if (!isRecord(raw)) continue
+    const workspace = worktreeRequest.safeParse(raw.workspace)
     store.threads[threadId] = {
+      ...(workspace.success ? { workspace: workspace.data } : {}),
       comments: Array.isArray(raw.comments) ? raw.comments.flatMap(entry => { const parsed = commentSchema.safeParse(entry); return parsed.success ? [parsed.data as import('../../core/conversation-delivery').MessageComment] : [] }) : [],
       outcomes: Array.isArray(raw.outcomes) ? raw.outcomes.flatMap(entry => { const parsed = outcomeSchema.safeParse(entry); return parsed.success ? [parsed.data as import('../../core/conversation-delivery').ConversationOutcome] : [] }) : [],
       receipts: strings(raw.receipts),

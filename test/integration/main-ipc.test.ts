@@ -39,6 +39,7 @@ function fakeApi(): StrataApi {
     cloneEngineRepository: vi.fn(async () => ({ cwd: '/projects/repo' })),
     updateEngineProviderInstances: vi.fn(async () => undefined),
     setModelPreference: vi.fn(async () => undefined),
+    listEngineRefs: vi.fn(async () => ({ refs: [], isRepo: false, hasPrimaryRemote: false })),
     getState: vi.fn(async () => view),
     stageConversationAttachment: vi.fn(async () => ({ id: 'a_00000000-0000-4000-8000-000000000000', sizeBytes: 1 })),
     discardConversationAttachment: vi.fn(async () => undefined),

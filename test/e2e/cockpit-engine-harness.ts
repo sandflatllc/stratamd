@@ -21,6 +21,7 @@ export interface FakeEngineOptions {
   projectsParity?: boolean
   /** Seeds two completed turns before the running turn for the Conversation parity scenario. */
   conversationParity?: boolean
+  previousWorktree?: boolean
   longHistory?: boolean
   /** Whether `t1` starts with an open approval and an open user-input request; defaults to true. False leaves it plainly running. */
   pendingRequests?: boolean
@@ -67,7 +68,7 @@ function readFrames(buffer: Buffer): { frames: Array<{ opcode: number; payload: 
   return { frames, rest: Buffer.from(buffer.subarray(offset)) }
 }
 
-interface CreatedThread { id: string; projectId: string; title: string; modelSelection: unknown; runtimeMode: string }
+interface CreatedThread { branch?: string | null; worktreePath?: string | null; id: string; projectId: string; title: string; modelSelection: unknown; runtimeMode: string }
 interface CreatedProject { id: string; title: string; workspaceRoot: string }
 interface Subscription { requestId: string; tag: string; threadId: string | null }
 interface Connection { socket: Socket; subscriptions: Subscription[] }
@@ -155,7 +156,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   const sockets = new Set<Socket>()
   const connections = new Set<Connection>()
 
-  const shellThread = (thread: CreatedThread) => ({ id: thread.id, projectId: thread.projectId, title: thread.title, modelSelection: thread.modelSelection, runtimeMode: thread.runtimeMode, interactionMode: 'default', branch: null, worktreePath: null, latestTurn: null, createdAt: at, updatedAt: at, session: { threadId: thread.id, status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: thread.runtimeMode, activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: null, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false })
+  const shellThread = (thread: CreatedThread) => ({ id: thread.id, projectId: thread.projectId, title: thread.title, modelSelection: thread.modelSelection, runtimeMode: thread.runtimeMode, interactionMode: 'default', branch: thread.branch ?? null, worktreePath: thread.worktreePath ?? null, latestTurn: null, createdAt: at, updatedAt: at, session: { threadId: thread.id, status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: thread.runtimeMode, activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: null, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false })
   const shellJson = () => ({
     snapshotSequence: sequence,
     projects: [
@@ -166,7 +167,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     threads: ([
       ...createdThreads.map(shellThread),
       { id: 't1', projectId: 'p1', title: 'Live engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: { turnId: 'turn-1', state: status === 'running' ? 'running' : outcome, requestedAt: options.conversationParity ? liveAt : at, startedAt: options.conversationParity ? liveAt : at, completedAt: status === 'running' ? null : stoppedAt, assistantMessageId: 'm1' }, createdAt: at, updatedAt: at, session: { threadId: 't1', status: status === 'stopped' && outcome === 'completed' ? 'idle' : status, providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: approvalOpen, hasPendingUserInput: inputOpen, hasActionableProposedPlan: false },
-      { id: 't2', projectId: 'p1', title: 'Second engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: null, createdAt: at, updatedAt: at, session: { threadId: 't2', status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false },
+      { id: 't2', projectId: 'p1', title: 'Second engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: options.previousWorktree ? '/worktrees/previous' : null, latestTurn: null, createdAt: at, updatedAt: at, session: { threadId: 't2', status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false },
       ...(options.projectsParity ? [
         { id: 't3', projectId: 'p1', title: 'Settled engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: null, createdAt: at, updatedAt: '2026-09-02T12:00:00.000Z', session: { threadId: 't3', status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false },
         { id: 't4', projectId: 'p2', title: 'Snoozed engine thread', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: null, createdAt: at, updatedAt: '2026-09-01T12:00:00.000Z', session: { threadId: 't4', status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: at, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false },
@@ -239,6 +240,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     }
     if (tag === 'server.getSettings') return { addProjectBaseDirectory: '/home/owner/Projects', newWorktreesStartFromOrigin: true, providerInstances }
     if (tag === 'server.updateSettings') { providerInstances = (payload.patch as { providerInstances: typeof providerInstances }).providerInstances; return { providerInstances } }
+    if (tag === 'vcs.listRefs') return { refs: ['master', 'develop'].filter(name => !payload.query || name.includes(String(payload.query))).map(name => ({ name, current: name === 'master', isDefault: name === 'master', worktreePath: null })), isRepo: true, hasPrimaryRemote: true, totalCount: 2, nextCursor: null }
     if (tag === 'filesystem.browse') {
       const parentPath = String(payload.partialPath).replace(/\/+$/, '') || '/'
       return { parentPath, entries: parentPath === '/home/owner/Projects' ? [{ name: 'Example app', fullPath: '/home/owner/Projects/Example app' }] : [] }
@@ -298,7 +300,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
         if (command.type === 'thread.turn.interrupt') stop()
         if (command.type === 'thread.approval.respond') approvalOpen = false
         if (command.type === 'thread.user-input.respond') inputOpen = false
-        if (command.type === 'thread.create') createdThreads.push({ id: String(command.threadId), projectId: String(command.projectId), title: String(command.title), modelSelection: command.modelSelection, runtimeMode: String(command.runtimeMode) })
+        if (command.type === 'thread.create') createdThreads.push({ branch: command.branch as string | null, worktreePath: command.worktreePath as string | null, id: String(command.threadId), projectId: String(command.projectId), title: String(command.title), modelSelection: command.modelSelection, runtimeMode: String(command.runtimeMode) })
         if (command.type === 'project.create') createdProjects.push({ id: String(command.projectId), title: String(command.title), workspaceRoot: String(command.workspaceRoot) })
         const threadId = String(command.threadId)
         const meta = threadMeta.get(threadId) ?? {}

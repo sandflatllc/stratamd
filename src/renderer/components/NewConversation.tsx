@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ConversationInput, CreateDraftRequest, DocumentView, EngineView } from '../../shared/contracts'
 import { initialSelection, readDraft, writeDraft } from '../conversationDrafts'
 import { ConversationComposer } from './ConversationComposer'
+import { WorkspaceControls, type WorkspaceChoice } from './WorkspaceControls'
 import { AddProjectDialog } from './AddProjectDialog'
 import { projectForPath } from '../model'
 
@@ -21,9 +22,13 @@ export function NewConversation({ engine, projectId: initialProjectId, document,
   const [adding, setAdding] = useState(false)
   const project = engine.projects.find((candidate) => candidate.id === projectId)
   const draftKey = document ? `document:${document.path}:${projectId}` : `new:${projectId}`
+  const [workspace, setWorkspace] = useState<WorkspaceChoice>(() => readDraft(draftKey).workspace ?? { kind: 'current' })
+  useEffect(() => { setWorkspace(readDraft(draftKey).workspace ?? { kind: 'current' }) }, [draftKey])
+  const changeWorkspace = (value: WorkspaceChoice) => { setWorkspace(value); writeDraft(draftKey, { ...readDraft(draftKey), workspace: value }) }
   const send = async (input: ConversationInput) => {
+    if (workspace.kind === 'worktree' && !workspace.baseBranch) throw new Error('Choose the branch to start the worktree from.')
     await onBeforeSend()
-    const settings = { projectId, title: 'New thread', model: input.model, effort: input.effort, access: input.access, ...(input.instanceId ? { instanceId: input.instanceId } : {}), ...(input.options ? { options: input.options } : {}) }
+    const settings = { ...(workspace.kind === 'worktree' ? { workspace } : workspace.kind === 'previous' ? { branch: workspace.branch, worktreePath: workspace.worktreePath } : {}), projectId, title: 'New thread', model: input.model, effort: input.effort, access: input.access, ...(input.instanceId ? { instanceId: input.instanceId } : {}), ...(input.options ? { options: input.options } : {}) }
     const threadId = readDraft(draftKey).threadId ?? crypto.randomUUID()
     writeDraft(draftKey, { ...readDraft(draftKey), threadId })
     await window.strata.createEngineThread({ ...settings, threadId })
@@ -38,7 +43,7 @@ export function NewConversation({ engine, projectId: initialProjectId, document,
     <div className="new-conversation-body">
       <h1>What would you like to work on{project ? <> in <span>{project.title}</span></> : null}?</h1>
       {document && !containing && <p>No project contains {document.path}. Choose a project or add its folder.</p>}
-      <ConversationComposer key={draftKey} engine={engine} projectId={projectId} draftKey={draftKey} initial={initialSelection(engine, projectId)} centered workspace={project?.workspaceRoot ?? ''} canSendContext={!!document} context={document ? <><span title={document.path}>▤ {document.path.split('/').at(-1)}</span>{document.drafts.length > 0 && <span>{document.drafts.length} held draft{document.drafts.length === 1 ? '' : 's'}</span>}{comment && <span title={comment.text}>Comment: {comment.text}</span>}</> : undefined} onSend={send} />
+      <ConversationComposer key={draftKey} engine={engine} projectId={projectId} draftKey={draftKey} initial={initialSelection(engine, projectId)} centered workspaceControls={project ? <WorkspaceControls key={draftKey} project={project} value={workspace} onChange={changeWorkspace} disabled={!!readDraft(draftKey).threadId} /> : undefined} canSendContext={!!document} context={document ? <><span title={document.path}>▤ {document.path.split('/').at(-1)}</span>{document.drafts.length > 0 && <span>{document.drafts.length} held draft{document.drafts.length === 1 ? '' : 's'}</span>}{comment && <span title={comment.text}>Comment: {comment.text}</span>}</> : undefined} onSend={send} />
     </div>
   </section>
 }

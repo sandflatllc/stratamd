@@ -8,7 +8,7 @@ import { logRendererReport } from './log'
 import { annotationContextSchema } from './validation'
 import type { WindowController } from './window-controls'
 import { MAX_ATTACHMENTS, MAX_IMAGE_BYTES, MAX_TEXT_BYTES, SUPPORTED_IMAGE_TYPES } from '../core/composer-attachments'
-import { updateProviderInstancesInput, cloneRepositoryInput } from './engine/t3-contract'
+import { worktreeRequest, updateProviderInstancesInput, cloneRepositoryInput } from './engine/t3-contract'
 import { isStagedAttachmentId } from './engine/staged-attachments'
 
 type StrataIpcApi = Omit<StrataApi, 'subscribe'>
@@ -19,6 +19,7 @@ const textSchema = z.string().max(64 * 1_024)
 const stagedAttachmentIdSchema = z.string().refine(isStagedAttachmentId, 'Not a staged attachment id')
 const modelOptionsSchema = z.array(z.object({ id: idSchema, value: z.union([idSchema, z.boolean()]) }).strict()).max(64)
 const conversationTurnSchema = z.object({
+  workspace: worktreeRequest.optional(),
   comments: z.record(idSchema, z.number().int().positive()).optional(),
   replies: z.record(idSchema, textSchema).optional(),
   messageId: idSchema.optional(),
@@ -105,6 +106,9 @@ const quickSendRequestSchema = draftRequestSchema.extend({
   recipients: z.array(idSchema).max(128),
 }).strict()
 const startThreadSchema = z.object({
+  workspace: worktreeRequest.optional(),
+  branch: idSchema.nullable().optional(),
+  worktreePath: pathSchema.nullable().optional(),
   threadId: idSchema.optional(),
   projectId: idSchema,
   title: idSchema,
@@ -169,6 +173,7 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.cloneEngineRepository]: z.tuple([cloneRepositoryInput]),
   [IPC.updateEngineProviderInstances]: z.tuple([updateProviderInstancesInput.shape.patch.shape.providerInstances]),
   [IPC.setModelPreference]: z.tuple([idSchema, idSchema, z.object({ favorite: z.boolean().optional(), hidden: z.boolean().optional() }).strict()]),
+  [IPC.listEngineRefs]: z.tuple([pathSchema, z.string().max(256).optional()]),
   [IPC.refreshAccounts]: z.tuple([]),
   [IPC.holdMessageComment]: z.tuple([idSchema, z.object({ id: idSchema.optional(), messageId: idSchema, from: z.number().int().nonnegative(), to: z.number().int().positive(), kind: z.enum(['comment', 'question', 'suggestion']), text: z.string().min(1).max(20000) }).strict()]),
   [IPC.actMessageComment]: z.tuple([idSchema, idSchema, z.enum(['resolve', 'reopen', 'discard'])]),
@@ -377,6 +382,7 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.cloneEngineRepository]: (input: Parameters<StrataApi['cloneEngineRepository']>[0]) => options.api.cloneEngineRepository(input),
     [IPC.updateEngineProviderInstances]: (instances: Parameters<StrataApi['updateEngineProviderInstances']>[0]) => options.api.updateEngineProviderInstances(instances),
     [IPC.setModelPreference]: (instanceId: string, slug: string, preference: Parameters<StrataApi['setModelPreference']>[2]) => options.api.setModelPreference(instanceId, slug, preference),
+    [IPC.listEngineRefs]: (cwd: string, query?: string) => options.api.listEngineRefs(cwd, query),
     [IPC.refreshAccounts]: () => options.api.refreshAccounts(),
     [IPC.holdMessageComment]: (threadId: string, input: Parameters<StrataApi['holdMessageComment']>[1]) => options.api.holdMessageComment(threadId, input),
     [IPC.actMessageComment]: (threadId: string, itemId: string, action: 'resolve' | 'reopen' | 'discard') => options.api.actMessageComment(threadId, itemId, action),

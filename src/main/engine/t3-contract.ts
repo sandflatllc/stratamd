@@ -174,6 +174,7 @@ export const turnDiffCompletedEvent = eventBase.extend({
 const commandBase = { commandId: id, threadId: id, createdAt: isoDate } as const
 export const turnStartCommand = z.object({
   type: z.literal('thread.turn.start'), ...commandBase,
+  bootstrap: z.object({ prepareWorktree: z.object({ projectCwd: id, baseBranch: id, branch: id, startFromOrigin: z.boolean() }).strict(), runSetupScript: z.literal(true) }).strict().optional(),
   message: z.object({ messageId: id, role: z.literal('user'), text: z.string(), attachments: z.array(chatAttachment) }).passthrough(),
   modelSelection: modelSelection.optional(),
   runtimeMode,
@@ -244,3 +245,7 @@ export const engineSettingsResult = z.object({ addProjectBaseDirectory: z.string
 
 export const providerSlug = z.string().max(64).regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/)
 export const updateProviderInstancesInput = z.object({ patch: z.object({ providerInstances: z.record(providerSlug, providerInstanceSettings.extend({ driver: providerSlug })) }).strict() }).strict()
+
+export const worktreeRequest = z.object({ kind: z.literal('worktree'), baseBranch: id, startFromOrigin: z.boolean() }).strict()
+export const listRefsInput = z.object({ cwd: id, query: id.max(256).optional(), cursor: nonNegativeInt.optional(), limit: z.number().int().positive().optional(), includeMatchingRemoteRefs: z.boolean().optional() }).strict()
+export const listRefsResult = z.object({ refs: z.array(z.object({ name: id, current: z.boolean(), isDefault: z.boolean(), worktreePath: id.nullable(), isRemote: z.boolean().optional(), remoteName: id.optional() })), isRepo: z.boolean(), hasPrimaryRemote: z.boolean(), nextCursor: nonNegativeInt.nullable(), totalCount: nonNegativeInt })

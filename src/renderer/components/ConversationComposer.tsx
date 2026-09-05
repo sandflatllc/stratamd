@@ -42,6 +42,7 @@ export interface ConversationComposerProps {
   reservedAttachments?: 0 | 1
   context?: ReactNode
   canSendContext?: boolean
+  workspaceControls?: ReactNode
   workspace?: string
   branch?: string | null
   /** While the agent works, the Send button becomes Stop, as in T3. Enter still sends. */
@@ -50,7 +51,7 @@ export interface ConversationComposerProps {
   onSend(input: ConversationInput): Promise<void>
 }
 
-export function ConversationComposer({ deliveryId, engine, thread, projectId, draftKey, initial, centered = false, queuedCount = 0, reservedAttachments = 0, context, canSendContext = false, workspace, branch, running = false, onStop, onSend }: ConversationComposerProps) {
+export function ConversationComposer({ deliveryId, engine, thread, projectId, draftKey, initial, centered = false, queuedCount = 0, reservedAttachments = 0, context, canSendContext = false, workspaceControls, workspace, branch, running = false, onStop, onSend }: ConversationComposerProps) {
   const [draft] = useState(() => readDraft(draftKey))
   const [text, setText] = useState(draft.text)
   const [attachments, setAttachmentsState] = useState<DraftAttachment[]>(draft.attachments ?? [])
@@ -199,7 +200,8 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
           : <button className="chat-send" type="submit" aria-label="Send" disabled={busy || !valid || (!text.trim() && !attachments.length && !queuedCount && !canSendContext)}>{busy ? '…' : '↑'}</button>}</div>
       </div>
     </div>
-    {(workspace || branch) && <div className="chat-workspace"><span title={workspace}>▱ Current checkout{workspace && <small>{workspace}</small>}</span>{branch && <span>{branch}</span>}</div>}
+    {workspaceControls}
+    {!workspaceControls && (workspace || branch) && <div className="chat-workspace"><span title={workspace}>▱ {thread?.worktreePath ? 'Worktree' : 'Current checkout'}{workspace && <small>{thread?.worktreePath ?? workspace}</small>}</span>{branch && <span>{branch}</span>}</div>}
     {queuedCount > 0 && <small>{queuedCount} answers queued</small>}
     {account?.usable === false && <p role="alert">{account.name} cannot take a turn: {account.reason ?? account.state}. Choose another account.</p>}
     {unsaved && <p className="conversation-draft-unsaved" role="status">This draft could not be saved and will not survive reload.</p>}

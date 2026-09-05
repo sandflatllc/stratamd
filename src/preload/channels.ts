@@ -22,6 +22,7 @@ export const IPC = {
   cloneEngineRepository: 'strata:cloneEngineRepository',
   updateEngineProviderInstances: 'strata:updateEngineProviderInstances',
   setModelPreference: 'strata:setModelPreference',
+  listEngineRefs: 'strata:list-engine-refs',
   refreshAccounts: 'strata:refresh-accounts',
   holdMessageComment: 'strata:hold-message-comment',
   actMessageComment: 'strata:act-message-comment',

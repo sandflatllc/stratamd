@@ -231,7 +231,11 @@ export interface EngineModelView {
   isDefault?: boolean
   options: ModelOptionDescriptor[]
 }
+export interface WorktreeRequest { kind: 'worktree'; baseBranch: string; startFromOrigin: boolean }
+export interface EngineRef { name: string; current: boolean; isDefault: boolean; worktreePath: string | null; isRemote?: boolean | undefined; remoteName?: string | undefined }
+export interface EngineRefs { refs: EngineRef[]; isRepo: boolean; hasPrimaryRemote: boolean }
 export interface ConversationInput {
+  workspace?: WorktreeRequest
   comments?: Record<string, number>
   /** Explicit frozen reply selection. Omission selects no private replies. */
   replies?: Record<string, string>
@@ -261,6 +265,7 @@ export interface EngineTurnView {
 }
 
 export interface EngineThreadView {
+  worktreePath?: string | null
   id: string
   projectId: string
   title: string
@@ -706,6 +711,9 @@ export interface ErrorReport {
 
 /** The picker's choices when a thread starts (§5.7, §5.13). */
 export interface StartThreadInput {
+  workspace?: WorktreeRequest
+  branch?: string | null
+  worktreePath?: string | null
   threadId?: string
   projectId: string
   title: string
@@ -750,6 +758,7 @@ export type CloneRepositoryInput = { destinationPath: string } & ({ remoteUrl: s
 export interface StrataApi {
   updateEngineProviderInstances(instances: Record<string, ProviderInstanceSettings>): Promise<void>
   setModelPreference(instanceId: string, slug: string, preference: { favorite?: boolean; hidden?: boolean }): Promise<void>
+  listEngineRefs(cwd: string, query?: string): Promise<EngineRefs>
   readEngineSettings(): Promise<EngineSettings>
   browseEngineFolder(path: string): Promise<EngineFolderListing>
   lookupEngineRepository(repository: string): Promise<EngineRepository>

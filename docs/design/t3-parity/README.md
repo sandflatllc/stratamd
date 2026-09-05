@@ -34,3 +34,14 @@ Configuration and Models use the gallery's 800-pixel frame. Codex has both accou
 | pick | ![Built app](captures/provider-pick.png) | ![Reference](captures/reference-provider-pick.png) |
 | identity | ![Built app](captures/provider-identity.png) | ![Reference](captures/reference-provider-identity.png) |
 | new-config | ![Built app](captures/provider-new-config.png) | ![Reference](captures/reference-provider-new-config.png) |
+
+## Working copies
+
+The workspace menu offers only previous worktrees reported by this project. Local refs are read-only. New worktrees select their base and origin preference before sending. The existing composer layout is retained.
+
+| Step | Built app | Gallery reference |
+| --- | --- | --- |
+| start | ![Built app](captures/workspace-start.png) | ![Reference](captures/reference-workspace-start.png) |
+| choices | ![Built app](captures/workspace-choices.png) | ![Reference](captures/reference-workspace-choices.png) |
+| base | ![Built app](captures/workspace-base.png) | ![Reference](captures/reference-workspace-base.png) |
+| new | ![Built app](captures/workspace-new.png) | ![Reference](captures/reference-workspace-new.png) |

@@ -1,4 +1,4 @@
-import { updateProviderInstancesInput, browseFolderInput, browseFolderResult, lookupRepositoryInput, repositoryResult, cloneRepositoryInput, cloneRepositoryResult, engineSettingsResult } from './t3-contract'
+import { worktreeRequest, listRefsInput, listRefsResult, updateProviderInstancesInput, browseFolderInput, browseFolderResult, lookupRepositoryInput, repositoryResult, cloneRepositoryInput, cloneRepositoryResult, engineSettingsResult } from './t3-contract'
 import type { EngineSettings, EngineFolderListing, EngineRepository, CloneRepositoryInput } from '../../shared/contracts'
 import { conversationDelivery, renderConversationDelivery, messageAnchor, isOwnerComment, resolveMessageAnchor, type MessageComment } from '../../core/conversation-delivery'
 import { continuationScope, familyLabel, modelFamily, permitsSelection } from '../../shared/modelSelection'
@@ -133,6 +133,7 @@ export interface EngineReadClient {
   setTerminalDefault?(driver: string, selection: string | null): Promise<void>
   updateProviderInstances?(instances: Record<string, import('../../shared/contracts').ProviderInstanceSettings>): Promise<void>
   setModelPreference?(instanceId: string, slug: string, preference: { favorite?: boolean; hidden?: boolean }): Promise<void>
+  listRefs?(cwd: string, query?: string): Promise<import('../../shared/contracts').EngineRefs>
   readSettings?(): Promise<EngineSettings>
   browseFolder?(path: string): Promise<EngineFolderListing>
   lookupRepository?(repository: string): Promise<EngineRepository>
@@ -368,6 +369,7 @@ export class T3EngineClient implements EngineReadClient {
           providerInstanceId: thread.modelSelection.instanceId,
           options: publicOptions(thread.modelSelection.options),
           branch: thread.branch,
+          worktreePath: thread.worktreePath,
           effort: effortOf(thread),
           access: thread.runtimeMode,
           status: statusOf(thread),
@@ -607,7 +609,10 @@ export class T3EngineClient implements EngineReadClient {
       ...userAttachments.map((attachment): PreparedAttachment => attachment.kind === 'image' ? { kind: 'image', id: attachment.id, name: attachment.name, mimeType: attachment.mimeType, sizeBytes: attachment.sizeBytes } : { kind: 'text', name: attachment.name, text: attachment.text }),
       ...(contextFile ? [contextFile] : []),
     ]
+    const workspace = input.workspace ?? state?.workspace
+    if (workspace && (thread.worktreePath || thread.latestUserMessageAt)) throw new Error(`Thread ${threadId} already has a working copy or a first turn`)
     const command = turnStartCommand.parse({
+      ...(workspace ? { bootstrap: { prepareWorktree: { projectCwd: this.#shell!.projects.find(project => project.id === thread.projectId)!.workspaceRoot, baseBranch: workspace.baseBranch, branch: `t3/${randomUUID().replaceAll('-', '').slice(0, 8)}`, startFromOrigin: workspace.startFromOrigin }, runSetupScript: true } } : {}),
       type: 'thread.turn.start', commandId: input.commandId ?? `strata-${messageId}`, threadId, createdAt: new Date(this.#now()).toISOString(),
       message: { messageId, role: 'user', text, attachments: [] },
       modelSelection: { instanceId, model: input.model, options: input.options ?? turnOptions(input, thread) },
@@ -642,6 +647,7 @@ export class T3EngineClient implements EngineReadClient {
     command.message.attachments = prepared.attachments.map((attachment) => ({ ...attachment.uploaded! }))
     await this.#dispatch(command, `turn:${messageId}`, messageId)
     const state = this.#conversations.threads[threadId]!
+    if (command.bootstrap) delete state.workspace
     state.prepared = (state.prepared ?? []).filter((entry) => entry.messageId !== messageId)
     await writeConversationsStore(this.#conversationsPath, this.#conversations)
   }
@@ -717,9 +723,13 @@ export class T3EngineClient implements EngineReadClient {
       return threadId
     }
     const instanceId = await this.#resolveInstance(input.projectId, input.instanceId ?? null)
+    if (input.workspace) {
+      this.#conversations.threads[threadId] = { ...(this.#conversations.threads[threadId] ?? emptyConversationState()), workspace: worktreeRequest.parse(input.workspace) }
+      await writeConversationsStore(this.#conversationsPath, this.#conversations)
+    }
     await this.#dispatch(threadCreateCommand.parse({ type: 'thread.create', commandId: `strata-create-${threadId}`, threadId, projectId: input.projectId, title: input.title,
       modelSelection: { instanceId, model: input.model, options: input.options ?? (input.effort ? [{ id: 'effort', value: input.effort }] : []) }, runtimeMode: input.access,
-      interactionMode: 'default', branch: null, worktreePath: null, createdAt: new Date(this.#now()).toISOString() }))
+      interactionMode: 'default', branch: input.branch ?? null, worktreePath: input.worktreePath ?? null, createdAt: new Date(this.#now()).toISOString() }))
     await this.openThread(threadId)
     return threadId
   }
@@ -760,6 +770,17 @@ export class T3EngineClient implements EngineReadClient {
     this.#accounts = { ...this.#accounts, modelPreferences: { ...this.#accounts.modelPreferences, [instanceId]: { favorites: update(previous.favorites, preference.favorite), hidden: update(previous.hidden, preference.hidden) } } }
     await writeAccountsStore(this.#accountsPath, this.#accounts)
     this.#publish()
+  }
+
+  async listRefs(cwd: string, query?: string): Promise<import('../../shared/contracts').EngineRefs> {
+    const refs: import('../../shared/contracts').EngineRef[] = []
+    let cursor: number | undefined
+    for (;;) {
+      const result = listRefsResult.parse(await this.#rpcOrSocket('vcs.listRefs', listRefsInput.parse({ cwd, ...(query?.trim() ? { query: query.trim() } : {}), ...(cursor !== undefined ? { cursor } : {}), limit: 100, includeMatchingRemoteRefs: true }), `refs in ${cwd}`))
+      refs.push(...result.refs)
+      if (result.nextCursor === null || result.nextCursor === cursor) return { refs, isRepo: result.isRepo, hasPrimaryRemote: result.hasPrimaryRemote }
+      cursor = result.nextCursor
+    }
   }
 
   async readSettings(): Promise<EngineSettings> {

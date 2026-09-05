@@ -4,7 +4,7 @@ import type { ConversationAttachment, ConversationInput, CreateDraftRequest, Eng
 export type ComposerSelection = Pick<ConversationInput, 'model' | 'effort' | 'access' | 'instanceId' | 'options'>
 /** An image's bytes sit in the main process; the draft keeps only a small preview beside the reference (§6.0). */
 export type DraftAttachment = ConversationAttachment & { thumbnail?: string }
-export interface ConversationDraft { messageId?: string; text: string; attachments?: DraftAttachment[] | undefined; selection?: ComposerSelection; threadId?: string }
+export interface ConversationDraft { workspace?: import('./components/WorkspaceControls').WorkspaceChoice; messageId?: string; text: string; attachments?: DraftAttachment[] | undefined; selection?: ComposerSelection; threadId?: string }
 const memory = new Map<string, ConversationDraft>()
 const prefix = 'stratamd.conversation-draft.v1:'
 

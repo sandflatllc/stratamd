@@ -404,3 +404,34 @@ describe('session renewal (§5.1)', () => {
     await client.shutdown()
   })
 })
+
+it('keeps a first-turn worktree bootstrap stable across a refused send and retry', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'strata-worktree-retry-'))
+  const snapshot = shell('New thread', 'idle', { latestUserMessageAt: null })
+  const commands: Array<Record<string, unknown>> = []
+  const server = liveServer()
+  let refuse = true
+  const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input)
+    if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+    if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket', expiresAt: at })
+    if (url.endsWith('/api/orchestration/shell')) return Response.json(snapshot)
+    if (url.endsWith('/api/orchestration/dispatch')) {
+      commands.push(JSON.parse(String(init?.body)))
+      return refuse ? Response.json({ error: 'refused' }, { status: 400 }) : Response.json({ sequence: 6 })
+    }
+    return Response.json(detail())
+  }) as typeof globalThis.fetch
+  const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
+  try {
+    await client.pair('http://engine.test', 'code')
+    const input = { text: 'Start isolated', model: 'gpt-5.6', effort: null, access: 'full-access' as const, messageId: 'worktree-message', workspace: { kind: 'worktree' as const, baseBranch: 'develop', startFromOrigin: false } }
+    await expect(client.startTurn('t1', input)).rejects.toThrow()
+    const pending = JSON.parse(await readFile(join(directory, 'engine-conversations.json'), 'utf8'))
+    expect(pending.threads.t1.prepared[0].command.bootstrap).toMatchObject({ prepareWorktree: { projectCwd: '/work/strata', baseBranch: 'develop', branch: expect.stringMatching(/^t3\/[a-f0-9]{8}$/), startFromOrigin: false }, runSetupScript: true })
+    refuse = false
+    await client.startTurn('t1', input)
+    expect(commands).toHaveLength(2)
+    expect(commands[1]).toEqual(commands[0])
+  } finally { await client.shutdown() }
+})

@@ -192,6 +192,8 @@ StrataMD runs on the owner's Linux workstation or a Mac on macOS 13 or newer. It
 
 ### 6.9 App shell and design
 
+New conversations offer Current checkout, New worktree, and available Previous worktrees. Current checkout refs are read-only. New worktrees choose a base ref and whether to start from origin, then prepare a separate folder and branch on the first send, including sends from documents. Retrying a refused send reuses its prepared command. Previous worktrees reuse their branch and path. Existing conversations show their workspace without checkout controls.
+
 Accounts includes Add provider and a Manage control for each instance, including disabled instances. Configuration edits the display name, Enabled switch and driver-supported paths and launch arguments. Saving reads the current settings map, preserves other instances and untouched configuration, then refreshes the provider report. Add provider chooses a driver, names and validates the instance, and configures its paths before saving. Models lists that instance's reported models with Favorite and Hide/Show controls. These preferences save immediately in Strata's accounts store; favorites appear first in the picker, and hidden models remain visible only when currently selected.
 
 Add project opens the same dialog from Projects and New conversation. Choose Local folder, Git URL or GitHub repository. Browse folders on the paired workstation, create a folder, or confirm a clone destination. Cloning waits up to five minutes; a completed clone can be registered again without recloning if project registration failed. New conversation selects the project after the engine's shell update. Folder browsing and repository failures keep the current step and entered values.
