@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { readFile } from 'node:fs/promises'
 import { atomicWriteFile, isRecord, PRIVATE_FILE_MODE } from '../storage'
+import { logWarn } from '../log'
 import type { ItemView } from '../../shared/contracts'
 
 /**
@@ -17,8 +18,8 @@ export interface ConversationState {
   replies: Record<string, QueuedReply>
   /** Replies delivered but not yet acknowledged by the engine's message-sent event. */
   pending: Array<{ deliveryId: string; itemIds: string[]; replies: Record<string, QueuedReply>; commentIds?: string[]; outcomeKeys?: string[] }>
-  /** Commands and bytes saved before the first upload. */
-  prepared?: Array<{ messageId: string; command: unknown; attachments: Array<{ name: string; text: string; uploaded?: { type: 'file'; id: string; name: string; mimeType: string; sizeBytes: number } }> }>
+  /** Commands and attachments saved before the first upload; image bytes stay in the staged store until uploaded. */
+  prepared?: Array<{ messageId: string; command: unknown; attachments: PreparedAttachment[] }>
   /** Items whose reply the engine acknowledged. */
   answered: string[]
   /** Inferred items the owner dismissed; remembered for the message's lifetime. */
@@ -30,6 +31,31 @@ export interface QueuedReply {
   kind: ItemView['kind']
   quote: string
   messageId: string | null
+}
+
+/** T3's reference to bytes it holds; `file` for Markdown, `image` for a picture the provider sees. */
+export interface UploadedAttachment { type: 'file' | 'image'; id: string; name: string; mimeType: string; sizeBytes: number }
+
+export type PreparedAttachment = (
+  | { kind: 'text'; name: string; text: string }
+  | { kind: 'image'; id: string; name: string; mimeType: string; sizeBytes: number }
+) & { uploaded?: UploadedAttachment }
+
+/**
+ * Entries written before images existed have no `kind`; they were always
+ * text. An uploaded reference is kept so a restart never uploads twice.
+ */
+export function normalizePreparedAttachment(value: unknown): PreparedAttachment | null {
+  if (!isRecord(value) || typeof value.name !== 'string') return null
+  const uploaded = isRecord(value.uploaded) && typeof value.uploaded.id === 'string' && typeof value.uploaded.name === 'string' && typeof value.uploaded.mimeType === 'string' && typeof value.uploaded.sizeBytes === 'number'
+    ? { uploaded: { type: value.uploaded.type === 'image' ? 'image' as const : 'file' as const, id: value.uploaded.id, name: value.uploaded.name, mimeType: value.uploaded.mimeType, sizeBytes: value.uploaded.sizeBytes } }
+    : {}
+  if (value.kind === 'image') {
+    if (typeof value.id !== 'string' || typeof value.mimeType !== 'string' || typeof value.sizeBytes !== 'number') return null
+    return { kind: 'image', id: value.id, name: value.name, mimeType: value.mimeType, sizeBytes: value.sizeBytes, ...uploaded }
+  }
+  if ((value.kind === 'text' || value.kind === undefined) && typeof value.text === 'string') return { kind: 'text', name: value.name, text: value.text, ...uploaded }
+  return null
 }
 
 export interface ConversationsStore {
@@ -71,7 +97,13 @@ export function normalizeConversationsStore(value: unknown): ConversationsStore 
       receipts: strings(raw.receipts),
       replies: replies(raw.replies),
       pending: Array.isArray(raw.pending) ? raw.pending.flatMap((entry) => isRecord(entry) && typeof entry.deliveryId === 'string' ? [{ deliveryId: entry.deliveryId, itemIds: strings(entry.itemIds), replies: replies(entry.replies), commentIds: strings(entry.commentIds), outcomeKeys: strings(entry.outcomeKeys) }] : []) : [],
-      prepared: Array.isArray(raw.prepared) ? raw.prepared.filter((entry): entry is NonNullable<ConversationState['prepared']>[number] => isRecord(entry) && typeof entry.messageId === 'string' && isRecord(entry.command) && Array.isArray(entry.attachments)) : [],
+      prepared: Array.isArray(raw.prepared) ? raw.prepared.flatMap((entry) => {
+        if (!isRecord(entry) || typeof entry.messageId !== 'string' || !isRecord(entry.command) || !Array.isArray(entry.attachments)) return []
+        const attachments = entry.attachments.map(normalizePreparedAttachment)
+        // A preparation with an unreadable attachment cannot be uploaded; dropping it lets the retry logic restore its replies.
+        if (attachments.some((attachment) => attachment === null)) { logWarn('engine', `Delivery ${entry.messageId} had an unreadable attachment and was dropped`); return [] }
+        return [{ messageId: entry.messageId, command: entry.command, attachments: attachments as PreparedAttachment[] }]
+      }) : [],
       answered: strings(raw.answered),
       dismissed: strings(raw.dismissed),
     }

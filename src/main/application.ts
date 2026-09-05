@@ -769,6 +769,21 @@ export class StrataApplication implements StrataApi {
     await this.#engine.startTurn(threadId, input)
   }
 
+  async stageConversationAttachment(input: { name: string; mimeType: string; bytes: Uint8Array }): Promise<{ id: string; sizeBytes: number }> {
+    if (!this.#engine.stageAttachment) throw new Error('This engine cannot keep attachments')
+    return this.#engine.stageAttachment(input)
+  }
+
+  async discardConversationAttachment(id: string): Promise<void> {
+    if (!this.#engine.discardAttachment) throw new Error('This engine cannot keep attachments')
+    await this.#engine.discardAttachment(id)
+  }
+
+  async retainConversationAttachments(ids: string[]): Promise<void> {
+    if (!this.#engine.retainAttachments) return
+    await this.#engine.retainAttachments(ids)
+  }
+
   async holdMessageComment(threadId: string, input: Parameters<import('../shared/contracts').StrataApi['holdMessageComment']>[1]): Promise<string> {
     if (input.id && [...this.#sessions.values()].some(session => session.attachments[threadId]?.deliveries.some(delivery => delivery.conversationContext?.annotations.some(comment => comment.id === input.id)))) throw new Error(`Comment ${input.id} is queued for delivery`)
     if (!this.#engine.holdMessageComment) throw new Error('This engine cannot hold comments')
@@ -1037,7 +1052,7 @@ export class StrataApplication implements StrataApi {
         access: thread.access,
         messageId: delivery.id,
         commandId: `strata-${delivery.id}`,
-        attachment: { name: `${delivery.id}.md`, text: delivery.payload.text },
+        attachments: [{ kind: 'text', name: `${delivery.id}.md`, text: delivery.payload.text }],
       })
     } catch (error) {
       this.#engineDispatching.delete(key)

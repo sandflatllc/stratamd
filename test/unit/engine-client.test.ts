@@ -293,7 +293,7 @@ describe('T3 engine read client', () => {
     }) as typeof globalThis.fetch
     const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
     await client.pair('http://engine.test', 'code')
-    await client.startTurn('t1', { text: 'Delivery d1.', model: 'gpt-5.6', effort: 'medium', access: 'full-access', attachment: { name: 'delivery.md', text: '# Delivery' } })
+    await client.startTurn('t1', { text: 'Delivery d1.', model: 'gpt-5.6', effort: 'medium', access: 'full-access', attachments: [{ kind: 'text', name: 'delivery.md', text: '# Delivery' }] })
     expect(uploads).toEqual([{ url: 'http://engine.test/upload/signed', body: '# Delivery' }])
     expect(server.requests.find((request) => request.tag === 'attachments.createUploadUrl')).toMatchObject({ payload: { type: 'file', name: 'delivery.md', mimeType: 'text/markdown' } })
     expect(commands[0]).toMatchObject({ message: { text: 'Delivery d1.', attachments: [{ type: 'file', id: 'pending-upload', name: 'delivery.md', mimeType: 'text/markdown', sizeBytes: 10 }] } })

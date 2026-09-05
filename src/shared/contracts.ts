@@ -241,8 +241,14 @@ export interface ConversationInput {
   access: EngineThreadView['access']
   instanceId?: string | null
   options?: ModelOption[]
-  attachment?: { name: string; text: string }
+  /** At most 8 with Strata's generated context file (§6.0); images reference bytes the main process staged. */
+  attachments?: ConversationAttachment[]
 }
+
+/** A file the composer sends with a turn: text travels inline, an image by the id the main process staged it under. */
+export type ConversationAttachment =
+  | { kind: 'text'; name: string; text: string }
+  | { kind: 'image'; id: string; name: string; mimeType: string; sizeBytes: number }
 
 /** T3's latest turn: the fold label, timing, and the stopped state come from here (§6.9). */
 export interface EngineTurnView {
@@ -730,6 +736,11 @@ export interface StrataApi {
   openConversation(threadId: string): Promise<void>
   /** Sends the owner's note plus every queued item reply as one delivery (§5.4); either may be empty, not both. */
   startConversationTurn(threadId: string, input: ConversationInput): Promise<void>
+  /** Keeps a pasted or picked image in the data directory until it is sent or removed (§6.0). */
+  stageConversationAttachment(input: { name: string; mimeType: string; bytes: Uint8Array }): Promise<{ id: string; sizeBytes: number }>
+  discardConversationAttachment(id: string): Promise<void>
+  /** The ids every draft still references; staged images nothing references are deleted. */
+  retainConversationAttachments(ids: string[]): Promise<void>
   /** Queues a reply to a message-anchored item; the row shows Drafted until the Send carrying it is acknowledged (§5.4). */
   holdMessageComment(threadId: string, input: { id?: string; messageId: string; from: number; to: number; kind: DraftKind; text: string }): Promise<string>
   actMessageComment(threadId: string, itemId: string, action: "resolve" | "reopen" | "discard"): Promise<void>

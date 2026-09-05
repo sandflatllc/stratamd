@@ -30,7 +30,7 @@ import { activitySnapshot, agentActivity, agentActivityMessage, ambientStyles, c
 import { flushPendingBuffer, peekPendingBuffer, setPendingBuffer } from './pendingBuffer'
 import { nextToast, type ToastAction, type ToastState } from './toasts'
 import { consumeDocumentLaunch, readWorkspace, writeWorkspace } from './workspaceState'
-import { readNewConversationTarget, writeNewConversationTarget, type NewConversationTarget } from './conversationDrafts'
+import { draftAttachmentIds, readNewConversationTarget, writeNewConversationTarget, type NewConversationTarget } from './conversationDrafts'
 import { hasPrimaryModifier } from '../shared/primary-modifier'
 
 /** Ctrl+Enter inside the annotation composer or a thread reply belongs to that form (§5.2). */
@@ -194,6 +194,8 @@ export function App({ createEditor }: AppProps) {
       if (!receivedPush) adopt(next)
       if (next.activeDocument) activitySeen.current.set(next.activeDocument.path, activitySnapshot(next.activeDocument))
       setReady(true)
+      // Staged composer images outlive their drafts only until this report; the main process deletes the rest (§6.0).
+      window.strata.retainConversationAttachments?.(draftAttachmentIds()).catch((error: unknown) => reportError(error instanceof Error ? error.message : 'Could not tidy staged attachments'))
     }).catch((error: unknown) => { reportError(error instanceof Error ? error.message : 'Could not load StrataMD'); setReady(true) })
     const unsubscribe = window.strata.subscribe((next) => {
       if (!mounted) return

@@ -7,12 +7,15 @@ import { electronFileOps, type FileOps } from './file-ops'
 import { logRendererReport } from './log'
 import { annotationContextSchema } from './validation'
 import type { WindowController } from './window-controls'
+import { MAX_ATTACHMENTS, MAX_IMAGE_BYTES, MAX_TEXT_BYTES, SUPPORTED_IMAGE_TYPES } from '../core/composer-attachments'
+import { isStagedAttachmentId } from './engine/staged-attachments'
 
 type StrataIpcApi = Omit<StrataApi, 'subscribe'>
 
 const pathSchema = z.string().min(1).max(16_384)
 const idSchema = z.string().min(1).max(512)
 const textSchema = z.string().max(64 * 1_024)
+const stagedAttachmentIdSchema = z.string().refine(isStagedAttachmentId, 'Not a staged attachment id')
 const modelOptionsSchema = z.array(z.object({ id: idSchema, value: z.union([idSchema, z.boolean()]) }).strict()).max(64)
 const conversationTurnSchema = z.object({
   comments: z.record(idSchema, z.number().int().positive()).optional(),
@@ -26,7 +29,16 @@ const conversationTurnSchema = z.object({
   effort: idSchema.nullable(),
   options: modelOptionsSchema.optional(),
   access: z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access']),
-  attachment: z.object({ name: idSchema, text: z.string().max(2 * 1_024 * 1_024) }).strict().optional(),
+  attachments: z.array(z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('text'), name: idSchema, text: z.string().max(MAX_TEXT_BYTES) }).strict(),
+    // Image bytes never cross this channel; the renderer staged them and names the id (§6.0).
+    z.object({ kind: z.literal('image'), id: stagedAttachmentIdSchema, name: idSchema, mimeType: z.enum(SUPPORTED_IMAGE_TYPES), sizeBytes: z.number().int().positive().max(MAX_IMAGE_BYTES) }).strict(),
+  ])).max(MAX_ATTACHMENTS).optional(),
+}).strict()
+const stageAttachmentSchema = z.object({
+  name: idSchema,
+  mimeType: z.enum(SUPPORTED_IMAGE_TYPES),
+  bytes: z.instanceof(Uint8Array).refine((bytes) => bytes.byteLength >= 1 && bytes.byteLength <= MAX_IMAGE_BYTES, 'Image size out of range'),
 }).strict()
 const sendRequestSchema = z.object({
   conversation: z.record(idSchema, z.object({ deliveryId: idSchema, comments: z.record(idSchema, z.number().int().positive()), replies: z.record(idSchema, textSchema) }).strict()).optional(),
@@ -157,6 +169,9 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.discardItemReply]: z.tuple([idSchema, idSchema]),
   [IPC.dismissItem]: z.tuple([idSchema, idSchema]),
   [IPC.startConversationTurn]: z.tuple([idSchema, conversationTurnSchema]),
+  [IPC.stageConversationAttachment]: z.tuple([stageAttachmentSchema]),
+  [IPC.discardConversationAttachment]: z.tuple([stagedAttachmentIdSchema]),
+  [IPC.retainConversationAttachments]: z.tuple([z.array(stagedAttachmentIdSchema).max(4_096)]),
   [IPC.stopConversationTurn]: z.tuple([idSchema]),
   [IPC.answerEngineApproval]: z.tuple([idSchema, idSchema, z.enum(['accept', 'acceptForSession', 'acceptAlways', 'decline', 'cancel'])]),
   [IPC.answerEngineUserInput]: z.tuple([idSchema, idSchema, z.record(z.string(), z.unknown())]),
@@ -356,6 +371,9 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.discardItemReply]: (threadId: string, itemId: string) => options.api.discardItemReply(threadId, itemId),
     [IPC.dismissItem]: (threadId: string, itemId: string) => options.api.dismissItem(threadId, itemId),
     [IPC.startConversationTurn]: (threadId: string, input: Parameters<StrataApi['startConversationTurn']>[1]) => options.api.startConversationTurn(threadId, input),
+    [IPC.stageConversationAttachment]: (input: Parameters<StrataApi['stageConversationAttachment']>[0]) => options.api.stageConversationAttachment(input),
+    [IPC.discardConversationAttachment]: (id: string) => options.api.discardConversationAttachment(id),
+    [IPC.retainConversationAttachments]: (ids: string[]) => options.api.retainConversationAttachments(ids),
     [IPC.stopConversationTurn]: (threadId: string) => options.api.stopConversationTurn(threadId),
     [IPC.answerEngineApproval]: (threadId: string, requestId: string, decision: Parameters<StrataApi['answerEngineApproval']>[2]) => options.api.answerEngineApproval(threadId, requestId, decision),
     [IPC.answerEngineUserInput]: (threadId: string, requestId: string, answers: Record<string, unknown>) => options.api.answerEngineUserInput(threadId, requestId, answers),

@@ -8,7 +8,7 @@ import { SettingsStore } from '../../src/main/settings'
 import { GhostStore } from '../../src/main/storage'
 import { tableReferences } from '../../src/main/tables'
 import { defaultTableView } from '../../src/shared/tables'
-import { attach, createStrataApplication, deliveryPayloads, FakeEngine, fixture, post, settleDeliveries, storedApplication } from './support/cockpit'
+import { attach, createStrataApplication, deliveryPayloads, FakeEngine, fixture, post, settleDeliveries, storedApplication, deliveryText } from './support/cockpit'
 
 const range = (source: string, quote: string) => ({ quote, from: source.indexOf(quote), to: source.indexOf(quote) + quote.length })
 const twoThreads = { threads: [{ id: 't_a', title: 'Agent A' }, { id: 't_b', title: 'Agent B' }] }
@@ -37,8 +37,8 @@ describe('StrataApplication: drafts and quick send', () => {
     expect(JSON.stringify(payload)).not.toContain('Held second')
     // The turn the engine received carries exactly that delivery and nothing private.
     const turn = value.engine.deliveries('t_a').at(-1)!
-    expect(turn.attachment?.text).toContain('Third line.')
-    expect(turn.attachment?.text).not.toContain('Held')
+    expect(deliveryText(turn)).toContain('Third line.')
+    expect(deliveryText(turn)).not.toContain('Held')
     expect(value.engine.deliveries('t_b')).toHaveLength(1)
     expect(JSON.parse(await readFile(value.store.pathsForDocument(value.path).drafts, 'utf8')).drafts).toHaveLength(2)
   })
@@ -145,7 +145,7 @@ describe('StrataApplication: drafts and quick send', () => {
     const [resync] = await deliveryPayloads(value.store, value.path, 't_a')
     expect(resync!.payload.event).toBe('resync')
     expect(resync!.payload.annotations).toEqual([expect.objectContaining({ text: 'Quick without baseline.' })])
-    expect(value.engine.deliveries('t_a').at(-1)!.attachment?.text).toContain('One sentence.')
+    expect(deliveryText(value.engine.deliveries('t_a').at(-1)!)).toContain('One sentence.')
   })
 
   it('materializes only checked drafts and offers the unchecked draft again', async () => {
@@ -946,7 +946,7 @@ describe('StrataApplication: file identity and annotation relocation', () => {
     const [initial] = await deliveryPayloads(store, path, 't1')
     expect(initial!.payload).toMatchObject({ document: recovered })
     expect(['initial', 'resync']).toContain(initial!.payload.event)
-    expect(value.engine.deliveries('t1')[0]!.attachment?.text).toContain('Unsaved buffer.')
+    expect(deliveryText(value.engine.deliveries('t1')[0]!)).toContain('Unsaved buffer.')
     expect(await readFile(path, 'utf8')).toBe(original)
   })
 })
@@ -1595,7 +1595,7 @@ describe('StrataApplication: delivered hunks and timestamps', () => {
     const inserted = hunks.find((hunk) => hunk.added.includes('intro'))
     expect(inserted).toMatchObject({ contextBefore: [], contextAfter: ['# T'], line: 1 })
     expect(delivery?.payload.text).toContain(' line a\n-line b\n+line B\n line c')
-    expect(value.engine.deliveries('t_1').at(-1)?.attachment?.text).toContain(' line a\n-line b\n+line B\n line c')
+    expect(deliveryText(value.engine.deliveries('t_1').at(-1))).toContain(' line a\n-line b\n+line B\n line c')
   })
 
   it('stamps hunks with when they were recorded and attachments with when they attached', async () => {
