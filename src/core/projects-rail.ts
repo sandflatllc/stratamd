@@ -106,3 +106,29 @@ export function buildProjectsRail(projects: readonly EngineProjectView[], option
   const shelfSort = (a: ProjectShelfEntry, b: ProjectShelfEntry) => compare(sort, a.thread, b.thread)
   return { folders, snoozed: snoozed.sort(shelfSort), settled: settled.sort(shelfSort) }
 }
+
+/**
+ * Folders the owner has placed come first, in the saved order; folders the engine added since append in engine order.
+ * Ids in the saved order with no matching project are skipped, so a project the engine no longer lists leaves no gap.
+ */
+export function orderProjects<T extends { id: string }>(projects: readonly T[], preferredIds: readonly string[]): T[] {
+  if (preferredIds.length === 0) return [...projects]
+  const byId = new Map(projects.map((project) => [project.id, project]))
+  const placed = new Set<string>()
+  const ordered: T[] = []
+  for (const id of preferredIds) {
+    const project = byId.get(id)
+    if (!project || placed.has(id)) continue
+    placed.add(id)
+    ordered.push(project)
+  }
+  return [...ordered, ...projects.filter((project) => !placed.has(project.id))]
+}
+
+/** The id list after dropping `movingId` before or after `targetId`. A drop on itself or an unknown target returns the input. */
+export function moveProject(ids: readonly string[], movingId: string, targetId: string, edge: 'before' | 'after'): string[] {
+  if (movingId === targetId || !ids.includes(movingId) || !ids.includes(targetId)) return [...ids]
+  const rest = ids.filter((id) => id !== movingId)
+  const index = rest.indexOf(targetId) + (edge === 'after' ? 1 : 0)
+  return [...rest.slice(0, index), movingId, ...rest.slice(index)]
+}

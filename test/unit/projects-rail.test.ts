@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildProjectsRail, previewProjectFolderThreads, projectFolderState, projectThreadState, resolveShelfThreads, sortProjectFolderThreads } from '../../src/core/projects-rail'
+import { buildProjectsRail, moveProject, orderProjects, previewProjectFolderThreads, projectFolderState, projectThreadState, resolveShelfThreads, sortProjectFolderThreads } from '../../src/core/projects-rail'
 import type { EngineProjectView, EngineThreadView } from '../../src/shared/contracts'
 
 const now = Date.parse('2026-09-04T12:00:00.000Z')
@@ -63,5 +63,20 @@ describe('projects rail', () => {
     const entries = [{ thread: thread('one'), projectName: 'First' }, { thread: thread('two'), projectName: 'Second' }]
     expect(resolveShelfThreads(entries, false, 5, 'two')).toEqual([entries[1]])
     expect(resolveShelfThreads(entries, false, 5, null)).toEqual([])
+  })
+
+  it('places saved folders first and appends new engine projects in engine order', () => {
+    const projects = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }]
+    expect(orderProjects(projects, []).map((project) => project.id)).toEqual(['a', 'b', 'c', 'd'])
+    expect(orderProjects(projects, ['c', 'a']).map((project) => project.id)).toEqual(['c', 'a', 'b', 'd'])
+    expect(orderProjects(projects, ['gone', 'd', 'd', 'b']).map((project) => project.id)).toEqual(['d', 'b', 'a', 'c'])
+  })
+
+  it('moves a folder before or after another and ignores a drop on itself', () => {
+    expect(moveProject(['a', 'b', 'c'], 'c', 'a', 'before')).toEqual(['c', 'a', 'b'])
+    expect(moveProject(['a', 'b', 'c'], 'a', 'c', 'after')).toEqual(['b', 'c', 'a'])
+    expect(moveProject(['a', 'b', 'c'], 'a', 'b', 'before')).toEqual(['a', 'b', 'c'])
+    expect(moveProject(['a', 'b', 'c'], 'b', 'b', 'after')).toEqual(['a', 'b', 'c'])
+    expect(moveProject(['a', 'b', 'c'], 'b', 'zzz', 'after')).toEqual(['a', 'b', 'c'])
   })
 })

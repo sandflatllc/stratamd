@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent } from 'react'
-import { buildProjectsRail, projectThreadState, resolveShelfThreads, type ProjectFolderState, type ProjectShelfEntry, type ProjectThreadSort, type ProjectThreadState } from '../../core/projects-rail'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
+import { buildProjectsRail, moveProject, orderProjects, projectThreadState, resolveShelfThreads, type ProjectFolderState, type ProjectShelfEntry, type ProjectThreadSort, type ProjectThreadState } from '../../core/projects-rail'
 import type { EngineThreadChange, EngineThreadView, EngineView } from '../../shared/contracts'
 
 interface ProjectsPanelProps {
@@ -21,6 +21,19 @@ interface FolderPreference { open: boolean; previewCount: number }
 type FolderPreferences = Record<string, FolderPreference>
 
 const PREFERENCES_KEY = 'stratamd.projects-rail.v1'
+/** Folder order the owner set by dragging, as project ids first to last; a view preference like T3's `projectOrder`. */
+const ORDER_KEY = 'stratamd.projects-order.v1'
+/** Pointer travel before a press on a folder header becomes a drag rather than a click. */
+const DRAG_THRESHOLD = 4
+
+function readOrder(): string[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(ORDER_KEY) ?? '[]') as unknown
+    return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : []
+  } catch { return [] }
+}
+
+interface FolderDrag { id: string; target: string | null; edge: 'before' | 'after' }
 
 function readPreferences(): FolderPreferences {
   try {
@@ -132,6 +145,12 @@ export function ProjectsPanel({ engine, onOpenThread, onBeginRename, onReconnect
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<ProjectThreadSort>('recent')
   const [preferences, setPreferences] = useState<FolderPreferences>(readPreferences)
+  const [order, setOrder] = useState<string[]>(readOrder)
+  const [drag, setDrag] = useState<FolderDrag | null>(null)
+  const press = useRef<{ id: string; pointerId: number; x: number; y: number; dragging: boolean } | null>(null)
+  const dragRef = useRef<FolderDrag | null>(null)
+  const suppressClick = useRef(false)
+  const folderList = useRef<HTMLDivElement>(null)
   const [shelves, setShelves] = useState({ snoozed: false, settled: false })
   const [shelfCounts, setShelfCounts] = useState({ snoozed: 5, settled: 5 })
   const [menu, setMenu] = useState<{ thread: EngineThreadView; x: number; y: number } | null>(null)
@@ -142,6 +161,7 @@ export function ProjectsPanel({ engine, onOpenThread, onBeginRename, onReconnect
   const search = useRef<HTMLInputElement>(null)
 
   useEffect(() => { try { localStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences)) } catch { /* Disposable view preference. */ } }, [preferences])
+  useEffect(() => { try { localStorage.setItem(ORDER_KEY, JSON.stringify(order)) } catch { /* Disposable view preference. */ } }, [order])
   useEffect(() => {
     const keydown = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') setMenu(null)
@@ -154,8 +174,9 @@ export function ProjectsPanel({ engine, onOpenThread, onBeginRename, onReconnect
   }, [])
 
   const nowMs = now()
-  const previewCountByProject = Object.fromEntries(engine.projects.map((project) => [project.id, preferences[project.id]?.previewCount ?? 5]))
-  const rail = buildProjectsRail(engine.projects, { nowMs, sort, previewCountByProject })
+  const orderedProjects = orderProjects(engine.projects, order)
+  const previewCountByProject = Object.fromEntries(orderedProjects.map((project) => [project.id, preferences[project.id]?.previewCount ?? 5]))
+  const rail = buildProjectsRail(orderedProjects, { nowMs, sort, previewCountByProject })
   const normalizedQuery = query.trim().toLocaleLowerCase()
   const filtered = useMemo(() => normalizedQuery ? {
     folders: rail.folders.map((folder) => ({ ...folder, visibleThreads: folder.threads.filter((thread) => thread.title.toLocaleLowerCase().includes(normalizedQuery)) })),
@@ -166,6 +187,57 @@ export function ProjectsPanel({ engine, onOpenThread, onBeginRename, onReconnect
   const updatePreference = (projectId: string, patch: Partial<FolderPreference>) => setPreferences((current) => ({ ...current, [projectId]: { ...preference(projectId), ...patch } }))
   const beginRename = (threadId: string) => { onBeginRename(); setRenamingId(threadId) }
   const openMenu = (event: MouseEvent, thread: EngineThreadView) => { event.preventDefault(); setMenu({ thread, x: Math.min(event.clientX, window.innerWidth - 190), y: Math.min(event.clientY, window.innerHeight - 330) }) }
+  const folderIds = orderedProjects.map((project) => project.id)
+  const commitOrder = (movingId: string, targetId: string, edge: 'before' | 'after') => setOrder(moveProject(folderIds, movingId, targetId, edge))
+  const setFolderDrag = (next: FolderDrag | null) => { dragRef.current = next; setDrag(next) }
+  /** The folder under the pointer and which half of it, from the rendered groups; null between groups or outside the list. */
+  const dropTarget = (clientY: number): Pick<FolderDrag, 'target' | 'edge'> => {
+    const groups = Array.from(folderList.current?.querySelectorAll<HTMLElement>('.project-group[data-project]') ?? [])
+    for (const group of groups) {
+      const box = group.getBoundingClientRect()
+      if (clientY >= box.top && clientY <= box.bottom) return { target: group.dataset.project ?? null, edge: clientY < box.top + box.height / 2 ? 'before' : 'after' }
+    }
+    const first = groups[0]?.getBoundingClientRect()
+    const last = groups.at(-1)?.getBoundingClientRect()
+    if (first && clientY < first.top) return { target: groups[0]!.dataset.project ?? null, edge: 'before' }
+    if (last && clientY > last.bottom) return { target: groups.at(-1)!.dataset.project ?? null, edge: 'after' }
+    return { target: null, edge: 'before' }
+  }
+  const pressFolder = (event: PointerEvent<HTMLDivElement>, projectId: string) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest('.project-new-thread')) return
+    press.current = { id: projectId, pointerId: event.pointerId, x: event.clientX, y: event.clientY, dragging: false }
+  }
+  const moveFolder = (event: PointerEvent<HTMLDivElement>) => {
+    const current = press.current
+    if (!current || current.pointerId !== event.pointerId) return
+    if (!current.dragging) {
+      if (Math.hypot(event.clientX - current.x, event.clientY - current.y) < DRAG_THRESHOLD) return
+      current.dragging = true
+      event.currentTarget.setPointerCapture(event.pointerId)
+    }
+    setFolderDrag({ id: current.id, ...dropTarget(event.clientY) })
+  }
+  const releaseFolder = (event: PointerEvent<HTMLDivElement>, cancelled = false) => {
+    const current = press.current
+    if (!current || current.pointerId !== event.pointerId) return
+    press.current = null
+    if (!current.dragging) return
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    const target = cancelled ? null : dragRef.current
+    setFolderDrag(null)
+    suppressClick.current = true
+    window.setTimeout(() => { suppressClick.current = false }, 0)
+    if (target?.target) commitOrder(current.id, target.target, target.edge)
+  }
+  /** A press that turned into a drag must not toggle the folder when the button sees the click. */
+  const guardFolderClick = (event: MouseEvent) => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation() } }
+  const nudgeFolder = (event: KeyboardEvent<HTMLButtonElement>, projectId: string) => {
+    if (!event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return
+    event.preventDefault()
+    const index = folderIds.indexOf(projectId)
+    const neighbour = folderIds[event.key === 'ArrowUp' ? index - 1 : index + 1]
+    if (neighbour) commitOrder(projectId, neighbour, event.key === 'ArrowUp' ? 'before' : 'after')
+  }
   const submitProject = (event: FormEvent) => { event.preventDefault(); if (!projectPath.trim()) return; onAddProject({ title: projectTitle.trim() || projectPath.trim().split('/').at(-1) || 'Project', workspaceRoot: projectPath.trim() }); setAddingProject(false); setProjectTitle(''); setProjectPath('') }
 
   if (engine.state === 'unpaired') return <div className="engine-empty" data-testid="engine-unpaired">No engine paired.<small>Pair StrataMD with your T3 server to see its projects.</small>{onOpenEngine && <button type="button" onClick={onOpenEngine}>Pair engine</button>}</div>
@@ -176,11 +248,12 @@ export function ProjectsPanel({ engine, onOpenThread, onBeginRename, onReconnect
     <header className="projects-header"><h2>Projects</h2><label title="Sort threads"><span className="sr-only">Sort projects</span><select aria-label="Sort projects" value={sort} onChange={(event) => setSort(event.target.value as ProjectThreadSort)}><option value="recent">Recent</option><option value="oldest">Oldest</option><option value="title">Name</option></select></label><button type="button" aria-label="Add project" title="Add project" onClick={() => setAddingProject((value) => !value)}>＋</button></header>
     <div className="projects-primary-actions"><button type="button" title="New thread (Ctrl+Shift+N)" onClick={() => onNewThread()}>New thread</button></div>
     {addingProject && <form className="projects-add-form" aria-label="Add project" onSubmit={submitProject}><input aria-label="Project title" placeholder="Project name" value={projectTitle} onChange={(event) => setProjectTitle(event.target.value)} /><input aria-label="Project folder" placeholder="/path/to/folder" value={projectPath} onChange={(event) => setProjectPath(event.target.value)} /><div><button type="button" onClick={() => setAddingProject(false)}>Cancel</button><button type="submit" disabled={!projectPath.trim()}>Add</button></div></form>}
-    <div className="project-folders">
+    <div className="project-folders" ref={folderList} data-reordering={drag !== null || undefined}>
       {filtered.folders.map((folder) => {
         const state = preference(folder.project.id)
-        return <section className="project-group" key={folder.project.id} data-open={state.open}>
-          <div className="project-folder-row"><button type="button" className="project-folder-header" aria-expanded={state.open} title={folder.project.workspaceRoot} onClick={() => updatePreference(folder.project.id, { open: !state.open })}><i className="project-folder-chevron" aria-hidden="true">›</i><span className="project-folder-icon" aria-hidden="true">▱</span><strong>{folder.project.title}</strong>{folder.state && <span className="project-folder-state" data-state={folder.state} role="img" aria-label={FOLDER_STATE_LABEL[folder.state]} />}</button><button type="button" className="project-new-thread" aria-label={`New thread in ${folder.project.title}`} title={`New thread in ${folder.project.title}`} onClick={() => onNewThread(folder.project.id)}>＋</button></div>
+        const id = folder.project.id
+        return <section className="project-group" key={id} data-project={id} data-open={state.open} data-dragging={drag?.id === id || undefined} data-drop={drag && drag.target === id && drag.id !== id ? drag.edge : undefined}>
+          <div className="project-folder-row" onPointerDown={(event) => pressFolder(event, id)} onPointerMove={moveFolder} onPointerUp={(event) => releaseFolder(event)} onPointerCancel={(event) => releaseFolder(event, true)} onClickCapture={guardFolderClick}><button type="button" className="project-folder-header" aria-expanded={state.open} aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" title={folder.project.workspaceRoot} onKeyDown={(event) => nudgeFolder(event, id)} onClick={() => updatePreference(id, { open: !state.open })}><i className="project-folder-chevron" aria-hidden="true">›</i><span className="project-folder-icon" aria-hidden="true">▱</span><strong>{folder.project.title}</strong>{folder.state && <span className="project-folder-state" data-state={folder.state} role="img" aria-label={FOLDER_STATE_LABEL[folder.state]} />}</button><button type="button" className="project-new-thread" aria-label={`New thread in ${folder.project.title}`} title={`New thread in ${folder.project.title}`} onClick={() => onNewThread(folder.project.id)}>＋</button></div>
           {state.open && <>{folder.visibleThreads.map((thread) => <ThreadRow key={thread.id} thread={thread} active={thread.id === engine.activeThreadId} attached={attachedThreadIds.has(thread.id)} nowMs={nowMs} renaming={renamingId === thread.id} onRename={() => beginRename(thread.id)} onDoneRenaming={() => setRenamingId(null)} onOpen={() => onOpenThread(thread.id)} onMenu={(event) => openMenu(event, thread)} onUpdate={(change) => onUpdate(thread.id, change)} onAction={(action) => onAction(thread.id, action)} />)}{folder.hasOverflow && folder.visibleThreads.length < folder.threads.length && <button type="button" className="project-show-more" onClick={() => updatePreference(folder.project.id, { previewCount: state.previewCount + 5 })}>Show more ({folder.threads.length - folder.visibleThreads.length})</button>}{folder.threads.length === 0 && <div className="empty-subtle">No active threads.</div>}</>}
         </section>
       })}
