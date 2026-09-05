@@ -230,13 +230,15 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       if (values.length) chunk(connection, subscription, values)
     }
   }
+  let providerInstances: Record<string, Record<string, unknown>> = { codex: { driver: 'codex', config: { homePath: '/home/owner/.codex-work', preserved: 'keep' } } }
   function rpcValue(tag: string, payload: Record<string, unknown>): unknown {
     if (tag === 'attachments.createUploadUrl') {
       uploadCount += 1
       const attachmentId = `upload-${uploadCount}`
       return { attachmentId, relativeUrl: `/upload/${attachmentId}`, expiresAt: Date.now() + 60_000 }
     }
-    if (tag === 'server.getSettings') return { addProjectBaseDirectory: '/home/owner/Projects', newWorktreesStartFromOrigin: true, providerInstances: { codex: { driver: 'codex', config: { homePath: '/home/owner/.codex-work' } } } }
+    if (tag === 'server.getSettings') return { addProjectBaseDirectory: '/home/owner/Projects', newWorktreesStartFromOrigin: true, providerInstances }
+    if (tag === 'server.updateSettings') { providerInstances = (payload.patch as { providerInstances: typeof providerInstances }).providerInstances; return { providerInstances } }
     if (tag === 'filesystem.browse') {
       const parentPath = String(payload.partialPath).replace(/\/+$/, '') || '/'
       return { parentPath, entries: parentPath === '/home/owner/Projects' ? [{ name: 'Example app', fullPath: '/home/owner/Projects/Example app' }] : [] }

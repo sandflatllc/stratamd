@@ -1896,3 +1896,20 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .folder-browser > button > span { margin-left: auto; color: var(--dim); }
 .folder-browser > p { padding: 18px; color: var(--dim); }
 .setup-result { display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 10px; }
+
+.setup-tabs { display: flex; border-bottom: 1px solid var(--line); gap: 18px; }
+.setup-tabs button { padding: 10px 4px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--dim); }
+.setup-tabs button[aria-selected="true"] { border-bottom-color: var(--controls-selected); color: var(--text); }
+.setup-advanced { border-top: 1px solid var(--line); padding-top: 14px; }
+.setup-advanced summary { cursor: pointer; margin-bottom: 16px; }
+.provider-status, .provider-model-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.provider-model-row { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.provider-model-row > span { flex: 1; }
+.provider-model-row[data-hidden] > span { opacity: .5; }
+.setup-switch { display: inline-flex; align-items: center; gap: 8px; padding: 4px; border: 0; background: transparent; color: var(--text); font: inherit; }
+.setup-switch > span { width: 30px; height: 18px; padding: 3px; border-radius: 12px; background: var(--line); }
+.setup-switch i { display: block; width: 12px; height: 12px; border-radius: 50%; background: var(--text); transition: transform .15s; }
+.setup-switch[aria-checked="true"] > span { background: var(--controls-selected); }
+.setup-switch[aria-checked="true"] i { transform: translateX(12px); }
+
+.provider-setup { width: min(800px, 94vw); }

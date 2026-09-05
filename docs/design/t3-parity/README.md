@@ -21,3 +21,16 @@ Back links sit in the header as the plan requests. Folder paths can be typed and
 | url | ![Built app](captures/project-url.png) | ![Reference](captures/reference-project-url.png) |
 | github | ![Built app](captures/project-github.png) | ![Reference](captures/reference-project-github.png) |
 | destination | ![Built app](captures/project-destination.png) | ![Reference](captures/reference-project-destination.png) |
+
+## Provider setup
+
+Configuration and Models use the gallery's 800-pixel frame. Codex has both account and shadow home paths, as requested in the plan. Enabled uses a switch. Model preferences save immediately, so that tab uses Done and explains the behavior. The gallery's model names and account counts are examples; the built app renders the server report.
+
+| Step | Built app | Gallery reference |
+| --- | --- | --- |
+| overview | ![Built app](captures/provider-overview.png) | ![Reference](captures/reference-provider-overview.png) |
+| config | ![Built app](captures/provider-config.png) | ![Reference](captures/reference-provider-config.png) |
+| models | ![Built app](captures/provider-models.png) | ![Reference](captures/reference-provider-models.png) |
+| pick | ![Built app](captures/provider-pick.png) | ![Reference](captures/reference-provider-pick.png) |
+| identity | ![Built app](captures/provider-identity.png) | ![Reference](captures/reference-provider-identity.png) |
+| new-config | ![Built app](captures/provider-new-config.png) | ![Reference](captures/reference-provider-new-config.png) |

@@ -241,3 +241,6 @@ export const cloneRepositoryInput = z.union([
 export const cloneRepositoryResult = z.object({ cwd: id, remoteUrl: id, repository: repositoryResult.nullable() })
 export const providerInstanceSettings = z.object({ driver: id, displayName: id.optional(), enabled: z.boolean().optional(), config: z.record(z.string(), z.unknown()).optional() }).passthrough()
 export const engineSettingsResult = z.object({ addProjectBaseDirectory: z.string().optional(), newWorktreesStartFromOrigin: z.boolean().optional(), providerInstances: z.record(z.string(), providerInstanceSettings).default({}) }).passthrough()
+
+export const providerSlug = z.string().max(64).regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/)
+export const updateProviderInstancesInput = z.object({ patch: z.object({ providerInstances: z.record(providerSlug, providerInstanceSettings.extend({ driver: providerSlug })) }).strict() }).strict()

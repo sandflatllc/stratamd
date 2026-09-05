@@ -20,6 +20,8 @@ export const IPC = {
   browseEngineFolder: 'strata:browseEngineFolder',
   lookupEngineRepository: 'strata:lookupEngineRepository',
   cloneEngineRepository: 'strata:cloneEngineRepository',
+  updateEngineProviderInstances: 'strata:updateEngineProviderInstances',
+  setModelPreference: 'strata:setModelPreference',
   refreshAccounts: 'strata:refresh-accounts',
   holdMessageComment: 'strata:hold-message-comment',
   actMessageComment: 'strata:act-message-comment',

@@ -221,6 +221,8 @@ export interface ModelOptionDescriptor {
   options?: Array<{ id: string; label: string; description?: string | undefined; isDefault?: boolean | undefined }> | undefined
 }
 export interface EngineModelView {
+  favorite?: boolean
+  hidden?: boolean
   instanceId: string
   accountName: string
   driver: string
@@ -746,6 +748,8 @@ export interface EngineRepository { provider: string; nameWithOwner: string; url
 export type CloneRepositoryInput = { destinationPath: string } & ({ remoteUrl: string } | { provider: 'github'; repository: string })
 
 export interface StrataApi {
+  updateEngineProviderInstances(instances: Record<string, ProviderInstanceSettings>): Promise<void>
+  setModelPreference(instanceId: string, slug: string, preference: { favorite?: boolean; hidden?: boolean }): Promise<void>
   readEngineSettings(): Promise<EngineSettings>
   browseEngineFolder(path: string): Promise<EngineFolderListing>
   lookupEngineRepository(repository: string): Promise<EngineRepository>

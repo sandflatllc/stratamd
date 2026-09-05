@@ -1,6 +1,8 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import type { AccountView, EngineView } from '../../shared/contracts'
 import { useDialogFocus } from '../useDialogFocus'
+import { ProviderSetup } from './ProviderSetup'
+import { EllipsisIcon, PlusIcon } from '../icons/lucide'
 import { ProviderGlyph } from './ProviderGlyph'
 
 interface AccountsDialogProps {
@@ -78,7 +80,7 @@ function UsageBar({ label, window, now }: { label: string; window: AccountView['
   )
 }
 
-function AccountRow({ account, auto, now, onPark }: { account: AccountView; auto: boolean; now: number; onPark: AccountsDialogProps['onPark'] }) {
+function AccountRow({ account, auto, now, onPark, onManage }: { account: AccountView; auto: boolean; now: number; onPark: AccountsDialogProps['onPark']; onManage(): void }) {
   const quiet = account.state === 'ready'
   const chip = account.state === 'parked'
   const state = <span className="account-state" data-testid={`account-state-${account.instanceId}`} data-quiet={quiet || undefined} data-chip={chip || undefined}>{accountStateLine(account)}</span>
@@ -107,6 +109,7 @@ function AccountRow({ account, auto, now, onPark }: { account: AccountView; auto
         <span className="account-park-track" aria-hidden="true" />
         Park
       </button>
+      <button type="button" className="quiet-button" aria-label={`Manage ${account.name}`} onClick={onManage}><EllipsisIcon /></button>
     </div>
   )
 }
@@ -116,6 +119,11 @@ function AccountRow({ account, auto, now, onPark }: { account: AccountView; auto
  * parking, and terminal defaults, as a modal opened from the engine status.
  */
 export function AccountsDialog({ engine, onPark, onTerminalDefault, onClose, onOpenEngine }: AccountsDialogProps) {
+  const [manage, setManage] = useState<AccountView | 'new' | null>(null)
+  return manage ? <ProviderSetup engine={engine} account={manage === 'new' ? null : manage} onBack={() => setManage(null)} onClose={onClose} /> : <AccountsOverview engine={engine} onPark={onPark} onTerminalDefault={onTerminalDefault} onClose={onClose} {...(onOpenEngine ? { onOpenEngine } : {})} onManage={setManage} />
+}
+
+function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEngine, onManage }: AccountsDialogProps & { onManage(account: AccountView | 'new'): void }) {
   const dialogRef = useRef<HTMLElement>(null)
   useDialogFocus(dialogRef, onClose)
   const now = Date.now()
@@ -126,7 +134,7 @@ export function AccountsDialog({ engine, onPark, onTerminalDefault, onClose, onO
     <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <section ref={dialogRef} tabIndex={-1} className="modal accounts-dialog" role="dialog" aria-modal="true" aria-labelledby="accounts-title">
         <div className="accounts-body">
-          <h2 id="accounts-title">Accounts</h2>
+          <div className="parity-dialog-heading"><h2 id="accounts-title">Accounts</h2><button type="button" className="quiet-button" onClick={() => onManage('new')}><PlusIcon /> Add provider</button></div>
           <p className="modal-subtitle">Provider logins on {engine.server ? <code>{engine.server.replace(/^https?:\/\//, '')}</code> : 'the engine'}. Auto picks the least loaded account that can take a thread.</p>
           {engine.state !== 'connected' && <p className="engine-problem">The engine is {engine.state === 'unpaired' ? 'not paired' : engine.state}. Showing what Strata last measured.</p>}
           {engine.accounts.length === 0 && <div className="empty-subtle">No provider accounts reported yet.</div>}
@@ -150,7 +158,7 @@ export function AccountsDialog({ engine, onPark, onTerminalDefault, onClose, onO
                   </label>
                 </div>
                 <div className="accounts-list">
-                  {accounts.map((account) => <AccountRow account={account} auto={account.instanceId === auto} now={now} onPark={onPark} key={account.instanceId} />)}
+                  {accounts.map((account) => <AccountRow account={account} auto={account.instanceId === auto} now={now} onPark={onPark} onManage={() => onManage(account)} key={account.instanceId} />)}
                 </div>
               </section>
             )
@@ -166,7 +174,7 @@ export function AccountsDialog({ engine, onPark, onTerminalDefault, onClose, onO
                   <div className="account-row" data-instance={account.instanceId} data-state={account.state} data-usable={account.usable} key={account.instanceId}>
                     <span className="account-dot" aria-hidden="true" />
                     <div className="account-identity"><div className="account-name"><strong>{account.name}</strong></div></div>
-                    <span className="account-state" data-testid={`account-state-${account.instanceId}`}>{accountStateLine(account)}</span>
+                    <span className="account-state" data-testid={`account-state-${account.instanceId}`}>{accountStateLine(account)}</span><button type="button" className="quiet-button" aria-label={`Manage ${account.name}`} onClick={() => onManage(account)}><EllipsisIcon /></button>
                   </div>
                 ))}
               </div>

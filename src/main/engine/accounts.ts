@@ -17,6 +17,7 @@ export interface AccountsStore {
   stickyInstanceId: string | null
   /** Per driver: `auto`, an instance id, or null for the system default (§5.13 terminal defaults). */
   terminalDefaults: Record<string, string | null>
+  modelPreferences?: Record<string, { favorites: string[]; hidden: string[] }>
 }
 
 export interface AccountMeasurement {
@@ -96,6 +97,13 @@ export function normalizeAccountsStore(value: unknown): AccountsStore {
     for (const [driver, selection] of Object.entries(value.terminalDefaults)) {
       if (selection === null || typeof selection === 'string') store.terminalDefaults[driver] = selection
     }
+  }
+  if (isRecord(value.modelPreferences)) {
+    store.modelPreferences = Object.fromEntries(Object.entries(value.modelPreferences).flatMap(([id, raw]) => {
+      if (!isRecord(raw)) return []
+      const strings = (input: unknown) => Array.isArray(input) ? input.filter((item): item is string => typeof item === 'string') : []
+      return [[id, { favorites: strings(raw.favorites), hidden: strings(raw.hidden) }]]
+    }))
   }
   return store
 }

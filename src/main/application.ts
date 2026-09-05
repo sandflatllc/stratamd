@@ -780,6 +780,16 @@ export class StrataApplication implements StrataApi {
     return this.#engine.cloneRepository(input)
   }
 
+  async updateEngineProviderInstances(instances: Parameters<StrataApi['updateEngineProviderInstances']>[0]) {
+    if (!this.#engine.updateProviderInstances) throw new Error('The engine does not support updateProviderInstances')
+    return this.#engine.updateProviderInstances(instances)
+  }
+
+  async setModelPreference(instanceId: string, slug: string, preference: Parameters<StrataApi['setModelPreference']>[2]) {
+    if (!this.#engine.setModelPreference) throw new Error('The engine does not support setModelPreference')
+    return this.#engine.setModelPreference(instanceId, slug, preference)
+  }
+
   async refreshAccounts(): Promise<void> {
     if (!this.#engine.refreshAccounts) throw new Error('This engine does not report accounts')
     await this.#engine.refreshAccounts()

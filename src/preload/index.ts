@@ -92,6 +92,8 @@ const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyn
   browseEngineFolder: (path) => invoke(IPC.browseEngineFolder, path),
   lookupEngineRepository: (repository) => invoke(IPC.lookupEngineRepository, repository),
   cloneEngineRepository: (input) => invoke(IPC.cloneEngineRepository, input),
+  updateEngineProviderInstances: (instances) => invoke(IPC.updateEngineProviderInstances, instances),
+  setModelPreference: (instanceId, slug, preference) => invoke(IPC.setModelPreference, instanceId, slug, preference),
   refreshAccounts: () => invoke<void>(IPC.refreshAccounts),
   holdMessageComment: (threadId, input) => invoke<string>(IPC.holdMessageComment, threadId, input),
   actMessageComment: (threadId, itemId, action) => invoke<void>(IPC.actMessageComment, threadId, itemId, action),

@@ -8,7 +8,7 @@ import { logRendererReport } from './log'
 import { annotationContextSchema } from './validation'
 import type { WindowController } from './window-controls'
 import { MAX_ATTACHMENTS, MAX_IMAGE_BYTES, MAX_TEXT_BYTES, SUPPORTED_IMAGE_TYPES } from '../core/composer-attachments'
-import { cloneRepositoryInput } from './engine/t3-contract'
+import { updateProviderInstancesInput, cloneRepositoryInput } from './engine/t3-contract'
 import { isStagedAttachmentId } from './engine/staged-attachments'
 
 type StrataIpcApi = Omit<StrataApi, 'subscribe'>
@@ -167,6 +167,8 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.browseEngineFolder]: z.tuple([z.string().trim().min(1).max(512)]),
   [IPC.lookupEngineRepository]: z.tuple([idSchema]),
   [IPC.cloneEngineRepository]: z.tuple([cloneRepositoryInput]),
+  [IPC.updateEngineProviderInstances]: z.tuple([updateProviderInstancesInput.shape.patch.shape.providerInstances]),
+  [IPC.setModelPreference]: z.tuple([idSchema, idSchema, z.object({ favorite: z.boolean().optional(), hidden: z.boolean().optional() }).strict()]),
   [IPC.refreshAccounts]: z.tuple([]),
   [IPC.holdMessageComment]: z.tuple([idSchema, z.object({ id: idSchema.optional(), messageId: idSchema, from: z.number().int().nonnegative(), to: z.number().int().positive(), kind: z.enum(['comment', 'question', 'suggestion']), text: z.string().min(1).max(20000) }).strict()]),
   [IPC.actMessageComment]: z.tuple([idSchema, idSchema, z.enum(['resolve', 'reopen', 'discard'])]),
@@ -373,6 +375,8 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.browseEngineFolder]: (path: string) => options.api.browseEngineFolder(path),
     [IPC.lookupEngineRepository]: (repository: string) => options.api.lookupEngineRepository(repository),
     [IPC.cloneEngineRepository]: (input: Parameters<StrataApi['cloneEngineRepository']>[0]) => options.api.cloneEngineRepository(input),
+    [IPC.updateEngineProviderInstances]: (instances: Parameters<StrataApi['updateEngineProviderInstances']>[0]) => options.api.updateEngineProviderInstances(instances),
+    [IPC.setModelPreference]: (instanceId: string, slug: string, preference: Parameters<StrataApi['setModelPreference']>[2]) => options.api.setModelPreference(instanceId, slug, preference),
     [IPC.refreshAccounts]: () => options.api.refreshAccounts(),
     [IPC.holdMessageComment]: (threadId: string, input: Parameters<StrataApi['holdMessageComment']>[1]) => options.api.holdMessageComment(threadId, input),
     [IPC.actMessageComment]: (threadId: string, itemId: string, action: 'resolve' | 'reopen' | 'discard') => options.api.actMessageComment(threadId, itemId, action),

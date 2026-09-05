@@ -1,4 +1,4 @@
-import { browseFolderInput, browseFolderResult, lookupRepositoryInput, repositoryResult, cloneRepositoryInput, cloneRepositoryResult, engineSettingsResult } from './t3-contract'
+import { updateProviderInstancesInput, browseFolderInput, browseFolderResult, lookupRepositoryInput, repositoryResult, cloneRepositoryInput, cloneRepositoryResult, engineSettingsResult } from './t3-contract'
 import type { EngineSettings, EngineFolderListing, EngineRepository, CloneRepositoryInput } from '../../shared/contracts'
 import { conversationDelivery, renderConversationDelivery, messageAnchor, isOwnerComment, resolveMessageAnchor, type MessageComment } from '../../core/conversation-delivery'
 import { continuationScope, familyLabel, modelFamily, permitsSelection } from '../../shared/modelSelection'
@@ -131,6 +131,8 @@ export interface EngineReadClient {
   dismissItem?(threadId: string, itemId: string): Promise<void>
   parkAccount?(instanceId: string, parked: boolean): Promise<void>
   setTerminalDefault?(driver: string, selection: string | null): Promise<void>
+  updateProviderInstances?(instances: Record<string, import('../../shared/contracts').ProviderInstanceSettings>): Promise<void>
+  setModelPreference?(instanceId: string, slug: string, preference: { favorite?: boolean; hidden?: boolean }): Promise<void>
   readSettings?(): Promise<EngineSettings>
   browseFolder?(path: string): Promise<EngineFolderListing>
   lookupRepository?(repository: string): Promise<EngineRepository>
@@ -404,7 +406,7 @@ export class T3EngineClient implements EngineReadClient {
       projects,
       activeThreadId: this.#reading.activeThreadId,
       accounts,
-      models: this.#models,
+      models: this.#models.map(model => ({ ...model, favorite: this.#accounts.modelPreferences?.[model.instanceId]?.favorites.includes(model.slug) ?? false, hidden: this.#accounts.modelPreferences?.[model.instanceId]?.hidden.includes(model.slug) ?? false })),
       terminalDefaults: { ...this.#accounts.terminalDefaults },
       autoInstanceIds: Object.fromEntries([...new Set(accounts.map((account) => account.driver))].map((driver) => [driver, chooseInstance(this.#accounts, accounts, null, driver)])),
       terminalShimDirectory: this.#shimDirectory,
@@ -744,6 +746,20 @@ export class T3EngineClient implements EngineReadClient {
     }
     if (accounts.length) throw new Error('No account can take a thread right now. Unpark one or wait for a limit to reset.')
     return this.#shell?.threads.find((thread) => thread.projectId === projectId)?.modelSelection.instanceId ?? this.#shell?.threads[0]?.modelSelection.instanceId ?? 'codex'
+  }
+
+  async updateProviderInstances(instances: Record<string, import('../../shared/contracts').ProviderInstanceSettings>): Promise<void> {
+    engineSettingsResult.parse(await this.#rpcOrSocket('server.updateSettings', updateProviderInstancesInput.parse({ patch: { providerInstances: instances } }), 'provider settings'))
+    // The write is complete even if the subsequent probe cannot reach a provider.
+    await this.refreshAccounts().catch(() => undefined)
+  }
+
+  async setModelPreference(instanceId: string, slug: string, preference: { favorite?: boolean; hidden?: boolean }): Promise<void> {
+    const previous = this.#accounts.modelPreferences?.[instanceId] ?? { favorites: [], hidden: [] }
+    const update = (values: string[], selected: boolean | undefined) => selected === undefined ? values : selected ? [...new Set([...values, slug])] : values.filter(value => value !== slug)
+    this.#accounts = { ...this.#accounts, modelPreferences: { ...this.#accounts.modelPreferences, [instanceId]: { favorites: update(previous.favorites, preference.favorite), hidden: update(previous.hidden, preference.hidden) } } }
+    await writeAccountsStore(this.#accountsPath, this.#accounts)
+    this.#publish()
   }
 
   async readSettings(): Promise<EngineSettings> {
