@@ -51,14 +51,16 @@ for (const placement of ['side', 'center'] as const) test(`owner holds and sends
     await expect.poll(async () => page.evaluate(async id => (await window.strata.getState()).engine.projects.flatMap(p => p.threads).find(t => t.id === 't1')?.comments?.find(c => c.id === id)?.replies.length, id)).toBe(1)
     // The reply ended the live turn; its Worked for row lands before the reading position is measured.
     await expect(panel.locator('.conversation-turn-toggle')).toHaveCount(1)
-    const beforeDiscussion = await panel.locator('.conversation-messages').evaluate(element => element.scrollTop)
+    // Reading position is the anchored answer's place in the viewport; rows above it may still mount their editors and grow.
+    const readingPosition = () => message.evaluate(element => element.getBoundingClientRect().top - element.closest('.conversation-messages')!.getBoundingClientRect().top)
+    const beforeDiscussion = await readingPosition()
     await panel.getByRole('navigation', { name: 'Conversation history' }).getByRole('button', { name: /^Comment: Please explain this/ }).click()
     await expect(page.getByRole('region', { name: 'Saved comment' })).toContainText('Please explain this.')
     await expect(page.getByRole('region', { name: 'Saved comment' }).getByRole('button', { name: /^(Reply|Resolve|Reopen)$/ })).toHaveCount(0)
     await page.getByText('Earlier replies', { exact: true }).click()
     await expect(page.getByRole('region', { name: 'Saved comment' })).toContainText('A precise reply to your passage.')
     await page.getByRole('button', { name: 'Back to reading', exact: true }).click()
-    await expect.poll(async () => Math.abs(await panel.locator('.conversation-messages').evaluate(element => element.scrollTop) - beforeDiscussion)).toBeLessThan(3)
+    await expect.poll(async () => Math.abs(await readingPosition() - beforeDiscussion)).toBeLessThan(3)
     await panel.getByRole('navigation', { name: 'Conversation history' }).getByRole('button', { name: /^Comment: Please explain this/ }).click()
     await page.getByRole('region', { name: 'Saved comment' }).scrollIntoViewIfNeeded()
     await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-discussion.png`) })

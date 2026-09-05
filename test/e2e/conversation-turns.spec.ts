@@ -134,8 +134,7 @@ test('Find and a comment marker open the folded turn that holds their target', a
     const first = turnOf(panel, 'old-agent-1')
     const toggle = older.locator('.conversation-turn-toggle')
     await expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    await panel.getByRole('button', { name: 'Find', exact: true }).click()
-    await panel.getByRole('textbox', { name: 'Find in conversation' }).fill('grouping order first')
+    await panel.getByRole('searchbox', { name: 'Find in conversation' }).fill('grouping order first')
     await panel.getByRole('button', { name: 'Next', exact: true }).click()
     const progress = older.locator('[data-message-id="old-agent-2-progress"]')
     await expect(progress).toBeInViewport()
@@ -143,7 +142,7 @@ test('Find and a comment marker open the folded turn that holds their target', a
     await expect(toggle).toHaveAttribute('aria-expanded', 'true')
     // Only the target's turn opens.
     await expect(first.locator('.conversation-turn-toggle')).toHaveAttribute('aria-expanded', 'false')
-    await panel.getByRole('button', { name: 'Find', exact: true }).click()
+    await panel.getByRole('searchbox', { name: 'Find in conversation' }).fill('')
 
     const commentId = await page.evaluate(async () => {
       const thread = (await window.strata.getState()).engine.projects.flatMap((project) => project.threads).find((candidate) => candidate.id === 't1')!
