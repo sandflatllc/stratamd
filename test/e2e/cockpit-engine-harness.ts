@@ -152,6 +152,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   }
   let workspaceRoot = options.workspaceRoot ?? '/tmp/cockpit'
   let providers = options.providers ?? DEFAULT_PROVIDERS
+  const terminalHistory = new Map<string, string>()
   const rpcRequests: Array<{ tag: string; payload: unknown }> = []
   const sockets = new Set<Socket>()
   const connections = new Set<Connection>()
@@ -354,6 +355,22 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
         if (rpc._tag === 'Interrupt') { connection.subscriptions = connection.subscriptions.filter((subscription) => subscription.requestId !== rpc.requestId); continue }
         if (rpc._tag !== 'Request' || !rpc.id || !rpc.tag) continue
         rpcRequests.push({ tag: rpc.tag, payload: rpc.payload })
+        if (rpc.tag === 'terminal.attach') {
+          const input = rpc.payload as { threadId: string; terminalId: string; cwd: string }
+          const subscription = { requestId: rpc.id, tag: rpc.tag, threadId: input.threadId }
+          connection.subscriptions.push(subscription)
+          const history = terminalHistory.get(input.threadId) ?? '\u001b[32mShell ready\u001b[0m\r\n$ '
+          terminalHistory.set(input.threadId, history)
+          chunk(connection, subscription, [{ type: 'snapshot', snapshot: { ...input, status: 'running', history, worktreePath: null, label: 'bash', updatedAt: at } }])
+          continue
+        }
+        if (rpc.tag === 'terminal.write') {
+          const input = rpc.payload as { threadId: string; terminalId: string; data: string }
+          terminalHistory.set(input.threadId, (terminalHistory.get(input.threadId) ?? '') + input.data)
+          for (const subscription of connection.subscriptions.filter(item => item.tag === 'terminal.attach' && item.threadId === input.threadId)) chunk(connection, subscription, [{ type: 'output', ...input }])
+          send(socket, { _tag: 'Exit', requestId: rpc.id, exit: { _tag: 'Success', value: null } })
+          continue
+        }
         if (rpc.tag === 'orchestration.subscribeShell' || rpc.tag === 'orchestration.subscribeThread') {
           const subscription: Subscription = { requestId: rpc.id, tag: rpc.tag, threadId: rpc.tag === 'orchestration.subscribeThread' ? String((rpc.payload as { threadId?: unknown }).threadId ?? '') : null }
           connection.subscriptions.push(subscription)

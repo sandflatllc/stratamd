@@ -249,3 +249,22 @@ export const updateProviderInstancesInput = z.object({ patch: z.object({ provide
 export const worktreeRequest = z.object({ kind: z.literal('worktree'), baseBranch: id, startFromOrigin: z.boolean() }).strict()
 export const listRefsInput = z.object({ cwd: id, query: id.max(256).optional(), cursor: nonNegativeInt.optional(), limit: z.number().int().positive().optional(), includeMatchingRemoteRefs: z.boolean().optional() }).strict()
 export const listRefsResult = z.object({ refs: z.array(z.object({ name: id, current: z.boolean(), isDefault: z.boolean(), worktreePath: id.nullable(), isRemote: z.boolean().optional(), remoteName: id.optional() })), isRepo: z.boolean(), hasPrimaryRemote: z.boolean(), nextCursor: nonNegativeInt.nullable(), totalCount: nonNegativeInt })
+
+export const terminalTarget = z.object({ threadId: id, terminalId: id.max(128) }).strict()
+const terminalGrid = { cols: z.number().int().min(1).max(1000), rows: z.number().int().min(1).max(500) }
+export const terminalAttachInput = terminalTarget.extend({ cwd: id, ...terminalGrid, restartIfNotRunning: z.boolean() }).strict()
+export const terminalWriteInput = terminalTarget.extend({ data: z.string().min(1).max(65_536) }).strict()
+export const terminalResizeInput = terminalTarget.extend(terminalGrid).strict()
+export const terminalVoidResult = z.union([z.void(), z.null()])
+const terminalSnapshot = terminalTarget.extend({ cwd: id, worktreePath: id.nullable(), status: z.enum(['starting', 'running', 'exited', 'error']), history: z.string(), label: z.string().max(128), updatedAt: z.string(), sequence: nonNegativeInt.optional() }).passthrough()
+const terminalEventBase = terminalTarget.extend({ sequence: nonNegativeInt.optional() })
+export const terminalStreamEvent = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('snapshot'), snapshot: terminalSnapshot }),
+  terminalEventBase.extend({ type: z.literal('restarted'), snapshot: terminalSnapshot }),
+  terminalEventBase.extend({ type: z.literal('output'), data: z.string() }),
+  terminalEventBase.extend({ type: z.literal('activity'), hasRunningSubprocess: z.boolean(), label: z.string().max(128) }),
+  terminalEventBase.extend({ type: z.literal('error'), message: id }),
+  terminalEventBase.extend({ type: z.literal('exited'), exitCode: z.number().int().nullable(), exitSignal: z.number().int().nullable() }),
+  terminalEventBase.extend({ type: z.literal('cleared') }),
+  terminalEventBase.extend({ type: z.literal('closed') }),
+])

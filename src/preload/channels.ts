@@ -23,6 +23,12 @@ export const IPC = {
   updateEngineProviderInstances: 'strata:updateEngineProviderInstances',
   setModelPreference: 'strata:setModelPreference',
   listEngineRefs: 'strata:list-engine-refs',
+  attachEngineTerminal: 'strata:attachEngineTerminal',
+  detachEngineTerminal: 'strata:detachEngineTerminal',
+  writeEngineTerminal: 'strata:writeEngineTerminal',
+  resizeEngineTerminal: 'strata:resizeEngineTerminal',
+  closeEngineTerminal: 'strata:closeEngineTerminal',
+  terminalEvent: 'strata:terminal-event',
   refreshAccounts: 'strata:refresh-accounts',
   holdMessageComment: 'strata:hold-message-comment',
   actMessageComment: 'strata:act-message-comment',
@@ -105,6 +111,6 @@ export const IPC = {
 export type SendChannel = typeof IPC.reportError
 
 /** Main→renderer pushes; everything else is a renderer invoke. */
-export type PushChannel = typeof IPC.stateChanged | typeof IPC.spelling | typeof IPC.windowStateChanged
+export type PushChannel = typeof IPC.terminalEvent | typeof IPC.stateChanged | typeof IPC.spelling | typeof IPC.windowStateChanged
 
 export type InvokeChannel = Exclude<(typeof IPC)[keyof typeof IPC], PushChannel | SendChannel>

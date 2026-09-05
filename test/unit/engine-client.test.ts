@@ -435,3 +435,31 @@ it('keeps a first-turn worktree bootstrap stable across a refused send and retry
     expect(commands[1]).toEqual(commands[0])
   } finally { await client.shutdown() }
 })
+
+it('detaches terminal subscriptions by attachment id and never closes a server shell on detach', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'strata-terminal-'))
+  const server = liveServer()
+  const fetch = vi.fn(async (input: string | URL | Request) => String(input).endsWith('/oauth/token')
+    ? Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+    : String(input).endsWith('/api/auth/websocket-ticket') ? Response.json({ ticket: 'ticket-1', expiresAt: at })
+    : String(input).endsWith('/api/orchestration/shell') ? Response.json(shell()) : Response.json(detail(''))) as typeof globalThis.fetch
+  const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
+  const received: unknown[] = []
+  client.onTerminalEvent(event => received.push(event))
+  try {
+    await client.pair('http://engine.test', 'code')
+    const first = { attachmentId: 'one', threadId: 't1', terminalId: 'term-1', cwd: '/work/strata', cols: 80, rows: 24 }
+    await client.attachTerminal(first)
+    server.push('terminal.attach', [{ type: 'output', threadId: 't1', terminalId: 'term-1', data: 'first' }])
+    expect(received).toHaveLength(1)
+    await client.attachTerminal({ ...first, attachmentId: 'two', threadId: 't2' })
+    await client.detachTerminal('one')
+    server.push('terminal.attach', [{ type: 'output', threadId: 't1', terminalId: 'term-1', data: 'stale' }])
+    expect(received).toHaveLength(1)
+    server.push('terminal.attach', [{ type: 'output', threadId: 't2', terminalId: 'term-1', data: 'second' }])
+    expect(received).toHaveLength(2)
+    await client.detachTerminal('two')
+    expect(server.sockets.flatMap(socket => socket.streams).filter(stream => stream.tag === 'terminal.attach')).toHaveLength(0)
+    expect(server.requests.some(request => request.tag === 'terminal.close')).toBe(false)
+  } finally { await client.shutdown() }
+})

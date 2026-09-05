@@ -795,6 +795,35 @@ export class StrataApplication implements StrataApi {
     return this.#engine.listRefs(cwd, query)
   }
 
+  async attachEngineTerminal(input: Parameters<StrataApi['attachEngineTerminal']>[0]) {
+    if (!this.#engine.attachTerminal) throw new Error('The engine does not support attachTerminal')
+    return this.#engine.attachTerminal(input)
+  }
+
+  async detachEngineTerminal(attachmentId: string) {
+    if (!this.#engine.detachTerminal) throw new Error('The engine does not support detachTerminal')
+    return this.#engine.detachTerminal(attachmentId)
+  }
+
+  async writeEngineTerminal(input: Parameters<StrataApi['writeEngineTerminal']>[0]) {
+    if (!this.#engine.writeTerminal) throw new Error('The engine does not support writeTerminal')
+    return this.#engine.writeTerminal(input)
+  }
+
+  async resizeEngineTerminal(input: Parameters<StrataApi['resizeEngineTerminal']>[0]) {
+    if (!this.#engine.resizeTerminal) throw new Error('The engine does not support resizeTerminal')
+    return this.#engine.resizeTerminal(input)
+  }
+
+  async closeEngineTerminal(input: Parameters<StrataApi['closeEngineTerminal']>[0]) {
+    if (!this.#engine.closeTerminal) throw new Error('The engine does not support closeTerminal')
+    return this.#engine.closeTerminal(input)
+  }
+
+  onTerminalEvent(listener: (push: import('../shared/contracts').TerminalPush) => void): () => void {
+    return this.#engine.onTerminalEvent?.(listener) ?? (() => undefined)
+  }
+
   async refreshAccounts(): Promise<void> {
     if (!this.#engine.refreshAccounts) throw new Error('This engine does not report accounts')
     await this.#engine.refreshAccounts()

@@ -95,6 +95,11 @@ const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyn
   updateEngineProviderInstances: (instances) => invoke(IPC.updateEngineProviderInstances, instances),
   setModelPreference: (instanceId, slug, preference) => invoke(IPC.setModelPreference, instanceId, slug, preference),
   listEngineRefs: (cwd, query) => invoke(IPC.listEngineRefs, cwd, query),
+  attachEngineTerminal: (input) => invoke(IPC.attachEngineTerminal, input),
+  detachEngineTerminal: (attachmentId) => invoke(IPC.detachEngineTerminal, attachmentId),
+  writeEngineTerminal: (input) => invoke(IPC.writeEngineTerminal, input),
+  resizeEngineTerminal: (input) => invoke(IPC.resizeEngineTerminal, input),
+  closeEngineTerminal: (input) => invoke(IPC.closeEngineTerminal, input),
   refreshAccounts: () => invoke<void>(IPC.refreshAccounts),
   holdMessageComment: (threadId, input) => invoke<string>(IPC.holdMessageComment, threadId, input),
   actMessageComment: (threadId, itemId, action) => invoke<void>(IPC.actMessageComment, threadId, itemId, action),
@@ -108,6 +113,11 @@ const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyn
   stopConversationTurn: (threadId) => invoke<void>(IPC.stopConversationTurn, threadId),
   answerEngineApproval: (threadId, requestId, decision) => invoke<void>(IPC.answerEngineApproval, threadId, requestId, decision),
   answerEngineUserInput: (threadId, requestId, answers) => invoke<void>(IPC.answerEngineUserInput, threadId, requestId, answers),
+  onTerminalEvent(listener) {
+    const wrapped = (_event: Electron.IpcRendererEvent, push: import('../shared/contracts').TerminalPush) => listener(push)
+    ipcRenderer.on(IPC.terminalEvent, wrapped)
+    return () => ipcRenderer.removeListener(IPC.terminalEvent, wrapped)
+  },
   onSpelling(listener) {
     const wrapped = (_event: Electron.IpcRendererEvent, spelling: unknown): void => {
       if (!isSpellingContext(spelling)) return

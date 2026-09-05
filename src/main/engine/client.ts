@@ -1,4 +1,4 @@
-import { worktreeRequest, listRefsInput, listRefsResult, updateProviderInstancesInput, browseFolderInput, browseFolderResult, lookupRepositoryInput, repositoryResult, cloneRepositoryInput, cloneRepositoryResult, engineSettingsResult } from './t3-contract'
+import { terminalAttachInput, terminalWriteInput, terminalResizeInput, terminalTarget, terminalVoidResult, terminalStreamEvent, worktreeRequest, listRefsInput, listRefsResult, updateProviderInstancesInput, browseFolderInput, browseFolderResult, lookupRepositoryInput, repositoryResult, cloneRepositoryInput, cloneRepositoryResult, engineSettingsResult } from './t3-contract'
 import type { EngineSettings, EngineFolderListing, EngineRepository, CloneRepositoryInput } from '../../shared/contracts'
 import { conversationDelivery, renderConversationDelivery, messageAnchor, isOwnerComment, resolveMessageAnchor, type MessageComment } from '../../core/conversation-delivery'
 import { continuationScope, familyLabel, modelFamily, permitsSelection } from '../../shared/modelSelection'
@@ -133,6 +133,12 @@ export interface EngineReadClient {
   setTerminalDefault?(driver: string, selection: string | null): Promise<void>
   updateProviderInstances?(instances: Record<string, import('../../shared/contracts').ProviderInstanceSettings>): Promise<void>
   setModelPreference?(instanceId: string, slug: string, preference: { favorite?: boolean; hidden?: boolean }): Promise<void>
+  attachTerminal?(input: import('../../shared/contracts').TerminalAttachRequest): Promise<void>
+  detachTerminal?(attachmentId: string): Promise<void>
+  writeTerminal?(input: import('../../shared/contracts').TerminalTarget & { data: string }): Promise<void>
+  resizeTerminal?(input: import('../../shared/contracts').TerminalTarget & { cols: number; rows: number }): Promise<void>
+  closeTerminal?(input: import('../../shared/contracts').TerminalTarget): Promise<void>
+  onTerminalEvent?(listener: (push: import('../../shared/contracts').TerminalPush) => void): () => void
   listRefs?(cwd: string, query?: string): Promise<import('../../shared/contracts').EngineRefs>
   readSettings?(): Promise<EngineSettings>
   browseFolder?(path: string): Promise<EngineFolderListing>
@@ -236,6 +242,9 @@ export class T3EngineClient implements EngineReadClient {
   readonly #configRefreshMs: number
   readonly #shimDirectory: string | null
   readonly #writeShims: typeof writeTerminalShims
+  #terminalStream: import('./socket').EngineStream | null = null
+  #terminalAttachment: string | null = null
+  readonly #terminalListeners = new Set<(push: import('../../shared/contracts').TerminalPush) => void>()
   #accounts: AccountsStore = emptyAccountsStore()
   #providers: EngineProviderInstance[] = []
   #models: EngineModelView[] = []
@@ -306,6 +315,8 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async shutdown(): Promise<void> {
+    if (this.#terminalAttachment) await this.detachTerminal(this.#terminalAttachment)
+    this.#terminalListeners.clear()
     this.#running = false
     this.#clearReconnect()
     if (this.#renewalTimer) clearTimeout(this.#renewalTimer)
@@ -770,6 +781,51 @@ export class T3EngineClient implements EngineReadClient {
     this.#accounts = { ...this.#accounts, modelPreferences: { ...this.#accounts.modelPreferences, [instanceId]: { favorites: update(previous.favorites, preference.favorite), hidden: update(previous.hidden, preference.hidden) } } }
     await writeAccountsStore(this.#accountsPath, this.#accounts)
     this.#publish()
+  }
+
+  onTerminalEvent(listener: (push: import('../../shared/contracts').TerminalPush) => void): () => void {
+    this.#terminalListeners.add(listener)
+    return () => this.#terminalListeners.delete(listener)
+  }
+
+  async attachTerminal(input: import('../../shared/contracts').TerminalAttachRequest): Promise<void> {
+    if (!this.#socket || this.#socket.closed) throw new Error('Connect the engine before opening a terminal')
+    this.#terminalStream?.interrupt()
+    this.#terminalStream = null
+    this.#terminalAttachment = input.attachmentId
+    const publish = (event: import('../../shared/contracts').TerminalEvent) => {
+      if (this.#terminalAttachment !== input.attachmentId) return
+      const target = event.type === 'snapshot' ? event.snapshot : event
+      if (target.threadId !== input.threadId || target.terminalId !== input.terminalId) return
+      for (const listener of this.#terminalListeners) listener({ attachmentId: input.attachmentId, event })
+    }
+    const { attachmentId: _, ...target } = input
+    const stream = await this.#socket.stream('terminal.attach', terminalAttachInput.parse({ ...target, restartIfNotRunning: true }), raw => {
+      const result = terminalStreamEvent.safeParse(raw)
+      if (result.success) publish(result.data)
+      else publish({ type: 'error', threadId: input.threadId, terminalId: input.terminalId, message: 'The engine sent an unreadable terminal event' })
+    }, error => publish({ type: 'error', threadId: input.threadId, terminalId: input.terminalId, message: error?.message ?? 'The terminal stream ended. Reopen the terminal to attach again.' }))
+    if (this.#terminalAttachment !== input.attachmentId) stream.interrupt()
+    else this.#terminalStream = stream
+  }
+
+  async detachTerminal(attachmentId: string): Promise<void> {
+    if (attachmentId !== this.#terminalAttachment) return
+    this.#terminalAttachment = null
+    this.#terminalStream?.interrupt()
+    this.#terminalStream = null
+  }
+
+  async writeTerminal(input: import('../../shared/contracts').TerminalTarget & { data: string }): Promise<void> {
+    terminalVoidResult.parse(await this.#rpcOrSocket('terminal.write', terminalWriteInput.parse(input), 'terminal input'))
+  }
+
+  async resizeTerminal(input: import('../../shared/contracts').TerminalTarget & { cols: number; rows: number }): Promise<void> {
+    terminalVoidResult.parse(await this.#rpcOrSocket('terminal.resize', terminalResizeInput.parse(input), 'terminal resize'))
+  }
+
+  async closeTerminal(input: import('../../shared/contracts').TerminalTarget): Promise<void> {
+    terminalVoidResult.parse(await this.#rpcOrSocket('terminal.close', terminalTarget.parse(input), 'terminal close'))
   }
 
   async listRefs(cwd: string, query?: string): Promise<import('../../shared/contracts').EngineRefs> {

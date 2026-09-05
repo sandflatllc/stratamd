@@ -755,7 +755,25 @@ export interface EngineFolderListing { parentPath: string; entries: Array<{ name
 export interface EngineRepository { provider: string; nameWithOwner: string; url: string; sshUrl: string }
 export type CloneRepositoryInput = { destinationPath: string } & ({ remoteUrl: string } | { provider: 'github'; repository: string })
 
+export interface TerminalTarget { threadId: string; terminalId: string }
+export interface TerminalAttachRequest extends TerminalTarget { attachmentId: string; cwd: string; cols: number; rows: number }
+export interface TerminalSnapshot extends TerminalTarget { cwd: string; worktreePath: string | null; status: 'starting' | 'running' | 'exited' | 'error'; history: string; label: string; updatedAt: string; sequence?: number | undefined }
+export type TerminalEvent =
+  | { type: 'snapshot'; snapshot: TerminalSnapshot }
+  | (TerminalTarget & { sequence?: number | undefined } & (
+      { type: 'restarted'; snapshot: TerminalSnapshot } | { type: 'output'; data: string } |
+      { type: 'activity'; hasRunningSubprocess: boolean; label: string } | { type: 'error'; message: string } |
+      { type: 'exited'; exitCode: number | null; exitSignal: number | null } | { type: 'cleared' | 'closed' }
+    ))
+export interface TerminalPush { attachmentId: string; event: TerminalEvent }
+
 export interface StrataApi {
+  attachEngineTerminal(input: TerminalAttachRequest): Promise<void>
+  detachEngineTerminal(attachmentId: string): Promise<void>
+  writeEngineTerminal(input: TerminalTarget & { data: string }): Promise<void>
+  resizeEngineTerminal(input: TerminalTarget & { cols: number; rows: number }): Promise<void>
+  closeEngineTerminal(input: TerminalTarget): Promise<void>
+  onTerminalEvent?(listener: (push: TerminalPush) => void): () => void
   updateEngineProviderInstances(instances: Record<string, ProviderInstanceSettings>): Promise<void>
   setModelPreference(instanceId: string, slug: string, preference: { favorite?: boolean; hidden?: boolean }): Promise<void>
   listEngineRefs(cwd: string, query?: string): Promise<EngineRefs>

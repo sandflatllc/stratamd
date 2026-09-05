@@ -49,7 +49,7 @@ export function fakeEngineServer(answer: (tag: string, payload: unknown) => unkn
       if (frame._tag === 'Interrupt') { this.#handle.streams = this.#handle.streams.filter((stream) => stream.id !== frame.requestId); return }
       if (frame._tag !== 'Request' || !frame.id || !frame.tag) return
       requests.push({ tag: frame.tag, payload: frame.payload, socket: this.#handle.index })
-      if (frame.tag.startsWith('orchestration.subscribe')) {
+      if (frame.tag.startsWith('orchestration.subscribe') || frame.tag === 'terminal.attach') {
         this.#handle.streams.push({ id: frame.id, tag: frame.tag, payload: frame.payload })
         const initial = answer(frame.tag, frame.payload)
         if (Array.isArray(initial)) queueMicrotask(() => senders.get(this.#handle.index)?.({ _tag: 'Chunk', requestId: frame.id, values: initial }))

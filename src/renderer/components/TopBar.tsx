@@ -1,3 +1,4 @@
+import { TerminalIcon } from '../icons/lucide'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import type { DocumentTabView, EngineView, WindowState, WindowAction } from '../../shared/contracts'
 import { AGENT_COLORS, textColorFor } from '../model'
@@ -42,6 +43,7 @@ interface TopBarProps {
   engine?: EngineView
   onOpenEngine?(): void
   /** Accounts (§5.13) opens from the logo menu once an engine is paired. */
+  onToggleTerminal?(): void
   onOpenAccounts?(): void
 }
 
@@ -83,7 +85,7 @@ function MenuPill({ kind, label, count, activeName, open, onToggle }: { kind: Me
   </button>
 }
 
-export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onOpenFile, onSend, onStartThread, zoomed, onResetZoom, onOpenTheme, conversationTabs = [], onOpenConversationTab, onCloseConversation, engine, onOpenEngine, onOpenAccounts }: TopBarProps) {
+export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onOpenFile, onSend, onStartThread, zoomed, onResetZoom, onOpenTheme, conversationTabs = [], onOpenConversationTab, onCloseConversation, engine, onOpenEngine, onOpenAccounts, onToggleTerminal }: TopBarProps) {
   const conversationTab = conversationTabs.find((tab) => tab.active)
   const tabStrip = useRef<HTMLDivElement>(null)
   const navigation = useRef<HTMLElement>(null)
@@ -211,6 +213,7 @@ export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, 
         {openMenu === 'app' && <div ref={menuRoot} id="topbar-menu-app" className="tab-menu-list app-menu-list" role="menu" aria-label="StrataMD" onKeyDown={menuKeys}>
           <button type="button" role="menuitem" className="tab-menu-open open-file-button" onClick={() => menuAction(onOpenFile)}>Open file <kbd>{primaryModifierLabel()}+O</kbd></button>
           {engine && engine.state !== 'unpaired' && onOpenAccounts && <button type="button" role="menuitem" className="tab-menu-open accounts-button" aria-label="Accounts" onClick={() => menuAction(onOpenAccounts)}>Accounts{accountsAttention && <span className="account-warning">Needs attention</span>}</button>}
+          {onToggleTerminal && <button type="button" role="menuitem" className="tab-menu-open" onClick={() => menuAction(onToggleTerminal)}><TerminalIcon />Terminal <kbd>{primaryModifierLabel()}+`</kbd></button>}
           <button type="button" role="menuitem" className="tab-menu-open theme-button" onClick={() => menuAction(onOpenTheme)}>Theme</button>
           {zoomed && <button type="button" role="menuitem" className="tab-menu-open reset-zoom" onClick={() => menuAction(onResetZoom)}>Reset zoom</button>}
         </div>}

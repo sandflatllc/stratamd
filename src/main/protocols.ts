@@ -19,7 +19,7 @@ const CONTENT_SECURITY_POLICY = [
   "img-src 'self' app: strata-image: data:",
   "media-src 'none'",
   "object-src 'none'",
-  "script-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'"
 ].join('; ')
 
@@ -192,6 +192,7 @@ function mimeType(path: string): string {
     '.png': 'image/png',
     '.svg': 'image/svg+xml',
     '.webp': 'image/webp',
+    '.wasm': 'application/wasm',
     '.woff': 'font/woff',
     '.woff2': 'font/woff2'
   } as Record<string, string>)[extname(path).toLowerCase()] ?? 'application/octet-stream'

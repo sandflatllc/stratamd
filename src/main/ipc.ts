@@ -8,7 +8,7 @@ import { logRendererReport } from './log'
 import { annotationContextSchema } from './validation'
 import type { WindowController } from './window-controls'
 import { MAX_ATTACHMENTS, MAX_IMAGE_BYTES, MAX_TEXT_BYTES, SUPPORTED_IMAGE_TYPES } from '../core/composer-attachments'
-import { worktreeRequest, updateProviderInstancesInput, cloneRepositoryInput } from './engine/t3-contract'
+import { terminalAttachInput, terminalWriteInput, terminalResizeInput, terminalTarget, worktreeRequest, updateProviderInstancesInput, cloneRepositoryInput } from './engine/t3-contract'
 import { isStagedAttachmentId } from './engine/staged-attachments'
 
 type StrataIpcApi = Omit<StrataApi, 'subscribe'>
@@ -174,6 +174,11 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.updateEngineProviderInstances]: z.tuple([updateProviderInstancesInput.shape.patch.shape.providerInstances]),
   [IPC.setModelPreference]: z.tuple([idSchema, idSchema, z.object({ favorite: z.boolean().optional(), hidden: z.boolean().optional() }).strict()]),
   [IPC.listEngineRefs]: z.tuple([pathSchema, z.string().max(256).optional()]),
+  [IPC.attachEngineTerminal]: z.tuple([terminalAttachInput.omit({ restartIfNotRunning: true }).extend({ attachmentId: idSchema }).strict()]),
+  [IPC.detachEngineTerminal]: z.tuple([idSchema]),
+  [IPC.writeEngineTerminal]: z.tuple([terminalWriteInput]),
+  [IPC.resizeEngineTerminal]: z.tuple([terminalResizeInput]),
+  [IPC.closeEngineTerminal]: z.tuple([terminalTarget]),
   [IPC.refreshAccounts]: z.tuple([]),
   [IPC.holdMessageComment]: z.tuple([idSchema, z.object({ id: idSchema.optional(), messageId: idSchema, from: z.number().int().nonnegative(), to: z.number().int().positive(), kind: z.enum(['comment', 'question', 'suggestion']), text: z.string().min(1).max(20000) }).strict()]),
   [IPC.actMessageComment]: z.tuple([idSchema, idSchema, z.enum(['resolve', 'reopen', 'discard'])]),
@@ -383,6 +388,11 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.updateEngineProviderInstances]: (instances: Parameters<StrataApi['updateEngineProviderInstances']>[0]) => options.api.updateEngineProviderInstances(instances),
     [IPC.setModelPreference]: (instanceId: string, slug: string, preference: Parameters<StrataApi['setModelPreference']>[2]) => options.api.setModelPreference(instanceId, slug, preference),
     [IPC.listEngineRefs]: (cwd: string, query?: string) => options.api.listEngineRefs(cwd, query),
+    [IPC.attachEngineTerminal]: (input: Parameters<StrataApi['attachEngineTerminal']>[0]) => options.api.attachEngineTerminal(input),
+    [IPC.detachEngineTerminal]: (attachmentId: string) => options.api.detachEngineTerminal(attachmentId),
+    [IPC.writeEngineTerminal]: (input: Parameters<StrataApi['writeEngineTerminal']>[0]) => options.api.writeEngineTerminal(input),
+    [IPC.resizeEngineTerminal]: (input: Parameters<StrataApi['resizeEngineTerminal']>[0]) => options.api.resizeEngineTerminal(input),
+    [IPC.closeEngineTerminal]: (input: Parameters<StrataApi['closeEngineTerminal']>[0]) => options.api.closeEngineTerminal(input),
     [IPC.refreshAccounts]: () => options.api.refreshAccounts(),
     [IPC.holdMessageComment]: (threadId: string, input: Parameters<StrataApi['holdMessageComment']>[1]) => options.api.holdMessageComment(threadId, input),
     [IPC.actMessageComment]: (threadId: string, itemId: string, action: 'resolve' | 'reopen' | 'discard') => options.api.actMessageComment(threadId, itemId, action),
@@ -497,6 +507,9 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
   }
   options.ipcMain.on(IPC.reportError, onReportError)
 
+  const stopTerminalEvents = options.api.onTerminalEvent?.(push => {
+    if (!options.renderer.isDestroyed()) options.renderer.send(IPC.terminalEvent, push)
+  })
   return {
     publish(state) {
       if (options.renderer.isDestroyed()) return
@@ -505,6 +518,7 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
       options.renderer.send(IPC.stateChanged, update)
     },
     dispose() {
+      stopTerminalEvents?.()
       stopWindowEvents?.()
       for (const channel of Object.keys(handlers) as InvokeChannel[]) options.ipcMain.removeHandler(channel)
       options.ipcMain.removeListener(IPC.reportError, onReportError)

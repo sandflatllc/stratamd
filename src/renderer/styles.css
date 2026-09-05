@@ -1923,3 +1923,14 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .workspace-menu input { width: 100%; margin: 10px 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surfaces-field); color: var(--text); font: inherit; }
 .workspace-ref-list { max-height: 230px; overflow-y: auto; }
 .workspace-refs { left: min(190px, 10vw); }
+
+.center-column { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; gap: 12px; }
+.center-column > .editor-island { min-height: 0; flex: 1; }
+.terminal-drawer { border-radius: 22px; height: 320px; max-height: 60vh; flex: none; display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.terminal-drawer > header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.terminal-drawer > header > span { color: var(--dim); }
+.terminal-cwd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.terminal-status { font-size: 11px; }
+.terminal-surface { position: relative; min-height: 0; flex: 1; margin: 8px 12px; }
+.terminal-notice { padding: 8px 16px; font-size: 13px; }
+.terminal-notice button { margin-left: 12px; }

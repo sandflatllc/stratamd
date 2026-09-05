@@ -45,3 +45,11 @@ The workspace menu offers only previous worktrees reported by this project. Loca
 | choices | ![Built app](captures/workspace-choices.png) | ![Reference](captures/reference-workspace-choices.png) |
 | base | ![Built app](captures/workspace-base.png) | ![Reference](captures/reference-workspace-base.png) |
 | new | ![Built app](captures/workspace-new.png) | ![Reference](captures/reference-workspace-new.png) |
+
+## Terminal
+
+The drawer sits below the center pane and leaves the existing right rail visible. The built capture uses real Ghostty WASM with an engine fixture echoing input. The header displays the server shell label and cwd.
+
+| Built app | Gallery reference |
+| --- | --- |
+| ![Terminal](captures/terminal-open.png) | ![Reference](captures/reference-terminal-open.png) |
