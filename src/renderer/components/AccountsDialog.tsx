@@ -10,6 +10,7 @@ interface AccountsDialogProps {
   onPark(instanceId: string, parked: boolean): void
   onTerminalDefault(driver: string, selection: string | null): void
   onClose(): void
+  onOpenUsage?(): void
   onOpenEngine?(): void
 }
 
@@ -118,12 +119,12 @@ function AccountRow({ account, auto, now, onPark, onManage }: { account: Account
  * Accounts (§5.13): provider logins, subscription limits and reset times,
  * parking, and terminal defaults, as a modal opened from the engine status.
  */
-export function AccountsDialog({ engine, onPark, onTerminalDefault, onClose, onOpenEngine }: AccountsDialogProps) {
+export function AccountsDialog({ engine, onPark, onTerminalDefault, onClose, onOpenEngine, onOpenUsage }: AccountsDialogProps) {
   const [manage, setManage] = useState<AccountView | 'new' | null>(null)
-  return manage ? <ProviderSetup engine={engine} account={manage === 'new' ? null : manage} onBack={() => setManage(null)} onClose={onClose} /> : <AccountsOverview engine={engine} onPark={onPark} onTerminalDefault={onTerminalDefault} onClose={onClose} {...(onOpenEngine ? { onOpenEngine } : {})} onManage={setManage} />
+  return manage ? <ProviderSetup engine={engine} account={manage === 'new' ? null : manage} onBack={() => setManage(null)} onClose={onClose} /> : <AccountsOverview engine={engine} onPark={onPark} onTerminalDefault={onTerminalDefault} onClose={onClose} {...(onOpenEngine ? { onOpenEngine } : {})} {...(onOpenUsage ? { onOpenUsage } : {})} onManage={setManage} />
 }
 
-function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEngine, onManage }: AccountsDialogProps & { onManage(account: AccountView | 'new'): void }) {
+function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEngine, onOpenUsage, onManage }: AccountsDialogProps & { onManage(account: AccountView | 'new'): void }) {
   const dialogRef = useRef<HTMLElement>(null)
   useDialogFocus(dialogRef, onClose)
   const now = Date.now()
@@ -184,6 +185,7 @@ function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEn
         <div className="modal-actions accounts-actions">
           {engine.terminalShimDirectory && <p className="engine-hint">Terminal launchers live in <code>{engine.terminalShimDirectory}</code>. Put that directory on PATH before the provider binaries.</p>}
           {onOpenEngine && <button type="button" className="quiet-button" onClick={onOpenEngine}>Engine</button>}
+          {onOpenUsage && <button type="button" className="quiet-button" onClick={onOpenUsage}>Usage</button>}
           <button type="button" className="primary-button" data-dialog-initial-focus onClick={onClose}>Close</button>
         </div>
       </section>

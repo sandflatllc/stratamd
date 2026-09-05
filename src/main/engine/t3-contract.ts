@@ -268,3 +268,16 @@ export const terminalStreamEvent = z.discriminatedUnion('type', [
   terminalEventBase.extend({ type: z.literal('cleared') }),
   terminalEventBase.extend({ type: z.literal('closed') }),
 ])
+
+export const usageWindow = z.enum(['24h', '7d', '30d', '90d'])
+const usageDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+const usageProvider = z.enum(['claude', 'codex', 'grok'])
+export const usageSummaryInput = z.object({ sinceDay: usageDay, untilDay: usageDay, timeZone: id, resolution: z.enum(['day', 'hour']).optional(), sinceTime: z.string().datetime().optional(), untilTime: z.string().datetime().optional() }).strict()
+export const usageSummaryResult = z.object({
+  contractVersion: z.union([z.literal(4), z.literal(5)]), readAt: z.string(), timeZone: id, sinceDay: usageDay, untilDay: usageDay,
+  buckets: z.array(z.object({ day: usageDay, hourStart: z.string().datetime().optional(), provider: usageProvider, model: id,
+    totals: z.object({ uncachedInputTokens: nonNegativeInt, cachedInputTokens: nonNegativeInt, cacheCreationTokens: nonNegativeInt, outputTokens: nonNegativeInt, reasoningTokens: nonNegativeInt }),
+    costUsd: z.number().finite(), cacheSavingsUsd: z.number().finite(), costSource: z.enum(['providerReported', 'modelPriced', 'unpriced']), records: nonNegativeInt, unpricedRecords: nonNegativeInt, sessions: nonNegativeInt })),
+  sources: z.array(z.object({ fingerprint: z.object({ hostId: id, provider: usageProvider, resolvedHomePath: id, volumeId: z.string() }), status: z.enum(['ok', 'missing', 'partial', 'failed']), scannedFiles: nonNegativeInt, skippedFiles: nonNegativeInt, malformedRecords: nonNegativeInt, distinctSessions: nonNegativeInt, message: id.nullable() })),
+  pricing: z.object({ status: z.enum(['fresh', 'cached', 'unavailable']), source: id, fetchedAt: z.string().nullable(), knownModels: nonNegativeInt }), scanDurationMs: nonNegativeInt,
+})

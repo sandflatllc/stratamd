@@ -53,3 +53,14 @@ The drawer sits below the center pane and leaves the existing right rail visible
 | Built app | Gallery reference |
 | --- | --- |
 | ![Terminal](captures/terminal-open.png) | ![Reference](captures/reference-terminal-open.png) |
+
+## Usage
+
+Usage uses the gallery's header, toolbar, metrics, provider chart and breakdown inside the requested modal. Its fixture has two providers and two models. The 24-hour chart retains empty hours; daily windows include every day. The footer distinguishes the API estimate from subscription bills. Accounts now fits Add provider and each row's Manage action on one line.
+
+| Built app | Gallery reference |
+| --- | --- |
+| ![Usage tokens](captures/usage-tokens.png) | ![Reference](captures/reference-usage.png) |
+| ![API estimate](captures/usage-cost.png) | ![Reference](captures/reference-usage.png) |
+
+Ghostty receives foreground, background, cursor and selection colors from the active Strata theme. ANSI colors inside shell output remain terminal content. The theme source-literal scan excludes the unchanged vendor adapter.

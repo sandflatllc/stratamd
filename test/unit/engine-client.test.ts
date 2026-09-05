@@ -405,12 +405,16 @@ describe('session renewal (§5.1)', () => {
   })
 })
 
-it('keeps a first-turn worktree bootstrap stable across a refused send and retry', async () => {
+it.each([false, true])('retries socket worktree preparation, reusing an already prepared folder: %s', async (alreadyPrepared) => {
   const directory = await mkdtemp(join(tmpdir(), 'strata-worktree-retry-'))
   const snapshot = shell('New thread', 'idle', { latestUserMessageAt: null })
   const commands: Array<Record<string, unknown>> = []
-  const server = liveServer()
   let refuse = true
+  const server = fakeEngineServer((tag, payload) => {
+    if (tag.startsWith('orchestration.subscribe')) return [{ kind: 'synchronized' }]
+    if (tag === 'orchestration.dispatchCommand') { commands.push(payload as Record<string, unknown>); return refuse ? null : { sequence: 6 } }
+    return null
+  })
   const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input)
     if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
@@ -430,9 +434,14 @@ it('keeps a first-turn worktree bootstrap stable across a refused send and retry
     const pending = JSON.parse(await readFile(join(directory, 'engine-conversations.json'), 'utf8'))
     expect(pending.threads.t1.prepared[0].command.bootstrap).toMatchObject({ prepareWorktree: { projectCwd: '/work/strata', baseBranch: 'develop', branch: expect.stringMatching(/^t3\/[a-f0-9]{8}$/), startFromOrigin: false }, runSetupScript: true })
     refuse = false
+    if (alreadyPrepared) server.push('orchestration.subscribeShell', [{ kind: 'thread-upserted', sequence: 5, thread: { ...snapshot.threads[0], worktreePath: '/worktrees/created' } }])
     await client.startTurn('t1', input)
     expect(commands).toHaveLength(2)
-    expect(commands[1]).toEqual(commands[0])
+    if (alreadyPrepared) {
+      const { bootstrap: _, ...finalTurn } = commands[0]!
+      expect(commands[1]).toEqual(finalTurn)
+    } else expect(commands[1]).toEqual(commands[0])
+    expect(server.requests.some(request => request.tag === 'orchestration.dispatchCommand')).toBe(true)
   } finally { await client.shutdown() }
 })
 

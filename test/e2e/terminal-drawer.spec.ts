@@ -32,3 +32,27 @@ test('terminal renders WASM, sends input, resizes and reattaches without closing
     await expect(drawer).toHaveCount(0)
   } finally { await scenario.dispose(); await engine.close() }
 })
+
+test('terminal follows the centered worktree and reattaches after an engine reconnect', async ({}, testInfo) => {
+  const engine = await startEngine({ previousWorktree: true })
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    const page = await scenario.launchEmpty()
+    await page.getByRole('button', { name: 'Open Second engine thread', exact: true }).click()
+    await expect(page.locator('.conversation-title')).toContainText('Second engine thread')
+    await page.keyboard.press('Control+Backquote')
+    const drawer = page.getByRole('region', { name: 'Terminal', exact: true })
+    await expect(drawer.locator('.terminal-status')).toHaveText('running')
+    expect(engine.rpcRequests.filter(request => request.tag === 'terminal.attach').at(-1)?.payload).toMatchObject({ threadId: 't2', cwd: '/worktrees/previous', terminalId: 'term-1' })
+    engine.setOnline(false)
+    await expect(drawer.locator('.terminal-notice')).toBeVisible()
+    engine.setOnline(true)
+    await page.evaluate(() => window.strata.reconnectEngine())
+    await expect(drawer.locator('.terminal-notice')).toHaveCount(0)
+    await expect(drawer.locator('.terminal-status')).toHaveText('running')
+    expect(engine.rpcRequests.filter(request => request.tag === 'terminal.attach')).toHaveLength(2)
+    await page.getByRole('button', { name: 'Open Live engine thread', exact: true }).click()
+    await expect.poll(() => (engine.rpcRequests.filter(request => request.tag === 'terminal.attach').at(-1)?.payload as { threadId?: string })?.threadId).toBe('t1')
+    expect(engine.rpcRequests.some(request => request.tag === 'terminal.close')).toBe(false)
+  } finally { await scenario.dispose(); await engine.close() }
+})

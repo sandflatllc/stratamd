@@ -15,7 +15,7 @@ function terminalTheme(element: HTMLElement): GhosttyTheme {
     probe.remove()
     return { r: values[0] ?? 0, g: values[1] ?? 0, b: values[2] ?? 0 }
   }
-  return { foreground: color('--text'), background: color('--card'), cursor: color('--text') }
+  return { foreground: color('--text'), background: color('--card'), cursor: color('--text'), selectionBackground: `color-mix(in srgb, ${style.getPropertyValue('--controls-selected')} 40%, transparent)` }
 }
 
 export function TerminalDrawer({ target, cwd, engineState, themeKey, onClose }: {

@@ -1,4 +1,5 @@
-import { terminalAttachInput, terminalWriteInput, terminalResizeInput, terminalTarget, terminalVoidResult, terminalStreamEvent, worktreeRequest, listRefsInput, listRefsResult, updateProviderInstancesInput, browseFolderInput, browseFolderResult, lookupRepositoryInput, repositoryResult, cloneRepositoryInput, cloneRepositoryResult, engineSettingsResult } from './t3-contract'
+import { makeUsageWindow } from '../../core/usage'
+import { usageSummaryInput, usageSummaryResult, usageWindow, terminalAttachInput, terminalWriteInput, terminalResizeInput, terminalTarget, terminalVoidResult, terminalStreamEvent, worktreeRequest, listRefsInput, listRefsResult, updateProviderInstancesInput, browseFolderInput, browseFolderResult, lookupRepositoryInput, repositoryResult, cloneRepositoryInput, cloneRepositoryResult, engineSettingsResult } from './t3-contract'
 import type { EngineSettings, EngineFolderListing, EngineRepository, CloneRepositoryInput } from '../../shared/contracts'
 import { conversationDelivery, renderConversationDelivery, messageAnchor, isOwnerComment, resolveMessageAnchor, type MessageComment } from '../../core/conversation-delivery'
 import { continuationScope, familyLabel, modelFamily, permitsSelection } from '../../shared/modelSelection'
@@ -133,6 +134,7 @@ export interface EngineReadClient {
   setTerminalDefault?(driver: string, selection: string | null): Promise<void>
   updateProviderInstances?(instances: Record<string, import('../../shared/contracts').ProviderInstanceSettings>): Promise<void>
   setModelPreference?(instanceId: string, slug: string, preference: { favorite?: boolean; hidden?: boolean }): Promise<void>
+  usageSummary?(window: import('../../shared/usage').UsageWindow): Promise<import('../../shared/usage').UsageSummary>
   attachTerminal?(input: import('../../shared/contracts').TerminalAttachRequest): Promise<void>
   detachTerminal?(attachmentId: string): Promise<void>
   writeTerminal?(input: import('../../shared/contracts').TerminalTarget & { data: string }): Promise<void>
@@ -788,6 +790,12 @@ export class T3EngineClient implements EngineReadClient {
     return () => this.#terminalListeners.delete(listener)
   }
 
+  async usageSummary(window: import('../../shared/usage').UsageWindow): Promise<import('../../shared/usage').UsageSummary> {
+    const input = makeUsageWindow(usageWindow.parse(window), new Date(this.#now()))
+    const summary = usageSummaryResult.parse(await this.#rpcOrSocket('server.getUsageSummary', usageSummaryInput.parse(input), 'usage summary', 60_000))
+    return { ...summary, ...(input.sinceTime ? { sinceTime: input.sinceTime } : {}), ...(input.untilTime ? { untilTime: input.untilTime } : {}) }
+  }
+
   async attachTerminal(input: import('../../shared/contracts').TerminalAttachRequest): Promise<void> {
     if (!this.#socket || this.#socket.closed) throw new Error('Connect the engine before opening a terminal')
     this.#terminalStream?.interrupt()
@@ -1225,6 +1233,19 @@ export class T3EngineClient implements EngineReadClient {
 
   async #postCommand(command: unknown): Promise<void> {
     if (!this.#credential) throw new Error('No engine is paired')
+    const turn = command as { type?: string; threadId?: string; bootstrap?: unknown }
+    if (turn.type === 'thread.turn.start' && turn.bootstrap) {
+      // T3's HTTP handler dispatches directly to the engine. Worktree preparation
+      // lives in the socket handler and may include a remote fetch.
+      if (!this.#shell?.threads.find(thread => thread.id === turn.threadId)?.worktreePath) {
+        dispatchResult.parse(await this.#rpcOrSocket(T3_RPC.dispatchCommand, command, 'prepare working copy', 300_000))
+        return
+      }
+      // A refused first turn may already have prepared the worktree. Reuse it
+      // instead of asking the server to create the same branch a second time.
+      const { bootstrap: _, ...preparedTurn } = command as Record<string, unknown>
+      command = preparedTurn
+    }
     const response = await this.#fetch(`${this.#credential.server}${T3_HTTP.dispatch}`, {
       method: 'POST',
       headers: { authorization: `Bearer ${this.#credential.accessToken}`, 'content-type': 'application/json' },

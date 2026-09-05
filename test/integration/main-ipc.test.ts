@@ -45,6 +45,7 @@ function fakeApi(): StrataApi {
     writeEngineTerminal: vi.fn(async () => undefined),
     resizeEngineTerminal: vi.fn(async () => undefined),
     closeEngineTerminal: vi.fn(async () => undefined),
+    readEngineUsage: vi.fn(),
     getState: vi.fn(async () => view),
     stageConversationAttachment: vi.fn(async () => ({ id: 'a_00000000-0000-4000-8000-000000000000', sizeBytes: 1 })),
     discardConversationAttachment: vi.fn(async () => undefined),
@@ -322,5 +323,34 @@ describe('window IPC boundary', () => {
     registration.dispose()
     expect(unsubscribe).toHaveBeenCalledOnce()
     expect(ipcMain.removeHandler).toHaveBeenCalledWith(IPC.closeWindow)
+  })
+})
+
+describe('engine setup IPC boundary', () => {
+  it('validates new setup, usage and terminal commands before calling the engine', async () => {
+    const handlers = new Map<string, (...args: unknown[]) => unknown>()
+    const ipcMain = { handle: (channel: string, handler: (...args: unknown[]) => unknown) => handlers.set(channel, handler), removeHandler: vi.fn(), on: vi.fn(), removeListener: vi.fn() }
+    const renderer = { isDestroyed: () => false, send: vi.fn(), getURL: () => 'app://stratamd/' }
+    const api = fakeApi()
+    const registration = registerStrataIpc({ ipcMain: ipcMain as never, api, renderer: renderer as never })
+    const event = { sender: renderer, senderFrame: { url: 'app://stratamd/' } }
+    try {
+      const invalid: Array<[string, unknown[]]> = [
+        [IPC.readEngineSettings, ['extra']], [IPC.browseEngineFolder, ['']], [IPC.listEngineRefs, ['/project', 'x'.repeat(257)]],
+        [IPC.cloneEngineRepository, [{ repoUrl: 'x' }]], [IPC.updateEngineProviderInstances, [{ 'bad id': { driver: 'codex', config: {} } }]],
+        [IPC.setModelPreference, ['codex', 'model', { hidden: 'yes' }]], [IPC.readEngineUsage, ['365d']],
+        [IPC.attachEngineTerminal, [{ attachmentId: 'one', threadId: 'thread', terminalId: 'term-1', cwd: '/project', cols: 0, rows: 24 }]],
+        [IPC.resizeEngineTerminal, [{ threadId: 'thread', terminalId: 'term-1', cols: 80, rows: 501 }]],
+        [IPC.writeEngineTerminal, [{ threadId: 'thread', terminalId: 'term-1', data: 'x'.repeat(65_537) }]],
+      ]
+      for (const [channel, args] of invalid) await expect(handlers.get(channel)!(event, ...args), channel).rejects.toThrow()
+      expect(api.readEngineUsage).not.toHaveBeenCalled()
+      expect(api.attachEngineTerminal).not.toHaveBeenCalled()
+      expect(api.updateEngineProviderInstances).not.toHaveBeenCalled()
+      await handlers.get(IPC.readEngineUsage)!(event, '24h')
+      expect(api.readEngineUsage).toHaveBeenCalledWith('24h')
+      await handlers.get(IPC.resizeEngineTerminal)!(event, { threadId: 'thread', terminalId: 'term-1', cols: 80, rows: 24 })
+      expect(api.resizeEngineTerminal).toHaveBeenCalledWith({ threadId: 'thread', terminalId: 'term-1', cols: 80, rows: 24 })
+    } finally { registration.dispose() }
   })
 })

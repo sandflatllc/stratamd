@@ -16,6 +16,7 @@ export const IPC = {
   parkAccount: 'strata:park-account',
   updateEngineThread: 'strata:update-engine-thread',
   setTerminalDefault: 'strata:set-terminal-default',
+  readEngineUsage: 'strata:read-engine-usage',
   readEngineSettings: 'strata:readEngineSettings',
   browseEngineFolder: 'strata:browseEngineFolder',
   lookupEngineRepository: 'strata:lookupEngineRepository',

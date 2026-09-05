@@ -1,3 +1,4 @@
+import { UsageDialog } from './components/UsageDialog'
 import { TerminalDrawer } from './components/TerminalDrawer'
 import { useWindowState } from './useWindowState'
 import type { WindowAction } from '../shared/contracts'
@@ -82,6 +83,7 @@ export function App({ createEditor }: AppProps) {
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [engineDialog, setEngineDialog] = useState(false)
   /** The picker (§5.7): from Projects with no document, or from a document, carrying the popover's pending comment when there is one. */
+  const [usageOpen, setUsageOpen] = useState(false)
   const [accountsDialog, setAccountsDialog] = useState(false)
   /** The window width, for the side windows' layout budget (§6.9). */
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth)
@@ -350,14 +352,17 @@ export function App({ createEditor }: AppProps) {
     window.addEventListener('keydown', start)
     return () => window.removeEventListener('keydown', start)
   }, [documentPicker?.projectId, view.engine.activeThreadId, view.engine.projects, document?.path, conversationCentered])
+  const openUsage = () => { setAccountsDialog(false); setUsageOpen(true) }
   const openAccounts = () => {
+    setUsageOpen(false)
     setEngineDialog(false)
     setAccountsDialog(true)
     // The probe on open (§5.13): a fresh usage reading while the modal is up; a failure keeps the last measurement.
     void window.strata.refreshAccounts().catch(() => undefined)
   }
   const engineDialogNode = engineDialog && <EngineDialog engine={view.engine} onPair={async (request) => { await window.strata.pairEngine(request); report('Paired. Projects and threads come from this server now.') }} onReconnect={reconnectEngine} onClose={() => setEngineDialog(false)} onOpenAccounts={openAccounts} />
-  const accountsDialogNode = accountsDialog && <AccountsDialog engine={view.engine} onPark={(instanceId, parked) => void perform(() => window.strata.parkAccount(instanceId, parked))} onTerminalDefault={(driver, selection) => void perform(() => window.strata.setTerminalDefault(driver, selection))} onClose={() => setAccountsDialog(false)} onOpenEngine={() => { setAccountsDialog(false); setEngineDialog(true) }} />
+  const usageDialogNode = usageOpen && <UsageDialog connected={view.engine.state === 'connected'} onClose={() => setUsageOpen(false)} onAccounts={openAccounts} />
+  const accountsDialogNode = accountsDialog && <AccountsDialog onOpenUsage={openUsage} engine={view.engine} onPark={(instanceId, parked) => void perform(() => window.strata.parkAccount(instanceId, parked))} onTerminalDefault={(driver, selection) => void perform(() => window.strata.setTerminalDefault(driver, selection))} onClose={() => setAccountsDialog(false)} onOpenEngine={() => { setAccountsDialog(false); setEngineDialog(true) }} />
   const runConversation = {
     ...(document ? { onDocumentContext: () => setComposer(true) } : {}),
     onReconnect: reconnectEngine,
@@ -730,7 +735,7 @@ export function App({ createEditor }: AppProps) {
   if (!ready) return <div className="boot-screen"><StrataIcon /><span>Opening StrataMD…</span></div>
   if (!document) return (
     <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell empty-shell" data-new-conversation={Boolean(documentPicker && conversationCentered)} style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={enterFiles} onDragOver={overFiles} onDragLeave={leaveFiles} onDrop={dropFiles}>
-      <AmbientBackground /><TopBar windowState={windowState} onWindowAction={onWindowAction} tabs={view.tabs} canSend={false} hasAgents={false} pending={0} pendingUnsaved={false} onOpenTab={(path) => { setConversationCentered(false); void perform(() => window.strata.openDocument(path)) }} onCloseTab={setClosingTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onOpenFile={openFile} onSend={() => undefined} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} engine={view.engine} onOpenEngine={() => setEngineDialog(true)} onOpenAccounts={openAccounts} onToggleTerminal={() => setTerminalOpen(open => !open)} {...topBarConversations} />
+      <AmbientBackground /><TopBar windowState={windowState} onWindowAction={onWindowAction} tabs={view.tabs} canSend={false} hasAgents={false} pending={0} pendingUnsaved={false} onOpenTab={(path) => { setConversationCentered(false); void perform(() => window.strata.openDocument(path)) }} onCloseTab={setClosingTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onOpenFile={openFile} onSend={() => undefined} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} engine={view.engine} onOpenEngine={() => setEngineDialog(true)} onOpenAccounts={openAccounts} onToggleTerminal={() => setTerminalOpen(open => !open)} onOpenUsage={openUsage} {...topBarConversations} />
       <div className="workspace">
         <div data-pane="explorer" style={{ width: panelSizes.explorerWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected="projects" documentOpen={false} projects={projectsNode} conversation={null} contents={null} projectsCount={attentionTotal} onSelect={selectLeftTab} /></Boundary></div>
         <Resizer axis="vertical" label="Resize left window" value={panelSizes.explorerWidth} min={PANEL_LIMITS.explorerWidth[0]} max={sideWindowCeiling(PANEL_LIMITS.explorerWidth[0], windowWidth, rightRailWidth)} onChange={(value) => updatePanel('explorerWidth', value, false)} onCommit={(value) => updatePanel('explorerWidth', value, true)} />
@@ -741,6 +746,7 @@ export function App({ createEditor }: AppProps) {
       {dragging && <div className="drop-overlay">Drop markdown files to open</div>}
       {engineDialogNode}
       {accountsDialogNode}
+      {usageDialogNode}
       {themePanel}
       {fileDialogs}
       <Toast toast={toast} onDone={dismissToast} />
@@ -757,7 +763,7 @@ export function App({ createEditor }: AppProps) {
   return (
     <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell" data-new-conversation={Boolean(documentPicker && conversationCentered)} style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={enterFiles} onDragOver={overFiles} onDragLeave={leaveFiles} onDrop={dropFiles}>
       <AmbientBackground />
-      <TopBar windowState={windowState} onWindowAction={onWindowAction} tabs={view.tabs} canSend={document.canSend || document.recipients.some((recipient) => !recipient.attached)} hasAgents={document.recipients.length > 0} pending={pendingCount(document)} pendingUnsaved={hasUnsavedCounted(document)} onOpenTab={(path) => { setConversationCentered(false); void perform(() => window.strata.openDocument(path)) }} onCloseTab={closeTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onOpenFile={openFile} onSend={() => void perform(openComposer)} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} engine={view.engine} onOpenEngine={() => setEngineDialog(true)} onOpenAccounts={openAccounts} onToggleTerminal={() => setTerminalOpen(open => !open)} onStartThread={() => void perform(openComposer)} {...topBarConversations} />
+      <TopBar windowState={windowState} onWindowAction={onWindowAction} tabs={view.tabs} canSend={document.canSend || document.recipients.some((recipient) => !recipient.attached)} hasAgents={document.recipients.length > 0} pending={pendingCount(document)} pendingUnsaved={hasUnsavedCounted(document)} onOpenTab={(path) => { setConversationCentered(false); void perform(() => window.strata.openDocument(path)) }} onCloseTab={closeTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onOpenFile={openFile} onSend={() => void perform(openComposer)} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} engine={view.engine} onOpenEngine={() => setEngineDialog(true)} onOpenAccounts={openAccounts} onToggleTerminal={() => setTerminalOpen(open => !open)} onOpenUsage={openUsage} onStartThread={() => void perform(openComposer)} {...topBarConversations} />
       <div className="workspace">
         <div data-pane="explorer" style={{ width: leftWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected={conversationCentered ? 'projects' : document.reading.navigationTab} documentOpen={!conversationCentered} projects={projectsNode} conversation={sideConversation} contents={conversationCentered ? null : <Contents headings={headings} drafts={document.drafts} activeId={activeHeadingId} walkthrough={document.reading.walkthrough} content={document.content} onJump={(id) => setJumpHeading({ id, token: Date.now() })} onWalkthrough={updateWalkthrough} />} projectsCount={attentionTotal} conversationCount={activeEngineThread?.attention ?? 0} onSelect={selectLeftTab} /></Boundary></div>
         <Resizer axis="vertical" label="Resize left window" value={leftWidth} min={leftMin} max={leftMax} onChange={(value) => resizeLeft(value, false)} onCommit={(value) => resizeLeft(value, true)} />
@@ -786,6 +792,7 @@ export function App({ createEditor }: AppProps) {
       {closingTab && <CloseTabDialog tab={closingTab} onChoose={(choice) => { if (choice === 'cancel') { setClosingTab(null); return } void perform(() => window.strata.closeDocument(closingTab.path, choice)).then(() => setClosingTab(null)) }} />}
       {engineDialogNode}
       {accountsDialogNode}
+      {usageDialogNode}
       {themePanel}
       {fileDialogs}
       <Toast toast={toast} onDone={dismissToast} />

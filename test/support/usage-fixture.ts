@@ -1,0 +1,8 @@
+import type { UsageSummary, UsageSummaryInput } from '../../src/shared/usage'
+export function usageFixture(input: UsageSummaryInput): UsageSummary {
+  const points = input.resolution === 'hour' && input.sinceTime ? Array.from({ length: 24 }, (_, index) => ({ day: input.sinceDay, hourStart: new Date(Date.parse(input.sinceTime!) + index * 3_600_000).toISOString() })) : Array.from({ length: Math.round((Date.parse(input.untilDay) - Date.parse(input.sinceDay)) / 86_400_000) + 1 }, (_, index) => ({ day: new Date(Date.parse(input.sinceDay) + index * 86_400_000).toISOString().slice(0, 10) }))
+  return { contractVersion: 5, readAt: '2026-09-05T12:00:00.000Z', timeZone: input.timeZone, sinceDay: input.sinceDay, untilDay: input.untilDay,
+    buckets: points.flatMap((point, index) => (['codex', 'claude'] as const).map((provider, providerIndex) => ({ ...point, provider, model: provider === 'codex' ? 'GPT-5.6 Sol' : 'Claude Fable 5', totals: { uncachedInputTokens: 100_000 * (index % 3 + 1), cachedInputTokens: (providerIndex + 1) * 2_000_000 * (index % 5 + 1), cacheCreationTokens: 10_000, outputTokens: 50_000, reasoningTokens: 30_000 }, costUsd: 2.5 + index, cacheSavingsUsd: 1, costSource: 'modelPriced', records: 2, unpricedRecords: 0, sessions: 2 }))),
+    sources: (['codex', 'claude'] as const).map(provider => ({ fingerprint: { hostId: 'workstation', provider, resolvedHomePath: `/home/owner/.${provider}`, volumeId: '1:2' }, status: 'ok', scannedFiles: 2, skippedFiles: 0, malformedRecords: 0, distinctSessions: 2, message: null })),
+    pricing: { status: 'fresh', source: 'fixture', fetchedAt: '2026-09-05T12:00:00Z', knownModels: 2 }, scanDurationMs: 20 }
+}

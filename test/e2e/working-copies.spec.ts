@@ -37,6 +37,7 @@ test('working copies leave current checkout refs read-only and bootstrap a new w
     const command = engine.commands.find(command => command.type === 'thread.turn.start')!
     expect(command).toMatchObject({ bootstrap: { prepareWorktree: { projectCwd: '/tmp/cockpit', baseBranch: 'develop', branch: expect.stringMatching(/^t3\/[a-f0-9]{8}$/), startFromOrigin: false }, runSetupScript: true } })
     expect(engine.commands.find(command => command.type === 'thread.create')).toMatchObject({ branch: null, worktreePath: null })
+    expect(engine.rpcRequests.some(request => request.tag === 'orchestration.dispatchCommand')).toBe(true)
     expect(engine.rpcRequests.some(request => /checkout|switchBranch/.test(request.tag))).toBe(false)
   } finally { await scenario.dispose(); await engine.close() }
 })
@@ -57,5 +58,21 @@ test('previous worktree is reused without a bootstrap command', async ({}, testI
     expect(engine.commands.find(command => command.type === 'thread.turn.start')).not.toHaveProperty('bootstrap')
     await expect(page.locator('.chat-workspace')).toContainText('Worktree')
     await expect(page.locator('.chat-workspace')).toContainText('/worktrees/previous')
+  } finally { await scenario.dispose(); await engine.close() }
+})
+
+test('a document-started conversation carries the first-turn worktree bootstrap', async ({}, testInfo) => {
+  const engine = await startEngine()
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    const page = await scenario.launch()
+    await page.getByRole('button', { name: 'Start thread', exact: true }).click()
+    await expect(page.getByRole('region', { name: 'New conversation' })).toBeVisible()
+    await page.getByRole('button', { name: 'Workspace', exact: true }).click()
+    await page.getByRole('button', { name: /^New worktree Use/ }).click()
+    await page.getByLabel('Message conversation').fill('Review this document in a worktree.')
+    await page.getByLabel('Message conversation').press('Enter')
+    await expect.poll(() => engine.commands.filter(command => command.type === 'thread.turn.start').length).toBe(1)
+    expect(engine.commands.find(command => command.type === 'thread.turn.start')).toMatchObject({ bootstrap: { prepareWorktree: { projectCwd: '/tmp/cockpit', baseBranch: 'master', startFromOrigin: true }, runSetupScript: true } })
   } finally { await scenario.dispose(); await engine.close() }
 })

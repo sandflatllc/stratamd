@@ -7,6 +7,8 @@ import { SetupDialog, SourceRow } from './SetupDialog'
 type Step = 'sources' | 'local' | 'new-folder' | 'url' | 'github' | 'destination' | 'browse-destination'
 export function AddProjectDialog({ engine, onClose, onAdded }: { engine: EngineView; onClose(): void; onAdded?(id: string): void }) {
   const [step, setStep] = useState<Step>('sources')
+  const currentStep = useRef(step)
+  currentStep.current = step
   const [startFolder, setStartFolder] = useState(engine.projects[0] ? parentPath(engine.projects[0].workspaceRoot) : '~')
   const [folder, setFolder] = useState(startFolder)
   const [listing, setListing] = useState<EngineFolderListing | null>(null)
@@ -25,7 +27,7 @@ export function AddProjectDialog({ engine, onClose, onAdded }: { engine: EngineV
   useEffect(() => {
     let current = true
     void window.strata.readEngineSettings().then((settings) => {
-      if (current && settings.addProjectBaseDirectory) { setStartFolder(settings.addProjectBaseDirectory); setFolder(settings.addProjectBaseDirectory) }
+      if (current && settings.addProjectBaseDirectory) { setStartFolder(settings.addProjectBaseDirectory); if (currentStep.current === 'sources') setFolder(settings.addProjectBaseDirectory) }
     }).catch(() => undefined)
     return () => { current = false }
   }, [])

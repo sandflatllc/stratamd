@@ -760,6 +760,11 @@ export class StrataApplication implements StrataApi {
     await this.#engine.setTerminalDefault(driver, selection)
   }
 
+  async readEngineUsage(window: import('../shared/usage').UsageWindow) {
+    if (!this.#engine.usageSummary) throw new Error('The engine does not support usage reporting')
+    return this.#engine.usageSummary(window)
+  }
+
   async readEngineSettings() {
     if (!this.#engine.readSettings) throw new Error('The engine does not support readSettings')
     return this.#engine.readSettings()

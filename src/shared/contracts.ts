@@ -768,6 +768,7 @@ export type TerminalEvent =
 export interface TerminalPush { attachmentId: string; event: TerminalEvent }
 
 export interface StrataApi {
+  readEngineUsage(window: import('./usage').UsageWindow): Promise<import('./usage').UsageSummary>
   attachEngineTerminal(input: TerminalAttachRequest): Promise<void>
   detachEngineTerminal(attachmentId: string): Promise<void>
   writeEngineTerminal(input: TerminalTarget & { data: string }): Promise<void>

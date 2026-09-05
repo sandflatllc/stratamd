@@ -1,3 +1,4 @@
+import { usageFixture } from '../support/usage-fixture'
 import { createServer, type Server } from 'node:http'
 import { createHash } from 'node:crypto'
 import type { Socket } from 'node:net'
@@ -239,6 +240,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       const attachmentId = `upload-${uploadCount}`
       return { attachmentId, relativeUrl: `/upload/${attachmentId}`, expiresAt: Date.now() + 60_000 }
     }
+    if (tag === 'server.getUsageSummary') return usageFixture(payload as unknown as import('../../src/shared/usage').UsageSummaryInput)
     if (tag === 'server.getSettings') return { addProjectBaseDirectory: '/home/owner/Projects', newWorktreesStartFromOrigin: true, providerInstances }
     if (tag === 'server.updateSettings') { providerInstances = (payload.patch as { providerInstances: typeof providerInstances }).providerInstances; return { providerInstances } }
     if (tag === 'vcs.listRefs') return { refs: ['master', 'develop'].filter(name => !payload.query || name.includes(String(payload.query))).map(name => ({ name, current: name === 'master', isDefault: name === 'master', worktreePath: null })), isRepo: true, hasPrimaryRemote: true, totalCount: 2, nextCursor: null }
@@ -293,6 +295,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       request.on('data', (piece) => chunks.push(Buffer.from(piece)))
       request.on('end', () => {
         const command = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>
+        if (command.bootstrap) { response.statusCode = 400; response.end(JSON.stringify({ error: 'Bootstrap requires socket dispatch' })); return }
         // T3 applies a command once per commandId; a retry after a dropped connection is a no-op.
         if (typeof command.commandId === 'string' && commands.some((known) => known.commandId === command.commandId)) { response.end(JSON.stringify({ sequence })); return }
         if (command.type === 'thread.turn.start' && rejectNextTurn) { rejectNextTurn = false; response.statusCode = 400; response.end(JSON.stringify({ error: 'Test refusal' })); return }
@@ -355,6 +358,15 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
         if (rpc._tag === 'Interrupt') { connection.subscriptions = connection.subscriptions.filter((subscription) => subscription.requestId !== rpc.requestId); continue }
         if (rpc._tag !== 'Request' || !rpc.id || !rpc.tag) continue
         rpcRequests.push({ tag: rpc.tag, payload: rpc.payload })
+        if (rpc.tag === 'orchestration.dispatchCommand') {
+          const command = rpc.payload as Record<string, unknown>
+          if (rejectNextTurn) { rejectNextTurn = false; send(socket, { _tag: 'Exit', requestId: rpc.id, exit: { _tag: 'Failure', cause: 'Test refusal' } }); continue }
+          if (!commands.some(known => known.commandId === command.commandId)) commands.push(command)
+          if (command.type === 'thread.turn.start') status = 'running'
+          broadcast()
+          send(socket, { _tag: 'Exit', requestId: rpc.id, exit: { _tag: 'Success', value: { sequence } } })
+          continue
+        }
         if (rpc.tag === 'terminal.attach') {
           const input = rpc.payload as { threadId: string; terminalId: string; cwd: string }
           const subscription = { requestId: rpc.id, tag: rpc.tag, threadId: input.threadId }

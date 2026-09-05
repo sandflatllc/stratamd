@@ -8,7 +8,7 @@ import { logRendererReport } from './log'
 import { annotationContextSchema } from './validation'
 import type { WindowController } from './window-controls'
 import { MAX_ATTACHMENTS, MAX_IMAGE_BYTES, MAX_TEXT_BYTES, SUPPORTED_IMAGE_TYPES } from '../core/composer-attachments'
-import { terminalAttachInput, terminalWriteInput, terminalResizeInput, terminalTarget, worktreeRequest, updateProviderInstancesInput, cloneRepositoryInput } from './engine/t3-contract'
+import { usageWindow, terminalAttachInput, terminalWriteInput, terminalResizeInput, terminalTarget, worktreeRequest, updateProviderInstancesInput, cloneRepositoryInput } from './engine/t3-contract'
 import { isStagedAttachmentId } from './engine/staged-attachments'
 
 type StrataIpcApi = Omit<StrataApi, 'subscribe'>
@@ -167,6 +167,7 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.parkAccount]: z.tuple([idSchema, z.boolean()]),
   [IPC.updateEngineThread]: z.tuple([idSchema, z.object({ pinned: z.boolean().optional(), snoozedUntil: z.iso.datetime({ offset: true }).nullable().optional(), title: z.string().trim().min(1).max(512).optional(), unread: z.boolean().optional() }).strict()]),
   [IPC.setTerminalDefault]: z.tuple([idSchema, idSchema.nullable()]),
+  [IPC.readEngineUsage]: z.tuple([usageWindow]),
   [IPC.readEngineSettings]: z.tuple([]),
   [IPC.browseEngineFolder]: z.tuple([z.string().trim().min(1).max(512)]),
   [IPC.lookupEngineRepository]: z.tuple([idSchema]),
@@ -381,6 +382,7 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.parkAccount]: (instanceId: string, parked: boolean) => options.api.parkAccount(instanceId, parked),
     [IPC.updateEngineThread]: (threadId: string, change: Parameters<StrataApi['updateEngineThread']>[1]) => options.api.updateEngineThread(threadId, change),
     [IPC.setTerminalDefault]: (driver: string, selection: string | null) => options.api.setTerminalDefault(driver, selection),
+    [IPC.readEngineUsage]: (window: import('../shared/usage').UsageWindow) => options.api.readEngineUsage(window),
     [IPC.readEngineSettings]: () => options.api.readEngineSettings(),
     [IPC.browseEngineFolder]: (path: string) => options.api.browseEngineFolder(path),
     [IPC.lookupEngineRepository]: (repository: string) => options.api.lookupEngineRepository(repository),
