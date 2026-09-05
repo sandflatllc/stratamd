@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AnnotationContext } from '../../src/shared/contracts'
+import { DISPLAYS_VARIABLE, SERIAL_COMMAND, parseDisplays } from './display'
 
 export interface Hunk {
   oldStart: number
@@ -76,6 +77,31 @@ export const selectToLineEndKey = macHost ? 'Shift+Meta+ArrowRight' : 'Shift+End
 export const launchArgs: string[] = macHost ? [] : ['--ozone-platform=x11']
 const linuxLaunchEnv = { ELECTRON_OZONE_PLATFORM_HINT: 'x11' }
 
+/**
+ * The X display for this worker. Global setup publishes one display per
+ * worker slot; a parallel run without that list would put every window on one
+ * display, where each launch steals focus and closes the others' menus, so it
+ * is refused rather than allowed to flake.
+ */
+function workerDisplay(testInfo: TestInfo): string | undefined {
+  if (macHost) return undefined
+  const displays = parseDisplays(process.env[DISPLAYS_VARIABLE])
+  if (!displays) {
+    if (testInfo.config.workers > 1) {
+      throw new Error(
+        `${DISPLAYS_VARIABLE} is unset with ${testInfo.config.workers} workers, so every worker would share one X display. ` +
+        `Register test/e2e/display.ts as globalSetup, or run ${SERIAL_COMMAND}`
+      )
+    }
+    return undefined
+  }
+  const display = displays[testInfo.parallelIndex]
+  if (display === undefined) {
+    throw new Error(`${DISPLAYS_VARIABLE} has ${displays.length} display(s) but this is worker slot ${testInfo.parallelIndex}; supply one display per worker`)
+  }
+  return display
+}
+
 export class Scenario {
   readonly root: string
   readonly file: string
@@ -91,7 +117,7 @@ export class Scenario {
     this.env = env
   }
 
-  static async create(_testInfo: TestInfo, content: string | Buffer, name = 'scenario.md'): Promise<Scenario> {
+  static async create(testInfo: TestInfo, content: string | Buffer, name = 'scenario.md'): Promise<Scenario> {
     // Documents live in this isolated directory so acceptance fixtures are outside StrataMD's
     // own Git worktree and exercise the PRD's non-Git baseline behavior.
     // The ghost store and Electron's user data live here too, not under
@@ -114,8 +140,11 @@ export class Scenario {
         (entry): entry is [string, string] => !['ELECTRON_RUN_AS_NODE', 'WAYLAND_DISPLAY'].includes(entry[0]) && entry[1] !== undefined
       )
     )
+    const display = workerDisplay(testInfo)
     return new Scenario(root, file, runtime, {
       ...inheritedEnvironment,
+      // The worker's own X display (test/e2e/display.ts); the inherited one on a serial run.
+      ...(display === undefined ? {} : { DISPLAY: display }),
       XDG_RUNTIME_DIR: runtime,
       XDG_DATA_HOME: data,
       XDG_CONFIG_HOME: config,

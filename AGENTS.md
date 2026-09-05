@@ -12,13 +12,17 @@ Run these from the repository root, in this order, before calling work done:
 ./node_modules/.bin/electron-vite build && xvfb-run -a ./node_modules/.bin/playwright test
 ```
 
+While iterating on a small change, run the first two commands, rebuild with `./node_modules/.bin/electron-vite build` whenever product code changed (the Playwright harness launches `out/main/index.js`; neither the typecheck nor Vitest refreshes it), and then only the spec files that cover the change, named explicitly: `xvfb-run -a ./node_modules/.bin/playwright test topbar-dropdowns shell-keyboard`. The full Playwright suite runs before calling work done.
+
+After a failed full run, copy `test-results/` aside, then rerun the failed tests by file and line: `xvfb-run -a ./node_modules/.bin/playwright test test/e2e/<file>.spec.ts:<line> --repeat-each 10`. Do not combine `--last-failed` with `--repeat-each`; the repeats carry other test ids and the filter drops them, so the test runs once. Ten passes do not clear the failure: record it under Known flakes in `test/e2e/README.md` with the date and the saved results path. A test already on that list may proceed; a new one needs one clean full run at the default worker count first, and a recurrence blocks the commit until it is diagnosed. Timeouts across unrelated specs in one run suggest load; rerun the full suite once, and if it recurs lower the worker default rather than any timeout. A change to `test/e2e/harness.ts`, `test/e2e/display.ts`, `playwright.config.ts`, or the main-process launch path always gets a full rerun. Never raise a timeout to absorb load, and never set local retries above zero.
+
 Call the binaries under `./node_modules/.bin` directly. `pnpm <script>` in this checkout runs a dependency check that tries to purge `node_modules`; CI runs `pnpm check` in a fresh install, where that is fine. `scripts/install.sh` also runs pnpm scripts and is for fresh clones, not this checkout.
 
 Unit and integration tests load `native/unix-support/build/Release/unix_support.node`. If it is missing (fresh clone, Node or Electron upgrade), build it with `npx node-gyp rebuild --directory native/unix-support`.
 
 ## E2E on a headless box
 
-- The Playwright suite launches the built app; on Linux run it under `xvfb-run -a` so windows never take focus.
+- The Playwright suite launches the built app; on Linux run it under `xvfb-run -a` so windows never take focus. With more than one worker the suite also starts one Xvfb per worker (`test/e2e/display.ts`), because apps on one shared display steal focus from each other and close each other's menus; a run that cannot start them fails and names the serial command, `--workers 1`.
 - Ubuntu 24.04 and other kernels that restrict unprivileged user namespaces kill any Electron started outside Playwright with the SUID sandbox error. Fix once: `sudo chown root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 node_modules/electron/dist/chrome-sandbox`.
 - The spellcheck spec expects an en-US Hunspell dictionary in the profile. A fresh machine has none: `xvfb-run -a npx electron scripts/fetch-spell-dictionary.mjs`.
 - Each spec gets its own `XDG_*` directories in a temp dir, so the suite never touches the owner's StrataMD store or running app. Keep it that way.
