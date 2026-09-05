@@ -1,0 +1,2606 @@
+{
+  "strata-day": {
+    "review": {
+      "axeVersion": "4.12.1",
+      "violations": [
+        {
+          "help": "Elements must only use supported ARIA attributes",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-allowed-attr?application=axeAPI",
+          "id": "aria-allowed-attr",
+          "impact": "critical",
+          "nodeCount": 4,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"160\", aria-valuemax=\"812\", aria-valuenow=\"212\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize left window\" aria-valuemin=\"160\" aria-valuemax=\"812\" aria-valuenow=\"212\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize left window\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"620\", aria-valuemax=\"1600\", aria-valuenow=\"860\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize document measure\" aria-valuemin=\"620\" aria-valuemax=\"1600\" aria-valuenow=\"860\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize document measure\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"240\", aria-valuemax=\"900\", aria-valuenow=\"300\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize right rail\" aria-valuemin=\"240\" aria-valuemax=\"900\" aria-valuenow=\"300\" aria-expanded=\"true\" title=\"Double-click to collapse. Enter or Space also toggles.\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize right rail\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"180\", aria-valuemax=\"954\", aria-valuenow=\"444\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-horizontal\" aria-label=\"Resize review window\" aria-valuemin=\"180\" aria-valuemax=\"954\" aria-valuenow=\"444\"><span></span></button>",
+              "target": [
+                ".resizer-horizontal"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Interactive controls must not be nested",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/nested-interactive?application=axeAPI",
+          "id": "nested-interactive",
+          "impact": "serious",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element has focusable descendants",
+              "html": "<button type=\"button\" role=\"tab\" aria-selected=\"true\" class=\"tab tab-active \" title=\"palette-review.md\">",
+              "target": [
+                ".tab-active"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.keyboard",
+            "wcag2a",
+            "wcag412",
+            "TTv5",
+            "TT6.a",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        }
+      ],
+      "incomplete": [
+        {
+          "help": "ARIA attributes must conform to valid values",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-valid-attr-value?application=axeAPI",
+          "id": "aria-valid-attr-value",
+          "impact": "critical",
+          "nodeCount": 2,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-documents\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"documents\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-documents\" aria-label=\"Docs menu\">",
+              "target": [
+                "button[data-menu=\"documents\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-conversations\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"conversations\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-conversations\" aria-label=\"Conversations menu\">",
+              "target": [
+                "button[data-menu=\"conversations\"]"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/color-contrast?application=axeAPI",
+          "id": "color-contrast",
+          "impact": "serious",
+          "nodeCount": 26,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"crash-probe\">Crash probe: window</button>",
+              "target": [
+                "#root > .crash-probe"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"app-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                ".app-menu-chevron"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">1</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-count.tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">0</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-count.tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge\">1</span>",
+              "target": [
+                ".tab-active > .tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"engine-status-label\">Pair engine</span>",
+              "target": [
+                ".engine-status-label"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"pending-status\" data-unsaved=\"true\" title=\"Next change \u00b7 F7. Previous change \u00b7 Shift+F7. All shortcuts \u00b7 F1\">2 pending</span>",
+              "target": [
+                ".pending-status"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"send-button\" title=\"2 pending \u00b7 Unsaved changes \u00b7 Ctrl+Enter\" data-enabled=\"true\">Start thread</button>",
+              "target": [
+                ".send-button"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.color",
+            "wcag2aa",
+            "wcag143",
+            "TTv5",
+            "TT13.c",
+            "EN-301-549",
+            "EN-9.1.4.3",
+            "ACT",
+            "RGAAv4",
+            "RGAA-3.2.1"
+          ]
+        }
+      ]
+    },
+    "table_and_code": {
+      "axeVersion": "4.12.1",
+      "violations": [
+        {
+          "help": "Elements must only use supported ARIA attributes",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-allowed-attr?application=axeAPI",
+          "id": "aria-allowed-attr",
+          "impact": "critical",
+          "nodeCount": 4,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"160\", aria-valuemax=\"812\", aria-valuenow=\"212\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize left window\" aria-valuemin=\"160\" aria-valuemax=\"812\" aria-valuenow=\"212\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize left window\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"620\", aria-valuemax=\"1600\", aria-valuenow=\"860\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize document measure\" aria-valuemin=\"620\" aria-valuemax=\"1600\" aria-valuenow=\"860\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize document measure\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"240\", aria-valuemax=\"900\", aria-valuenow=\"300\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize right rail\" aria-valuemin=\"240\" aria-valuemax=\"900\" aria-valuenow=\"300\" aria-expanded=\"true\" title=\"Double-click to collapse. Enter or Space also toggles.\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize right rail\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"180\", aria-valuemax=\"954\", aria-valuenow=\"444\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-horizontal\" aria-label=\"Resize review window\" aria-valuemin=\"180\" aria-valuemax=\"954\" aria-valuenow=\"444\"><span></span></button>",
+              "target": [
+                ".resizer-horizontal"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Interactive controls must not be nested",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/nested-interactive?application=axeAPI",
+          "id": "nested-interactive",
+          "impact": "serious",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element has focusable descendants",
+              "html": "<button type=\"button\" role=\"tab\" aria-selected=\"true\" class=\"tab tab-active \" title=\"palette-review.md\">",
+              "target": [
+                ".tab-active"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.keyboard",
+            "wcag2a",
+            "wcag412",
+            "TTv5",
+            "TT6.a",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        }
+      ],
+      "incomplete": [
+        {
+          "help": "ARIA attributes must conform to valid values",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-valid-attr-value?application=axeAPI",
+          "id": "aria-valid-attr-value",
+          "impact": "critical",
+          "nodeCount": 2,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-documents\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"documents\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-documents\" aria-label=\"Docs menu\">",
+              "target": [
+                "button[data-menu=\"documents\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-conversations\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"conversations\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-conversations\" aria-label=\"Conversations menu\">",
+              "target": [
+                "button[data-menu=\"conversations\"]"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/color-contrast?application=axeAPI",
+          "id": "color-contrast",
+          "impact": "serious",
+          "nodeCount": 35,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"crash-probe\">Crash probe: window</button>",
+              "target": [
+                "#root > .crash-probe"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"app-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                ".app-menu-chevron"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">1</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-count.tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">0</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-count.tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge\">1</span>",
+              "target": [
+                ".tab-active > .tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"engine-status-label\">Pair engine</span>",
+              "target": [
+                ".engine-status-label"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"pending-status\" data-unsaved=\"true\" title=\"Next change \u00b7 F7. Previous change \u00b7 Shift+F7. All shortcuts \u00b7 F1\">2 pending</span>",
+              "target": [
+                ".pending-status"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"send-button\" title=\"2 pending \u00b7 Unsaved changes \u00b7 Ctrl+Enter\" data-enabled=\"true\">Start thread</button>",
+              "target": [
+                ".send-button"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.color",
+            "wcag2aa",
+            "wcag143",
+            "TTv5",
+            "TT13.c",
+            "EN-301-549",
+            "EN-9.1.4.3",
+            "ACT",
+            "RGAAv4",
+            "RGAA-3.2.1"
+          ]
+        }
+      ]
+    },
+    "theme_panel": {
+      "axeVersion": "4.12.1",
+      "violations": [
+        {
+          "help": "Elements must only use supported ARIA attributes",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-allowed-attr?application=axeAPI",
+          "id": "aria-allowed-attr",
+          "impact": "critical",
+          "nodeCount": 4,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"160\", aria-valuemax=\"812\", aria-valuenow=\"212\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize left window\" aria-valuemin=\"160\" aria-valuemax=\"812\" aria-valuenow=\"212\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize left window\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"620\", aria-valuemax=\"1600\", aria-valuenow=\"860\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize document measure\" aria-valuemin=\"620\" aria-valuemax=\"1600\" aria-valuenow=\"860\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize document measure\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"240\", aria-valuemax=\"900\", aria-valuenow=\"300\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize right rail\" aria-valuemin=\"240\" aria-valuemax=\"900\" aria-valuenow=\"300\" aria-expanded=\"true\" title=\"Double-click to collapse. Enter or Space also toggles.\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize right rail\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"180\", aria-valuemax=\"954\", aria-valuenow=\"444\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-horizontal\" aria-label=\"Resize review window\" aria-valuemin=\"180\" aria-valuemax=\"954\" aria-valuenow=\"444\"><span></span></button>",
+              "target": [
+                ".resizer-horizontal"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Document should not have more than one banner landmark",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/landmark-no-duplicate-banner?application=axeAPI",
+          "id": "landmark-no-duplicate-banner",
+          "impact": "moderate",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Document has more than one banner landmark",
+              "html": "<header class=\"topbar\" data-window-chrome=\"custom\" data-fullscreen=\"false\" data-maximized=\"false\" data-focused=\"true\">",
+              "target": [
+                ".topbar"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.semantics",
+            "best-practice"
+          ]
+        },
+        {
+          "help": "Landmarks should have a unique role or role/label/title (i.e. accessible name) combination",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/landmark-unique?application=axeAPI",
+          "id": "landmark-unique",
+          "impact": "moderate",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  The landmark must have a unique aria-label, aria-labelledby, or title to make landmarks distinguishable",
+              "html": "<header class=\"topbar\" data-window-chrome=\"custom\" data-fullscreen=\"false\" data-maximized=\"false\" data-focused=\"true\">",
+              "target": [
+                ".topbar"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.semantics",
+            "best-practice"
+          ]
+        },
+        {
+          "help": "Interactive controls must not be nested",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/nested-interactive?application=axeAPI",
+          "id": "nested-interactive",
+          "impact": "serious",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element has focusable descendants",
+              "html": "<button type=\"button\" role=\"tab\" aria-selected=\"true\" class=\"tab tab-active \" title=\"Theme sample.md\"><span class=\"tab-name\">Theme sample.md</span><span role=\"button\" tabindex=\"0\" aria-label=\"Close tab Theme sample.md\" class=\"tab-close\">\u00d7</span></button>",
+              "target": [
+                ".tab-active"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.keyboard",
+            "wcag2a",
+            "wcag412",
+            "TTv5",
+            "TT6.a",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        }
+      ],
+      "incomplete": [
+        {
+          "help": "ARIA attributes must conform to valid values",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-valid-attr-value?application=axeAPI",
+          "id": "aria-valid-attr-value",
+          "impact": "critical",
+          "nodeCount": 2,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-documents\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"documents\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-documents\" aria-label=\"Docs menu\">",
+              "target": [
+                "button[data-menu=\"documents\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-conversations\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"conversations\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-conversations\" aria-label=\"Conversations menu\">",
+              "target": [
+                "button[data-menu=\"conversations\"]"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/color-contrast?application=axeAPI",
+          "id": "color-contrast",
+          "impact": "serious",
+          "nodeCount": 32,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"crash-probe\">Crash probe: window</button>",
+              "target": [
+                "#root > .crash-probe"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"app-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                ".app-menu-chevron"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">2</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-badge.tab-menu-count"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">0</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-badge.tab-menu-count"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"engine-status-label\">Pair engine</span>",
+              "target": [
+                ".engine-status-label"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"pending-status\" data-unsaved=\"false\" title=\"Next change \u00b7 F7. Previous change \u00b7 Shift+F7. All shortcuts \u00b7 F1\">0 pending</span>",
+              "target": [
+                ".pending-status"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"send-button\" title=\"0 pending \u00b7 Ctrl+Enter\" data-enabled=\"true\">Start thread</button>",
+              "target": [
+                ".send-button"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"crash-probe\">Crash probe: explorer</button>",
+              "target": [
+                "div[data-pane=\"explorer\"] > .crash-probe"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.color",
+            "wcag2aa",
+            "wcag143",
+            "TTv5",
+            "TT13.c",
+            "EN-301-549",
+            "EN-9.1.4.3",
+            "ACT",
+            "RGAAv4",
+            "RGAA-3.2.1"
+          ]
+        }
+      ]
+    }
+  },
+  "strata-vivid": {
+    "review": {
+      "axeVersion": "4.12.1",
+      "violations": [
+        {
+          "help": "Elements must only use supported ARIA attributes",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-allowed-attr?application=axeAPI",
+          "id": "aria-allowed-attr",
+          "impact": "critical",
+          "nodeCount": 4,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"160\", aria-valuemax=\"812\", aria-valuenow=\"212\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize left window\" aria-valuemin=\"160\" aria-valuemax=\"812\" aria-valuenow=\"212\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize left window\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"620\", aria-valuemax=\"1600\", aria-valuenow=\"860\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize document measure\" aria-valuemin=\"620\" aria-valuemax=\"1600\" aria-valuenow=\"860\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize document measure\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"240\", aria-valuemax=\"900\", aria-valuenow=\"300\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize right rail\" aria-valuemin=\"240\" aria-valuemax=\"900\" aria-valuenow=\"300\" aria-expanded=\"true\" title=\"Double-click to collapse. Enter or Space also toggles.\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize right rail\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"180\", aria-valuemax=\"954\", aria-valuenow=\"444\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-horizontal\" aria-label=\"Resize review window\" aria-valuemin=\"180\" aria-valuemax=\"954\" aria-valuenow=\"444\"><span></span></button>",
+              "target": [
+                ".resizer-horizontal"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Interactive controls must not be nested",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/nested-interactive?application=axeAPI",
+          "id": "nested-interactive",
+          "impact": "serious",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element has focusable descendants",
+              "html": "<button type=\"button\" role=\"tab\" aria-selected=\"true\" class=\"tab tab-active \" title=\"palette-review.md\">",
+              "target": [
+                ".tab-active"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.keyboard",
+            "wcag2a",
+            "wcag412",
+            "TTv5",
+            "TT6.a",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        }
+      ],
+      "incomplete": [
+        {
+          "help": "ARIA attributes must conform to valid values",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-valid-attr-value?application=axeAPI",
+          "id": "aria-valid-attr-value",
+          "impact": "critical",
+          "nodeCount": 2,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-documents\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"documents\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-documents\" aria-label=\"Docs menu\">",
+              "target": [
+                "button[data-menu=\"documents\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-conversations\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"conversations\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-conversations\" aria-label=\"Conversations menu\">",
+              "target": [
+                "button[data-menu=\"conversations\"]"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/color-contrast?application=axeAPI",
+          "id": "color-contrast",
+          "impact": "serious",
+          "nodeCount": 28,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element",
+              "html": "<button type=\"button\" class=\"crash-probe\">Crash probe: window</button>",
+              "target": [
+                "#root > .crash-probe"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"app-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                ".app-menu-chevron"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">1</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-count.tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">0</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-count.tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge\">1</span>",
+              "target": [
+                ".tab-active > .tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"engine-status-label\">Pair engine</span>",
+              "target": [
+                ".engine-status-label"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"pending-status\" data-unsaved=\"true\" title=\"Next change \u00b7 F7. Previous change \u00b7 Shift+F7. All shortcuts \u00b7 F1\">2 pending</span>",
+              "target": [
+                ".pending-status"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"send-button\" title=\"2 pending \u00b7 Unsaved changes \u00b7 Ctrl+Enter\" data-enabled=\"true\">Start thread</button>",
+              "target": [
+                ".send-button"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.color",
+            "wcag2aa",
+            "wcag143",
+            "TTv5",
+            "TT13.c",
+            "EN-301-549",
+            "EN-9.1.4.3",
+            "ACT",
+            "RGAAv4",
+            "RGAA-3.2.1"
+          ]
+        }
+      ]
+    },
+    "table_and_code": {
+      "axeVersion": "4.12.1",
+      "violations": [
+        {
+          "help": "Elements must only use supported ARIA attributes",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-allowed-attr?application=axeAPI",
+          "id": "aria-allowed-attr",
+          "impact": "critical",
+          "nodeCount": 4,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"160\", aria-valuemax=\"812\", aria-valuenow=\"212\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize left window\" aria-valuemin=\"160\" aria-valuemax=\"812\" aria-valuenow=\"212\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize left window\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"620\", aria-valuemax=\"1600\", aria-valuenow=\"860\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize document measure\" aria-valuemin=\"620\" aria-valuemax=\"1600\" aria-valuenow=\"860\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize document measure\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"240\", aria-valuemax=\"900\", aria-valuenow=\"300\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize right rail\" aria-valuemin=\"240\" aria-valuemax=\"900\" aria-valuenow=\"300\" aria-expanded=\"true\" title=\"Double-click to collapse. Enter or Space also toggles.\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize right rail\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"180\", aria-valuemax=\"954\", aria-valuenow=\"444\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-horizontal\" aria-label=\"Resize review window\" aria-valuemin=\"180\" aria-valuemax=\"954\" aria-valuenow=\"444\"><span></span></button>",
+              "target": [
+                ".resizer-horizontal"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Interactive controls must not be nested",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/nested-interactive?application=axeAPI",
+          "id": "nested-interactive",
+          "impact": "serious",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element has focusable descendants",
+              "html": "<button type=\"button\" role=\"tab\" aria-selected=\"true\" class=\"tab tab-active \" title=\"palette-review.md\">",
+              "target": [
+                ".tab-active"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.keyboard",
+            "wcag2a",
+            "wcag412",
+            "TTv5",
+            "TT6.a",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        }
+      ],
+      "incomplete": [
+        {
+          "help": "ARIA attributes must conform to valid values",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-valid-attr-value?application=axeAPI",
+          "id": "aria-valid-attr-value",
+          "impact": "critical",
+          "nodeCount": 2,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-documents\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"documents\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-documents\" aria-label=\"Docs menu\">",
+              "target": [
+                "button[data-menu=\"documents\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-conversations\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"conversations\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-conversations\" aria-label=\"Conversations menu\">",
+              "target": [
+                "button[data-menu=\"conversations\"]"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/color-contrast?application=axeAPI",
+          "id": "color-contrast",
+          "impact": "serious",
+          "nodeCount": 37,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element",
+              "html": "<button type=\"button\" class=\"crash-probe\">Crash probe: window</button>",
+              "target": [
+                "#root > .crash-probe"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"app-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                ".app-menu-chevron"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">1</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-count.tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">0</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-count.tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge\">1</span>",
+              "target": [
+                ".tab-active > .tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"engine-status-label\">Pair engine</span>",
+              "target": [
+                ".engine-status-label"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"pending-status\" data-unsaved=\"true\" title=\"Next change \u00b7 F7. Previous change \u00b7 Shift+F7. All shortcuts \u00b7 F1\">2 pending</span>",
+              "target": [
+                ".pending-status"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"send-button\" title=\"2 pending \u00b7 Unsaved changes \u00b7 Ctrl+Enter\" data-enabled=\"true\">Start thread</button>",
+              "target": [
+                ".send-button"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.color",
+            "wcag2aa",
+            "wcag143",
+            "TTv5",
+            "TT13.c",
+            "EN-301-549",
+            "EN-9.1.4.3",
+            "ACT",
+            "RGAAv4",
+            "RGAA-3.2.1"
+          ]
+        }
+      ]
+    },
+    "theme_panel": {
+      "axeVersion": "4.12.1",
+      "violations": [
+        {
+          "help": "Elements must only use supported ARIA attributes",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-allowed-attr?application=axeAPI",
+          "id": "aria-allowed-attr",
+          "impact": "critical",
+          "nodeCount": 4,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"160\", aria-valuemax=\"812\", aria-valuenow=\"212\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize left window\" aria-valuemin=\"160\" aria-valuemax=\"812\" aria-valuenow=\"212\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize left window\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"620\", aria-valuemax=\"1600\", aria-valuenow=\"860\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize document measure\" aria-valuemin=\"620\" aria-valuemax=\"1600\" aria-valuenow=\"860\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize document measure\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"240\", aria-valuemax=\"900\", aria-valuenow=\"300\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize right rail\" aria-valuemin=\"240\" aria-valuemax=\"900\" aria-valuenow=\"300\" aria-expanded=\"true\" title=\"Double-click to collapse. Enter or Space also toggles.\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize right rail\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"180\", aria-valuemax=\"954\", aria-valuenow=\"444\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-horizontal\" aria-label=\"Resize review window\" aria-valuemin=\"180\" aria-valuemax=\"954\" aria-valuenow=\"444\"><span></span></button>",
+              "target": [
+                ".resizer-horizontal"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Document should not have more than one banner landmark",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/landmark-no-duplicate-banner?application=axeAPI",
+          "id": "landmark-no-duplicate-banner",
+          "impact": "moderate",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Document has more than one banner landmark",
+              "html": "<header class=\"topbar\" data-window-chrome=\"custom\" data-fullscreen=\"false\" data-maximized=\"false\" data-focused=\"true\">",
+              "target": [
+                ".topbar"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.semantics",
+            "best-practice"
+          ]
+        },
+        {
+          "help": "Landmarks should have a unique role or role/label/title (i.e. accessible name) combination",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/landmark-unique?application=axeAPI",
+          "id": "landmark-unique",
+          "impact": "moderate",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  The landmark must have a unique aria-label, aria-labelledby, or title to make landmarks distinguishable",
+              "html": "<header class=\"topbar\" data-window-chrome=\"custom\" data-fullscreen=\"false\" data-maximized=\"false\" data-focused=\"true\">",
+              "target": [
+                ".topbar"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.semantics",
+            "best-practice"
+          ]
+        },
+        {
+          "help": "Interactive controls must not be nested",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/nested-interactive?application=axeAPI",
+          "id": "nested-interactive",
+          "impact": "serious",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element has focusable descendants",
+              "html": "<button type=\"button\" role=\"tab\" aria-selected=\"true\" class=\"tab tab-active \" title=\"Theme sample.md\"><span class=\"tab-name\">Theme sample.md</span><span role=\"button\" tabindex=\"0\" aria-label=\"Close tab Theme sample.md\" class=\"tab-close\">\u00d7</span></button>",
+              "target": [
+                ".tab-active"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.keyboard",
+            "wcag2a",
+            "wcag412",
+            "TTv5",
+            "TT6.a",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        }
+      ],
+      "incomplete": [
+        {
+          "help": "ARIA attributes must conform to valid values",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-valid-attr-value?application=axeAPI",
+          "id": "aria-valid-attr-value",
+          "impact": "critical",
+          "nodeCount": 2,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-documents\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"documents\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-documents\" aria-label=\"Docs menu\">",
+              "target": [
+                "button[data-menu=\"documents\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-conversations\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"conversations\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-conversations\" aria-label=\"Conversations menu\">",
+              "target": [
+                "button[data-menu=\"conversations\"]"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/color-contrast?application=axeAPI",
+          "id": "color-contrast",
+          "impact": "serious",
+          "nodeCount": 34,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element",
+              "html": "<button type=\"button\" class=\"crash-probe\">Crash probe: window</button>",
+              "target": [
+                "#root > .crash-probe"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"app-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                ".app-menu-chevron"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">2</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-badge.tab-menu-count"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">0</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-badge.tab-menu-count"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"engine-status-label\">Pair engine</span>",
+              "target": [
+                ".engine-status-label"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"pending-status\" data-unsaved=\"false\" title=\"Next change \u00b7 F7. Previous change \u00b7 Shift+F7. All shortcuts \u00b7 F1\">0 pending</span>",
+              "target": [
+                ".pending-status"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"send-button\" title=\"0 pending \u00b7 Ctrl+Enter\" data-enabled=\"true\">Start thread</button>",
+              "target": [
+                ".send-button"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"crash-probe\">Crash probe: explorer</button>",
+              "target": [
+                "div[data-pane=\"explorer\"] > .crash-probe"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.color",
+            "wcag2aa",
+            "wcag143",
+            "TTv5",
+            "TT13.c",
+            "EN-301-549",
+            "EN-9.1.4.3",
+            "ACT",
+            "RGAAv4",
+            "RGAA-3.2.1"
+          ]
+        }
+      ]
+    }
+  },
+  "strata-vivid-light": {
+    "review": {
+      "axeVersion": "4.12.1",
+      "violations": [
+        {
+          "help": "Elements must only use supported ARIA attributes",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-allowed-attr?application=axeAPI",
+          "id": "aria-allowed-attr",
+          "impact": "critical",
+          "nodeCount": 4,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"160\", aria-valuemax=\"812\", aria-valuenow=\"212\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize left window\" aria-valuemin=\"160\" aria-valuemax=\"812\" aria-valuenow=\"212\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize left window\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"620\", aria-valuemax=\"1600\", aria-valuenow=\"860\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize document measure\" aria-valuemin=\"620\" aria-valuemax=\"1600\" aria-valuenow=\"860\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize document measure\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"240\", aria-valuemax=\"900\", aria-valuenow=\"300\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize right rail\" aria-valuemin=\"240\" aria-valuemax=\"900\" aria-valuenow=\"300\" aria-expanded=\"true\" title=\"Double-click to collapse. Enter or Space also toggles.\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize right rail\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"180\", aria-valuemax=\"954\", aria-valuenow=\"444\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-horizontal\" aria-label=\"Resize review window\" aria-valuemin=\"180\" aria-valuemax=\"954\" aria-valuenow=\"444\"><span></span></button>",
+              "target": [
+                ".resizer-horizontal"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Interactive controls must not be nested",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/nested-interactive?application=axeAPI",
+          "id": "nested-interactive",
+          "impact": "serious",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element has focusable descendants",
+              "html": "<button type=\"button\" role=\"tab\" aria-selected=\"true\" class=\"tab tab-active \" title=\"palette-review.md\">",
+              "target": [
+                ".tab-active"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.keyboard",
+            "wcag2a",
+            "wcag412",
+            "TTv5",
+            "TT6.a",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        }
+      ],
+      "incomplete": [
+        {
+          "help": "ARIA attributes must conform to valid values",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-valid-attr-value?application=axeAPI",
+          "id": "aria-valid-attr-value",
+          "impact": "critical",
+          "nodeCount": 2,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-documents\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"documents\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-documents\" aria-label=\"Docs menu\">",
+              "target": [
+                "button[data-menu=\"documents\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-conversations\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"conversations\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-conversations\" aria-label=\"Conversations menu\">",
+              "target": [
+                "button[data-menu=\"conversations\"]"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/color-contrast?application=axeAPI",
+          "id": "color-contrast",
+          "impact": "serious",
+          "nodeCount": 27,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element",
+              "html": "<button type=\"button\" class=\"crash-probe\">Crash probe: window</button>",
+              "target": [
+                "#root > .crash-probe"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"app-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                ".app-menu-chevron"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">1</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-count.tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">0</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-count.tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge\">1</span>",
+              "target": [
+                ".tab-active > .tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"engine-status-label\">Pair engine</span>",
+              "target": [
+                ".engine-status-label"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"pending-status\" data-unsaved=\"true\" title=\"Next change \u00b7 F7. Previous change \u00b7 Shift+F7. All shortcuts \u00b7 F1\">2 pending</span>",
+              "target": [
+                ".pending-status"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"send-button\" title=\"2 pending \u00b7 Unsaved changes \u00b7 Ctrl+Enter\" data-enabled=\"true\">Start thread</button>",
+              "target": [
+                ".send-button"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.color",
+            "wcag2aa",
+            "wcag143",
+            "TTv5",
+            "TT13.c",
+            "EN-301-549",
+            "EN-9.1.4.3",
+            "ACT",
+            "RGAAv4",
+            "RGAA-3.2.1"
+          ]
+        }
+      ]
+    },
+    "table_and_code": {
+      "axeVersion": "4.12.1",
+      "violations": [
+        {
+          "help": "Elements must only use supported ARIA attributes",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-allowed-attr?application=axeAPI",
+          "id": "aria-allowed-attr",
+          "impact": "critical",
+          "nodeCount": 4,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"160\", aria-valuemax=\"812\", aria-valuenow=\"212\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize left window\" aria-valuemin=\"160\" aria-valuemax=\"812\" aria-valuenow=\"212\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize left window\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"620\", aria-valuemax=\"1600\", aria-valuenow=\"860\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize document measure\" aria-valuemin=\"620\" aria-valuemax=\"1600\" aria-valuenow=\"860\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize document measure\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"240\", aria-valuemax=\"900\", aria-valuenow=\"300\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize right rail\" aria-valuemin=\"240\" aria-valuemax=\"900\" aria-valuenow=\"300\" aria-expanded=\"true\" title=\"Double-click to collapse. Enter or Space also toggles.\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize right rail\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"180\", aria-valuemax=\"954\", aria-valuenow=\"444\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-horizontal\" aria-label=\"Resize review window\" aria-valuemin=\"180\" aria-valuemax=\"954\" aria-valuenow=\"444\"><span></span></button>",
+              "target": [
+                ".resizer-horizontal"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Interactive controls must not be nested",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/nested-interactive?application=axeAPI",
+          "id": "nested-interactive",
+          "impact": "serious",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element has focusable descendants",
+              "html": "<button type=\"button\" role=\"tab\" aria-selected=\"true\" class=\"tab tab-active \" title=\"palette-review.md\">",
+              "target": [
+                ".tab-active"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.keyboard",
+            "wcag2a",
+            "wcag412",
+            "TTv5",
+            "TT6.a",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        }
+      ],
+      "incomplete": [
+        {
+          "help": "ARIA attributes must conform to valid values",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-valid-attr-value?application=axeAPI",
+          "id": "aria-valid-attr-value",
+          "impact": "critical",
+          "nodeCount": 2,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-documents\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"documents\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-documents\" aria-label=\"Docs menu\">",
+              "target": [
+                "button[data-menu=\"documents\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-conversations\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"conversations\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-conversations\" aria-label=\"Conversations menu\">",
+              "target": [
+                "button[data-menu=\"conversations\"]"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/color-contrast?application=axeAPI",
+          "id": "color-contrast",
+          "impact": "serious",
+          "nodeCount": 36,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element",
+              "html": "<button type=\"button\" class=\"crash-probe\">Crash probe: window</button>",
+              "target": [
+                "#root > .crash-probe"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"app-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                ".app-menu-chevron"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">1</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-count.tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">0</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-count.tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge\">1</span>",
+              "target": [
+                ".tab-active > .tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"engine-status-label\">Pair engine</span>",
+              "target": [
+                ".engine-status-label"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"pending-status\" data-unsaved=\"true\" title=\"Next change \u00b7 F7. Previous change \u00b7 Shift+F7. All shortcuts \u00b7 F1\">2 pending</span>",
+              "target": [
+                ".pending-status"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"send-button\" title=\"2 pending \u00b7 Unsaved changes \u00b7 Ctrl+Enter\" data-enabled=\"true\">Start thread</button>",
+              "target": [
+                ".send-button"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.color",
+            "wcag2aa",
+            "wcag143",
+            "TTv5",
+            "TT13.c",
+            "EN-301-549",
+            "EN-9.1.4.3",
+            "ACT",
+            "RGAAv4",
+            "RGAA-3.2.1"
+          ]
+        }
+      ]
+    },
+    "theme_panel": {
+      "axeVersion": "4.12.1",
+      "violations": [
+        {
+          "help": "Elements must only use supported ARIA attributes",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-allowed-attr?application=axeAPI",
+          "id": "aria-allowed-attr",
+          "impact": "critical",
+          "nodeCount": 4,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"160\", aria-valuemax=\"812\", aria-valuenow=\"212\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize left window\" aria-valuemin=\"160\" aria-valuemax=\"812\" aria-valuenow=\"212\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize left window\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"620\", aria-valuemax=\"1600\", aria-valuenow=\"860\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize document measure\" aria-valuemin=\"620\" aria-valuemax=\"1600\" aria-valuenow=\"860\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize document measure\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"240\", aria-valuemax=\"900\", aria-valuenow=\"300\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize right rail\" aria-valuemin=\"240\" aria-valuemax=\"900\" aria-valuenow=\"300\" aria-expanded=\"true\" title=\"Double-click to collapse. Enter or Space also toggles.\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize right rail\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"180\", aria-valuemax=\"954\", aria-valuenow=\"444\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-horizontal\" aria-label=\"Resize review window\" aria-valuemin=\"180\" aria-valuemax=\"954\" aria-valuenow=\"444\"><span></span></button>",
+              "target": [
+                ".resizer-horizontal"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Document should not have more than one banner landmark",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/landmark-no-duplicate-banner?application=axeAPI",
+          "id": "landmark-no-duplicate-banner",
+          "impact": "moderate",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Document has more than one banner landmark",
+              "html": "<header class=\"topbar\" data-window-chrome=\"custom\" data-fullscreen=\"false\" data-maximized=\"false\" data-focused=\"true\">",
+              "target": [
+                ".topbar"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.semantics",
+            "best-practice"
+          ]
+        },
+        {
+          "help": "Landmarks should have a unique role or role/label/title (i.e. accessible name) combination",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/landmark-unique?application=axeAPI",
+          "id": "landmark-unique",
+          "impact": "moderate",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  The landmark must have a unique aria-label, aria-labelledby, or title to make landmarks distinguishable",
+              "html": "<header class=\"topbar\" data-window-chrome=\"custom\" data-fullscreen=\"false\" data-maximized=\"false\" data-focused=\"true\">",
+              "target": [
+                ".topbar"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.semantics",
+            "best-practice"
+          ]
+        },
+        {
+          "help": "Interactive controls must not be nested",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/nested-interactive?application=axeAPI",
+          "id": "nested-interactive",
+          "impact": "serious",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element has focusable descendants",
+              "html": "<button type=\"button\" role=\"tab\" aria-selected=\"true\" class=\"tab tab-active \" title=\"Theme sample.md\"><span class=\"tab-name\">Theme sample.md</span><span role=\"button\" tabindex=\"0\" aria-label=\"Close tab Theme sample.md\" class=\"tab-close\">\u00d7</span></button>",
+              "target": [
+                ".tab-active"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.keyboard",
+            "wcag2a",
+            "wcag412",
+            "TTv5",
+            "TT6.a",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        }
+      ],
+      "incomplete": [
+        {
+          "help": "ARIA attributes must conform to valid values",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-valid-attr-value?application=axeAPI",
+          "id": "aria-valid-attr-value",
+          "impact": "critical",
+          "nodeCount": 2,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-documents\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"documents\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-documents\" aria-label=\"Docs menu\">",
+              "target": [
+                "button[data-menu=\"documents\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-conversations\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"conversations\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-conversations\" aria-label=\"Conversations menu\">",
+              "target": [
+                "button[data-menu=\"conversations\"]"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/color-contrast?application=axeAPI",
+          "id": "color-contrast",
+          "impact": "serious",
+          "nodeCount": 33,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element",
+              "html": "<button type=\"button\" class=\"crash-probe\">Crash probe: window</button>",
+              "target": [
+                "#root > .crash-probe"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"app-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                ".app-menu-chevron"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">2</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-badge.tab-menu-count"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">0</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-badge.tab-menu-count"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"engine-status-label\">Pair engine</span>",
+              "target": [
+                ".engine-status-label"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"pending-status\" data-unsaved=\"false\" title=\"Next change \u00b7 F7. Previous change \u00b7 Shift+F7. All shortcuts \u00b7 F1\">0 pending</span>",
+              "target": [
+                ".pending-status"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"send-button\" title=\"0 pending \u00b7 Ctrl+Enter\" data-enabled=\"true\">Start thread</button>",
+              "target": [
+                ".send-button"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"crash-probe\">Crash probe: explorer</button>",
+              "target": [
+                "div[data-pane=\"explorer\"] > .crash-probe"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.color",
+            "wcag2aa",
+            "wcag143",
+            "TTv5",
+            "TT13.c",
+            "EN-301-549",
+            "EN-9.1.4.3",
+            "ACT",
+            "RGAAv4",
+            "RGAA-3.2.1"
+          ]
+        }
+      ]
+    }
+  },
+  "strata-night": {
+    "review": {
+      "axeVersion": "4.12.1",
+      "violations": [
+        {
+          "help": "Elements must only use supported ARIA attributes",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-allowed-attr?application=axeAPI",
+          "id": "aria-allowed-attr",
+          "impact": "critical",
+          "nodeCount": 4,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"160\", aria-valuemax=\"812\", aria-valuenow=\"212\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize left window\" aria-valuemin=\"160\" aria-valuemax=\"812\" aria-valuenow=\"212\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize left window\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"620\", aria-valuemax=\"1600\", aria-valuenow=\"860\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize document measure\" aria-valuemin=\"620\" aria-valuemax=\"1600\" aria-valuenow=\"860\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize document measure\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"240\", aria-valuemax=\"900\", aria-valuenow=\"300\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize right rail\" aria-valuemin=\"240\" aria-valuemax=\"900\" aria-valuenow=\"300\" aria-expanded=\"true\" title=\"Double-click to collapse. Enter or Space also toggles.\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize right rail\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"180\", aria-valuemax=\"954\", aria-valuenow=\"444\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-horizontal\" aria-label=\"Resize review window\" aria-valuemin=\"180\" aria-valuemax=\"954\" aria-valuenow=\"444\"><span></span></button>",
+              "target": [
+                ".resizer-horizontal"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Interactive controls must not be nested",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/nested-interactive?application=axeAPI",
+          "id": "nested-interactive",
+          "impact": "serious",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element has focusable descendants",
+              "html": "<button type=\"button\" role=\"tab\" aria-selected=\"true\" class=\"tab tab-active \" title=\"palette-review.md\">",
+              "target": [
+                ".tab-active"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.keyboard",
+            "wcag2a",
+            "wcag412",
+            "TTv5",
+            "TT6.a",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        }
+      ],
+      "incomplete": [
+        {
+          "help": "ARIA attributes must conform to valid values",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-valid-attr-value?application=axeAPI",
+          "id": "aria-valid-attr-value",
+          "impact": "critical",
+          "nodeCount": 2,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-documents\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"documents\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-documents\" aria-label=\"Docs menu\">",
+              "target": [
+                "button[data-menu=\"documents\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-conversations\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"conversations\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-conversations\" aria-label=\"Conversations menu\">",
+              "target": [
+                "button[data-menu=\"conversations\"]"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/color-contrast?application=axeAPI",
+          "id": "color-contrast",
+          "impact": "serious",
+          "nodeCount": 26,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"crash-probe\">Crash probe: window</button>",
+              "target": [
+                "#root > .crash-probe"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"app-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                ".app-menu-chevron"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">1</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-count.tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">0</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-count.tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge\">1</span>",
+              "target": [
+                ".tab-active > .tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"engine-status-label\">Pair engine</span>",
+              "target": [
+                ".engine-status-label"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"pending-status\" data-unsaved=\"true\" title=\"Next change \u00b7 F7. Previous change \u00b7 Shift+F7. All shortcuts \u00b7 F1\">2 pending</span>",
+              "target": [
+                ".pending-status"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"send-button\" title=\"2 pending \u00b7 Unsaved changes \u00b7 Ctrl+Enter\" data-enabled=\"true\">Start thread</button>",
+              "target": [
+                ".send-button"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.color",
+            "wcag2aa",
+            "wcag143",
+            "TTv5",
+            "TT13.c",
+            "EN-301-549",
+            "EN-9.1.4.3",
+            "ACT",
+            "RGAAv4",
+            "RGAA-3.2.1"
+          ]
+        }
+      ]
+    },
+    "table_and_code": {
+      "axeVersion": "4.12.1",
+      "violations": [
+        {
+          "help": "Elements must only use supported ARIA attributes",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-allowed-attr?application=axeAPI",
+          "id": "aria-allowed-attr",
+          "impact": "critical",
+          "nodeCount": 4,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"160\", aria-valuemax=\"812\", aria-valuenow=\"212\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize left window\" aria-valuemin=\"160\" aria-valuemax=\"812\" aria-valuenow=\"212\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize left window\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"620\", aria-valuemax=\"1600\", aria-valuenow=\"860\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize document measure\" aria-valuemin=\"620\" aria-valuemax=\"1600\" aria-valuenow=\"860\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize document measure\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"240\", aria-valuemax=\"900\", aria-valuenow=\"300\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize right rail\" aria-valuemin=\"240\" aria-valuemax=\"900\" aria-valuenow=\"300\" aria-expanded=\"true\" title=\"Double-click to collapse. Enter or Space also toggles.\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize right rail\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"180\", aria-valuemax=\"954\", aria-valuenow=\"444\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-horizontal\" aria-label=\"Resize review window\" aria-valuemin=\"180\" aria-valuemax=\"954\" aria-valuenow=\"444\"><span></span></button>",
+              "target": [
+                ".resizer-horizontal"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Interactive controls must not be nested",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/nested-interactive?application=axeAPI",
+          "id": "nested-interactive",
+          "impact": "serious",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element has focusable descendants",
+              "html": "<button type=\"button\" role=\"tab\" aria-selected=\"true\" class=\"tab tab-active \" title=\"palette-review.md\">",
+              "target": [
+                ".tab-active"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.keyboard",
+            "wcag2a",
+            "wcag412",
+            "TTv5",
+            "TT6.a",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        }
+      ],
+      "incomplete": [
+        {
+          "help": "ARIA attributes must conform to valid values",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-valid-attr-value?application=axeAPI",
+          "id": "aria-valid-attr-value",
+          "impact": "critical",
+          "nodeCount": 2,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-documents\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"documents\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-documents\" aria-label=\"Docs menu\">",
+              "target": [
+                "button[data-menu=\"documents\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-conversations\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"conversations\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-conversations\" aria-label=\"Conversations menu\">",
+              "target": [
+                "button[data-menu=\"conversations\"]"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/color-contrast?application=axeAPI",
+          "id": "color-contrast",
+          "impact": "serious",
+          "nodeCount": 35,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"crash-probe\">Crash probe: window</button>",
+              "target": [
+                "#root > .crash-probe"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"app-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                ".app-menu-chevron"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">1</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-count.tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">0</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-count.tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge\">1</span>",
+              "target": [
+                ".tab-active > .tab-badge"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"engine-status-label\">Pair engine</span>",
+              "target": [
+                ".engine-status-label"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"pending-status\" data-unsaved=\"true\" title=\"Next change \u00b7 F7. Previous change \u00b7 Shift+F7. All shortcuts \u00b7 F1\">2 pending</span>",
+              "target": [
+                ".pending-status"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"send-button\" title=\"2 pending \u00b7 Unsaved changes \u00b7 Ctrl+Enter\" data-enabled=\"true\">Start thread</button>",
+              "target": [
+                ".send-button"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.color",
+            "wcag2aa",
+            "wcag143",
+            "TTv5",
+            "TT13.c",
+            "EN-301-549",
+            "EN-9.1.4.3",
+            "ACT",
+            "RGAAv4",
+            "RGAA-3.2.1"
+          ]
+        }
+      ]
+    },
+    "theme_panel": {
+      "axeVersion": "4.12.1",
+      "violations": [
+        {
+          "help": "Elements must only use supported ARIA attributes",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-allowed-attr?application=axeAPI",
+          "id": "aria-allowed-attr",
+          "impact": "critical",
+          "nodeCount": 4,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"160\", aria-valuemax=\"812\", aria-valuenow=\"212\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize left window\" aria-valuemin=\"160\" aria-valuemax=\"812\" aria-valuenow=\"212\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize left window\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"620\", aria-valuemax=\"1600\", aria-valuenow=\"860\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize document measure\" aria-valuemin=\"620\" aria-valuemax=\"1600\" aria-valuenow=\"860\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize document measure\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"240\", aria-valuemax=\"900\", aria-valuenow=\"300\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-vertical\" aria-label=\"Resize right rail\" aria-valuemin=\"240\" aria-valuemax=\"900\" aria-valuenow=\"300\" aria-expanded=\"true\" title=\"Double-click to collapse. Enter or Space also toggles.\"><span></span></button>",
+              "target": [
+                "button[aria-label=\"Resize right rail\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  ARIA attributes are not allowed: aria-valuemin=\"180\", aria-valuemax=\"954\", aria-valuenow=\"444\"",
+              "html": "<button type=\"button\" class=\"resizer resizer-horizontal\" aria-label=\"Resize review window\" aria-valuemin=\"180\" aria-valuemax=\"954\" aria-valuenow=\"444\"><span></span></button>",
+              "target": [
+                ".resizer-horizontal"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Document should not have more than one banner landmark",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/landmark-no-duplicate-banner?application=axeAPI",
+          "id": "landmark-no-duplicate-banner",
+          "impact": "moderate",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Document has more than one banner landmark",
+              "html": "<header class=\"topbar\" data-window-chrome=\"custom\" data-fullscreen=\"false\" data-maximized=\"false\" data-focused=\"true\">",
+              "target": [
+                ".topbar"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.semantics",
+            "best-practice"
+          ]
+        },
+        {
+          "help": "Landmarks should have a unique role or role/label/title (i.e. accessible name) combination",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/landmark-unique?application=axeAPI",
+          "id": "landmark-unique",
+          "impact": "moderate",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  The landmark must have a unique aria-label, aria-labelledby, or title to make landmarks distinguishable",
+              "html": "<header class=\"topbar\" data-window-chrome=\"custom\" data-fullscreen=\"false\" data-maximized=\"false\" data-focused=\"true\">",
+              "target": [
+                ".topbar"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.semantics",
+            "best-practice"
+          ]
+        },
+        {
+          "help": "Interactive controls must not be nested",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/nested-interactive?application=axeAPI",
+          "id": "nested-interactive",
+          "impact": "serious",
+          "nodeCount": 1,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element has focusable descendants",
+              "html": "<button type=\"button\" role=\"tab\" aria-selected=\"true\" class=\"tab tab-active \" title=\"Theme sample.md\"><span class=\"tab-name\">Theme sample.md</span><span role=\"button\" tabindex=\"0\" aria-label=\"Close tab Theme sample.md\" class=\"tab-close\">\u00d7</span></button>",
+              "target": [
+                ".tab-active"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.keyboard",
+            "wcag2a",
+            "wcag412",
+            "TTv5",
+            "TT6.a",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        }
+      ],
+      "incomplete": [
+        {
+          "help": "ARIA attributes must conform to valid values",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/aria-valid-attr-value?application=axeAPI",
+          "id": "aria-valid-attr-value",
+          "impact": "critical",
+          "nodeCount": 2,
+          "nodes": [
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-documents\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"documents\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-documents\" aria-label=\"Docs menu\">",
+              "target": [
+                "button[data-menu=\"documents\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix all of the following:\n  Unable to determine if aria-controls referenced ID exists on the page while using aria-haspopup: aria-controls=\"topbar-menu-conversations\"",
+              "html": "<button type=\"button\" class=\"tab tab-menu \" data-menu=\"conversations\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"topbar-menu-conversations\" aria-label=\"Conversations menu\">",
+              "target": [
+                "button[data-menu=\"conversations\"]"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.aria",
+            "wcag2a",
+            "wcag412",
+            "EN-301-549",
+            "EN-9.4.1.2",
+            "RGAAv4",
+            "RGAA-7.1.1"
+          ]
+        },
+        {
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.12/color-contrast?application=axeAPI",
+          "id": "color-contrast",
+          "impact": "serious",
+          "nodeCount": 32,
+          "nodes": [
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"crash-probe\">Crash probe: window</button>",
+              "target": [
+                "#root > .crash-probe"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"app-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                ".app-menu-chevron"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">2</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-badge.tab-menu-count"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"documents\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content",
+              "html": "<span class=\"tab-badge tab-menu-count\">0</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-badge.tab-menu-count"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element content contains only non-text characters",
+              "html": "<span class=\"tab-menu-chevron\" aria-hidden=\"true\">\u25be</span>",
+              "target": [
+                "button[data-menu=\"conversations\"] > .tab-menu-chevron[aria-hidden=\"true\"]"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"engine-status-label\">Pair engine</span>",
+              "target": [
+                ".engine-status-label"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<span class=\"pending-status\" data-unsaved=\"false\" title=\"Next change \u00b7 F7. Previous change \u00b7 Shift+F7. All shortcuts \u00b7 F1\">0 pending</span>",
+              "target": [
+                ".pending-status"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"send-button\" title=\"0 pending \u00b7 Ctrl+Enter\" data-enabled=\"true\">Start thread</button>",
+              "target": [
+                ".send-button"
+              ]
+            },
+            {
+              "failureSummary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+              "html": "<button type=\"button\" class=\"crash-probe\">Crash probe: explorer</button>",
+              "target": [
+                "div[data-pane=\"explorer\"] > .crash-probe"
+              ]
+            }
+          ],
+          "tags": [
+            "cat.color",
+            "wcag2aa",
+            "wcag143",
+            "TTv5",
+            "TT13.c",
+            "EN-301-549",
+            "EN-9.1.4.3",
+            "ACT",
+            "RGAAv4",
+            "RGAA-3.2.1"
+          ]
+        }
+      ]
+    }
+  }
+}

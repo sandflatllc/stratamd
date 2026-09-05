@@ -13,7 +13,7 @@
   --surfaces-code: #1d1731;
   --surfaces-border: #463c6e;
   --surfaces-overlay: #f4f0fe;
-  --surfaces-overlay-text: #241f31;
+  --surfaces-overlay-text: #14101f;
   --interface-primary: #ffffff;
   --interface-body: #ffffff;
   --interface-secondary: #d8ddfd;
@@ -28,16 +28,16 @@
   --document-quote: #9aa8ff;
   --document-table-heading: #ff7070;
   --controls-primary: #9b5cff;
-  --controls-primary-text: #f4f3f6;
+  --controls-primary-text: #14101f;
   --controls-primary-highlight: #ff5c8a;
   --controls-selected: #9b5cff;
-  --controls-selected-text: #f4f3f6;
+  --controls-selected-text: #14101f;
   --controls-positive: #3dc97c;
-  --controls-positive-text: #241f31;
+  --controls-positive-text: #14101f;
   --controls-warning: #ffb03a;
-  --controls-warning-text: #241f31;
+  --controls-warning-text: #14101f;
   --controls-danger: #ff5c8a;
-  --controls-danger-text: #f4f3f6;
+  --controls-danger-text: #14101f;
   --controls-focus: #4f8dff;
   --visuals-category-1: #9b5cff;
   --visuals-category-2: #4f8dff;
@@ -48,17 +48,17 @@
   --changes-added: #9c66ff;
   --changes-removed: #fe769d;
   --people-you: #ff5c8a;
-  --people-you-text: #f4f3f6;
+  --people-you-text: #14101f;
   --people-agent-1: #9b5cff;
-  --people-agent-1-text: #f4f3f6;
+  --people-agent-1-text: #14101f;
   --people-agent-2: #4f8dff;
-  --people-agent-2-text: #f4f3f6;
+  --people-agent-2-text: #14101f;
   --people-agent-3: #3dc97c;
-  --people-agent-3-text: #241f31;
+  --people-agent-3-text: #14101f;
   --people-agent-4: #ffb03a;
-  --people-agent-4-text: #241f31;
-  --people-external: #7a7292;
-  --people-external-text: #f4f3f6;
+  --people-agent-4-text: #14101f;
+  --people-external: #aaa1be;
+  --people-external-text: #14101f;
   --effects-primary: #9b5cff;
   --effects-secondary: #4f8dff;
   --effects-tertiary: #ff5c8a;
@@ -67,7 +67,7 @@
   --effects-intensity: 1.5;
   --effects-speed: 1;
   --selection-background: #6540a7;
-  --selection-text: #f4f3f6;
+  --selection-text: #fbfaff;
   /* Brand, fixed on purpose: the logo pill reads the same in every theme (PRD §6.13). */
   --brand-surface: #f4f0fe;
   --brand-border: #e2dbf3;
@@ -82,9 +82,11 @@
   --dim: var(--interface-secondary);
   --muted: var(--interface-muted);
   --strata-font-family: var(--font-text);
-  /* Derived tints: readable light versions of the change and control colors. */
-  --changes-added-tint: color-mix(in srgb, var(--changes-added) 55%, var(--interface-primary));
-  --changes-removed-tint: color-mix(in srgb, var(--changes-removed) 60%, var(--interface-primary));
+  /* Review fills stay opaque over panel effects; text retains its semantic hue. */
+  --changes-added-tint: color-mix(in srgb, var(--changes-added) 70%, var(--interface-primary));
+  --changes-added-background: color-mix(in srgb, var(--changes-added) 24%, var(--surfaces-panel));
+  --changes-removed-tint: color-mix(in srgb, var(--changes-removed) 70%, var(--interface-primary));
+  --changes-removed-background: color-mix(in srgb, var(--changes-removed) 22%, var(--surfaces-panel));
   --controls-primary-tint: color-mix(in srgb, var(--controls-primary) 55%, var(--interface-primary));
   --controls-selected-tint: color-mix(in srgb, var(--controls-selected) 55%, var(--interface-primary));
   --shadow: color-mix(in srgb, var(--surfaces-window) 60%, transparent);
@@ -164,8 +166,10 @@ button:disabled { opacity: .42; cursor: not-allowed; }
   --dim: var(--interface-secondary);
   --muted: var(--interface-muted);
   --strata-font-family: var(--font-text);
-  --changes-added-tint: color-mix(in srgb, var(--changes-added) 55%, var(--interface-primary));
-  --changes-removed-tint: color-mix(in srgb, var(--changes-removed) 60%, var(--interface-primary));
+  --changes-added-tint: color-mix(in srgb, var(--changes-added) 70%, var(--interface-primary));
+  --changes-added-background: color-mix(in srgb, var(--changes-added) 24%, var(--surfaces-panel));
+  --changes-removed-tint: color-mix(in srgb, var(--changes-removed) 70%, var(--interface-primary));
+  --changes-removed-background: color-mix(in srgb, var(--changes-removed) 22%, var(--surfaces-panel));
   --controls-primary-tint: color-mix(in srgb, var(--controls-primary) 55%, var(--interface-primary));
   --controls-selected-tint: color-mix(in srgb, var(--controls-selected) 55%, var(--interface-primary));
   --shadow: color-mix(in srgb, var(--surfaces-window) 60%, transparent);
@@ -355,7 +359,7 @@ kbd { color: var(--muted); font-family: var(--font-code), "JetBrains Mono", mono
 .prosemirror-host .ProseMirror em { color: var(--document-italic); }
 .prosemirror-host .ProseMirror code { color: var(--document-code); font-family: var(--font-code), "JetBrains Mono", monospace; }
 .prosemirror-host .ProseMirror :not(pre) > code { border-radius: 6px; padding: 1px 6px; background: var(--surfaces-code); }
-.prosemirror-host .ProseMirror a { color: var(--document-link); }
+.prosemirror-host .ProseMirror a { color: var(--document-link); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .16em; }
 .prosemirror-host .ProseMirror blockquote { border-left: 4px solid var(--document-quote); color: var(--document-quote); }
 .prosemirror-host .ProseMirror li::marker { color: var(--document-quote); }
 .prosemirror-host .ProseMirror hr { border: 0; border-top: 1px solid var(--surfaces-border); }
@@ -369,17 +373,17 @@ kbd { color: var(--muted); font-family: var(--font-code), "JetBrains Mono", mono
 .strata-source-editor::selection { background: var(--selection-background); -webkit-text-fill-color: var(--selection-text); }
 .strata-source-frontmatter { color: var(--muted); }
 .strata-source-review-insertion, .strata-source-suggestion-deletion { position: relative; border-radius: 5px; padding-inline: 2px; }
-.strata-source-review-insertion { background: color-mix(in srgb, var(--changes-added) 22%, transparent); color: var(--changes-added-tint); font-weight: 500; }
-.strata-source-review-insertion[data-deleted]::before { position: absolute; z-index: 2; bottom: calc(100% + 2px); left: 0; max-width: 360px; overflow: hidden; border-radius: 5px; padding: 0 4px; background: color-mix(in srgb, var(--changes-removed) 18%, transparent); color: var(--changes-removed-tint); font-size: calc(12px * var(--zoom, 1)); line-height: 1.5; text-decoration: line-through; text-overflow: ellipsis; white-space: nowrap; content: attr(data-deleted); pointer-events: none; }
-.strata-source-suggestion-deletion { background: color-mix(in srgb, var(--changes-removed) 14%, transparent); color: var(--changes-removed-tint); text-decoration: line-through; }
-.strata-source-suggestion-deletion[data-replacement]::after { position: absolute; z-index: 2; top: calc(100% + 2px); left: 0; max-width: 360px; overflow: hidden; border-radius: 5px; padding: 0 4px; background: color-mix(in srgb, var(--changes-added) 22%, transparent); color: var(--changes-added-tint); font-size: calc(12px * var(--zoom, 1)); font-weight: 700; line-height: 1.5; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; content: attr(data-replacement); pointer-events: none; }
+.strata-source-review-insertion { background: var(--changes-added-background); color: var(--changes-added-tint); font-weight: 500; }
+.strata-source-review-insertion[data-deleted]::before { position: absolute; z-index: 2; bottom: calc(100% + 2px); left: 0; max-width: 360px; overflow: hidden; border-radius: 5px; padding: 0 4px; background: var(--changes-removed-background); color: var(--changes-removed-tint); font-size: calc(12px * var(--zoom, 1)); line-height: 1.5; text-decoration: line-through; text-overflow: ellipsis; white-space: nowrap; content: attr(data-deleted); pointer-events: none; }
+.strata-source-suggestion-deletion { background: var(--changes-removed-background); color: var(--changes-removed-tint); text-decoration: line-through; }
+.strata-source-suggestion-deletion[data-replacement]::after { position: absolute; z-index: 2; top: calc(100% + 2px); left: 0; max-width: 360px; overflow: hidden; border-radius: 5px; padding: 0 4px; background: var(--changes-added-background); color: var(--changes-added-tint); font-size: calc(12px * var(--zoom, 1)); font-weight: 700; line-height: 1.5; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; content: attr(data-replacement); pointer-events: none; }
 .strata-source-review-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; border-top: 1px solid var(--line); padding: 14px 0 0; animation: pop-in .3s cubic-bezier(.34,1.56,.64,1); }
 .strata-source-review-action, .strata-source-suggestion-action { display: inline-flex; max-width: 100%; align-items: center; gap: 6px; border-radius: 12px; padding: 6px 8px; background: color-mix(in srgb, var(--changes-added) 10%, transparent); }
 .strata-source-review-action::before { color: var(--changes-removed-tint); font-family: var(--font-code), "JetBrains Mono", monospace; font-size: calc(11px * var(--zoom, 1)); content: "pending source hunk"; }
 .strata-source-suggestion-action::before { color: var(--changes-added-tint); font-family: var(--font-code), "JetBrains Mono", monospace; font-size: calc(11px * var(--zoom, 1)); content: "pending suggestion"; }
 .strata-source-review-actions del, .strata-source-review-actions ins { overflow: hidden; border-radius: 6px; padding: 1px 5px; font-family: var(--font-code), "JetBrains Mono", monospace; font-size: calc(12px * var(--zoom, 1)); text-overflow: ellipsis; white-space: nowrap; }
-.strata-source-review-actions del { background: color-mix(in srgb, var(--changes-removed) 14%, transparent); color: var(--changes-removed-tint); }
-.strata-source-review-actions ins { background: color-mix(in srgb, var(--changes-added) 22%, transparent); color: var(--changes-added-tint); font-weight: 700; text-decoration: none; }
+.strata-source-review-actions del { background: var(--changes-removed-background); color: var(--changes-removed-tint); }
+.strata-source-review-actions ins { background: var(--changes-added-background); color: var(--changes-added-tint); font-weight: 700; text-decoration: none; }
 .strata-source-suggestion-action .strata-review-author { background: var(--strata-annotation-color, var(--controls-primary)); }
 .strata-source-draft { border-bottom: 2px dashed var(--people-you); background: color-mix(in srgb, var(--people-you) 10%, transparent); }
 .strata-source-draft::after { margin-left: 4px; border-radius: 999px; padding: 1px 5px; background: color-mix(in srgb, var(--people-you) 18%, transparent); color: var(--people-you); font-family: var(--font-text), sans-serif; font-size: 10px; font-weight: 800; content: "draft"; }
@@ -394,9 +398,10 @@ kbd { color: var(--muted); font-family: var(--font-code), "JetBrains Mono", mono
 .strata-prosemirror hr { margin: 30px 0; border: 0; border-top: 2px solid var(--line); }
 .strata-prosemirror li[data-task-item="true"] { display: flex; align-items: flex-start; gap: 12px; list-style: none; }
 .strata-prosemirror [data-task-checkbox="true"]:hover { transform: scale(1.2) rotate(6deg); }
-.strata-review-change, .strata-suggestion { border-radius: 6px; padding: 1px 5px; background: color-mix(in srgb, var(--changes-added) 22%, transparent); color: var(--changes-added-tint); font-weight: 700; }
+.strata-review-change, .strata-suggestion, .strata-suggestion-replacement { border-radius: 6px; padding: 1px 5px; background: var(--changes-added-background); color: var(--changes-added-tint); font-weight: 700; }
+.strata-review-change, .strata-suggestion, .strata-suggestion-replacement, .strata-source-review-insertion { box-shadow: inset 0 -2px 0 var(--changes-added); box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 .strata-review-mixed { box-shadow: inset 0 -3px 0 var(--controls-warning); }
-.strata-review-deletion { margin-right: 3px; border-radius: 6px; padding: 1px 5px; background: color-mix(in srgb, var(--changes-removed) 14%, transparent); color: var(--changes-removed-tint); text-decoration: line-through; }
+.strata-review-deletion { margin-right: 3px; border-radius: 6px; padding: 1px 5px; background: var(--changes-removed-background); color: var(--changes-removed-tint); text-decoration: line-through; }
 .strata-review-controls, .strata-suggestion-controls { display: inline-flex; align-items: center; gap: 6px; margin: 0 6px; vertical-align: 4px; }
 .strata-review-controls button, .strata-suggestion-controls button { border-radius: 999px; padding: 2px 12px; font-size: calc(12px * var(--zoom, 1)); font-weight: 800; cursor: pointer; transition: all .18s cubic-bezier(.34,1.56,.64,1); }
 .strata-review-controls button:first-of-type, .strata-suggestion-controls button:first-of-type { border: 0; background: var(--controls-positive); color: var(--controls-positive-text); }
@@ -408,12 +413,12 @@ kbd { color: var(--muted); font-family: var(--font-code), "JetBrains Mono", mono
 .strata-review-change.is-flashing, .strata-suggestion.is-flashing, [data-review-id].is-flashing, [data-annotation-id].is-flashing { animation: flash-ring .7s ease-out; }
 .strata-review-author { border-radius: 999px; padding: 2px 11px; background: var(--review-color, var(--controls-primary)); color: var(--review-color-text, var(--controls-primary-text)); font-size: calc(12px * var(--zoom, 1)); font-weight: 800; }
 .strata-suggestion-author { background: var(--strata-annotation-color, var(--controls-primary)); }
-.strata-review-external { background: color-mix(in srgb, var(--people-external) 10%, transparent); color: color-mix(in srgb, var(--people-external) 58%, var(--interface-primary)); }
 .strata-annotation { border-radius: 4px; padding-inline: 3px; cursor: pointer; }
 .strata-annotation:hover { filter: brightness(1.15); }
 .strata-annotation-question { border-bottom: 3px solid var(--strata-annotation-color, var(--controls-warning)); background: color-mix(in srgb, var(--strata-annotation-color, var(--controls-warning)) 16%, transparent); }
 .strata-annotation-comment { border-bottom: 3px solid var(--strata-annotation-color, var(--people-you)); background: color-mix(in srgb, var(--strata-annotation-color, var(--people-you)) 13%, transparent); }
 .strata-annotation-suggestion { border-bottom: 3px solid var(--strata-annotation-color, var(--controls-primary)); background: color-mix(in srgb, var(--strata-annotation-color, var(--controls-primary)) 16%, transparent); }
+.strata-annotation.strata-suggestion-deletion { border-bottom: 0; background: var(--changes-removed-background); color: var(--changes-removed-tint); text-decoration: line-through; }
 .strata-annotation.strata-draft { border-bottom: 2px dashed var(--people-you); background: color-mix(in srgb, var(--people-you) 10%, transparent); cursor: default; text-decoration: none; color: inherit; }
 .strata-draft-chip { display: inline-block; margin-left: 4px; border-radius: 999px; padding: 1px 6px; background: color-mix(in srgb, var(--people-you) 18%, transparent); color: var(--people-you); font-family: var(--font-text), sans-serif; font-size: calc(10px * var(--zoom, 1)); font-weight: 800; line-height: 1.4; vertical-align: .12em; }
 .strata-annotation.is-active { outline: 2px solid color-mix(in srgb, var(--strata-annotation-color, var(--people-you)) 70%, transparent); outline-offset: 1px; }
@@ -774,8 +779,8 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .theme-sample-warning { color: var(--controls-warning); background: color-mix(in srgb, var(--controls-warning) 15%, transparent); font-weight: 800; }
 .theme-sample-danger { background: var(--controls-danger); color: var(--controls-danger-text); font-weight: 800; }
 .theme-sample-focus { outline: 3px solid color-mix(in srgb, var(--controls-focus) 75%, var(--interface-primary)); outline-offset: 1px; color: var(--dim); }
-.theme-sample-added { background: color-mix(in srgb, var(--changes-added) 22%, transparent); color: var(--changes-added-tint); font-weight: 700; }
-.theme-sample-removed { background: color-mix(in srgb, var(--changes-removed) 14%, transparent); color: var(--changes-removed-tint); text-decoration: line-through; }
+.theme-sample-added { background: var(--changes-added-background); color: var(--changes-added-tint); font-weight: 700; }
+.theme-sample-removed { background: var(--changes-removed-background); color: var(--changes-removed-tint); text-decoration: line-through; }
 /* Hovering a panel row outlines exactly what it controls in the live app and the chrome strip. */
 [data-theme-highlight] .editor-island .ProseMirror :is(h1, h2, h3, h4, h5, h6, strong, em, code, a, p, pre, blockquote, li, hr, table, th), [data-theme-highlight] .theme-chrome [data-sample] { transition: outline-color .15s; }
 .app-shell[data-theme-highlight="document-headings"] .editor-island .ProseMirror :is(h1, h2),
@@ -864,7 +869,7 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .decision-answer-form button:disabled { opacity: .45; cursor: not-allowed; }
 .annotation-filter { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 7px; }
 .annotation-filter button { border: 1px solid var(--line); border-radius: 999px; padding: 2px 7px; background: transparent; color: var(--dim); font: inherit; font-size: calc(10px * var(--zoom, 1)); font-weight: 800; cursor: pointer; }
-.annotation-filter button.active { border-color: var(--controls-selected); background: color-mix(in srgb, var(--controls-selected) 18%, transparent); color: var(--controls-selected); }
+.annotation-filter button.active { border-color: var(--controls-selected); background: color-mix(in srgb, var(--controls-selected) 18%, transparent); color: var(--controls-selected-tint); }
 .new-decision { margin: 0 0 7px; }
 .rail-decision-form { display: grid; gap: 7px; margin-bottom: 9px; border: 1px solid var(--line); border-radius: 13px; padding: 9px; background: var(--card-2); }
 .rail-decision-form textarea { min-height: 54px; resize: vertical; }
@@ -992,7 +997,7 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .prosemirror-host .ProseMirror { counter-reset: strata-section; }
 .prosemirror-host .ProseMirror h1 { margin: 0 0 8px; font-size: calc(38px * var(--zoom, 1)); line-height: 1.05; }
 .strata-fold-heading:has(> h1) { margin-bottom: 8px; }
-.prosemirror-host .ProseMirror > .strata-fold-heading:has(> h1) + p { margin-bottom: 24px; opacity: .84; font-size: calc(19px * var(--zoom, 1)); line-height: 1.55; }
+.prosemirror-host .ProseMirror > .strata-fold-heading:has(> h1) + p { margin-bottom: 24px; font-size: calc(19px * var(--zoom, 1)); line-height: 1.55; }
 .strata-fold-heading:has(> h2) { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 13px; align-items: center; margin: 46px 0 16px; border-bottom: 1px solid var(--border-soft); padding-bottom: 14px; counter-increment: strata-section; }
 .strata-fold-heading:has(> h2)::before { grid-column: 1; grid-row: 1 / span 2; display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid color-mix(in srgb, var(--controls-primary) 55%, var(--line)); border-radius: 14px; background: linear-gradient(145deg, color-mix(in srgb, var(--controls-primary) 32%, var(--surfaces-inset)), var(--surfaces-panel)); color: var(--document-headings); font-family: var(--mono); font-size: calc(12px * var(--zoom, 1)); font-weight: 500; content: counter(strata-section, decimal-leading-zero); user-select: none; }
 .prosemirror-host .ProseMirror .strata-fold-heading:has(> h2) > h2 { grid-column: 2; grid-row: 1; margin: 0; font-size: calc(25px * var(--zoom, 1)); line-height: 1.15; }
@@ -1105,8 +1110,8 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .change-snippet { display: flex; flex-direction: column; overflow: hidden; border-radius: 9px; background: color-mix(in srgb, var(--surfaces-window) 70%, transparent); font-family: var(--mono); font-size: calc(10px * var(--zoom, 1)); font-weight: 500; line-height: 1.6; }
 .change-snippet > span { overflow: hidden; padding: 3px 8px; text-overflow: ellipsis; white-space: nowrap; }
 .change-snippet code { border-radius: 5px; padding: 0 4px; background: var(--surfaces-code); font-family: var(--mono); font-size: .95em; }
-.snippet-removed { background: color-mix(in srgb, var(--changes-removed) 9%, transparent); color: var(--changes-removed-tint); text-decoration: line-through; }
-.snippet-added { background: color-mix(in srgb, var(--changes-added) 12%, transparent); color: var(--changes-added-tint); }
+.snippet-removed { background: var(--changes-removed-background); color: var(--changes-removed-tint); text-decoration: line-through; }
+.snippet-added { background: var(--changes-added-background); color: var(--changes-added-tint); }
 .snippet-context { color: var(--dim); }
 .change-group-heading, .save-history-heading { margin: 8px 2px 6px; color: var(--muted); font-family: var(--mono); font-size: calc(9px * var(--zoom, 1)); font-weight: 500; letter-spacing: .1em; text-transform: uppercase; }
 .change-row-actions { display: flex; flex-direction: column; gap: 7px; margin: 0 0 8px; border: 1px solid var(--border-soft); border-left: 4px solid var(--controls-primary); border-radius: 15px; padding: 10px 11px; background: color-mix(in srgb, var(--surfaces-inset) 56%, transparent); }

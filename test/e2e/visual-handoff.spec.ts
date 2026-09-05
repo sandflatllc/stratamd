@@ -10,7 +10,7 @@ status: draft
 
 # Rollout plan
 
-We ship the importer first, then the sync layer while keeping the cockpit stable.
+We ship the **importer** first, then the sync layer while keeping the cockpit stable.
 
 The test corpus covers every construct in section 6.1 plus real documents that round-tripped badly.
 
@@ -52,6 +52,10 @@ test('populated renderer preserves the handoff tokens, controls, and motion poli
     const proposed = DOCUMENT.replace('then the sync layer', 'then the export path')
     await value.atomicWrite(state.buffer!, proposed)
     await expect(page.getByRole('button', { name: /^Keep(?:\b|$)/i }).first()).toBeVisible()
+    // Raw Markdown differs from rendered text here. The replacement must
+    // still have a visible review decoration before switching editor modes.
+    await expect(page.locator('.strata-review-change')).toHaveText('export path')
+    await expect(page.locator('.strata-review-deletion')).toHaveText('sync layer')
 
     const suggestionQuote = 'every construct'
     const suggestionFrom = proposed.indexOf(suggestionQuote)

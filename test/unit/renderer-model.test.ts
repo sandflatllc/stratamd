@@ -128,9 +128,9 @@ describe('renderer model', () => {
       '--people-you': '#102030',
       '--people-agent-4': '#d0e0f0',
       // Dark surfaces get light text and light surfaces dark text, per value.
-      '--surfaces-overlay-text': '#f4f3f6',
-      '--people-you-text': '#f4f3f6',
-      '--people-agent-4-text': '#241f31',
+      '--surfaces-overlay-text': '#fbfaff',
+      '--people-you-text': '#fbfaff',
+      '--people-agent-4-text': '#14101f',
     })
     for (const filled of ['--surfaces-overlay', '--controls-primary', '--controls-selected', '--controls-positive', '--controls-warning', '--controls-danger', '--people-you', '--people-agent-1', '--people-agent-2', '--people-agent-3', '--people-agent-4', '--people-external']) {
       expect(style[`${filled}-text`], filled).toMatch(/^#[0-9a-f]{6}$/)
@@ -138,7 +138,7 @@ describe('renderer model', () => {
     // Selection colors derive from the selected color mixed into the panel.
     expect(style['--selection-background']).toMatch(/^#[0-9a-f]{6}$/)
     expect(style['--selection-text']).toMatch(/^#[0-9a-f]{6}$/)
-    expect((rendererThemeStyle(theme) as Record<string, string>)['--surfaces-overlay-text']).toBe('#241f31')
+    expect((rendererThemeStyle(theme) as Record<string, string>)['--surfaces-overlay-text']).toBe('#14101f')
   })
 
   it('clamps the theme panel into the viewport and defaults it bottom-right', () => {

@@ -43,7 +43,6 @@ import {
   locateSourceReviewInsertion,
   localizeReviewChange,
   reviewControlLabel,
-  sourceOffsetForLine,
   setReviewFlash,
   setReviewRanges,
   type ReviewRange,
@@ -211,17 +210,17 @@ function reviewInputs(inputs: readonly (ReviewRange | HunkView)[], doc: ProseMir
       return relocated ? { ...range, ...relocated } : range
     }
     const added = input.added.join('\n')
+    const removed = input.removed.join('\n')
     const location = locateText(doc, added)
-    const sourceMapped = parsedMarkdown
-      ? editorRangeForSource(
-          parsedMarkdown,
-          doc,
-          sourceOffsetForLine(parsedMarkdown.source, input.newStart),
-          sourceOffsetForLine(parsedMarkdown.source, input.newStart + Math.max(1, input.newLines)),
-        )
-      : null
-    const from = location?.from ?? sourceMapped?.from ?? positionForLine(doc, input.newStart)
-    const to = location?.to ?? sourceMapped?.to ?? from
+    // Markdown marks prevent a raw line from matching rendered text. Map the
+    // changed source text itself, without the trailing newline outside its block.
+    const localized = localizeReviewChange(removed, added)
+    const sourceRange = parsedMarkdown && locateSourceReviewInsertion(parsedMarkdown.source, added, input.newStart)
+    const changedRange = parsedMarkdown && locateSourceReviewInsertion(parsedMarkdown.source, added, input.newStart, localized.prefixLength, localized.insertedText)
+    const changedMapped = parsedMarkdown && changedRange && editorRangeForSource(parsedMarkdown, doc, changedRange.from, changedRange.to)
+    const sourceMapped = changedMapped || (parsedMarkdown && sourceRange && editorRangeForSource(parsedMarkdown, doc, sourceRange.from, sourceRange.to))
+    const from = sourceMapped?.from ?? location?.from ?? positionForLine(doc, input.newStart)
+    const to = sourceMapped?.to ?? location?.to ?? from
     return {
       id: input.id,
       from,
@@ -230,8 +229,8 @@ function reviewInputs(inputs: readonly (ReviewRange | HunkView)[], doc: ProseMir
       status: input.status,
       author: input.author?.name ?? 'external',
       agent: input.author?.id ?? null,
-      ...(input.removed.length > 0 ? { deletedText: input.removed.join('\n') } : {}),
-      ...(added ? { replacementText: added } : {}),
+      ...(input.removed.length > 0 ? { deletedText: changedMapped ? localized.deletedText : removed } : {}),
+      ...(added ? { replacementText: changedMapped ? localized.insertedText : added } : {}),
     }
   })
 }

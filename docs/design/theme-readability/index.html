@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StrataMD theme readability pass</title>
+<style>
+  :root { font-family: system-ui, sans-serif; color: #e7e8ee; background: #17191f; color-scheme: dark; }
+  body { margin: 0; padding: 28px; }
+  h1 { font-size: 28px; margin: 0 0 12px; }
+  p { max-width: 90ch; line-height: 1.6; color: #c3c6d1; }
+  nav { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; margin: 24px 0 16px; }
+  label { display: grid; gap: 6px; font-size: 13px; }
+  select { font: inherit; padding: 9px 12px; border: 1px solid #6b7185; border-radius: 8px; background: #252933; color: #fff; }
+  a { color: #a6d9fa; text-underline-offset: 3px; }
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  main.single { grid-template-columns: 1fr; }
+  figure { margin: 0; min-width: 0; }
+  figure[hidden] { display: none; }
+  figcaption { margin-bottom: 10px; display: flex; justify-content: space-between; gap: 16px; }
+  img { display: block; width: 100%; height: auto; border: 1px solid #414655; border-radius: 10px; }
+  footer { margin-top: 24px; font-size: 13px; }
+  @media (max-width: 850px) { body { padding: 16px; } main { grid-template-columns: 1fr; } }
+</style>
+<h1>Theme readability pass</h1>
+<p>Replacements now use each theme's change color, including outside edits and suggestions.
+  Colored fills and edges identify additions; removals keep their own fill and strikethrough.
+  A mapping fix restores missing highlights in paragraphs containing Markdown formatting.</p>
+<p>Night keeps its document palette and brightens outside-author labels. Day uses a softer paper background with clearer borders.
+  Vivid Light has darker pink, green, and amber controls. Vivid has a more readable outside-author label.
+  Document links have a fine underline, and lead paragraphs no longer fade their review controls.</p>
+<nav aria-label="Screenshot comparison">
+  <label>Theme
+    <select id="theme">
+      <option value="strata-night">Strata Night</option>
+      <option value="strata-day">Strata Day</option>
+      <option value="strata-vivid">Strata Vivid</option>
+      <option value="strata-vivid-light">Strata Vivid Light</option>
+    </select>
+  </label>
+  <label>Scenario
+    <select id="scenario">
+      <option value="">Replacements and document text</option>
+      <option value="--bottom">Tables, quotes, and code</option>
+      <option value="--panel">Theme controls</option>
+      <option value="--comments">Review items</option>
+      <option value="--selection">Selected text and annotation menu</option>
+      <option value="--source">Source view</option>
+    </select>
+  </label>
+  <label>View
+    <select id="view">
+      <option value="compare">Compare</option>
+      <option value="after">After, full width</option>
+      <option value="before">Before, full width</option>
+    </select>
+  </label>
+</nav>
+<p id="note" aria-live="polite"></p>
+<main>
+  <figure id="before"><figcaption>Before <a target="_blank" rel="noopener">Open original screenshot</a></figcaption><img alt=""></figure>
+  <figure id="after"><figcaption>After <a target="_blank" rel="noopener">Open original screenshot</a></figcaption><img alt=""></figure>
+</main>
+<footer><p>The browser reported no text-contrast or link-distinction failures in the 12 audited review,
+  table/code, and theme-panel views. Gradients and some short labels need visual inspection.
+  <a href="audit.json">Full audit results</a> include the remaining structural accessibility findings.</p>
+  <p>Validation passed: TypeScript, 768 unit/integration tests, and all 164 Electron end-to-end tests,
+  including the existing visual baselines. One unit test was skipped.</p>
+  <p>Captured in isolated Electron profiles at 1440 × 1200. Background animation positions can differ.
+  These screenshots show the Linux build. Use the original images to judge small text at native size.</p></footer>
+<script>
+  const theme = document.querySelector('#theme');
+  const scenario = document.querySelector('#scenario');
+  const view = document.querySelector('#view');
+  function render() {
+    const hasBefore = ['', '--bottom', '--panel'].includes(scenario.value);
+    document.querySelector('#note').textContent = hasBefore
+      ? 'Compare both versions, or choose a full-width view to examine the text.'
+      : 'This interaction was captured after the changes.';
+    view.disabled = !hasBefore;
+    const mode = hasBefore ? view.value : 'after';
+    document.querySelector('main').classList.toggle('single', mode !== 'compare');
+    for (const version of ['before', 'after']) {
+      const figure = document.querySelector('#' + version);
+      figure.hidden = mode !== 'compare' && mode !== version;
+      if (figure.hidden) continue;
+      const path = version + '/' + theme.value + scenario.value + '.png';
+      figure.querySelector('a').href = path;
+      figure.querySelector('img').src = path;
+      figure.querySelector('img').alt = theme.selectedOptions[0].text + ', ' + scenario.selectedOptions[0].text.toLowerCase() + ', ' + version;
+    }
+  }
+  for (const control of [theme, scenario, view]) control.addEventListener('change', render);
+  render();
+</script>
+</html>

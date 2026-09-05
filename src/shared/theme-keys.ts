@@ -237,15 +237,17 @@ export function mixHex(a: string, b: string, weight: number): string {
 
 /** Chooses the dark or light text color that contrasts better with a filled surface. */
 export function contrastingText(hex: string): string {
-  // Whichever of the two fixed text colors reads better on the swatch (WCAG contrast).
-  const channel = (index: number) => {
-    const value = channels(hex)[index]! / 255
-    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+  // Keep enough range for saturated midtones, including Vivid's purple badges.
+  const luminance = (color: string) => {
+    const [r, g, b] = channels(color).map((channel) => {
+      const value = channel / 255
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+    })
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!
   }
-  const luminance = 0.2126 * channel(0) + 0.7152 * channel(1) + 0.0722 * channel(2)
-  const darkText = 0.0165 // #241f31
-  const lightText = 0.8905 // #f4f3f6
-  const onDark = (luminance + 0.05) / (darkText + 0.05)
-  const onLight = (lightText + 0.05) / (luminance + 0.05)
-  return onDark >= onLight ? '#241f31' : '#f4f3f6'
+  const dark = '#14101f'
+  const light = '#fbfaff'
+  const surface = luminance(hex)
+  const contrast = (text: string) => (Math.max(surface, luminance(text)) + 0.05) / (Math.min(surface, luminance(text)) + 0.05)
+  return contrast(dark) >= contrast(light) ? dark : light
 }

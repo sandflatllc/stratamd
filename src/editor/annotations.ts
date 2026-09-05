@@ -130,14 +130,6 @@ function annotationDecorations(
     const color = safeColor(range.color)
     const styles: string[] = []
     if (color) styles.push(`--strata-annotation-color: ${color}`)
-    if (range.kind === 'suggestion' && !range.draft) {
-      styles.push(
-        'text-decoration: line-through',
-        'background: color-mix(in srgb, var(--changes-removed) 14%, transparent)',
-        'color: var(--changes-removed-tint)',
-        'border-bottom: 0',
-      )
-    }
     if (styles.length > 0) attrs.style = styles.join('; ')
     decorations.push(Decoration.inline(from, to, attrs, { id: `annotation:${range.id}` }))
     if (isActive) {
@@ -165,7 +157,6 @@ function annotationDecorations(
           const replacement = document.createElement('span')
           replacement.className = 'strata-suggestion-replacement'
           replacement.textContent = presentation.replacementText
-          replacement.style.cssText = 'background:color-mix(in srgb,var(--strata-annotation-color,var(--controls-primary)) 22%,transparent);color:color-mix(in srgb,var(--strata-annotation-color,var(--controls-primary)) 58%,var(--interface-primary));border-radius:6px;padding:1px 5px;font-weight:700'
           controls.append(replacement)
         }
 

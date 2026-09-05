@@ -379,8 +379,8 @@ export function externalText(payload: DocumentInspection): string {
  * active documents are pills; every other open document sits in the Docs menu.
  */
 export async function switchToDocument(page: Page, name: RegExp): Promise<void> {
-  const pill = page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab', { name })
-  if (await pill.count() > 0) { await pill.click(); return }
+  // The former active pill can disappear between count() and click() while
+  // an IPC-opened document renders. The menu keeps every open document.
   await page.getByRole('button', { name: 'Docs menu' }).click()
   await page.getByRole('menu', { name: 'Open docs' }).getByRole('menuitem', { name }).click()
 }

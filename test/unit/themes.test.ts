@@ -111,8 +111,8 @@ describe('theme normalization', () => {
   it('slugs names, mixes hex pairs, and picks readable text for a filled surface', () => {
     expect(slugifyThemeName('  Dusk & Warm!  ')).toBe('dusk-warm')
     expect(slugifyThemeName('***')).toBe('theme')
-    expect(contrastingText('#f4f0fe')).toBe('#241f31')
-    expect(contrastingText('#101010')).toBe('#f4f3f6')
+    expect(contrastingText('#f4f0fe')).toBe('#14101f')
+    expect(contrastingText('#101010')).toBe('#fbfaff')
     expect(mixHex('#000000', '#ffffff', 0.5)).toBe('#808080')
     expect(mixHex('#ff0000', '#0000ff', 1)).toBe('#ff0000')
   })
@@ -226,7 +226,7 @@ describe('bundled themes', () => {
     const copy = await store.create('Copy of Strata Day', 'strata-day')
     expect(copy.id).toBe('copy-of-strata-day')
     expect(copy.builtIn).toBe(false)
-    expect(copy.values['surfaces.window']).toBe('#e9e6df')
+    expect(copy.values).toEqual(STOCK_THEMES.get('strata-day')!.values)
   })
 
   it('cannot be shadowed by a user file of the same id', async () => {
