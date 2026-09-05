@@ -35,7 +35,7 @@ ${Array.from({ length: 24 }, (_, index) => `Scrollable paragraph ${index + 1}.`)
 `
 
 test('diagrams, trees, images, local previews, and durable folds remain document-safe', async ({}, testInfo) => {
-  test.setTimeout(90_000)
+  test.setTimeout(60_000)
   const scenario = await Scenario.create(testInfo, markdown, 'intelligence.md')
   try {
     const documentDirectory = dirname(scenario.file)

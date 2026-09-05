@@ -8,7 +8,6 @@ import { Scenario, projectRoot } from './harness'
 // separator between cells, stranding every later cell of the row. The
 // annotate menu then silently never appeared for table text.
 test('a comment lands on text selected inside a table cell', async ({}, testInfo) => {
-  test.setTimeout(120_000)
   const sample = await readFile(join(projectRoot, 'test/corpus/real/strata-product-page.md'), 'utf8')
   const target = 'Each attached T3 thread has an independent baseline'
   expect(sample.includes(target)).toBe(true)

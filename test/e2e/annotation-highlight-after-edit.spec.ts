@@ -10,7 +10,6 @@ const log = (step: string): void => console.log(`[${new Date().toISOString().sli
 type Page = import('@playwright/test').Page
 
 async function run(testInfo: import('@playwright/test').TestInfo, typeFirst: string | null, andThen?: (page: Page, value: Scenario) => Promise<void>) {
-  test.setTimeout(120_000)
   const sample = await readFile(join(projectRoot, 'test/corpus/real/strata-product-page.md'), 'utf8')
   const value = await Scenario.create(testInfo, sample, 'strata.md')
   await mkdir(join(dirname(dirname(value.file)), 'screenshots'), { recursive: true })

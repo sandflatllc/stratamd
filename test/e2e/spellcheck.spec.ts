@@ -85,7 +85,7 @@ async function wordPoint(page: Page, word: string): Promise<{ x: number; y: numb
 }
 
 test('right-click corrects a misspelling through the annotate menu and learns new words', async ({}, testInfo) => {
-  test.setTimeout(180_000)
+  test.setTimeout(60_000)
   const sample = 'Alpha beta occured delta.\n\nGamma blorptastic epsilon.\n'
   const corrected = 'Alpha beta occurred delta.\n\nGamma blorptastic epsilon.\n'
 

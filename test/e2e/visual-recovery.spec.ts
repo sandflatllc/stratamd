@@ -31,7 +31,7 @@ let value: Scenario
 test.afterEach(async () => { await value?.dispose() })
 
 test('the Mesa-style review reads as numbered sections with Contents, the walkthrough bar, composed tables, and populated review cards', async ({}, testInfo) => {
-  test.setTimeout(180_000)
+  test.setTimeout(60_000)
   const review = await readFile(join(fixtures, 'dense-review.md'), 'utf8')
   value = await Scenario.create(testInfo, review, 'mesa-review.md')
   const directory = dirname(value.file)
@@ -170,7 +170,6 @@ test('the Mesa-style review reads as numbered sections with Contents, the walkth
 })
 
 test('a single document shows all nine approved components with their own visual grammar', async ({}, testInfo) => {
-  test.setTimeout(120_000)
   const sampler = await readFile(join(fixtures, 'component-sampler.md'), 'utf8')
   value = await Scenario.create(testInfo, sampler, 'component-sampler.md')
   const directory = dirname(value.file)

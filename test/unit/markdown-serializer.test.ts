@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { MarkdownNode } from '../../src/core/markdown/index.js'
 import { describe, expect, it } from 'vitest'
@@ -32,6 +32,14 @@ describe('byte-preserving markdown serialization', () => {
   it.each(['visual.md', 'raw.md'])('round-trips the construct corpus byte-for-byte: %s', (name) => {
     const source = fixture(name)
     expect(Buffer.from(serializeMarkdown(parseMarkdown(source)))).toEqual(Buffer.from(source))
+  })
+
+  // The real documents under test/corpus/real, byte-for-byte, so the app-level
+  // scenario (PRD §6.12 scenario 10) only needs one of them for the save path.
+  const realCorpus = fileURLToPath(new URL('../corpus/real/', import.meta.url))
+  it.each(readdirSync(realCorpus).filter((name) => name.endsWith('.md')))('round-trips the real corpus byte-for-byte: %s', (name) => {
+    const source = readFileSync(realCorpus + name)
+    expect(Buffer.from(serializeMarkdown(parseMarkdown(source.toString('utf8'))))).toEqual(source)
   })
 
   it('rewrites only the edited top-level block', () => {
