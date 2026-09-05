@@ -5,7 +5,7 @@ import { resolveMessageAnchor, type MessageComment } from '../../core/conversati
 import { conversationParse } from '../conversationReading'
 import { MessageMarkdown } from '../messageMarkdown'
 
-export interface PassageTarget { message: string; from: number; to: number; serial: number }
+export interface PassageTarget { message: string; from: number; to: number; serial: number; align?: 'start' }
 export const ConversationMessage = memo(function ConversationMessage({ message, comments, pinned, target, onSelection, onOpen, root, folds, onFold }: {
   message: EngineMessageView; comments: MessageComment[]; pinned: boolean; target: PassageTarget | null
   root: string | null; folds: HeadingReference[]; onFold(heading: HeadingReference, folded: boolean): void
@@ -21,7 +21,13 @@ export const ConversationMessage = memo(function ConversationMessage({ message, 
   const source = message.prose ?? message.text
   const mounted = near || pinned || selected || target?.message === message.id
   useEffect(() => {
-    const observer = new IntersectionObserver(entries => setNear(entries[0]?.isIntersecting ?? false), { root: row.current?.closest('.conversation-messages') ?? null, rootMargin: '600px' })
+    const observer = new IntersectionObserver(entries => {
+      const visible = entries[0]?.isIntersecting ?? false
+      // Retain the placeholder's height while its editor mounts, so the
+      // browser cannot clamp the transcript's scroll position to an empty row.
+      if (visible) setHeight(previous => previous ?? row.current!.getBoundingClientRect().height)
+      setNear(visible)
+    }, { root: row.current?.closest('.conversation-messages') ?? null, rootMargin: '600px' })
     observer.observe(row.current!)
     return () => observer.disconnect()
   }, [])
@@ -52,18 +58,18 @@ export const ConversationMessage = memo(function ConversationMessage({ message, 
       const range = resolveMessageAnchor(comment, message)
       return range ? [{ id: comment.id, kind: comment.kind, status: comment.state === 'resolved' ? 'resolved' as const : 'open' as const, from: 0, to: 0, sourceFrom: range.from, sourceTo: range.to, quote: comment.selection, text: comment.text, author: 'user', draft: comment.state === 'held' }] : []
     })
-    if (target?.message === message.id) ranges.push({ id: 'conversation-jump', kind: 'comment', status: 'open', from: 0, to: 0, sourceFrom: target.from, sourceTo: target.to, quote: source.slice(target.from, target.to), author: 'user' })
+    if (target?.message === message.id && target.align !== 'start') ranges.push({ id: 'conversation-jump', kind: 'comment', status: 'open', from: 0, to: 0, sourceFrom: target.from, sourceTo: target.to, quote: source.slice(target.from, target.to), author: 'user' })
     editor.current?.setAnnotations(ranges)
   }, [comments, target, mounted, source])
   useLayoutEffect(() => {
     editor.current?.setFoldedHeadings(folds)
   }, [folds, mounted])
   useLayoutEffect(() => {
-    if (target?.message === message.id && editor.current) {
+    if (target?.message === message.id && target.align !== 'start' && editor.current) {
       editor.current.jumpToAnnotation('conversation-jump')
     }
   }, [target, mounted])
-  return <div ref={row} className="conversation-rich-message" data-rich-mounted={mounted || undefined}>
+  return <div ref={row} className="conversation-rich-message" style={mounted && height !== undefined ? { minHeight: height } : undefined} data-rich-mounted={mounted || undefined}>
     {mounted ? <div ref={host} className="prosemirror-host" data-prosemirror-host /> : height !== undefined ? <div style={{ height }} aria-label="Offscreen answer" /> : <MessageMarkdown text={source} />}
   </div>
 })

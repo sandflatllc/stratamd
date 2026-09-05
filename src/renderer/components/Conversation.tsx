@@ -1,6 +1,6 @@
 import { ConversationMessage } from './ConversationMessage'
 import { useConversationWorkspace } from './ConversationWorkspace'
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { EngineActivityView, EngineThreadView, EngineView, ItemView } from '../../shared/contracts'
 import { changedFilesLabel, formatDelta, summarizeChangedFiles, type ChangedFileInput, type ChangedFileView } from '../../core/changed-files'
 import { deriveWorkEntries, groupWorkRows, type WorkEntry } from '../../core/work-log'
@@ -166,7 +166,8 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
   const [now, setNow] = useState(Date.now())
   const thread = selected?.thread
 
-  const workspace = useConversationWorkspace(thread, onStart)
+  const history = useRef<ConversationHistory>(null)
+  const workspace = useConversationWorkspace(thread, onStart, () => history.current?.scrollToBottom())
   useEffect(() => {
     if (thread?.status !== 'running' && thread?.status !== 'starting') return
     const timer = window.setInterval(() => setNow(Date.now()), 1_000)
@@ -207,19 +208,19 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
       {workspace.toolbar}
     </header>
     {passage && <div className="conversation-passage">{passage}</div>}
-    <ConversationHistory active={visible} navigation={workspace.target?.serial} key={`history:${thread.id}`} className="conversation-messages">
+    <ConversationHistory ref={history} active={visible} navigation={workspace.target?.serial} startMessage={workspace.target?.align === 'start' ? workspace.target.message : undefined} key={`history:${thread.id}`} className="conversation-messages">
       {placement === 'center' && onDocumentMeasure && <div className="conversation-measure" style={{ width: `min(${documentMeasure}px, 100%)` }}><Resizer axis="vertical" label="Resize conversation measure" value={documentMeasure} min={620} max={1600} onChange={(value) => onDocumentMeasure(value, false)} onCommit={(value) => onDocumentMeasure(value, true)} /></div>}
       <div className="conversation-column">
-      {turns.toReversed().map((turn, turnIndex) => {
+      {turns.map((turn, turnIndex) => {
         const groups = workGroups.filter((candidate) => candidate.turnId === turn.id)
         const timeline = [
           ...turn.messages.map((message) => ({ kind: 'message' as const, id: message.id, createdAt: message.createdAt, message })),
           ...groups.map((group) => ({ kind: 'work' as const, id: group.id, createdAt: group.createdAt, group })),
-        ].sort((left, right) => left.createdAt.localeCompare(right.createdAt)).reverse()
+        ].sort((left, right) => left.createdAt.localeCompare(right.createdAt))
         const lastAssistant = turn.messages.findLast((message) => message.role === 'assistant')?.id
         const changedFiles = thread.documents?.filter((file) => file.turnId === turn.id) ?? []
         return <section className="conversation-turn" key={turn.id} data-running={groups.some((group) => group.live) || undefined}>
-          <header className="conversation-exchange-header"><button type="button" aria-label={`Fold exchange ${turns.length - turnIndex}`} aria-expanded={!workspace.folded(turn.id)} onClick={() => workspace.toggleFold(turn.id)}>{workspace.folded(turn.id) ? '▸' : '▾'}</button><strong>{turns.length - turnIndex}. {turn.messages.find(message => message.role === 'user')?.text.slice(0, 120) || (turn.messages.some(message => message.attachmentCount) ? 'Attached context' : 'Exchange')}</strong><small>{groups.some(group => group.live) ? 'Running' : turn.messages[0]?.createdAt.slice(11, 16)}</small><select aria-label={`Reading mark exchange ${turns.length - turnIndex}`} value={workspace.mark(turn.id)} onChange={event => workspace.setMark(turn.id, event.target.value)}><option value="">Unread</option><option>Reviewed</option><option>Revisit</option></select></header>
+          <header className="conversation-exchange-header"><button type="button" aria-label={`Fold exchange ${turnIndex + 1}`} aria-expanded={!workspace.folded(turn.id)} onClick={() => workspace.toggleFold(turn.id)}>{workspace.folded(turn.id) ? '▸' : '▾'}</button><strong>{turnIndex + 1}. {turn.messages.find(message => message.role === 'user')?.text.slice(0, 120) || (turn.messages.some(message => message.attachmentCount) ? 'Attached context' : 'Exchange')}</strong><small>{groups.some(group => group.live) ? 'Running' : turn.messages[0]?.createdAt.slice(11, 16)}</small><select aria-label={`Reading mark exchange ${turnIndex + 1}`} value={workspace.mark(turn.id)} onChange={event => workspace.setMark(turn.id, event.target.value)}><option value="">Unread</option><option>Reviewed</option><option>Revisit</option></select></header>
           {workspace.folded(turn.id) && <small>{allItems.filter(item => item.turnId === turn.id && item.status !== 'done').length} open items and drafts</small>}
           {!workspace.folded(turn.id) && timeline.map((row) => {
             if (row.kind === 'work') {

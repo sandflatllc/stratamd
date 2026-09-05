@@ -9,7 +9,7 @@ import { ConversationContents } from './ConversationContents'
 import { AnnotationComposer } from './AnnotationComposer'
 import type { PassageTarget } from './ConversationMessage'
 
-export function useConversationWorkspace(thread: EngineThreadView | undefined, onStart: (id: string, input: ConversationInput) => Promise<void>) {
+export function useConversationWorkspace(thread: EngineThreadView | undefined, onStart: (id: string, input: ConversationInput) => Promise<void>, onNewest: () => void) {
   const [selection, setSelection] = useState<{ message: string; range: EditorSelection; id?: string } | null>(null)
   const [discussion, setDiscussion] = useState<string | null>(null)
   const returnPosition = useRef<{ message: string; offset: number } | null>(null)
@@ -35,11 +35,11 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   const outgoing = thread ? { comments: Object.fromEntries(selectedComments.map(comment => [comment.id, comment.revision])), replies: Object.fromEntries(Object.entries(selectedReplies).map(([id, reply]) => [id, reply.text])) } : {}
   let preview = ''
   try { if (thread && (selectedComments.length || Object.keys(selectedReplies).length || thread.outcomes?.length)) preview = renderConversationDelivery(conversationDelivery(thread.id, previewId, selectedComments, selectedReplies, thread.messages, thread.outcomes ?? [])) } catch (error) { preview = String(error) }
-  const jump = (message: string, from: number, to: number) => {
+  const jump = (message: string, from: number, to: number, align?: 'start') => {
     // A navigation reveal leaves the owner's persisted fold choices intact.
-    setTarget({ message, from, to, serial: Date.now() })
+    setTarget(previous => ({ message, from, to, ...(align ? { align } : {}), serial: (previous?.serial ?? 0) + 1 }))
     const targetMessage = thread?.messages.find(candidate => candidate.id === message)
-    if (targetMessage?.role !== 'assistant' || targetMessage.streaming) requestAnimationFrame(() => document.querySelector(`[data-message-id="${CSS.escape(message)}"]`)?.scrollIntoView({ block: 'center' }))
+    if (!align && (targetMessage?.role !== 'assistant' || targetMessage.streaming)) requestAnimationFrame(() => document.querySelector(`[data-message-id="${CSS.escape(message)}"]`)?.scrollIntoView({ block: 'center' }))
   }
   useEffect(() => {
     const navigate = (event: Event) => { const detail = (event as CustomEvent).detail; if (detail.thread === thread?.id) jump(detail.message, detail.from, detail.to) }
@@ -88,11 +88,13 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   }
   const replyRecord = thread?.items?.find(item => item.id === replyItem)
   const focusReply = (id: string) => { setReplyItem(id); setReply(thread?.items?.find(item => item.id === id)?.draftReply ?? '') }
+  const latestResponse = thread?.messages.findLast(message => message.role === 'assistant')
   const toolbar = <div className="conversation-reading-tools">
     <button type="button" onClick={() => setMenu(menu === 'contents' ? null : 'contents')}>Contents</button>
     <button type="button" onClick={() => setMenu(menu === 'items' ? null : 'items')}>Items</button>
     <button type="button" onClick={() => setMenu(menu === 'find' ? null : 'find')}>Find</button>
-    <button type="button" onClick={() => document.querySelector('.conversation-panel .conversation-messages')?.scrollTo({ top: 0 })}>Newest</button>
+    <button type="button" disabled={!latestResponse} onClick={() => { setMenu(null); if (latestResponse) jump(latestResponse.id, 0, 0, 'start') }}>Latest response</button>
+    <button type="button" onClick={onNewest}>Newest</button>
     {menu && <div className="conversation-navigation" role="region" aria-label={`Conversation ${menu}`}>
       {menu === 'find' && <><input autoFocus aria-label="Find in conversation" value={query} onChange={event => { setQuery(event.target.value); setMatchIndex(0) }} onKeyDown={event => { if (event.key === 'Enter') findStep(matchIndex + (event.shiftKey ? -1 : 1)) }} /><span>{matches.length ? matchIndex + 1 : 0} of {matches.length}</span><button type="button" onClick={() => findStep(matchIndex - 1)}>Previous</button><button type="button" onClick={() => findStep(matchIndex + 1)}>Next</button></>}
       {menu === 'contents' && <ConversationContents thread={thread} />}
@@ -114,7 +116,7 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   return { selection, target, toolbar, tray, overlay: overlay ? createPortal(overlay, document.querySelector('.app-shell') ?? document.body) : null, discussion: activeComment, discussionView, open, setReplyItem: focusReply, outgoing, previewId, sent: () => setPreviewId(crypto.randomUUID()), selectedCount: selectedComments.length + Object.keys(selectedReplies).length,
     select: (message: string, range: EditorSelection | null) => { if (range) setSelection(previous => previous?.message === message && previous.range.from === range.from && previous.range.to === range.to ? previous : { message, range }) },
     folded: (turn: string) => reading[`fold:${turn}`] === 'yes' && !thread?.messages.some(message => message.turnId === turn && message.id === target?.message),
-    toggleFold: (turn: string) => remember(`fold:${turn}`, reading[`fold:${turn}`] === 'yes' ? '' : 'yes'),
+    toggleFold: (turn: string) => { const folded = reading[`fold:${turn}`] === 'yes' && !thread?.messages.some(message => message.turnId === turn && message.id === target?.message); setTarget(null); remember(`fold:${turn}`, folded ? '' : 'yes') },
     mark: (turn: string) => reading[`mark:${turn}`] ?? '', setMark: (turn: string, mark: string) => remember(`mark:${turn}`, mark),
     folds: (message: string): HeadingReference[] => { if (target?.message === message) return []; try { return JSON.parse(reading[`headings:${message}`] ?? '[]') } catch { return [] } },
     foldHeading: (message: string, heading: HeadingReference, folded: boolean) => { const previous: HeadingReference[] = JSON.parse(reading[`headings:${message}`] ?? '[]'); remember(`headings:${message}`, JSON.stringify([...previous.filter(value => JSON.stringify(value) !== JSON.stringify(heading)), ...(folded ? [heading] : [])])) },

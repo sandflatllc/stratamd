@@ -13,7 +13,7 @@ export function ConversationContents({ thread }: { thread: EngineThreadView | un
     return () => window.removeEventListener('conversation-reading', refresh)
   }, [thread?.id])
   if (!thread) return null
-  const rows = thread.messages.filter(message => message.role === 'assistant' && !message.streaming).toReversed().flatMap(message => [
+  const rows = thread.messages.filter(message => message.role === 'assistant' && !message.streaming).flatMap(message => [
     { key: `mark:${message.turnId}`, message: message.id, from: 0, to: 1, level: 0, text: thread.messages.find(prompt => prompt.role === 'user' && prompt.turnId === message.turnId)?.text.slice(0, 100) || 'Exchange', items: (thread.comments ?? []).filter(comment => comment.anchor.message === message.id && comment.state !== 'resolved').length },
     ...conversationHeadings(message.id, message.prose ?? message.text).map(heading => ({ ...heading, key: `mark:${message.id}:${heading.from}`, message: message.id, items: 0 })),
   ])

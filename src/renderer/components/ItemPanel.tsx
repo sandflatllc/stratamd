@@ -111,6 +111,7 @@ export function ItemPanel({ annotation, documentPath, onReply, onResolve, onAnsw
         <button type="button" className="popover-close" aria-label="Close thread" onClick={onClose}>×</button>
       </header>
       <ConversationHistory key={draftKey} className="thread-panel-scroll">
+        <p data-history-row><InlineMarkdown text={annotation.text} /></p>
         {[
           ...annotation.replies.map((item) => ({ time: item.createdAt ?? 0, node: <div className="reply" data-history-row style={{ borderColor: authorColor(item.author) }} key={item.id}>
             <strong style={{ color: authorColor(item.author) }}>{authorName(item.author)}<ItemTime time={item.createdAt} now={now} /></strong>
@@ -120,8 +121,7 @@ export function ItemPanel({ annotation, documentPath, onReply, onResolve, onAnsw
             <strong style={{ color: USER_ANNOTATION_COLOR }}>you<ItemTime time={answer.answeredAt} now={now} /></strong>
             <span>{answer.option === null ? <>answered Other: <InlineMarkdown text={answer.other ?? ''} /></> : <>chose “<InlineMarkdown text={answer.option} />”</>}</span>
           </div> })),
-        ].sort((a, b) => a.time - b.time).reverse().map((entry) => entry.node)}
-        <p data-history-row><InlineMarkdown text={annotation.text} /></p>
+        ].sort((a, b) => a.time - b.time).map((entry) => entry.node)}
         {orphaned && <blockquote className="thread-panel-quote"><InlineMarkdown text={annotation.quote} /></blockquote>}
       </ConversationHistory>
       {decision && annotation.status !== 'resolved' && (
