@@ -49,6 +49,18 @@ The total worker count is the ordinary count plus one, so the clipboard project 
 
 Screenshot baselines keep their project-free names (`<name>-linux.png`) through an explicit `snapshotPathTemplate`, so `--update-snapshots` writes the same files as before.
 
+## Writing a spec that holds up
+
+Every flake traced on 2026-09-05 had a mechanism, and they fell into three kinds. Write against all three.
+
+- **Stale closures behind window listeners.** `App.tsx` registers its keydown handler in an effect whose dependencies include the view. After a state change React commits the DOM first and re-registers the listener in a passive effect later, so a key that lands in between runs the previous closure: tab cycling stopped on the tab that was already active, and the source toggle flipped back to the old mode. A spec that presses a shortcut right after asserting the result of the last one is the exact shape that finds this. The product reads such state through refs kept current in `useLayoutEffect`; if a new shortcut misbehaves only under load, look there first.
+- **Reading a layout that is still settling.** The history keeps the reading position stable from a `ResizeObserver` when content above the anchored row grows, which fires a frame after the growth. A baseline read in that frame is off by exactly the growth (34 px in the case that failed). Read a position twice across two animation frames and accept it only when it holds; `conversation-comments.spec.ts` shows the shape. Never replace this with a sleep.
+- **Hangs that hide inside a budget.** A launch that never comes up or a close the app declines used to run out a two-minute budget in silence. Budgets stay at one minute or under and the harness bounds every close at five seconds, verifies the process exited, and kills it otherwise, so a hang costs seconds and leaves a trace.
+
+Rules the unit tests enforce: `test/unit/e2e-timing-rules.test.ts` fails on a fixed sleep beyond the per-file allowance and on a budget above one minute; `test/unit/e2e-clipboard-tags.test.ts` keeps the clipboard tag honest. When you remove a sleep, lower the allowance in the same change.
+
+A stress pass before a merge that touched the shell or the harness: `STRATAMD_E2E_WORKERS=8 xvfb-run -a ./node_modules/.bin/playwright test --repeat-each 2`. Local retries stay at zero so a race is seen, not absorbed.
+
 ## Known flakes
 
 A test that fails in a full run and then passes ten explicit repeats is recorded here, not cleared. A test listed twice is fixed or rewritten before the next feature. Keep the saved `test-results/` copy for each entry until it is closed.

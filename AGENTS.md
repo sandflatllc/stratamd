@@ -35,6 +35,16 @@ Unit and integration tests load `native/unix-support/build/Release/unix_support.
 - Save is byte-preserving: untouched blocks are written from their original bytes. Serializer changes need a corpus round-trip test.
 - CLI errors are `CommandFailure(message, exitCode, CODE, detail)` with SCREAMING_CASE codes and exit codes 1 usage, 2 not found, 3 refused by the document's state, 4 app unreachable. Every command prints one JSON object on stdout; notices go to stderr.
 
+## Writing tests that hold up
+
+`test/e2e/README.md` explains each of these; `test/unit/e2e-timing-rules.test.ts` enforces the first two.
+
+- No new fixed sleeps in Electron specs. Wait for the condition: an element, an attribute, a polled state read, or a value that holds across two animation frames when layout is still settling. Removing a sleep is always allowed; add one and the scan fails.
+- A per-test budget stays at one minute or under. A test that needs more is several tests; split it so a late step fails alone.
+- A window-level listener in the renderer reads the latest state through a ref kept current in a layout effect, never from its closure. The keydown listener re-registers in a passive effect after a commit, and a key that lands in that gap acts on the previous state.
+- A failure with no mechanism is not a flake, it is an open bug: record it under Known flakes with the saved results path, and find the mechanism before the test is listed twice.
+- Before a merge that touched the renderer's shell or the harness, run the suite once at eight workers with `--repeat-each 2`; one-percent races surface there in one sitting.
+
 ## Copy
 
 User-facing text is plain words: say what happened and what to do next. Error messages name the path or id involved. Sentence-case headings.
