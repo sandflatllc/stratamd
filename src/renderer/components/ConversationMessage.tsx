@@ -64,8 +64,14 @@ export const ConversationMessage = memo(function ConversationMessage({ message, 
   useLayoutEffect(() => {
     editor.current?.setFoldedHeadings(folds)
   }, [folds, mounted])
+  // One jump per navigation. The rich editor mounts and unmounts as the
+  // reader scrolls, and the target outlives the navigation that set it, so a
+  // remount would otherwise re-center the passage over wherever the reader
+  // has since gone, such as the position restored by Back to reading.
+  const jumped = useRef<number | null>(null)
   useLayoutEffect(() => {
-    if (target?.message === message.id && target.align !== 'start' && editor.current) {
+    if (target?.message === message.id && target.align !== 'start' && editor.current && jumped.current !== target.serial) {
+      jumped.current = target.serial
       editor.current.jumpToAnnotation(target.annotation ?? 'conversation-jump')
     }
   }, [target, mounted])

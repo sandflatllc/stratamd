@@ -28,7 +28,6 @@ async function crash(page: Page, region: string): Promise<void> {
 const DOC = '# Containment\n\nThe quick brown fox jumps over the lazy dog.\n\nA second paragraph holds the anchor text.\n'
 
 test('a pane crash shows the pane card, leaves the rest working, logs once, and reloads intact', async ({}, testInfo) => {
-  test.setTimeout(120_000)
   const scenario = await Scenario.create(testInfo, DOC, 'containment.md')
   try {
     const page = await scenario.launch()
@@ -65,7 +64,6 @@ test('a pane crash shows the pane card, leaves the rest working, logs once, and 
 })
 
 test('a root crash right after typing keeps the newest keystrokes through reload', async ({}, testInfo) => {
-  test.setTimeout(120_000)
   const scenario = await Scenario.create(testInfo, DOC, 'containment.md')
   try {
     const page = await scenario.launch()
@@ -88,7 +86,6 @@ test('a root crash right after typing keeps the newest keystrokes through reload
 })
 
 test('event-handler failures and detached rejections are logged without touching the UI', async ({}, testInfo) => {
-  test.setTimeout(120_000)
   const scenario = await Scenario.create(testInfo, DOC, 'containment.md')
   try {
     const page = await scenario.launch()

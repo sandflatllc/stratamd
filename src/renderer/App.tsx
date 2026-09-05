@@ -110,6 +110,10 @@ export function App({ createEditor }: AppProps) {
   // can observe the new DOM.
   const latestTabs = useRef(view.tabs)
   useLayoutEffect(() => { latestTabs.current = view.tabs }, [view.tabs])
+  // The same for the active document: the source toggle read a mode from the
+  // previous closure and toggled back to it (view-sync spec, under load).
+  const latestDocument = useRef(view.activeDocument)
+  useLayoutEffect(() => { latestDocument.current = view.activeDocument }, [view.activeDocument])
   /** What this window last committed, so a push that merely echoes it never overrides a drag in progress (§5.14). */
   const committedPanels = useRef<PanelSizes | null>(null)
   const committedZoom = useRef<PaneZoom | null>(null)
@@ -693,8 +697,9 @@ export function App({ createEditor }: AppProps) {
         // flight would flip it straight back.
         if (event.target instanceof Element && event.target.closest('.prosemirror-host')) return
         event.preventDefault()
-        if (document.sourceOnly) report('This document can only open in source view.')
-        else void perform(() => window.strata.setSourceMode(document.path, !document.sourceMode))
+        const current = latestDocument.current ?? document
+        if (current.sourceOnly) report('This document can only open in source view.')
+        else void perform(() => window.strata.setSourceMode(current.path, !current.sourceMode))
       } else if (lower === 'w' && primary && !event.shiftKey && !event.altKey) {
         // Closes the active tab through the same confirmation a click gets (PRD §6.9).
         if (modalOpen()) return

@@ -102,6 +102,19 @@ function workerDisplay(testInfo: TestInfo): string | undefined {
   return display
 }
 
+const CLOSE_TIMEOUT_MS = 5_000
+const EXIT_TIMEOUT_MS = 2_000
+
+/** Resolves once the process has exited, killing it if the wait runs out. */
+async function processExit(child: ChildProcess, timeoutMs: number): Promise<void> {
+  const exited = () => child.exitCode !== null || child.signalCode !== null
+  if (exited()) return
+  await new Promise<void>((resolveExit) => {
+    const timer = setTimeout(() => { child.kill('SIGKILL'); resolveExit() }, timeoutMs)
+    child.once('exit', () => { clearTimeout(timer); resolveExit() })
+  })
+}
+
 export class Scenario {
   readonly root: string
   readonly file: string
@@ -224,11 +237,21 @@ export class Scenario {
       return
     }
 
+    // A quit the app declines (a close prompt) or a stalled helper would
+    // otherwise hold the scenario's single-instance lock into the next launch
+    // and eat the test budget in silence; the close is bounded and the exit
+    // verified.
+    let child: ChildProcess | undefined
+    try { child = app.process() } catch { child = undefined }
     try {
-      await app.close()
+      await Promise.race([
+        app.close(),
+        new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error('Electron did not close within the bound')), CLOSE_TIMEOUT_MS))
+      ])
     } catch {
-      app.process().kill('SIGKILL')
+      child?.kill('SIGKILL')
     }
+    if (child) await processExit(child, EXIT_TIMEOUT_MS)
   }
 
   async dispose(): Promise<void> {

@@ -51,9 +51,19 @@ for (const placement of ['side', 'center'] as const) test(`owner holds and sends
     await expect.poll(async () => page.evaluate(async id => (await window.strata.getState()).engine.projects.flatMap(p => p.threads).find(t => t.id === 't1')?.comments?.find(c => c.id === id)?.replies.length, id)).toBe(1)
     // The reply ended the live turn; its Worked for row lands before the reading position is measured.
     await expect(panel.locator('.conversation-turn-toggle')).toHaveCount(1)
-    // Reading position is the anchored answer's place in the viewport; rows above it may still mount their editors and grow.
+    // Reading position is the anchored answer's place in the viewport. Rows
+    // above it may still mount their editors and grow, and the history then
+    // compensates from a ResizeObserver a frame later, so the baseline is read
+    // only once it holds across two frames; a read in between was 34 px off.
     const readingPosition = () => message.evaluate(element => element.getBoundingClientRect().top - element.closest('.conversation-messages')!.getBoundingClientRect().top)
-    const beforeDiscussion = await readingPosition()
+    const settledReadingPosition = async () => {
+      const first = await readingPosition()
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+      const second = await readingPosition()
+      return Math.abs(first - second) < 1 ? second : null
+    }
+    let beforeDiscussion = 0
+    await expect.poll(async () => { const settled = await settledReadingPosition(); if (settled !== null) beforeDiscussion = settled; return settled }).not.toBeNull()
     await panel.getByRole('navigation', { name: 'Conversation history' }).getByRole('button', { name: /^Comment: Please explain this/ }).click()
     await expect(page.getByRole('region', { name: 'Saved comment' })).toContainText('Please explain this.')
     await expect(page.getByRole('region', { name: 'Saved comment' }).getByRole('button', { name: /^(Reply|Resolve|Reopen)$/ })).toHaveCount(0)

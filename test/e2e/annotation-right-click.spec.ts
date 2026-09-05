@@ -5,7 +5,6 @@ import { Scenario } from './harness'
 // cursor becomes the anchor, the annotate menu opens on it, and the gesture
 // works again on the same word after the menu was dismissed with Escape.
 test('right-click selects the word under the cursor and opens the annotate menu', async ({}, testInfo) => {
-  test.setTimeout(120_000)
   const target = 'gamma'
   const sample = `Alpha beta ${target} delta.\n\nSecond paragraph.\n`
 
