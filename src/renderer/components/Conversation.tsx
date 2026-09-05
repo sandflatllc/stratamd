@@ -1,6 +1,6 @@
 import { ConversationMessage } from './ConversationMessage'
 import { useConversationWorkspace } from './ConversationWorkspace'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import type { EngineActivityView, EngineThreadView, EngineView, ItemView } from '../../shared/contracts'
 import { changedFilesLabel, formatDelta, summarizeChangedFiles, type ChangedFileInput, type ChangedFileView } from '../../core/changed-files'
 import { deriveWorkEntries, groupWorkRows, type WorkEntry } from '../../core/work-log'
@@ -201,7 +201,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
   </section>
   if (!thread || !selected) return <div className="engine-empty">No conversation open.<small>Choose a thread under Projects.</small></div>
   const running = thread.status === 'running' || thread.status === 'starting'
-  return <section className="conversation-panel" aria-label="Conversation" data-placement={placement} onKeyDownCapture={workspace.onKeyDown}>
+  return <section className="conversation-panel" aria-label="Conversation" data-placement={placement} style={placement === 'center' ? { '--conversation-measure': `${documentMeasure}px` } as CSSProperties : undefined} onKeyDownCapture={workspace.onKeyDown}>
     <header>
       <div className="conversation-title"><strong><span>{selected.project}</span><i aria-hidden="true">/</i>{thread.title}</strong>{running && <button type="button" className="stop-button" onClick={() => onStop(thread.id)}>Stop</button>}{onMove && <button type="button" onClick={onMove}>{placement === 'side' ? 'Open in center' : 'Move to side'}</button>}</div>
       {workspace.toolbar}
@@ -209,7 +209,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
     {passage && <div className="conversation-passage">{passage}</div>}
     <ConversationHistory active={visible} navigation={workspace.target?.serial} key={`history:${thread.id}`} className="conversation-messages">
       {placement === 'center' && onDocumentMeasure && <div className="conversation-measure" style={{ width: `min(${documentMeasure}px, 100%)` }}><Resizer axis="vertical" label="Resize conversation measure" value={documentMeasure} min={620} max={1600} onChange={(value) => onDocumentMeasure(value, false)} onCommit={(value) => onDocumentMeasure(value, true)} /></div>}
-      <div className="conversation-column" style={placement === 'center' ? { width: `min(${documentMeasure}px, 100%)` } : undefined}>
+      <div className="conversation-column">
       {turns.toReversed().map((turn, turnIndex) => {
         const groups = workGroups.filter((candidate) => candidate.turnId === turn.id)
         const timeline = [

@@ -3,6 +3,7 @@
 :root {
   /* Theme tokens (PRD §6.13). Strata's values here for first paint; the active
      theme overrides them on .app-shell, including the derived -text pairs. */
+  --scrollbar-size: 10px;
   --font-text: "Baloo 2";
   --font-code: "JetBrains Mono";
   --surfaces-window: #0a0810;
@@ -101,7 +102,7 @@ button { color: inherit; }
 button:focus-visible, textarea:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 3px solid color-mix(in srgb, var(--controls-focus) 75%, var(--interface-primary)); outline-offset: 2px; }
 button:disabled { opacity: .42; cursor: not-allowed; }
 ::selection { color: var(--selection-text); background: var(--selection-background); }
-::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar { width: var(--scrollbar-size); height: var(--scrollbar-size); }
 ::-webkit-scrollbar-thumb { border-radius: 5px; background: var(--surfaces-border); }
 ::-webkit-scrollbar-track { background: transparent; }
 
@@ -1553,7 +1554,11 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .conversation-prose th { background: var(--surfaces-inset); color: var(--document-table-heading); font-weight: 800; }
 .conversation-island { padding: 0; }
 
-.conversation-panel[data-placement="center"] .conversation-messages { padding-inline: clamp(18px, 7vw, 90px); }
+/* Center placement: the transcript column and the composer share one measure, set by the width handle. The messages pane reserves a scrollbar gutter on both edges so the column and the composer center on the same axis. */
+.conversation-panel[data-placement="center"] { --conversation-gutter: clamp(18px, 7vw, 90px); }
+.conversation-panel[data-placement="center"] .conversation-messages { padding-inline: var(--conversation-gutter); scrollbar-gutter: stable both-edges; }
+.conversation-panel[data-placement="center"] .conversation-column { width: min(var(--conversation-measure), 100%); }
+.conversation-panel[data-placement="center"] .chat-composer { width: min(var(--conversation-measure), calc(100% - 2 * var(--conversation-gutter) - 2 * var(--scrollbar-size))); margin-inline: auto; }
 .turn-checklist { display: grid; gap: 6px; margin: 10px 8px 16px; padding: 9px; border: 1px solid var(--line); border-radius: 10px; background: var(--surfaces-inset); }
 .turn-checklist > header { display: flex; justify-content: space-between; color: var(--muted); font-size: calc(12px * var(--zoom, 1)); }
 .turn-item { display: grid; gap: 5px; padding: 6px; border-radius: 7px; background: var(--surfaces-window); }
