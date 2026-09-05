@@ -277,6 +277,8 @@ export interface EngineThreadView {
   attention: number
   /** Pending hunks and open items across the thread's open documents (§5.2). */
   pendingWork: number
+  /** T3's background liveness: work alive after the turn settles. `working` while subagents or workflows run, `monitoring` when watch loops are the only live work. Optional so older servers interoperate; absent means none. */
+  backgroundLiveness?: 'working' | 'monitoring' | null
 }
 
 /** T3's row actions beyond settle, archive, and delete (§5.2). */

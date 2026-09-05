@@ -317,7 +317,8 @@ export class T3EngineClient implements EngineReadClient {
           createdAt: activity.createdAt,
         })) : []
         const latestTurn = thread.latestTurn && typeof thread.latestTurn === 'object' ? thread.latestTurn as Record<string, unknown> : null
-        const visited = this.#reading.lastVisited[thread.id] ?? 0
+        // Never visited counts as read, as in T3: a fresh pairing must not light every historical thread. Mark unread records a visit at epoch 0.
+        const visited = this.#reading.lastVisited[thread.id]
         const snoozed = thread.snoozedUntil !== null && thread.snoozedUntil !== undefined && Date.parse(thread.snoozedUntil) > this.#now()
         const workingRoot = detailThread?.id === thread.id ? detailThread.worktreePath ?? project.workspaceRoot : project.workspaceRoot
         const documents = detailThread?.id === thread.id ? detailThread.checkpoints.flatMap((checkpoint) => checkpoint.files.map((file) => {
@@ -336,7 +337,7 @@ export class T3EngineClient implements EngineReadClient {
           access: thread.runtimeMode,
           status: statusOf(thread),
           updatedAt: thread.updatedAt,
-          unread: Date.parse(thread.updatedAt) > visited && thread.id !== this.#reading.activeThreadId,
+          unread: visited !== undefined && Date.parse(thread.updatedAt) > visited && thread.id !== this.#reading.activeThreadId,
           pinnedAt: thread.pinnedAt ?? null,
           snoozedUntil: thread.snoozedUntil ?? null,
           lifecycle: snoozed ? 'snoozed' : thread.settledOverride === 'settled' ? 'settled' : 'active',
@@ -345,6 +346,7 @@ export class T3EngineClient implements EngineReadClient {
           pendingWork: 0,
           pendingApprovals: thread.hasPendingApprovals,
           pendingUserInput: thread.hasPendingUserInput,
+          backgroundLiveness: thread.backgroundLiveness ?? null,
           activeTurnId: thread.session?.activeTurnId ?? null,
           turnStartedAt: typeof latestTurn?.startedAt === 'string'
             ? latestTurn.startedAt

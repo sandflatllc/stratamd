@@ -7,7 +7,35 @@ export interface ProjectFolderView {
   threads: EngineThreadView[]
   visibleThreads: EngineThreadView[]
   hasOverflow: boolean
-  unread: boolean
+  /** The loudest state among the folder's active threads, drawn on the header so a collapsed folder still reads. */
+  state: ProjectFolderState
+}
+
+/** One state per row. Favorite and selected are separate axes. */
+export type ProjectThreadState = 'input' | 'failed' | 'working' | 'completed' | 'monitoring' | 'idle'
+export type ProjectFolderState = 'input' | 'working' | 'completed' | null
+
+type ThreadStateInput = Pick<EngineThreadView, 'status' | 'unread' | 'pendingApprovals' | 'pendingUserInput' | 'backgroundLiveness'>
+
+/**
+ * T3's sidebar precedence with Strata's unread slotted before monitoring: an open approval or question
+ * outranks everything, a failed session outranks lingering background work, a running session or live
+ * background agents read as working, an unopened completion shows before a quiet watch loop.
+ */
+export function projectThreadState(thread: ThreadStateInput): ProjectThreadState {
+  if (thread.pendingApprovals || thread.pendingUserInput) return 'input'
+  if (thread.status === 'error') return 'failed'
+  if (thread.status === 'running' || thread.status === 'starting' || thread.backgroundLiveness === 'working') return 'working'
+  if (thread.unread) return 'completed'
+  if (thread.backgroundLiveness === 'monitoring') return 'monitoring'
+  return 'idle'
+}
+
+const FOLDER_ORDER: ProjectFolderState[] = ['input', 'working', 'completed']
+
+export function projectFolderState(threads: readonly ThreadStateInput[]): ProjectFolderState {
+  const states = new Set(threads.map(projectThreadState))
+  return FOLDER_ORDER.find((state) => state !== null && states.has(state)) ?? null
 }
 
 export interface ProjectShelfEntry {
@@ -73,7 +101,7 @@ export function buildProjectsRail(projects: readonly EngineProjectView[], option
     }
     const threads = sortProjectFolderThreads(active, sort)
     const preview = previewProjectFolderThreads(threads, options.previewCountByProject?.[project.id] ?? 5, options.expandedProjects?.has(project.id) ?? false)
-    return { project, threads, visibleThreads: preview.threads, hasOverflow: preview.hasOverflow, unread: active.some((thread) => thread.unread) }
+    return { project, threads, visibleThreads: preview.threads, hasOverflow: preview.hasOverflow, state: projectFolderState(active) }
   })
   const shelfSort = (a: ProjectShelfEntry, b: ProjectShelfEntry) => compare(sort, a.thread, b.thread)
   return { folders, snoozed: snoozed.sort(shelfSort), settled: settled.sort(shelfSort) }

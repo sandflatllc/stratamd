@@ -121,6 +121,7 @@ export const orchestrationThreadShell = orchestrationThreadBase.extend({
   pinnedAt: isoDate.nullable().optional(), snoozedUntil: isoDate.nullable().optional(),
   archivedAt: isoDate.nullable().optional(), settledAt: isoDate.nullable().optional(),
   settledOverride: z.enum(['settled', 'unsettled']).nullable().optional(),
+  backgroundLiveness: z.enum(['working', 'monitoring']).nullable().optional(),
 })
 export const orchestrationThread = orchestrationThreadBase.extend({
   deletedAt: isoDate.nullable(),

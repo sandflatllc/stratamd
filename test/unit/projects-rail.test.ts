@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildProjectsRail, previewProjectFolderThreads, resolveShelfThreads, sortProjectFolderThreads } from '../../src/core/projects-rail'
+import { buildProjectsRail, previewProjectFolderThreads, projectFolderState, projectThreadState, resolveShelfThreads, sortProjectFolderThreads } from '../../src/core/projects-rail'
 import type { EngineProjectView, EngineThreadView } from '../../src/shared/contracts'
 
 const now = Date.parse('2026-09-04T12:00:00.000Z')
@@ -38,6 +38,25 @@ describe('projects rail', () => {
     ])
     expect(threads.map((entry) => entry.id)).toEqual(['favorite-new', 'favorite-old', 'ordinary-new', 'ordinary-old'])
     expect(previewProjectFolderThreads(threads, 1).threads.map((entry) => entry.id)).toEqual(['favorite-new', 'favorite-old', 'ordinary-new'])
+  })
+
+  it('resolves one state per row in T3 precedence with unread before monitoring', () => {
+    expect(projectThreadState(thread('quiet'))).toBe('idle')
+    expect(projectThreadState(thread('watch', { backgroundLiveness: 'monitoring' }))).toBe('monitoring')
+    expect(projectThreadState(thread('done', { unread: true, backgroundLiveness: 'monitoring' }))).toBe('completed')
+    expect(projectThreadState(thread('fleet', { unread: true, backgroundLiveness: 'working' }))).toBe('working')
+    expect(projectThreadState(thread('turn', { status: 'starting', unread: true }))).toBe('working')
+    expect(projectThreadState(thread('dead', { status: 'error', backgroundLiveness: 'working' }))).toBe('failed')
+    expect(projectThreadState(thread('ask', { status: 'running', pendingUserInput: true }))).toBe('input')
+    expect(projectThreadState(thread('approve', { status: 'error', pendingApprovals: true }))).toBe('input')
+  })
+
+  it('rolls a folder up to its loudest state and puts it on the folder view', () => {
+    expect(projectFolderState([thread('a'), thread('b', { backgroundLiveness: 'monitoring' })])).toBeNull()
+    expect(projectFolderState([thread('a', { unread: true }), thread('b', { status: 'running' })])).toBe('working')
+    expect(projectFolderState([thread('a', { unread: true }), thread('b', { status: 'running' }), thread('c', { pendingApprovals: true })])).toBe('input')
+    const view = buildProjectsRail([project([thread('a', { unread: true }), thread('settled', { lifecycle: 'settled', status: 'running' })])], { nowMs: now })
+    expect(view.folders[0]!.state).toBe('completed')
   })
 
   it('renders only the open shelf thread while collapsed', () => {

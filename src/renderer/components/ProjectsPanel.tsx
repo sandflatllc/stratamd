@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent } from 'react'
-import { buildProjectsRail, resolveShelfThreads, type ProjectShelfEntry, type ProjectThreadSort } from '../../core/projects-rail'
+import { buildProjectsRail, projectThreadState, resolveShelfThreads, type ProjectFolderState, type ProjectShelfEntry, type ProjectThreadSort, type ProjectThreadState } from '../../core/projects-rail'
 import type { EngineThreadChange, EngineThreadView, EngineView } from '../../shared/contracts'
 
 interface ProjectsPanelProps {
@@ -53,12 +53,17 @@ export function relativeTime(iso: string, nowMs: number): string {
   return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
-function ThreadStatus({ thread }: { thread: EngineThreadView }) {
-  if (thread.status === 'running' || thread.status === 'starting') return <span className="project-thread-status working"><i aria-hidden="true" />Working</span>
-  if (thread.pendingApprovals) return <span className="project-thread-status attention" title="Approval needed">Approval</span>
-  if (thread.pendingUserInput) return <span className="project-thread-status attention" title="Input needed">Input</span>
+/** One indicator per row (§6.9): a pill when the thread waits on the owner or failed, a dot while it works or finished unseen, a robot while it only monitors. Each carries text for readers and tests. */
+function ThreadIndicator({ thread, state }: { thread: EngineThreadView; state: ProjectThreadState }) {
+  if (state === 'input') return <span className="project-thread-status pill input" title={thread.pendingApprovals ? 'Approval needed' : 'Input needed'}><i aria-hidden="true" />{thread.pendingApprovals ? 'Approval' : 'Input'}</span>
+  if (state === 'failed') return <span className="project-thread-status pill failed" title="The session failed"><i aria-hidden="true" />Failed</span>
+  if (state === 'working') return <span className="project-thread-status working" title="Working"><i aria-hidden="true" /><span className="sr-only">Working</span></span>
+  if (state === 'completed') return <span className="project-thread-status completed" title="Finished since you last opened it"><i aria-hidden="true" /><span className="sr-only">Completed</span></span>
+  if (state === 'monitoring') return <span className="project-thread-status monitoring" title="Monitoring"><span aria-hidden="true">🤖</span><span className="sr-only">Monitoring</span></span>
   return null
 }
+
+const FOLDER_STATE_LABEL: Record<Exclude<ProjectFolderState, null>, string> = { input: 'A thread is waiting on you', working: 'A thread is working', completed: 'A thread finished' }
 
 function RenameInput({ thread, onUpdate, onDone }: { thread: EngineThreadView; onUpdate(threadId: string, change: EngineThreadChange): void; onDone(): void }) {
   const [title, setTitle] = useState(thread.title)
@@ -87,10 +92,11 @@ interface ThreadRowProps {
 }
 
 function ThreadRow({ thread, projectName, active, attached, nowMs, shelf, renaming, onRename, onOpen, onMenu, onUpdate, onAction, onDoneRenaming }: ThreadRowProps) {
-  return <div className={`project-thread ${active ? 'active' : ''}`} data-thread={thread.id} data-pinned={thread.pinnedAt !== null} data-lifecycle={thread.lifecycle} onContextMenu={onMenu}>
+  const state = projectThreadState(thread)
+  return <div className={`project-thread ${active ? 'active' : ''}`} data-thread={thread.id} data-pinned={thread.pinnedAt !== null} data-lifecycle={thread.lifecycle} data-state={state} onContextMenu={onMenu}>
     <button type="button" className="project-thread-star" aria-label={`${thread.pinnedAt ? 'Unpin' : 'Pin'} ${thread.title}`} aria-pressed={thread.pinnedAt !== null} onClick={() => onUpdate({ pinned: thread.pinnedAt === null })}>{thread.pinnedAt ? '★' : '☆'}</button>
     {shelf && projectName && <span className="project-thread-project">{projectName}</span>}
-    <ThreadStatus thread={thread} />
+    <ThreadIndicator thread={thread} state={state} />
     {renaming ? <RenameInput thread={thread} onUpdate={(_id, change) => onUpdate(change)} onDone={onDoneRenaming} /> : <button type="button" className="project-thread-open" aria-label={`Open ${thread.title}`} onClick={onOpen} onDoubleClick={(event) => { event.preventDefault(); onRename() }}><span className={thread.unread ? 'unread' : undefined}>{thread.title}</span></button>}
     <span className="project-thread-marks">{attached && <i className="attached-mark" aria-label="Attached" title="Attached">⌁</i>}{thread.pendingWork > 0 && <b aria-label={`${thread.pendingWork} pending work`}>{thread.pendingWork}</b>}</span>
     <time dateTime={thread.updatedAt}>{relativeTime(thread.updatedAt, nowMs)}</time>
@@ -174,7 +180,7 @@ export function ProjectsPanel({ engine, onOpenThread, onBeginRename, onReconnect
       {filtered.folders.map((folder) => {
         const state = preference(folder.project.id)
         return <section className="project-group" key={folder.project.id} data-open={state.open}>
-          <div className="project-folder-row"><button type="button" className="project-folder-header" aria-expanded={state.open} title={folder.project.workspaceRoot} onClick={() => updatePreference(folder.project.id, { open: !state.open })}><i className="project-folder-chevron" aria-hidden="true">›</i><span className="project-folder-icon" aria-hidden="true">▱</span><strong>{folder.project.title}</strong>{folder.unread && <span className="unread-dot" aria-label="Unread threads" />}</button><button type="button" className="project-new-thread" aria-label={`New thread in ${folder.project.title}`} title={`New thread in ${folder.project.title}`} onClick={() => onNewThread(folder.project.id)}>＋</button></div>
+          <div className="project-folder-row"><button type="button" className="project-folder-header" aria-expanded={state.open} title={folder.project.workspaceRoot} onClick={() => updatePreference(folder.project.id, { open: !state.open })}><i className="project-folder-chevron" aria-hidden="true">›</i><span className="project-folder-icon" aria-hidden="true">▱</span><strong>{folder.project.title}</strong>{folder.state && <span className="project-folder-state" data-state={folder.state} role="img" aria-label={FOLDER_STATE_LABEL[folder.state]} />}</button><button type="button" className="project-new-thread" aria-label={`New thread in ${folder.project.title}`} title={`New thread in ${folder.project.title}`} onClick={() => onNewThread(folder.project.id)}>＋</button></div>
           {state.open && <>{folder.visibleThreads.map((thread) => <ThreadRow key={thread.id} thread={thread} active={thread.id === engine.activeThreadId} attached={attachedThreadIds.has(thread.id)} nowMs={nowMs} renaming={renamingId === thread.id} onRename={() => beginRename(thread.id)} onDoneRenaming={() => setRenamingId(null)} onOpen={() => onOpenThread(thread.id)} onMenu={(event) => openMenu(event, thread)} onUpdate={(change) => onUpdate(thread.id, change)} onAction={(action) => onAction(thread.id, action)} />)}{folder.hasOverflow && folder.visibleThreads.length < folder.threads.length && <button type="button" className="project-show-more" onClick={() => updatePreference(folder.project.id, { previewCount: state.previewCount + 5 })}>Show more ({folder.threads.length - folder.visibleThreads.length})</button>}{folder.threads.length === 0 && <div className="empty-subtle">No active threads.</div>}</>}
         </section>
       })}

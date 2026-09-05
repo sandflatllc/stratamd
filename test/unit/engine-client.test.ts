@@ -12,7 +12,7 @@ function liveServer() {
   return fakeEngineServer((tag) => tag.startsWith('orchestration.subscribe') ? [{ kind: 'synchronized' }] : tag === 'attachments.createUploadUrl' ? { attachmentId: 'pending-upload', relativeUrl: '/upload/signed', expiresAt: 1 } : null)
 }
 
-function shell(text = 'First thread', status: 'idle' | 'running' = 'idle') {
+function shell(text = 'First thread', status: 'idle' | 'running' = 'idle', extra: Record<string, unknown> = {}) {
   return {
     snapshotSequence: 4,
     projects: [{ id: 'p1', title: 'StrataMD', workspaceRoot: '/work/strata', defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at }],
@@ -23,6 +23,7 @@ function shell(text = 'First thread', status: 'idle' | 'running' = 'idle') {
       latestTurn: null, createdAt: at, updatedAt: at,
       session: { threadId: 't1', status, providerName: 'codex', providerInstanceId: 'codex-main', runtimeMode: 'full-access', activeTurnId: status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at },
       latestUserMessageAt: at, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false,
+      ...extra,
     }],
     updatedAt: at,
   }
@@ -41,6 +42,33 @@ function detail(message = 'Engine transcript', checkpoints: unknown[] = []) {
 }
 
 describe('T3 engine read client', () => {
+  it('carries T3 background liveness and reads never-visited threads as read', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'strata-engine-liveness-'))
+    const server = liveServer()
+    const snapshot = shell('Watcher', 'idle', { backgroundLiveness: 'monitoring' })
+    snapshot.threads.push({ ...snapshot.threads[0]!, id: 't2', title: 'Other thread', backgroundLiveness: null })
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+      if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(snapshot)
+      const id = url.split('/').pop()!
+      const page = detail()
+      return Response.json({ ...page, thread: { ...page.thread, id, backgroundLiveness: id === 't1' ? 'monitoring' : null } })
+    }) as typeof globalThis.fetch
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
+    await client.pair('http://engine.test', 'code')
+    const threads = () => client.view().projects[0]!.threads
+    expect(threads().map((thread) => [thread.id, thread.backgroundLiveness, thread.unread])).toEqual([['t1', 'monitoring', false], ['t2', null, false]])
+
+    // A visit, then an update that lands while another thread is open: only then is it unread.
+    await client.openThread('t1')
+    await client.openThread('t2')
+    server.push('orchestration.subscribeShell', [{ kind: 'thread-upserted', sequence: 6, thread: { ...snapshot.threads[0]!, updatedAt: '2099-01-01T00:00:00.000Z', backgroundLiveness: null } }])
+    await vi.waitFor(() => expect(threads().find((thread) => thread.id === 't1')).toMatchObject({ unread: true, backgroundLiveness: null }))
+    await client.shutdown()
+  })
+
   it('projects markdown and code files from completed turn diffs without opening them', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'strata-engine-files-'))
     const server = liveServer()

@@ -304,6 +304,9 @@ test('5.2 rows and notifications: pin, rename, and snooze go to T3, and a turn f
     await expect(navigation.getByRole('tab', { name: 'Projects' }).locator('.rail-tab-count')).toHaveText('1')
     await navigation.getByRole('tab', { name: 'Projects' }).click()
     await expect(page.locator('.project-thread[data-thread="t1"]')).toBeVisible()
+    // The approval is still open, so the finished turn keeps the Approval pill rather than the completed dot; never-visited threads never read as unread.
+    await expect(page.locator('.project-thread[data-thread="t1"]')).toHaveAttribute('data-state', 'input')
+    await expect(page.locator('.project-thread[data-thread="t2"]')).toHaveAttribute('data-state', 'idle')
 
     await page.getByRole('button', { name: 'Open Live engine thread' }).click()
     await expect(navigation.getByRole('tab', { name: 'Projects' }).locator('.rail-tab-count')).toHaveCount(0)
@@ -350,7 +353,7 @@ test('cockpit parity: Conversation keeps prose visible and groups finished and l
 })
 
 test('cockpit parity: Projects renders folders, shelves, hover Settle, and the T3 action menu', async ({}, testInfo) => {
-  const engine = await startEngine({ projectsParity: true })
+  const engine = await startEngine({ projectsParity: true, liveness: { t2: 'monitoring' } })
   const scenario = await seededScenario(testInfo, engine.origin)
   try {
     const page = await scenario.launch()
@@ -359,7 +362,22 @@ test('cockpit parity: Projects renders folders, shelves, hover Settle, and the T
     await expect(projects.locator('.project-folder-header')).toHaveCount(2)
     await expect(projects.locator('.project-group').first().locator('.project-thread').first()).toHaveAttribute('data-thread', 't2')
     await expect(projects.getByRole('button', { name: 'Unpin Second engine thread' })).toHaveAttribute('aria-pressed', 'true')
-    await expect(projects.locator('.project-thread[data-thread="t1"]')).toContainText('Working')
+    // 6.9 thread states: an open approval outranks the running session; T3's monitoring liveness draws the robot; the header rolls up the loudest state.
+    const live = projects.locator('.project-thread[data-thread="t1"]')
+    await expect(live).toHaveAttribute('data-state', 'input')
+    await expect(live.locator('.project-thread-status')).toHaveText('Approval')
+    const second = projects.locator('.project-thread[data-thread="t2"]')
+    await expect(second).toHaveAttribute('data-state', 'monitoring')
+    await expect(second.locator('.project-thread-status')).toContainText('Monitoring')
+    await expect(projects.locator('.project-group').first().locator('.project-folder-state')).toHaveAttribute('data-state', 'input')
+    await expect(second).not.toHaveClass(/active/)
+    // Opening a thread moves the left window to Conversation after the double-click grace; come back to the rail.
+    await projects.getByRole('button', { name: 'Open Second engine thread' }).click()
+    await expect(page.getByRole('region', { name: 'Conversation' })).toBeVisible()
+    await expect(page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' })).toHaveAttribute('aria-selected', 'false')
+    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
+    await expect(second).toHaveClass(/active/)
+    await expect(second).toHaveAttribute('data-state', 'monitoring')
     await expect(projects.getByRole('button', { name: 'Snoozed' })).toContainText('1')
     await expect(projects.getByRole('button', { name: 'Settled' })).toContainText('1')
     await expect(projects.locator('.project-group').filter({ hasText: 'Settled engine thread' })).toHaveCount(0)

@@ -22,6 +22,10 @@ export interface FakeEngineOptions {
   /** Seeds two completed turns before the running turn for the Conversation parity scenario. */
   conversationParity?: boolean
   longHistory?: boolean
+  /** Whether `t1` starts with an open approval and an open user-input request; defaults to true. False leaves it plainly running. */
+  pendingRequests?: boolean
+  /** T3 background liveness per seeded thread (§6.9 thread states): `monitoring` draws the robot, `working` the pulse after the turn settles. */
+  liveness?: Partial<Record<'t1' | 't2', 'working' | 'monitoring'>>
 }
 
 const usageAt = '2026-09-03T11:59:00.000Z'
@@ -109,8 +113,8 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   const tokenRequests: string[] = []
   let message = 'Read-side conversation from T3.'
   let status: 'running' | 'stopped' = 'running'
-  let approvalOpen = true
-  let inputOpen = true
+  let approvalOpen = options.pendingRequests ?? true
+  let inputOpen = options.pendingRequests ?? true
   let sequence = 2
   const commands: Array<Record<string, unknown>> = []
   const uploads: string[] = []
@@ -120,8 +124,9 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   const createdThreads: CreatedThread[] = []
   const createdProjects: CreatedProject[] = []
   /** Pin, snooze, and rename state per thread, as T3 would project it (§5.2). */
-  const threadMeta = new Map<string, { pinnedAt?: string | null; snoozedUntil?: string | null; settledOverride?: 'settled' | 'unsettled' | null; archivedAt?: string | null; title?: string }>()
+  const threadMeta = new Map<string, { pinnedAt?: string | null; snoozedUntil?: string | null; settledOverride?: 'settled' | 'unsettled' | null; archivedAt?: string | null; title?: string; backgroundLiveness?: 'working' | 'monitoring' | null }>()
   for (const [id, title] of Object.entries(options.titles ?? {})) if (title) threadMeta.set(id, { title })
+  for (const [id, liveness] of Object.entries(options.liveness ?? {})) if (liveness) threadMeta.set(id, { ...threadMeta.get(id), backgroundLiveness: liveness })
   if (options.projectsParity) {
     threadMeta.set('t2', { ...threadMeta.get('t2'), pinnedAt: '2026-09-03T08:00:00.000Z' })
     threadMeta.set('t3', { settledOverride: 'settled' })
@@ -131,9 +136,9 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   const posted = new Map<string, Array<Record<string, unknown>>>()
   let postedCount = 0
   const postedMessages = (threadId: string) => posted.get(threadId) ?? []
-  const withMeta = <T extends { id: string; title: string }>(thread: T): T & { pinnedAt: string | null; snoozedUntil: string | null; settledOverride: 'settled' | 'unsettled' | null; archivedAt: string | null } => {
+  const withMeta = <T extends { id: string; title: string }>(thread: T): T & { pinnedAt: string | null; snoozedUntil: string | null; settledOverride: 'settled' | 'unsettled' | null; archivedAt: string | null; backgroundLiveness: 'working' | 'monitoring' | null } => {
     const meta = threadMeta.get(thread.id)
-    return { ...thread, title: meta?.title ?? thread.title, pinnedAt: meta?.pinnedAt ?? null, snoozedUntil: meta?.snoozedUntil ?? null, settledOverride: meta?.settledOverride ?? null, archivedAt: meta?.archivedAt ?? null }
+    return { ...thread, title: meta?.title ?? thread.title, pinnedAt: meta?.pinnedAt ?? null, snoozedUntil: meta?.snoozedUntil ?? null, settledOverride: meta?.settledOverride ?? null, archivedAt: meta?.archivedAt ?? null, backgroundLiveness: meta?.backgroundLiveness ?? null }
   }
   let workspaceRoot = options.workspaceRoot ?? '/tmp/cockpit'
   let providers = options.providers ?? DEFAULT_PROVIDERS
