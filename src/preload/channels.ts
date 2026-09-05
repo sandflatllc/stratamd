@@ -1,4 +1,9 @@
 export const IPC = {
+  windowState: 'strata:window-state',
+  windowStateChanged: 'strata:window-state-changed',
+  minimizeWindow: 'strata:minimize-window',
+  toggleMaximizeWindow: 'strata:toggle-maximize-window',
+  closeWindow: 'strata:close-window',
   state: 'strata:state',
   stateChanged: 'strata:state-changed',
   pairEngine: 'strata:pair-engine',
@@ -90,6 +95,6 @@ export const IPC = {
 export type SendChannel = typeof IPC.reportError
 
 /** Main→renderer pushes; everything else is a renderer invoke. */
-export type PushChannel = typeof IPC.stateChanged | typeof IPC.spelling
+export type PushChannel = typeof IPC.stateChanged | typeof IPC.spelling | typeof IPC.windowStateChanged
 
 export type InvokeChannel = Exclude<(typeof IPC)[keyof typeof IPC], PushChannel | SendChannel>

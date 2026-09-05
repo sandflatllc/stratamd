@@ -821,3 +821,22 @@ export interface StrataApi {
   /** Writes the theme sample document to the config directory and opens it as a tab. */
   openThemeSample(): Promise<void>
 }
+
+/** Desktop window state is independent of document and engine state. */
+export interface WindowState {
+  revision: number
+  chrome: 'custom' | 'traffic-lights' | 'native'
+  maximized: boolean
+  fullscreen: boolean
+  focused: boolean
+}
+
+export type WindowAction = 'minimize' | 'toggleMaximize' | 'close'
+
+export interface WindowApi {
+  getState(): Promise<WindowState>
+  subscribe(listener: (state: WindowState) => void): () => void
+  minimize(): Promise<void>
+  toggleMaximize(): Promise<void>
+  close(): Promise<void>
+}

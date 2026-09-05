@@ -271,3 +271,41 @@ describe('spelling', () => {
     expect(addWordToSpellCheckerDictionary).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('window IPC boundary', () => {
+  it('guards commands, rejects arguments, publishes state, and disposes the owning controller', async () => {
+    const handlers = new Map<string, (...args: unknown[]) => unknown>()
+    const ipcMain = {
+      handle: (channel: string, handler: (...args: unknown[]) => unknown) => handlers.set(channel, handler),
+      removeHandler: vi.fn(), on: vi.fn(), removeListener: vi.fn()
+    }
+    const renderer = { isDestroyed: () => false, send: vi.fn(), getURL: () => 'app://stratamd/' }
+    const state = { revision: 1, chrome: 'custom' as const, maximized: false, fullscreen: false, focused: true }
+    let publish: (next: typeof state) => void = () => undefined
+    const unsubscribe = vi.fn()
+    const controls = {
+      getState: () => state,
+      subscribe: (listener: typeof publish) => { publish = listener; return unsubscribe },
+      minimize: vi.fn(), toggleMaximize: vi.fn(), close: vi.fn()
+    }
+    const registration = registerStrataIpc({ ipcMain: ipcMain as never, api: fakeApi(), renderer: renderer as never, windowControls: controls })
+    const event = { sender: renderer, senderFrame: { url: 'app://stratamd/' } }
+    for (const channel of [IPC.windowState, IPC.minimizeWindow, IPC.toggleMaximizeWindow, IPC.closeWindow]) {
+      const call = handlers.get(channel)!
+      await expect(call({ ...event, sender: {} })).rejects.toThrow('unknown renderer')
+      await expect(call({ ...event, senderFrame: { url: 'https://example.com/' } })).rejects.toThrow('untrusted URL')
+      await expect(call(event, 'some-other-window')).rejects.toThrow()
+    }
+    expect(controls.close).not.toHaveBeenCalled()
+    expect(await handlers.get(IPC.windowState)!(event)).toEqual(state)
+    await handlers.get(IPC.minimizeWindow)!(event)
+    await handlers.get(IPC.toggleMaximizeWindow)!(event)
+    await handlers.get(IPC.closeWindow)!(event)
+    for (const action of [controls.minimize, controls.toggleMaximize, controls.close]) expect(action).toHaveBeenCalledOnce()
+    publish({ ...state, revision: 2, maximized: true })
+    expect(renderer.send).toHaveBeenCalledWith(IPC.windowStateChanged, expect.objectContaining({ revision: 2, maximized: true }))
+    registration.dispose()
+    expect(unsubscribe).toHaveBeenCalledOnce()
+    expect(ipcMain.removeHandler).toHaveBeenCalledWith(IPC.closeWindow)
+  })
+})

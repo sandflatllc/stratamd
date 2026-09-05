@@ -1,3 +1,4 @@
+import { openAppMenu } from './harness'
 import { expect, test } from '@playwright/test'
 import { mapMarkdownBlocks } from '../../src/core/blocks'
 import { readFile } from 'node:fs/promises'
@@ -230,7 +231,8 @@ test('10 accounts: usage from the engine, parking from the top bar, and the mode
   try {
     const page = await scenario.launch()
     await expect(page.getByRole('button', { name: 'Engine status' })).toHaveText(/Connected/)
-    await page.getByRole('button', { name: 'Accounts', exact: true }).click()
+    await openAppMenu(page)
+    await page.getByRole('menuitem', { name: 'Accounts', exact: true }).click()
     let modal = page.getByRole('dialog', { name: 'Accounts' })
     await expect(modal.getByTestId('account-state-codex')).toHaveText('Ready · 40% used')
     await expect(modal.getByTestId('account-state-claude-main')).toHaveText('Ready · not measured')
@@ -245,7 +247,8 @@ test('10 accounts: usage from the engine, parking from the top bar, and the mode
 
     await page.reload()
     await expect(page.getByRole('button', { name: 'Engine status' })).toHaveText(/Connected/)
-    await page.getByRole('button', { name: 'Accounts', exact: true }).click()
+    await openAppMenu(page)
+    await page.getByRole('menuitem', { name: 'Accounts', exact: true }).click()
     modal = page.getByRole('dialog', { name: 'Accounts' })
     await expect(modal.getByTestId('account-state-codex')).toHaveText('Parked')
     await expect(modal.getByRole('button', { name: 'Unpark Codex work' })).toBeVisible()
@@ -428,7 +431,9 @@ test('conversation zoom: the side conversation follows the left window and the c
     await page.keyboard.press(primaryKey('Equal'))
     await expect.poll(() => zoomOf('[data-pane="explorer"]')).toBe('1.1')
     await expect.poll(() => fontSize(prose)).toBeCloseTo(16.5, 0)
-    await expect(page.getByRole('button', { name: 'Reset zoom' })).toBeVisible()
+    await openAppMenu(page)
+    await expect(page.getByRole('menuitem', { name: 'Reset zoom' })).toBeVisible()
+    await page.keyboard.press('Escape')
 
     // Ctrl+wheel works the same way.
     await page.mouse.wheel(0, -120).catch(() => undefined)
@@ -451,7 +456,8 @@ test('conversation zoom: the side conversation follows the left window and the c
     // Center conversations expose their outline in the left Contents tab.
     await expect(navigation.getByRole('tab')).toHaveText(['Projects', 'Contents'])
 
-    await page.getByRole('button', { name: 'Reset zoom' }).click()
+    await openAppMenu(page)
+    await page.getByRole('menuitem', { name: 'Reset zoom' }).click()
     await expect.poll(() => zoomOf('[data-pane="editor"]')).toBe('1')
     await expect.poll(() => fontSize(centerProse)).toBeCloseTo(17, 0)
     await center.getByRole('region', { name: 'Changed files' }).scrollIntoViewIfNeeded()

@@ -1,3 +1,4 @@
+import { openAppMenu } from './harness'
 import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test'
 import { selectTextInVisualEditor, setSource, type Scenario } from './harness'
 import { seededScenario, startEngine, type FakeEngine } from './cockpit-engine-harness'
@@ -251,7 +252,8 @@ test('the composer resizes with a remembered size and zooms like the panes', asy
     // The backdrop covers the top bar, so close the composer before resetting.
     await dialog.getByRole('button', { name: /^Cancel$/i }).click()
     await expect(dialog).toBeHidden()
-    const reset = page.getByRole('button', { name: /Reset zoom/i })
+    const reset = page.getByRole('menuitem', { name: /Reset zoom/i })
+    await openAppMenu(page)
     await expect(reset).toBeVisible()
     await reset.click()
     await expect(reset).toBeHidden()

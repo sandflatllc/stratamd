@@ -87,6 +87,7 @@ test('extended visuals remain editable, accessible, document-safe, and collabora
     await expect(screenshot.getByRole('button', { name: 'Pin 1: Long rows need a clearer boundary.' })).toBeVisible()
 
     const sides = beforeAfter.locator('blockquote')
+    await page.setViewportSize({ width: 960, height: 900 })
     await expect.poll(async () => {
       const boxes = await sides.evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect()))
       return boxes[1]!.top >= boxes[0]!.bottom

@@ -1,8 +1,9 @@
-import type { StrataApi } from './contracts'
+import type { StrataApi, WindowApi } from './contracts'
 
 declare global {
   interface Window {
     strata: StrataApi
+    strataWindow: WindowApi
     strataMermaidProofEnabled?: string
     strataPhase6Disabled?: string
     strataPhase7Disabled?: string

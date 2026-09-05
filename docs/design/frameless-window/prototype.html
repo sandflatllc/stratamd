@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StrataMD · Frameless top bar</title>
+  <link rel="icon" href="../../../resources/stratamd-icon.svg" type="image/svg+xml">
+  <style>
+    @font-face { font-family: Baloo; src: url('../../../node_modules/@fontsource/baloo-2/files/baloo-2-latin-500-normal.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+    @font-face { font-family: Baloo; src: url('../../../node_modules/@fontsource/baloo-2/files/baloo-2-latin-700-normal.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+    @font-face { font-family: Mono; src: url('../../../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+    :root { color-scheme: dark; font-family: Baloo, sans-serif; color: #f4f0fe; background: #101016; font-synthesis: none; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    button, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid #80fdff; outline-offset: 3px; }
+    button:disabled { cursor: default; }
+    .presentation { padding: 34px 40px 28px; max-width: 1680px; margin: 0 auto; }
+    .intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 25px; }
+    .eyebrow { margin: 0 0 7px; font: 10px Mono, monospace; color: #b39ccf; letter-spacing: .15em; text-transform: uppercase; }
+    h1 { font-size: 32px; line-height: 1.2; margin: 0 0 6px; font-weight: 700; }
+    .subtitle { margin: 0; color: #ada6ba; font-size: 15px; }
+    .preview-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+    .preview-controls label { font-size: 12px; color: #bbb4c8; }
+    .preview-controls select, .preview-controls button { border: 1px solid #393341; background: #1b1822; border-radius: 8px; padding: 7px 11px; font-size: 12px; }
+    .preview-controls button[aria-pressed="true"] { color: #80fdff; border-color: #4a6c75; background: #193037; }
+    .stage { overflow-x: auto; padding-bottom: 5px; }
+    .window { --border: #463c6e; --muted: #a99fba; width: 1440px; max-width: none; margin: 0 auto; border: 1px solid #494050; background: #1b1723; container: app / inline-size; position: relative; }
+    .bar { height: 52px; display: flex; align-items: center; gap: 12px; padding: 0 0 0 16px; background: linear-gradient(105deg, #302039, #292034 52%, #251f30); position: relative; z-index: 3; border-bottom: 1px solid #44354e; user-select: none; }
+    .app-brand { display: flex; align-items: center; gap: 6px; height: 34px; background: #f4f0fe; border: 1px solid #e2dbf3; padding: 4px 9px; border-radius: 18px; flex-shrink: 0; position: relative; }
+    .app-brand img { width: 100px; height: 26px; }
+    .app-brand .compact-logo { display: none; width: 25px; height: 25px; }
+    .chevron { font: 12px sans-serif; opacity: .65; }
+    .app-brand .chevron { color: #241f31; }
+    .account-attention { position: absolute; top: 1px; right: 3px; width: 7px; height: 7px; border: 1px solid #302039; border-radius: 50%; background: #ffb03a; }
+    .navigation { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 590px; }
+    .group { border: 1px solid #55406e; background: #211b2c; color: #80fdff; height: 34px; padding: 0 11px; border-radius: 18px; display: flex; align-items: center; gap: 7px; flex-shrink: 0; font-size: 12px; font-weight: 700; }
+    .count { font-size: 11px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: inline-flex; justify-content: center; align-items: center; color: #21192c; background: #a476ff; }
+    .active-tab { height: 34px; border-radius: 17px; background: #f4f0fe; color: #241f31; display: flex; align-items: center; min-width: 100px; flex: 1 1 290px; max-width: 310px; box-shadow: 0 3px 14px #b38af51a; }
+    .tab-main { padding: 0 5px 0 13px; min-width: 0; flex: 1; border: 0; background: transparent; color: inherit; text-align: left; height: 100%; font-size: 13px; font-weight: 700; display: flex; gap: 7px; align-items: center; }
+    .tab-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .dirty { width: 5px; height: 5px; border-radius: 50%; background: #a14dd7; flex: none; }
+    .tab-close { border: 0; background: transparent; color: #625871; height: 30px; width: 30px; flex: none; }
+    .drag-space { align-self: stretch; flex: 1 0 80px; min-width: 80px; position: relative; }
+    .drag-space span { display: none; }
+    .show-drag .drag-space { background: repeating-linear-gradient(135deg, #80fdff12, #80fdff12 4px, transparent 4px, transparent 8px); outline: 1px dashed #80fdff80; outline-offset: -5px; }
+    .show-drag .drag-space span { display: block; position: absolute; inset: 0; text-align: center; align-content: center; font: 9px Mono, monospace; color: #80fdff; text-transform: uppercase; letter-spacing: .06em; }
+    .status { display: flex; align-items: center; gap: 7px; padding: 0 4px; height: 34px; border: 0; background: transparent; font-size: 12px; color: #d8ddfd; flex: none; }
+    .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #3dc97c; box-shadow: 0 0 7px #3dc97c60; flex: none; }
+    .pending { font-size: 11px; color: #c4b6dc; white-space: nowrap; }
+    .send { background: linear-gradient(110deg, #f65598, #aa57e8); border: 1px solid #f080c133; height: 34px; min-width: 78px; border-radius: 17px; color: #241331; font-weight: 700; font-size: 14px; flex: none; }
+    .window-controls { display: flex; height: 36px; align-items: center; border-left: 1px solid #655272; margin-left: 4px; padding: 0 5px 0 8px; flex: none; }
+    .window-control { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 6px; background: transparent; color: #c5bbd3; }
+    .window-control:hover { background: #f4f0fe12; color: #fff; }
+    .window-control.close:hover { background: #c42b55; color: white; }
+    .window-control svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; }
+    .lights { display: none; gap: 8px; flex: none; padding-right: 6px; }
+    .lights i { width: 12px; height: 12px; border-radius: 50%; background: #ff6059; }
+    .lights i:nth-child(2) { background: #ffbd2e; }
+    .lights i:nth-child(3) { background: #28c840; }
+    .mac .lights { display: flex; }
+    .mac .window-controls { display: none; }
+    .mac .bar { padding-right: 16px; }
+    .old-title, .old-toolbar { display: none; }
+    .before .bar { display: none; }
+    .before .old-title { height: 36px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; background: #282b2e; color: white; font: 15px sans-serif; }
+    .old-title img { width: 21px; height: 21px; }
+    .old-title span:last-child { word-spacing: 13px; }
+    .before .old-toolbar { height: 80px; display: flex; align-items: center; gap: 18px; padding: 0 26px; background: linear-gradient(105deg, #302039, #292034 52%, #251f30); }
+    .old-toolbar .old-action { font-size: 11px; font-weight: 700; white-space: nowrap; color: #d8ddfd; }
+    .old-toolbar .old-logo { width: 140px; height: 44px; padding: 6px 13px; background: #f4f0fe; border-radius: 24px; }
+    .old-toolbar .old-logo img { width: 100%; height: 100%; }
+    .old-toolbar .navigation { flex: 1; }
+    .old-toolbar .send { height: 42px; min-width: 100px; }
+    .old-toolbar kbd { color: #80fdff; font: 10px Mono, monospace; white-space: nowrap; }
+    .workspace { padding: 12px 20px 20px; display: grid; grid-template-columns: 270px minmax(0, 1fr) 245px; gap: 16px; background: radial-gradient(800px 440px at 0 0, #64335723, transparent), #1b1723; height: 560px; }
+    .before .workspace { padding-top: 0; }
+    .panel { background: #19171e; border: 1px solid #493c5e; border-radius: 19px; overflow: hidden; min-width: 0; }
+    .panel-title { margin: 0; height: 49px; display: flex; align-items: center; gap: 8px; padding: 0 17px; border-bottom: 1px solid #473957; font-size: 18px; color: #f65a98; }
+    .panel-title small { color: #80fdff; font-size: 13px; }
+    .search { margin: 13px 12px 17px; padding: 8px 11px; background: #332c48; color: #c1b4d0; border: 1px solid #514360; border-radius: 8px; font-size: 14px; display: flex; justify-content: space-between; }
+    .search kbd { color: #80fdff; font: 11px Mono, monospace; align-self: center; }
+    .project-heading { padding: 0 16px; color: #d9c8ec; font-weight: 700; font-size: 15px; }
+    .project-heading span { float: right; font-size: 11px; font-weight: 500; color: #a59ab5; }
+    .thread { margin: 6px 9px; border-radius: 11px; padding: 10px 12px; font-size: 14px; color: #c3b8d1; }
+    .thread.selected { background: linear-gradient(105deg, #482a5c, #352642); border: 1px solid #8051a5; color: #f4f0fe; }
+    .thread small { display: block; font-size: 11px; color: #aa9bbc; margin-top: 3px; }
+    .thread small .status-dot { width: 5px; height: 5px; margin-right: 5px; }
+    .project-divider { border: 0; border-top: 1px solid #342b40; margin: 17px 15px; }
+    .document-top { height: 49px; display: flex; justify-content: space-between; align-items: center; padding: 0 22px; border-bottom: 1px solid #473957; font-size: 14px; }
+    .document-top span { color: #80fdff; }
+    .document-top small { color: #aaa0b7; font-size: 11px; }
+    .document-body { max-width: 640px; margin: 0 auto; padding: 25px 30px; }
+    .document-body .eyebrow { color: #a9a2b7; font-size: 9px; }
+    .document-body h2 { color: #f7b8ff; font-size: 31px; line-height: 1.18; margin: 9px 0 14px; max-width: 460px; }
+    .document-body p { font-size: 15px; color: #e0d8e8; line-height: 1.6; margin: 0 0 22px; }
+    .document-body h3 { color: #8fe3ff; font-size: 18px; margin: 20px 0 9px; }
+    .document-body h3 b { display: inline-grid; place-items: center; width: 25px; height: 25px; border: 1px solid #4c3f60; border-radius: 8px; font: 11px Mono, monospace; color: #ca99fb; margin-right: 7px; }
+    .document-body ul { padding-left: 19px; font-size: 14px; color: #d4cada; line-height: 1.9; }
+    .document-body li::marker { color: #ad75e8; }
+    .review-tabs { height: 49px; display: flex; gap: 17px; align-items: center; padding: 0 17px; border-bottom: 1px solid #473957; font-size: 15px; color: #bcaecc; }
+    .review-tabs strong { color: #f65a98; height: 100%; display: flex; align-items: center; border-bottom: 2px solid #f65a98; }
+    .review-card { margin: 14px 12px; padding: 14px; background: #272030; border: 1px solid #44344f; border-left: 2px solid #ffb03a; border-radius: 10px; }
+    .review-card .eyebrow { font-size: 8px; color: #ffc477; letter-spacing: .08em; }
+    .review-card p { font-size: 14px; line-height: 1.4; margin: 9px 0; }
+    .review-card small { font-size: 11px; color: #b8a7c8; }
+    .attached { border-top: 1px solid #473957; margin-top: 30px; padding: 15px; }
+    .attached h3 { font-size: 17px; color: #c19bff; margin: 0 0 13px; }
+    .agent { padding: 10px; border-radius: 11px; border: 1px solid #644481; background: linear-gradient(100deg, #4b2d65, #2a2233); font-size: 14px; }
+    .agent small { display: block; font-size: 11px; color: #c3afd6; }
+    .context-note { color: #897e99; padding: 12px 15px; font-size: 10px; }
+    .caption { display: flex; justify-content: space-between; gap: 20px; color: #95899f; font-size: 12px; margin: 11px 0 25px; }
+    .caption strong { color: #c8b4dd; font-weight: 500; }
+    .notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px; border-top: 1px solid #302738; padding-top: 23px; }
+    .note { display: grid; grid-template-columns: 26px 1fr; gap: 12px; }
+    .note-number { font: 11px Mono, monospace; color: #c7a0f4; padding-top: 5px; }
+    .note h2 { font-size: 17px; margin: 0 0 5px; }
+    .note p { font-size: 13px; line-height: 1.5; color: #aba0b5; margin: 0; max-width: 370px; }
+    .menu { position: absolute; z-index: 5; top: 47px; left: 15px; width: 260px; background: #27202f; padding: 6px; border: 1px solid #675177; border-radius: 13px; box-shadow: 0 12px 30px #0008; }
+    .menu[hidden] { display: none; }
+    .menu .menu-label { font: 9px Mono, monospace; letter-spacing: .1em; color: #9f8daf; padding: 11px 11px 8px; text-transform: uppercase; }
+    .menu button { display: flex; align-items: center; justify-content: space-between; width: 100%; text-align: left; border: 0; background: transparent; padding: 9px 11px; border-radius: 7px; font-size: 14px; }
+    .menu button:hover, .menu button:focus-visible { background: #493253; }
+    .menu kbd, .menu small { font: 10px Mono, monospace; color: #aeb8d6; }
+    .menu .warning { color: #ffbd56; }
+    .menu hr { border: 0; border-top: 1px solid #44334e; margin: 5px 9px; }
+    .toast { position: fixed; bottom: 25px; left: 50%; transform: translateX(-50%); background: #f4f0fe; color: #241f31; border-radius: 15px; padding: 11px 20px; box-shadow: 0 5px 30px #0008; font-size: 14px; z-index: 9; max-width: 90vw; }
+    .toast:empty { display: none; }
+    dialog { background: #271f30; color: #f4f0fe; border: 1px solid #80599c; border-radius: 18px; padding: 26px; width: 430px; }
+    dialog::backdrop { background: #100c17a8; }
+    dialog h2 { margin: 0 0 8px; font-size: 24px; }
+    dialog p { color: #c7b8d3; font-size: 15px; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+    .dialog-actions button { padding: 8px 14px; border: 1px solid #685377; border-radius: 18px; background: #35293e; }
+    .dialog-actions button:last-child { background: #a777e5; color: #22132b; }
+    @container app (max-width: 1250px) {
+      .status-label { display: none; }
+      .pending { display: none; }
+      .bar { gap: 10px; }
+      .workspace { grid-template-columns: 235px minmax(0, 1fr) 220px; gap: 12px; padding-left: 16px; padding-right: 16px; }
+      .document-body { padding: 25px; }
+      .old-toolbar { gap: 10px !important; }
+      .old-toolbar .old-action { font-size: 10px; }
+      .old-toolbar .old-logo { width: 90px; flex-shrink: 0; }
+      .old-toolbar kbd { display: none; }
+    }
+    @container app (max-width: 1050px) {
+      .app-brand .full-logo { display: none; }
+      .app-brand .compact-logo { display: block; }
+      .app-brand { padding: 3px 6px; }
+      .drag-space { min-width: 64px; flex-basis: 64px; }
+      .bar { padding-left: 12px; gap: 8px; }
+      .group { padding: 0 9px; font-size: 11px; gap: 6px; }
+      .group .chevron { display: none; }
+      .navigation { gap: 6px; }
+      .window-controls { padding-left: 6px; margin-left: 2px; }
+      .workspace { grid-template-columns: 210px minmax(0, 1fr); }
+      .review-panel { display: none; }
+      .document-body { max-width: 620px; }
+      .old-toolbar .old-action { display: none; }
+    }
+    @media (max-width: 1100px) { .presentation { padding: 25px 20px; } .intro { align-items: flex-start; flex-direction: column; } .notes { gap: 20px; } }
+    @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+  </style>
+</head>
+<body>
+  <main class="presentation">
+    <div class="intro">
+      <div><p class="eyebrow">StrataMD / window design / 01</p><h1>One bar. More room to think.</h1><p class="subtitle">The familiar Strata colors, with navigation and window controls in one row.</p></div>
+      <div class="preview-controls" aria-label="Preview settings">
+        <label>Platform <select id="platform"><option value="linux">Linux</option><option value="mac">macOS</option></select></label>
+        <label>Width <select id="width"><option value="1440">1440 px</option><option value="1200">1200 px</option><option value="960">960 px</option></select></label>
+        <button id="compare" aria-pressed="false">Show current bar</button>
+        <button id="drag-toggle" aria-pressed="false">Show drag area</button>
+      </div>
+    </div>
+    <div class="stage">
+      <section class="window" id="app" aria-label="StrataMD window mockup">
+        <div class="old-title" aria-hidden="true"><img src="../../../resources/stratamd-icon.svg" alt=""><span>StrataMD</span><span>⌄ ⌃ ×</span></div>
+        <div class="old-toolbar" aria-hidden="true">
+          <div class="old-logo"><img src="../../../resources/stratamd-logo.svg" alt=""></div><span class="old-action">Open file</span>
+          <div class="navigation"><span class="group">DOCS <span class="count">5</span> ▾</span><span class="group">CONVERSATIONS <span class="count">3</span> ▾</span><span class="active-tab"><span class="tab-main"><span class="tab-name">Frameless window plan</span></span><span class="tab-close">×</span></span></div>
+          <span class="old-action">🟢 Connected</span><span class="old-action">Accounts</span><span class="old-action">Theme</span><span class="old-action">Reset zoom</span><span class="old-action">3 pending</span><kbd>Ctrl+Enter</kbd><span class="send" style="display:grid;place-items:center">Send ↗</span>
+        </div>
+        <header class="bar">
+          <div class="lights" aria-hidden="true"><i></i><i></i><i></i></div>
+          <button class="app-brand" id="brand" aria-label="StrataMD menu" aria-haspopup="menu" aria-expanded="false" aria-controls="app-menu" title="StrataMD menu · Accounts needs attention"><img class="full-logo" src="../../../resources/stratamd-logo.svg" alt=""><img class="compact-logo" src="../../../resources/stratamd-icon.svg" alt=""><span class="chevron">▾</span><i class="account-attention"></i></button>
+          <nav class="navigation" aria-label="Documents and conversations">
+            <button class="group" id="docs" aria-haspopup="menu" aria-expanded="false" aria-controls="docs-menu">Docs <span class="count">5</span><span class="chevron">▾</span></button>
+            <button class="group" id="conversations" aria-haspopup="menu" aria-expanded="false" aria-controls="conversations-menu">Conversations <span class="count">3</span><span class="chevron">▾</span></button>
+            <div class="active-tab"><button class="tab-main" data-notice="The active document stays in view. This is sample content." title="Frameless window implementation plan"><span class="dirty" aria-label="Unsaved changes"></span><span class="tab-name" id="active-title">Frameless window plan</span></button><button class="tab-close" aria-label="Close tab Frameless window plan" data-notice="Close tab uses the existing document save prompt.">×</button></div>
+          </nav>
+          <div class="drag-space" id="drag-area"><span>Drag window</span></div>
+          <button class="status" aria-label="Engine connected" title="Engine connected · Open engine settings" data-notice="Opens the existing engine connection dialog."><i class="status-dot"></i><span class="status-label">Connected</span></button>
+          <span class="pending">3 pending</span>
+          <button class="send" title="Send changes · 3 pending · Ctrl+Enter" aria-label="Send changes, 3 pending" data-notice="Opens the existing Send composer with 3 pending changes.">Send ↗</button>
+          <div class="window-controls" role="group" aria-label="Window controls">
+            <button class="window-control" aria-label="Minimize window" title="Minimize" data-notice="In the app, this minimizes the window to the taskbar."><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1 8h10"/></svg></button>
+            <button class="window-control" id="maximize" aria-label="Maximize window" title="Maximize"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9"/></svg></button>
+            <button class="window-control close" id="close" aria-label="Close window" title="Close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m2 2 8 8m0-8-8 8"/></svg></button>
+          </div>
+          <div class="menu" id="app-menu" role="menu" aria-label="StrataMD" hidden><div class="menu-label">StrataMD</div><button role="menuitem" data-notice="Opens the existing file picker.">Open file <kbd>Ctrl+O</kbd></button><hr><button role="menuitem" data-notice="Opens Accounts. Its attention marker remains visible on the logo menu.">Accounts <small class="warning">Needs attention</small></button><button role="menuitem" data-notice="Opens the existing theme editor.">Theme <small>Strata Vivid</small></button><button role="menuitem" data-notice="Resets pane zoom using the existing action.">Reset zoom</button></div>
+          <div class="menu" id="docs-menu" role="menu" aria-label="Open documents" hidden><div class="menu-label">5 open documents</div><button role="menuitem" data-document="Frameless window plan">Frameless window plan <small>●</small></button><button role="menuitem" data-document="Product requirements">Product requirements</button><button role="menuitem" data-document="Design notes">Design notes</button><button role="menuitem" data-document="Keyboard shortcuts">Keyboard shortcuts</button><button role="menuitem" data-document="Release notes">Release notes</button></div>
+          <div class="menu" id="conversations-menu" role="menu" aria-label="Open conversations" hidden><div class="menu-label">3 open conversations</div><button role="menuitem" data-notice="Would open the conversation about window behavior.">Frameless window mechanics</button><button role="menuitem" data-notice="Would open the conversation about top-bar design.">Top-bar design</button><button role="menuitem" data-notice="Would open the keyboard navigation conversation.">Keyboard navigation</button></div>
+        </header>
+        <div class="workspace" aria-label="Sample workspace for visual context">
+          <aside class="panel"><h2 class="panel-title">Projects <small>4</small></h2><div class="search">⌕ Search threads <kbd>Ctrl K</kbd></div><div class="project-heading">▾ StrataMD <span>3 threads</span></div><div class="thread selected">Frameless window implementation<small><i class="status-dot"></i>Working · just now</small></div><div class="thread">Top-bar design<small>Updated 12 minutes ago</small></div><div class="thread">Keyboard navigation<small>Updated yesterday</small></div><hr class="project-divider"><div class="project-heading">▸ Mesa <span>12 threads</span></div><hr class="project-divider"><div class="project-heading">▸ Sandflat Roofing <span>8 threads</span></div><hr class="project-divider"><div class="project-heading">▸ Personal <span>2 threads</span></div></aside>
+          <article class="panel"><div class="document-top"><span>StrataMD / <strong>Implementation plan</strong></span><small>Markdown</small></div><div class="document-body"><p class="eyebrow">Implementation / proposed</p><h2>Frameless window<br>and integrated top bar</h2><p>Bring window controls into Strata. Keep navigation familiar and give the document more room.</p><h3><b>1</b> A single, useful top bar</h3><p>The logo opens the app menu. Documents and conversations stay within reach. A clear space beside them lets you move the window.</p><h3><b>2</b> Keep window behavior dependable</h3><ul><li>Native dragging and edge resizing.</li><li>Minimize, maximize, and restore in place.</li><li>The existing save prompt still protects unsaved work.</li></ul></div></article>
+          <aside class="panel review-panel"><div class="review-tabs"><strong>Items <small>&nbsp;2</small></strong><span>Changes</span></div><div class="review-card"><p class="eyebrow">Design question</p><p>Does the new bar leave enough room for the document title?</p><small>Top-bar review · sample</small></div><div class="review-card" style="border-left-color:#f65a98"><p class="eyebrow" style="color:#f790ba">Comment</p><p>Keep a clear gap between Send and the window controls.</p><small>Window controls · sample</small></div><div class="attached"><h3>Attached <small>1</small></h3><div class="agent">Codex<small><i class="status-dot"></i> Working on the plan</small></div></div><div class="context-note">Sample content for this preview.</div></aside>
+        </div>
+      </section>
+    </div>
+    <div class="caption"><strong id="caption">Proposed · Linux · 1440 px · 52 px bar</strong><span>Browser mockup. Window actions are simulated.</span></div>
+    <section class="notes" aria-label="Design rationale">
+      <div class="note"><span class="note-number">01</span><div><h2>Keep the Strata character</h2><p>The original logo, Baloo typography, purple surfaces, and pink Send button. A quieter arrangement of familiar parts.</p></div></div>
+      <div class="note"><span class="note-number">02</span><div><h2>Make room for the work</h2><p>A 52 px bar replaces the separate title bar and padded toolbar. Open file, Accounts, Theme, and Reset zoom live in the logo menu.</p></div></div>
+      <div class="note"><span class="note-number">03</span><div><h2>Leave somewhere to grab</h2><p>Navigation stays on the left. The empty area moves the window. A divider separates Send from the window controls.</p></div></div>
+    </section>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <dialog id="close-dialog" aria-labelledby="close-heading"><p class="eyebrow">Close behavior preview</p><h2 id="close-heading">Save changes before closing?</h2><p>Frameless window plan has unsaved changes. The app will use its existing native save prompt.</p><form method="dialog" class="dialog-actions"><button value="cancel">Cancel</button><button value="discard">Discard</button><button value="save">Save</button></form></dialog>
+  <script>
+    const app = document.querySelector('#app');
+    const width = document.querySelector('#width');
+    const platform = document.querySelector('#platform');
+    const compare = document.querySelector('#compare');
+    const dragToggle = document.querySelector('#drag-toggle');
+    let timer;
+    let openTrigger = null;
+    let maximized = false;
+    function notice(message) {
+      clearTimeout(timer);
+      document.querySelector('#toast').textContent = message;
+      timer = setTimeout(() => document.querySelector('#toast').textContent = '', 3500);
+    }
+    function closeMenus(restoreFocus = false) {
+      document.querySelectorAll('.menu').forEach(menu => menu.hidden = true);
+      document.querySelectorAll('[aria-haspopup="menu"]').forEach(button => button.setAttribute('aria-expanded', 'false'));
+      if (restoreFocus) openTrigger?.focus();
+      openTrigger = null;
+    }
+    function updatePreview() {
+      closeMenus();
+      app.style.width = width.value + 'px';
+      app.classList.toggle('mac', platform.value === 'mac');
+      if (platform.value === 'mac') {
+        compare.setAttribute('aria-pressed', 'false');
+        app.classList.remove('before');
+      }
+      compare.disabled = platform.value === 'mac';
+      compare.textContent = app.classList.contains('before') ? 'Show proposed bar' : 'Show current bar';
+      const state = app.classList.contains('before') ? 'Current header reconstruction' : 'Proposed';
+      document.querySelector('#caption').textContent = state + ' · ' + (platform.value === 'mac' ? 'macOS' : 'Linux') + ' · ' + width.value + ' px · ' + (app.classList.contains('before') ? '36 px title + 80 px toolbar' : '52 px bar');
+      document.querySelector('.send[title]').title = 'Send changes · 3 pending · ' + (platform.value === 'mac' ? '⌘' : 'Ctrl+') + 'Enter';
+      document.querySelector('#app-menu kbd').textContent = platform.value === 'mac' ? '⌘O' : 'Ctrl+O';
+    }
+    width.addEventListener('change', updatePreview);
+    platform.addEventListener('change', updatePreview);
+    compare.addEventListener('click', () => {
+      app.classList.toggle('before');
+      compare.setAttribute('aria-pressed', String(app.classList.contains('before')));
+      updatePreview();
+    });
+    dragToggle.addEventListener('click', () => {
+      app.classList.toggle('show-drag');
+      dragToggle.setAttribute('aria-pressed', String(app.classList.contains('show-drag')));
+    });
+    document.querySelectorAll('[aria-haspopup="menu"]').forEach(button => {
+      button.addEventListener('click', () => {
+        const wasOpen = button.getAttribute('aria-expanded') === 'true';
+        closeMenus();
+        if (wasOpen) return;
+        const menu = document.getElementById(button.getAttribute('aria-controls'));
+        menu.style.left = button.offsetLeft + 'px';
+        menu.hidden = false;
+        button.setAttribute('aria-expanded', 'true');
+        openTrigger = button;
+        menu.querySelector('button').focus();
+      });
+    });
+    document.addEventListener('pointerdown', event => {
+      if (!event.target.closest('.menu, [aria-haspopup="menu"]')) closeMenus();
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') closeMenus(true);
+      const menu = event.target.closest('.menu');
+      if (!menu) return;
+      const buttons = [...menu.querySelectorAll('button')];
+      const current = buttons.indexOf(document.activeElement);
+      let next;
+      if (event.key === 'ArrowDown') next = (current + 1) % buttons.length;
+      if (event.key === 'ArrowUp') next = (current - 1 + buttons.length) % buttons.length;
+      if (event.key === 'Home') next = 0;
+      if (event.key === 'End') next = buttons.length - 1;
+      if (next !== undefined) { event.preventDefault(); buttons[next].focus(); }
+      if (event.key === 'Tab') closeMenus();
+    });
+    document.querySelectorAll('[data-notice]').forEach(button => button.addEventListener('click', () => {
+      notice(button.dataset.notice);
+      closeMenus(true);
+    }));
+    document.querySelectorAll('[data-document]').forEach(button => button.addEventListener('click', () => {
+      document.querySelector('#active-title').textContent = button.dataset.document;
+      document.querySelector('.tab-main').title = button.dataset.document;
+      document.querySelector('.tab-close').setAttribute('aria-label', 'Close tab ' + button.dataset.document);
+      closeMenus(true);
+      notice('Tab selection preview. The panel below remains sample content.');
+    }));
+    document.querySelector('#maximize').addEventListener('click', event => {
+      maximized = !maximized;
+      const button = event.currentTarget;
+      button.setAttribute('aria-label', maximized ? 'Restore window' : 'Maximize window');
+      button.title = maximized ? 'Restore' : 'Maximize';
+      button.querySelector('svg').innerHTML = maximized ? '<path d="M4 3V1.5h6.5V8H9"/><rect x="1.5" y="4" width="6.5" height="6.5"/>' : '<rect x="1.5" y="1.5" width="9" height="9"/>';
+      notice(maximized ? 'Maximized state preview. The icon now offers Restore.' : 'Restored state preview. The icon now offers Maximize.');
+    });
+    document.querySelector('#close').addEventListener('click', () => document.querySelector('#close-dialog').showModal());
+    document.querySelector('#close-dialog').addEventListener('close', event => notice('Preview only. ' + ({ save: 'Save would save the document, then close.', discard: 'Discard would discard unsaved edits, then close.', cancel: 'Cancel keeps the window open.', '': 'Window stays open.' }[event.target.returnValue])));
+    updatePreview();
+  </script>
+</body>
+</html>

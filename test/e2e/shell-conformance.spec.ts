@@ -1,3 +1,4 @@
+import { openAppMenu } from './harness'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -79,7 +80,7 @@ test('per-pane text zoom follows the hovered pane, resets from one button, and p
     const editor = page.locator('[data-pane="editor"]')
     const rail = page.locator('[data-pane="rightRail"]')
     const zoomOf = (pane: Locator) => pane.evaluate((element) => getComputedStyle(element).getPropertyValue('--zoom').trim())
-    const reset = page.getByRole('button', { name: 'Reset zoom' })
+    const reset = page.getByRole('menuitem', { name: 'Reset zoom' })
     await expect(reset).toBeHidden()
 
     await explorer.hover()
@@ -100,6 +101,7 @@ test('per-pane text zoom follows the hovered pane, resets from one button, and p
     await page.keyboard.up('Control')
     await expect.poll(() => zoomOf(editor)).toBe('1.1')
     await expect(page.locator('.prosemirror-host .ProseMirror')).toHaveCSS('font-size', '23.1px')
+    await openAppMenu(page)
     await expect(reset).toBeVisible()
 
     const settingsPath = join(String(value.env.XDG_CONFIG_HOME), 'stratamd', 'settings.json')
@@ -114,9 +116,10 @@ test('per-pane text zoom follows the hovered pane, resets from one button, and p
     await value.stop()
     const restarted = await value.launch()
     await expect.poll(() => restarted.locator('[data-pane="editor"]').evaluate((element) => getComputedStyle(element).getPropertyValue('--zoom').trim())).toBe('1.1')
-    await restarted.getByRole('button', { name: 'Reset zoom' }).click()
+    await openAppMenu(restarted)
+    await restarted.getByRole('menuitem', { name: 'Reset zoom' }).click()
     await expect.poll(() => restarted.locator('[data-pane="explorer"]').evaluate((element) => getComputedStyle(element).getPropertyValue('--zoom').trim())).toBe('1')
-    await expect(restarted.getByRole('button', { name: 'Reset zoom' })).toBeHidden()
+    await expect(restarted.getByRole('menuitem', { name: 'Reset zoom' })).toBeHidden()
     await expect.poll(async () => JSON.parse(await readFile(settingsPath, 'utf8')).zoom).toEqual({ explorer: 1, editor: 1, rightRail: 1, composer: 1 })
   } finally {
     await value.dispose()
@@ -207,7 +210,8 @@ test('the theme panel floats over a live app, writes only chosen keys, follows o
     await expect(strong).toHaveCSS('color', 'rgb(219, 218, 222)')
     await expect(em).toHaveCSS('color', 'rgb(219, 218, 222)')
 
-    await page.getByRole('button', { name: 'Theme', exact: true }).click()
+    await openAppMenu(page)
+    await page.getByRole('menuitem', { name: 'Theme', exact: true }).click()
     const panel = page.getByRole('dialog', { name: 'Theme' })
     await expect(panel).toBeVisible()
     await expect(panel).toContainText('Bundled theme')
@@ -281,7 +285,8 @@ test('the theme panel floats over a live app, writes only chosen keys, follows o
     await restarted.getByRole('button', { name: 'Recover my edits' }).click()
     await switchToDocument(restarted, /theme\.md/)
     await expect(restarted.locator('.app-shell')).toHaveAttribute('data-ambient-windows', 'starfield')
-    await restarted.getByRole('button', { name: 'Theme', exact: true }).click()
+    await openAppMenu(restarted)
+    await restarted.getByRole('menuitem', { name: 'Theme', exact: true }).click()
     const reopened = restarted.getByRole('dialog', { name: 'Theme' })
     // Persisted, not the bottom-right default (about 200px away); the clamp may shift it a little with window size.
     expect(Math.abs((await reopened.boundingBox())!.x - moved.x)).toBeLessThan(60)

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { AppView, SpellingContext, StrataApi } from '../shared/contracts'
+import type { AppView, SpellingContext, StrataApi, WindowApi, WindowState } from '../shared/contracts'
 import { applyViewUpdate, isViewUpdate, sameJson, type SyncedView } from '../shared/view-sync'
 import { IPC } from './channels'
 
@@ -30,6 +30,19 @@ const resyncState = (): Promise<AppView> => {
   }
   return resyncing
 }
+
+const windowApi: WindowApi = {
+  getState: () => invoke<WindowState>(IPC.windowState),
+  subscribe(listener) {
+    const receive = (_event: Electron.IpcRendererEvent, state: WindowState) => listener(state)
+    ipcRenderer.on(IPC.windowStateChanged, receive)
+    return () => { ipcRenderer.removeListener(IPC.windowStateChanged, receive) }
+  },
+  minimize: () => invoke<void>(IPC.minimizeWindow),
+  toggleMaximize: () => invoke<void>(IPC.toggleMaximizeWindow),
+  close: () => invoke<void>(IPC.closeWindow)
+}
+contextBridge.exposeInMainWorld('strataWindow', windowApi)
 
 const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyncDiagnostics(): { seq: number; resyncs: number; verifyMismatches: number } } = {
   getState: () => fetchState(),

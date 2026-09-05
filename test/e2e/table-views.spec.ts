@@ -186,14 +186,21 @@ test('a blank header cell accepts table state and survives reopen', async ({}, t
   let page = await value.launch()
   let block = page.locator('.strata-table-block')
   await block.locator('td').filter({ hasText: 'One' }).click()
+  await expect(block).toHaveAttribute('data-focused-row', '0')
   await showTableOptions(block)
   await block.getByRole('combobox', { name: 'Sort table' }).selectOption('1:ascending')
   await expect(block.locator('.strata-source-table')).toBeHidden()
+  // Sorting renders optimistically. Let its acknowledgement reach the editor
+  // before injecting an independent main-process update that replaces it.
+  await expect.poll(() => page.evaluate(async () => (await window.strata.getState()).activeDocument?.reading.tables[0]?.sort)).toEqual({ column: 1, direction: 'ascending' })
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
   const tableView = await page.evaluate(async () => (await window.strata.getState()).activeDocument!.reading.tables[0]!)
   await page.evaluate(async ({ path, tableView }) => {
     await window.strata.updateTableView(path, { ...tableView, focusedRow: 99, focusedColumn: 1, selectedRows: [0, 99] })
   }, { path: value.file, tableView })
-  await page.mouse.move(0, 0)
+  // Leave the table through document content; native title-bar drag regions
+  // do not deliver ordinary DOM pointer events.
+  await page.getByRole('heading', { name: 'Blank header', exact: true }).hover()
   await expect(block.getByRole('button', { name: 'Discuss row' })).toHaveCount(0)
   await expect(block.getByRole('button', { name: 'Discuss cell' })).toHaveCount(0)
   await value.stop()

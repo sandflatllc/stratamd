@@ -6,6 +6,7 @@ import { IPC, type InvokeChannel } from '../preload/channels'
 import { electronFileOps, type FileOps } from './file-ops'
 import { logRendererReport } from './log'
 import { annotationContextSchema } from './validation'
+import type { WindowController } from './window-controls'
 
 type StrataIpcApi = Omit<StrataApi, 'subscribe'>
 
@@ -132,6 +133,10 @@ const settingsSchema = z.object({
 
 const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.state]: z.tuple([]),
+  [IPC.windowState]: z.tuple([]),
+  [IPC.minimizeWindow]: z.tuple([]),
+  [IPC.toggleMaximizeWindow]: z.tuple([]),
+  [IPC.closeWindow]: z.tuple([]),
   [IPC.pairEngine]: z.tuple([z.union([
     z.object({ link: z.string().trim().min(1).max(4_096) }).strict(),
     z.object({ host: z.string().trim().min(1).max(2_048), code: idSchema }).strict(),
@@ -285,6 +290,7 @@ export interface RegisterIpcOptions {
   fileOps?: () => Promise<FileOps>
   /** Attention request for the unfocused window; the default flashes the renderer's BrowserWindow. */
   flashWindow?: () => Promise<void>
+  windowControls?: WindowController
 }
 
 export interface RegisteredIpc {
@@ -306,6 +312,13 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     const window = BrowserWindow.fromWebContents(options.renderer)
     if (window && !window.isDestroyed() && !window.isFocused()) window.flashFrame(true)
   })
+  const controls = (): WindowController => {
+    if (!options.windowControls) throw new Error('Window controls are unavailable')
+    return options.windowControls
+  }
+  const stopWindowEvents = options.windowControls?.subscribe(state => {
+    if (!options.renderer.isDestroyed()) options.renderer.send(IPC.windowStateChanged, state)
+  })
   const verify = process.env.STRATAMD_VIEW_VERIFY === '1'
   let lastSent: SyncedView | null = null
   let nextSeq = 0
@@ -315,6 +328,10 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     return lastSent
   }
   const handlers: Record<InvokeChannel, (...args: never[]) => unknown> = {
+    [IPC.windowState]: () => controls().getState(),
+    [IPC.minimizeWindow]: () => controls().minimize(),
+    [IPC.toggleMaximizeWindow]: () => controls().toggleMaximize(),
+    [IPC.closeWindow]: () => controls().close(),
     [IPC.state]: async () => {
       // A publish during the await is at least as fresh as this view (every
       // engine mutation publishes synchronously), so never rewind lastSent.
@@ -451,6 +468,7 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
       options.renderer.send(IPC.stateChanged, update)
     },
     dispose() {
+      stopWindowEvents?.()
       for (const channel of Object.keys(handlers) as InvokeChannel[]) options.ipcMain.removeHandler(channel)
       options.ipcMain.removeListener(IPC.reportError, onReportError)
     }

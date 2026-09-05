@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
-import type { DocumentTabView, EngineView } from '../../shared/contracts'
+import type { DocumentTabView, EngineView, WindowState, WindowAction } from '../../shared/contracts'
 import { AGENT_COLORS, textColorFor } from '../model'
 import { Logo } from './Logo'
+import { WindowControls } from './WindowControls'
 import { engineStateLabel } from './EngineDialog'
 import { primaryModifierLabel } from '../../shared/primary-modifier'
 import { claimEscape } from '../escape'
@@ -10,6 +11,8 @@ import { PathContextMenu, type PathContextMenuState } from './PathContextMenu'
 import { menuKeyTarget } from './PathContextMenu'
 
 interface TopBarProps {
+  windowState: WindowState | null
+  onWindowAction(action: WindowAction): void
   tabs: DocumentTabView[]
   canSend: boolean
   hasAgents: boolean
@@ -38,11 +41,11 @@ interface TopBarProps {
   /** The paired engine's state; the status control opens the engine dialog (§5.1, §5.13). */
   engine?: EngineView
   onOpenEngine?(): void
-  /** Accounts (§5.13) opens from the engine status area once an engine is paired. */
+  /** Accounts (§5.13) opens from the logo menu once an engine is paired. */
   onOpenAccounts?(): void
 }
 
-type MenuKind = 'documents' | 'conversations'
+type MenuKind = 'app' | 'documents' | 'conversations'
 
 function CloseControl({ name, onClose }: { name: string; onClose(): void }) {
   return <span
@@ -80,10 +83,10 @@ function MenuPill({ kind, label, count, activeName, open, onToggle }: { kind: Me
   </button>
 }
 
-export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onOpenFile, onSend, onStartThread, zoomed, onResetZoom, onOpenTheme, conversationTabs = [], onOpenConversationTab, onCloseConversation, engine, onOpenEngine, onOpenAccounts }: TopBarProps) {
+export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onOpenFile, onSend, onStartThread, zoomed, onResetZoom, onOpenTheme, conversationTabs = [], onOpenConversationTab, onCloseConversation, engine, onOpenEngine, onOpenAccounts }: TopBarProps) {
   const conversationTab = conversationTabs.find((tab) => tab.active)
   const tabStrip = useRef<HTMLDivElement>(null)
-  const navigation = useRef<HTMLDivElement>(null)
+  const navigation = useRef<HTMLElement>(null)
   const menuRoot = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState<PathContextMenuState | null>(null)
   const [openMenu, setOpenMenu] = useState<MenuKind | null>(null)
@@ -107,6 +110,7 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
     if (!openMenu) return
     const away = (event: Event) => { if (!menuRoot.current?.contains(event.target as Node) && !navigation.current?.querySelector(`[data-menu="${openMenu}"]`)?.contains(event.target as Node)) setOpenMenu(null) }
     const key = (event: KeyboardEvent) => {
+      if (event.key === 'Tab') { setOpenMenu(null); return }
       if (event.key !== 'Escape') return
       claimEscape(event)
       setOpenMenu(null)
@@ -131,6 +135,13 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
     event.preventDefault()
     items[next]?.focus()
   }
+  const accountsAttention = engine?.accounts.some(account => !account.usable && !account.parked) ?? false
+  const menuAction = (action: () => void) => {
+    setOpenMenu(null)
+    navigation.current?.querySelector<HTMLElement>('[data-menu="app"]')?.focus()
+    action()
+  }
+  const sendTitle = `${pending} pending${pendingUnsaved ? ' · Unsaved changes' : ''} · ${primaryModifierLabel()}+Enter`
   const pinLabel = (pinned: boolean, name: string) => `${pinned ? 'Unpin' : 'Pin'} ${name}`
 
   const documentPill = (tab: DocumentTabView) => {
@@ -204,10 +215,21 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
   </div>
 
   return (
-    <header className="topbar">
-      <Logo />
-      <button type="button" className="text-action open-file-button" onClick={onOpenFile} title="Open a markdown file from disk">Open file</button>
-      <div className="tab-navigation" ref={navigation}>
+    <header className="topbar" ref={navigation} data-window-chrome={windowState?.chrome} data-fullscreen={windowState?.fullscreen} data-maximized={windowState?.maximized} data-focused={windowState?.focused}>
+      <span className="tab-menu-anchor app-menu-anchor">
+        <button type="button" className="app-menu-trigger" data-menu="app" aria-label="StrataMD menu" aria-haspopup="menu" aria-expanded={openMenu === 'app'} aria-controls={openMenu === 'app' ? 'topbar-menu-app' : undefined} title={accountsAttention ? 'StrataMD menu · Accounts needs attention' : 'StrataMD menu'} onClick={() => setOpenMenu(current => current === 'app' ? null : 'app')}>
+          <Logo compact />
+          <span className="app-menu-chevron" aria-hidden="true">▾</span>
+          {accountsAttention && <i className="attention-dot" aria-label="Accounts needs attention" />}
+        </button>
+        {openMenu === 'app' && <div ref={menuRoot} id="topbar-menu-app" className="tab-menu-list app-menu-list" role="menu" aria-label="StrataMD" onKeyDown={menuKeys}>
+          <button type="button" role="menuitem" className="tab-menu-open open-file-button" onClick={() => menuAction(onOpenFile)}>Open file <kbd>{primaryModifierLabel()}+O</kbd></button>
+          {engine && engine.state !== 'unpaired' && onOpenAccounts && <button type="button" role="menuitem" className="tab-menu-open accounts-button" aria-label="Accounts" onClick={() => menuAction(onOpenAccounts)}>Accounts{accountsAttention && <span className="account-warning">Needs attention</span>}</button>}
+          <button type="button" role="menuitem" className="tab-menu-open theme-button" onClick={() => menuAction(onOpenTheme)}>Theme</button>
+          {zoomed && <button type="button" role="menuitem" className="tab-menu-open reset-zoom" onClick={() => menuAction(onResetZoom)}>Reset zoom</button>}
+        </div>}
+      </span>
+      <div className="tab-navigation">
         <span className="tab-menu-anchor">
           <MenuPill kind="documents" label="Docs" count={tabs.length} activeName={activeDocument && !conversationTab && !strip.documents.pills.includes(activeDocument) ? activeDocument.name : null} open={openMenu === 'documents'} onToggle={() => setOpenMenu((current) => current === 'documents' ? null : 'documents')} />
           {openMenu === 'documents' && documentsMenu}
@@ -229,25 +251,19 @@ export function TopBar({ tabs, canSend, hasAgents, pending, pendingUnsaved, onOp
           {strip.conversations.pills.map(conversationPill)}
         </div>
       </div>
+      <div className="window-drag-space" aria-hidden="true" />
       {menu && <PathContextMenu menu={menu} onCopyPath={onCopyPath} onClose={closeContextMenu} onTogglePin={(path) => pin('document', path)} pinned={isPinned(pins, 'document', menu.path)} {...(onCloseOthers ? { onCloseOthers } : {})} {...(onCloseAll ? { onCloseAll } : {})} {...(onCloseSaved ? { onCloseSaved } : {})} />}
       {engine && onOpenEngine && (
-        <button type="button" className="text-action engine-status" data-state={engine.state} aria-label="Engine status" title={engine.server ?? 'No engine paired'} onClick={onOpenEngine}>
+        <button type="button" className="text-action engine-status" data-state={engine.state} aria-label="Engine status" title={`${engineStateLabel(engine)} · ${engine.server ?? 'No engine paired'}`} onClick={onOpenEngine}>
           <i className={`state-dot state-${engine.state === 'connected' ? 'ready' : engine.state === 'connecting' ? 'starting' : 'disconnected'}`} aria-hidden="true" />
-          {engine.state === 'unpaired' ? 'Pair engine' : engineStateLabel(engine)}
+          <span className="engine-status-label">{engine.state === 'unpaired' ? 'Pair engine' : engineStateLabel(engine)}</span>
         </button>
       )}
-      {engine && engine.state !== 'unpaired' && onOpenAccounts && (
-        <button type="button" className="text-action accounts-button" aria-label="Accounts" title={engine.accounts.length ? `${engine.accounts.filter((account) => account.usable).length} of ${engine.accounts.length} accounts can take a thread` : 'Provider accounts'} onClick={onOpenAccounts}>
-          Accounts{engine.accounts.some((account) => !account.usable && !account.parked) && <i className="attention-dot" aria-hidden="true" />}
-        </button>
-      )}
-      <button type="button" className="text-action theme-button" onClick={onOpenTheme}>Theme</button>
-      {zoomed && <button type="button" className="text-action reset-zoom" onClick={onResetZoom}>Reset zoom</button>}
       <span className="pending-status" data-unsaved={pendingUnsaved} title="Next change · F7. Previous change · Shift+F7. All shortcuts · F1">{pending} pending</span>
-      <kbd>{primaryModifierLabel()}+Enter</kbd>
       {hasAgents || !onStartThread
-        ? <button type="button" className="send-button" data-enabled={canSend} onClick={onSend} disabled={!canSend}>Send ↗</button>
-        : <button type="button" className="send-button" data-enabled onClick={onStartThread}>Start thread</button>}
+        ? <button type="button" className="send-button" title={sendTitle} data-enabled={canSend} onClick={onSend} disabled={!canSend}>Send ↗</button>
+        : <button type="button" className="send-button" title={sendTitle} data-enabled onClick={onStartThread}>Start thread</button>}
+      <WindowControls state={windowState} onAction={onWindowAction} />
     </header>
   )
 }

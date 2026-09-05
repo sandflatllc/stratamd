@@ -1,3 +1,4 @@
+import { openAppMenu } from './harness'
 import { expect, test } from '@playwright/test'
 import { spawn } from 'node:child_process'
 import { writeFile } from 'node:fs/promises'
@@ -14,7 +15,9 @@ test('blank shell opens a document from the Open file button, the bridge, and dr
     const page = await value.launchEmpty()
     await expect(page.locator('.conversation-island')).toBeVisible()
     await expect(page.getByText('No conversation open.', { exact: false })).toBeVisible()
-    await expect(page.getByRole('button', { name: /^Open file$/i })).toHaveCount(1)
+    await openAppMenu(page)
+    await expect(page.getByRole('menuitem', { name: /^Open file/i })).toHaveCount(1)
+    await page.keyboard.press('Escape')
     await expect(page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab')).toHaveText(['Projects'])
 
     await page.evaluate((path) => window.strata.openDocument(path), value.file)

@@ -173,7 +173,7 @@ export class Scenario {
     })
     this.page = await this.app.firstWindow()
     await this.page.waitForLoadState('domcontentloaded')
-    await expect(this.page.getByRole('button', { name: /^Open file$/i }).first()).toBeVisible()
+    await expect(this.page.getByRole('button', { name: 'StrataMD menu' })).toBeVisible()
     return this.page
   }
 
@@ -383,4 +383,11 @@ export async function switchToDocument(page: Page, name: RegExp): Promise<void> 
   if (await pill.count() > 0) { await pill.click(); return }
   await page.getByRole('button', { name: 'Docs menu' }).click()
   await page.getByRole('menu', { name: 'Open docs' }).getByRole('menuitem', { name }).click()
+}
+
+/** Open the logo menu through its visible control before choosing a shell action. */
+export async function openAppMenu(page: Page): Promise<void> {
+  const trigger = page.getByRole('button', { name: 'StrataMD menu' })
+  if (await trigger.getAttribute('aria-expanded') !== 'true') await trigger.click()
+  await expect(page.getByRole('menu', { name: 'StrataMD', exact: true })).toBeVisible()
 }

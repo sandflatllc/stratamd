@@ -3,6 +3,8 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, Notification } fr
 import type { AppView, StrataApi } from '../shared/contracts'
 import { createStrataApplication } from './application'
 import { buildApplicationMenu } from './application-menu'
+import { windowController } from './window-controls'
+import { windowFrameOptions } from '../platform/window'
 import { logError, logWarn } from './log'
 import { isAllowedExternalUrl, openExternalUrl, registerStrataIpc, spellingContext, type RegisteredIpc } from './ipc'
 import { IPC } from '../preload/channels'
@@ -174,7 +176,7 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
       minWidth: 960,
       minHeight: 640,
       show: false,
-      frame: true,
+      ...windowFrameOptions(),
       backgroundColor: String(initialState.settings.theme.active.values['surfaces.window'] ?? '#0a0810'),
       webPreferences: {
         preload: preloadPath,
@@ -212,6 +214,7 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
       ipcMain,
       api: options.api,
       renderer: window.webContents,
+      windowControls: windowController(window),
       allowedRendererUrls: [`app://${APP_HOST}/`]
     })
     let pageBackground = String(initialState.settings.theme.active.values['surfaces.window'] ?? '')
@@ -227,16 +230,19 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
     // Closing the window with unsaved documents asks once. Quitting does not
     // pass through here: before-quit flushes every buffer and exits directly.
     let closeApproved = false
+    let closePromptOpen = false
     window.on('close', (event) => {
       if (closeApproved || quitting) return
       const dirty = options.api.dirtyDocumentPaths?.() ?? []
       if (dirty.length === 0) return
       event.preventDefault()
+      if (closePromptOpen) return
+      closePromptOpen = true
       void resolveDirtyClose(options.api, (paths) => askAboutDirtyDocuments(window, paths)).then((mayClose) => {
         if (!mayClose || window.isDestroyed()) return
         closeApproved = true
         window.close()
-      })
+      }).catch(error => { logError('main', 'Could not confirm closing the window', error) }).finally(() => { closePromptOpen = false })
     })
     window.on('focus', () => {
       if ('recheckFocused' in options.api && typeof options.api.recheckFocused === 'function') {
