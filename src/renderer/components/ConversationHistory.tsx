@@ -24,8 +24,7 @@ export class ConversationHistory extends Component<Props, Record<string, never>,
     const row = viewport.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(this.props.startMessage!)}"]`)
     if (!row) return
     this.spacer.current!.style.height = '0px'
-    const header = row.closest('.conversation-turn')?.querySelector('.conversation-exchange-header')
-    const inset = (header?.getBoundingClientRect().height ?? 0) + Number.parseFloat(getComputedStyle(viewport).paddingTop)
+    const inset = Number.parseFloat(getComputedStyle(viewport).paddingTop)
     const top = viewport.scrollTop + row.getBoundingClientRect().top - viewport.getBoundingClientRect().top - inset
     // Short answers need room below them to reach the top. Leave a small gap
     // from the bottom so incoming text does not resume following while reading.

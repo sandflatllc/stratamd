@@ -111,9 +111,7 @@ for (const placement of ['side', 'center'] as const) test(`100 exchanges mount o
     await page.locator('.annotation-composer').getByRole('button', { name: 'Hold', exact: true }).click()
     await expect(panel.locator('.conversation-context-tray')).toContainText('Comment on the oldest answer.')
     await panel.getByRole('button', { name: 'Contents', exact: true }).click()
-    const mark = panel.getByRole('combobox', { name: 'Reading mark Answer 1', exact: true })
-    await mark.selectOption('Reviewed')
-    await expect(mark).toHaveValue('Reviewed')
+    await expect(panel.getByRole('navigation', { name: 'Conversation contents' })).toContainText('Answer 1')
     await panel.getByRole('button', { name: 'Contents', exact: true }).click()
     await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-long-history.png`) })
   } finally { await scenario.dispose(); await engine.close() }

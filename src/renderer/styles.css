@@ -1487,9 +1487,10 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .conversation-file-dir { min-width: 0; flex: 1; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; font-size: calc(11px * var(--zoom, 1)); }
 .conversation-file-row .conversation-delta { flex: none; margin-left: auto; }
 .conversation-work-group, .conversation-live-work { margin: 0 8px 10px; }
-.conversation-work-toggle { display: flex; width: 100%; min-height: 30px; align-items: center; gap: 6px; border: 0; border-radius: 6px; padding: 3px 5px; background: none; color: var(--muted); cursor: pointer; text-align: left; }
+.conversation-work-group { border-bottom: 1px solid var(--line); }
+.conversation-work-toggle { display: flex; width: 100%; min-height: 30px; align-items: center; gap: 6px; border: 0; border-radius: 6px 6px 0 0; padding: 3px 5px; background: none; color: var(--muted); cursor: pointer; text-align: left; }
 .conversation-work-toggle:hover { background: color-mix(in srgb, var(--card-2) 55%, transparent); }
-.conversation-work-toggle > span:nth-child(2) { min-width: 0; overflow: hidden; flex: 1; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-work-toggle > .conversation-work-chevron { flex: 1; text-align: left; }
 .conversation-work-toggle > b { color: var(--controls-danger); }
 .conversation-work-list { display: grid; gap: 2px; margin-left: 16px; border-left: 1px solid var(--line); padding-left: 4px; }
 .conversation-work-entry { min-width: 0; }
@@ -1672,10 +1673,7 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .model-picker-others button { width: 100%; }
 
 /* Conversation reading shares the document's component renderer. */
-.conversation-turn { border-top: 1px solid var(--line); margin-block: 20px 36px; }
-.conversation-exchange-header { position: sticky; top: 0; z-index: 8; display: flex; align-items: center; gap: 8px; padding: 10px 4px; background: var(--card); border-bottom: 1px solid var(--line); }
-.conversation-exchange-header strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(13px * var(--zoom, 1)); }
-.conversation-exchange-header select { max-width: 90px; font-size: calc(11px * var(--zoom, 1)); }
+.conversation-turn { margin-block: 20px 36px; }
 .conversation-rich-message .strata-prosemirror { padding: 8px 0; min-height: 0; }
 .conversation-message { scroll-margin-top: 70px; }
 .conversation-reading-tools { position: relative; display: flex; gap: 8px; padding-top: 6px; }
@@ -1692,7 +1690,6 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .conversation-rich-message, .conversation-rich-message > [data-prosemirror-host] { display: flow-root; }
 .conversation-outline { padding: 12px; overflow: auto; }
 .conversation-outline button { display: block; width: 100%; text-align: left; padding-block: 6px; white-space: normal; }
-.conversation-panel[data-placement="side"] .conversation-exchange-header select { display: none; }
 .conversation-rich-message { container-type: inline-size; overflow-wrap: anywhere; }
 .conversation-panel[data-placement="side"] .conversation-title { flex-wrap: wrap; }
 .conversation-panel[data-placement="side"] .conversation-title strong { flex-basis: 100%; }

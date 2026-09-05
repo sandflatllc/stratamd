@@ -27,13 +27,13 @@ async function expectBottom(history: Locator) {
 
 async function expectStart(message: Locator) {
   await expect.poll(() => message.evaluate(el => {
-    const header = el.closest('.conversation-turn')!.querySelector('.conversation-exchange-header')!
-    return Math.abs(el.getBoundingClientRect().top - header.getBoundingClientRect().bottom)
+    const viewport = el.closest('.conversation-messages')!
+    return Math.abs(el.getBoundingClientRect().top - viewport.getBoundingClientRect().top - Number.parseFloat(getComputedStyle(viewport).paddingTop))
   })).toBeLessThan(2)
   await expect(message.locator('small').first()).toBeInViewport()
 }
 
-for (const placement of ['side', 'center']) test(`latest response aligns long, folded, and short answers at the top in ${placement}`, async ({}, testInfo) => {
+for (const placement of ['side', 'center']) test(`latest response aligns long and short answers at the top in ${placement}`, async ({}, testInfo) => {
   const engine = await startEngine()
   const scenario = await seededScenario(testInfo, engine.origin)
   const longAnswer = '# Latest answer\n\n' + Array.from({ length: 35 }, (_, i) => `Paragraph ${i + 1}. Read this answer from its beginning, with older messages above it.`).join('\n\n')
@@ -62,11 +62,6 @@ for (const placement of ['side', 'center']) test(`latest response aligns long, f
     await expectStart(short)
     await panel.getByRole('button', { name: 'Newest', exact: true }).click()
     await expectBottom(history)
-    await panel.getByRole('button', { name: 'Latest response', exact: true }).click()
-    await expectStart(short)
-    const exchange = short.locator('xpath=ancestor::section[contains(@class,"conversation-turn")]')
-    await exchange.getByRole('button', { name: /^Fold exchange/ }).click()
-    await expect(short).toHaveCount(0)
     await panel.getByRole('button', { name: 'Latest response', exact: true }).click()
     await expectStart(short)
     if (placement === 'side') {

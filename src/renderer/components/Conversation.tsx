@@ -3,7 +3,7 @@ import { useConversationWorkspace } from './ConversationWorkspace'
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { EngineActivityView, EngineThreadView, EngineView, ItemView } from '../../shared/contracts'
 import { changedFilesLabel, formatDelta, summarizeChangedFiles, type ChangedFileInput, type ChangedFileView } from '../../core/changed-files'
-import { deriveWorkEntries, groupWorkRows, type WorkEntry } from '../../core/work-log'
+import { deriveWorkEntries, groupWorkRows, type WorkEntry, type WorkGroupRow } from '../../core/work-log'
 import { ConversationComposer } from './ConversationComposer'
 import { ConversationHistory } from './ConversationHistory'
 import { Resizer } from './Resizer'
@@ -65,6 +65,11 @@ function elapsed(startedAt: string | null, now: number): string {
   const seconds = Math.max(0, Math.floor((now - Date.parse(startedAt)) / 1_000))
   if (seconds < 60) return `${seconds}s`
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+}
+
+/** How long a finished work group ran: from its first call to the answer that followed it, or to its last call when nothing followed. */
+function workDuration(group: WorkGroupRow, endedAt: string | undefined): string {
+  return elapsed(group.createdAt, Date.parse(endedAt ?? group.entries.at(-1)?.createdAt ?? group.createdAt))
 }
 
 function openRequests(activities: EngineActivityView[], kind: 'approval' | 'user-input'): EngineActivityView[] {
@@ -211,7 +216,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
     <ConversationHistory ref={history} active={visible} navigation={workspace.target?.serial} startMessage={workspace.target?.align === 'start' ? workspace.target.message : undefined} key={`history:${thread.id}`} className="conversation-messages">
       {placement === 'center' && onDocumentMeasure && <div className="conversation-measure" style={{ width: `min(${documentMeasure}px, 100%)` }}><Resizer axis="vertical" label="Resize conversation measure" value={documentMeasure} min={620} max={1600} onChange={(value) => onDocumentMeasure(value, false)} onCommit={(value) => onDocumentMeasure(value, true)} /></div>}
       <div className="conversation-column">
-      {turns.map((turn, turnIndex) => {
+      {turns.map((turn) => {
         const groups = workGroups.filter((candidate) => candidate.turnId === turn.id)
         const timeline = [
           ...turn.messages.map((message) => ({ kind: 'message' as const, id: message.id, createdAt: message.createdAt, message })),
@@ -220,16 +225,14 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
         const lastAssistant = turn.messages.findLast((message) => message.role === 'assistant')?.id
         const changedFiles = thread.documents?.filter((file) => file.turnId === turn.id) ?? []
         return <section className="conversation-turn" key={turn.id} data-running={groups.some((group) => group.live) || undefined}>
-          <header className="conversation-exchange-header"><button type="button" aria-label={`Fold exchange ${turnIndex + 1}`} aria-expanded={!workspace.folded(turn.id)} onClick={() => workspace.toggleFold(turn.id)}>{workspace.folded(turn.id) ? '▸' : '▾'}</button><strong>{turnIndex + 1}. {turn.messages.find(message => message.role === 'user')?.text.slice(0, 120) || (turn.messages.some(message => message.attachmentCount) ? 'Attached context' : 'Exchange')}</strong><small>{groups.some(group => group.live) ? 'Running' : turn.messages[0]?.createdAt.slice(11, 16)}</small><select aria-label={`Reading mark exchange ${turnIndex + 1}`} value={workspace.mark(turn.id)} onChange={event => workspace.setMark(turn.id, event.target.value)}><option value="">Unread</option><option>Reviewed</option><option>Revisit</option></select></header>
-          {workspace.folded(turn.id) && <small>{allItems.filter(item => item.turnId === turn.id && item.status !== 'done').length} open items and drafts</small>}
-          {!workspace.folded(turn.id) && timeline.map((row) => {
+          {timeline.map((row, rowIndex) => {
             if (row.kind === 'work') {
               const group = row.group
               const expanded = expandedWork[group.id] ?? !group.foldedByDefault
               if (group.live) return <div className="conversation-live-work" data-history-row key={group.id}><div className="conversation-working-row"><span className="working-pulse" aria-hidden="true" />Working <time>{elapsed(thread.turnStartedAt, now)}</time></div>{group.entries.map((entry) => <WorkEntryRow entry={entry} key={entry.id} />)}{group.showThinking && <div className="conversation-thinking"><span aria-hidden="true" />Thinking</div>}</div>
               return <div className="conversation-work-group" data-history-row key={group.id}>
-                <button type="button" className="conversation-work-toggle" aria-expanded={expanded} onClick={() => setExpandedWork((value) => ({ ...value, [group.id]: !expanded }))}>
-                  <span className="conversation-work-icon" aria-hidden="true">{workIcons[group.summaryIcon]}</span><span>{group.summary}</span>{group.hasFailure && <b aria-label="Failed">!</b>}
+                <button type="button" className="conversation-work-toggle" title={group.summary} aria-expanded={expanded} onClick={() => setExpandedWork((value) => ({ ...value, [group.id]: !expanded }))}>
+                  <span>Worked for {workDuration(group, timeline[rowIndex + 1]?.createdAt)}</span><span className="conversation-work-chevron" aria-hidden="true">{expanded ? '⌄' : '›'}</span>{group.hasFailure && <b aria-label="Failed">!</b>}
                 </button>
                 {expanded && <div className="conversation-work-list">{group.entries.map((entry) => <WorkEntryRow entry={entry} key={entry.id} />)}</div>}
               </div>
