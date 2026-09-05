@@ -1,11 +1,11 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { EngineMessageView, HeadingReference } from '../../shared/contracts'
 import { createStrataEditor, type AnnotationRange, type EditorSelection, type StrataEditorHandle } from '../../editor'
-import { resolveMessageAnchor, type MessageComment } from '../../core/conversation-delivery'
+import { isOwnerComment, resolveMessageAnchor, type MessageComment } from '../../core/conversation-delivery'
 import { conversationParse } from '../conversationReading'
 import { MessageMarkdown } from '../messageMarkdown'
 
-export interface PassageTarget { message: string; from: number; to: number; serial: number; align?: 'start' }
+export interface PassageTarget { message: string; from: number; to: number; serial: number; align?: 'start'; annotation?: string }
 export const ConversationMessage = memo(function ConversationMessage({ message, comments, pinned, target, onSelection, onOpen, root, folds, onFold }: {
   message: EngineMessageView; comments: MessageComment[]; pinned: boolean; target: PassageTarget | null
   root: string | null; folds: HeadingReference[]; onFold(heading: HeadingReference, folded: boolean): void
@@ -56,9 +56,9 @@ export const ConversationMessage = memo(function ConversationMessage({ message, 
   useLayoutEffect(() => {
     const ranges: AnnotationRange[] = comments.flatMap(comment => {
       const range = resolveMessageAnchor(comment, message)
-      return range ? [{ id: comment.id, kind: comment.kind, status: comment.state === 'resolved' ? 'resolved' as const : 'open' as const, from: 0, to: 0, sourceFrom: range.from, sourceTo: range.to, quote: comment.selection, text: comment.text, author: 'user', draft: comment.state === 'held' }] : []
+      return range ? [{ id: comment.id, kind: isOwnerComment(comment) && comment.kind === 'suggestion' ? 'comment' : comment.kind, status: !isOwnerComment(comment) && comment.state === 'resolved' ? 'resolved' as const : 'open' as const, from: 0, to: 0, sourceFrom: range.from, sourceTo: range.to, quote: comment.selection, text: comment.text, author: 'user', draft: comment.state === 'held' }] : []
     })
-    if (target?.message === message.id && target.align !== 'start') ranges.push({ id: 'conversation-jump', kind: 'comment', status: 'open', from: 0, to: 0, sourceFrom: target.from, sourceTo: target.to, quote: source.slice(target.from, target.to), author: 'user' })
+    if (target?.message === message.id && target.align !== 'start' && !target.annotation) ranges.push({ id: 'conversation-jump', kind: 'comment', status: 'open', from: 0, to: 0, sourceFrom: target.from, sourceTo: target.to, quote: source.slice(target.from, target.to), author: 'user' })
     editor.current?.setAnnotations(ranges)
   }, [comments, target, mounted, source])
   useLayoutEffect(() => {
@@ -66,7 +66,7 @@ export const ConversationMessage = memo(function ConversationMessage({ message, 
   }, [folds, mounted])
   useLayoutEffect(() => {
     if (target?.message === message.id && target.align !== 'start' && editor.current) {
-      editor.current.jumpToAnnotation('conversation-jump')
+      editor.current.jumpToAnnotation(target.annotation ?? 'conversation-jump')
     }
   }, [target, mounted])
   return <div ref={row} className="conversation-rich-message" style={mounted && height !== undefined ? { minHeight: height } : undefined} data-rich-mounted={mounted || undefined}>

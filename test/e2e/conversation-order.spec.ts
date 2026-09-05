@@ -1,7 +1,7 @@
 import { expect, test, type Locator } from '@playwright/test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 
-test('conversation messages and Contents run oldest to newest in both placements', async ({}, testInfo) => {
+test('conversation messages and history markers run oldest to newest in both placements', async ({}, testInfo) => {
   const engine = await startEngine({ conversationParity: true })
   const scenario = await seededScenario(testInfo, engine.origin)
   try {
@@ -13,9 +13,8 @@ test('conversation messages and Contents run oldest to newest in both placements
       const panel = page.locator(`.conversation-panel[data-placement="${placement}"]`)
       await expect.poll(() => panel.locator('[data-message-id]').evaluateAll((rows) => rows.map((row) => row.getAttribute('data-message-id')))).toEqual(expected)
       await expect(panel.getByRole('textbox', { name: 'Message conversation' })).toBeInViewport()
-      await panel.getByRole('button', { name: 'Contents', exact: true }).click()
-      await expect(panel.locator('.conversation-outline-row > button')).toHaveText(['Inspect the timeline. · 0 items', 'Check the grouping. · 0 items'])
-      await panel.getByRole('button', { name: 'Contents', exact: true }).click()
+      await expect(panel.locator('.conversation-marker')).toHaveCount(3)
+      await expect.poll(() => panel.locator('.conversation-marker').evaluateAll(rows => rows.map(row => row.getAttribute('data-marker-id')))).toEqual(['old-user-1', 'old-user-2', 'live-user'])
       if (placement === 'side') await panel.getByRole('button', { name: 'Open in center' }).click()
     }
   } finally { await scenario.dispose(); await engine.close() }

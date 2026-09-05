@@ -3,13 +3,11 @@ import type { NavigationTab } from '../../shared/contracts'
 import { AmbientDecor } from './AmbientDecor'
 import { RailTabs } from './RailTabs'
 
-/** Projects always; Contents for the active reading surface; Conversation beside a document. */
+/** Projects always; Conversation and Contents beside a document. */
 export type LeftTab = NavigationTab
 
 interface NavigationRailProps {
   selected: LeftTab
-  /** True while an existing conversation shows in the center. */
-  conversationOpen?: boolean
   documentOpen: boolean
   projects: ReactNode
   conversation: ReactNode
@@ -21,21 +19,21 @@ interface NavigationRailProps {
 }
 
 /** Which tabs the left window offers, in order, for the current center content. */
-export function leftTabs(documentOpen: boolean, conversationOpen = false): LeftTab[] {
-  return documentOpen ? ['projects', 'conversation', 'contents'] : conversationOpen ? ['projects', 'contents'] : ['projects']
+export function leftTabs(documentOpen: boolean): LeftTab[] {
+  return documentOpen ? ['projects', 'conversation', 'contents'] : ['projects']
 }
 
 /** The tab to show: the selection when it is offered, otherwise the first offered tab. */
-export function resolveLeftTab(selected: LeftTab, documentOpen: boolean, conversationOpen = false): LeftTab {
-  const offered = leftTabs(documentOpen, conversationOpen)
+export function resolveLeftTab(selected: LeftTab, documentOpen: boolean): LeftTab {
+  const offered = leftTabs(documentOpen)
   return offered.includes(selected) ? selected : offered[0]!
 }
 
 export function NavigationRail(props: NavigationRailProps) {
-  const selected = resolveLeftTab(props.selected, props.documentOpen, props.conversationOpen)
+  const selected = resolveLeftTab(props.selected, props.documentOpen)
   const labels: Record<LeftTab, string> = { projects: 'Projects', conversation: 'Conversation', contents: 'Contents' }
   const counts: Partial<Record<LeftTab, number | undefined>> = { projects: props.projectsCount, conversation: props.conversationCount }
-  const tabs = leftTabs(props.documentOpen, props.conversationOpen).map((id) => ({ id, label: labels[id], ...(counts[id] ? { count: counts[id] } : {}) }))
+  const tabs = leftTabs(props.documentOpen).map((id) => ({ id, label: labels[id], ...(counts[id] ? { count: counts[id] } : {}) }))
   return (
     <aside className="island navigation-rail" aria-label="Document navigation">
       <AmbientDecor variant="explorer" />
@@ -48,7 +46,7 @@ export function NavigationRail(props: NavigationRailProps) {
           {props.conversation}
         </section>
       )}
-      {(props.documentOpen || props.conversationOpen) && (
+      {props.documentOpen && (
         <section role="tabpanel" id="navigation-panel-contents" aria-labelledby="navigation-tab-contents" hidden={selected !== 'contents'}>
           {props.contents}
         </section>

@@ -17,6 +17,11 @@ export interface MessageComment {
   options?: string[]
   replies: Array<{ author: 'user' | 'agent'; text: string }>
 }
+/** Owner passage feedback is history, not an item waiting for a reply. */
+export function isOwnerComment(comment: Pick<MessageComment, 'id'>): boolean {
+  return comment.id.startsWith('c_')
+}
+
 export interface ConversationOutcome {
   message: string
   index: number
@@ -56,7 +61,7 @@ export function renderConversationDelivery(input: ConversationDelivery): string 
     ['New annotations', input.annotations.map(({ id, kind, anchor, selection, text }) => ({ id, kind, anchor, selection, text }))],
     ['Replies', input.replies], ['Message blocks', input.blocks], ['Strata block outcomes', input.outcomes],
   ]
-  return `# Conversation context\n\nDelivery: ${input.deliveryId}\nThread: ${input.threadId}\n` + sections.filter(([, rows]) => rows.length).map(([title, rows]) => `\n## ${title}\n\n\`\`\`json\n${JSON.stringify(rows, null, 2)}\n\`\`\`\n`).join('')
+  return `# Conversation context\n\nDelivery: ${input.deliveryId}\nThread: ${input.threadId}\n\nAnswer owner passage feedback in your normal response in the main conversation. Comments stay saved for navigation and do not need threaded replies or resolution.\n` + sections.filter(([, rows]) => rows.length).map(([title, rows]) => `\n## ${title}\n\n\`\`\`json\n${JSON.stringify(rows, null, 2)}\n\`\`\`\n`).join('')
 }
 export function conversationDelivery(threadId: string, deliveryId: string, annotations: MessageComment[], replies: Record<string, { text: string }>, messages: EngineMessageView[], outcomes: ConversationOutcome[]): ConversationDelivery {
   const blocks = new Map<string, ConversationDelivery['blocks'][number]>()

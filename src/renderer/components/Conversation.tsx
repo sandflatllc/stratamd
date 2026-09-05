@@ -6,6 +6,8 @@ import { changedFilesLabel, formatDelta, summarizeChangedFiles, type ChangedFile
 import { deriveWorkEntries, groupWorkRows, type WorkEntry, type WorkGroupRow } from '../../core/work-log'
 import { ConversationComposer } from './ConversationComposer'
 import { ConversationHistory } from './ConversationHistory'
+import { ConversationNavigator } from './ConversationNavigator'
+import { isOwnerComment } from '../../core/conversation-delivery'
 import { Resizer } from './Resizer'
 import { MessageMarkdown } from '../messageMarkdown'
 
@@ -171,8 +173,9 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
   const [now, setNow] = useState(Date.now())
   const thread = selected?.thread
 
+  const panelRef = useRef<HTMLElement>(null)
   const history = useRef<ConversationHistory>(null)
-  const workspace = useConversationWorkspace(thread, onStart, () => history.current?.scrollToBottom())
+  const workspace = useConversationWorkspace(thread, onStart, () => history.current?.scrollToBottom(), panelRef)
   useEffect(() => {
     if (thread?.status !== 'running' && thread?.status !== 'starting') return
     const timer = window.setInterval(() => setNow(Date.now()), 1_000)
@@ -196,7 +199,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
     turns.map((turn) => ({ id: turn.id, running: Boolean(thread && (thread.status === 'running' || thread.status === 'starting') && (thread.activeTurnId === null || thread.activeTurnId === turn.id)), finished: thread?.activeTurnId !== turn.id })),
     thread?.messages ?? [],
   ), [workEntries, turns, thread?.status, thread?.activeTurnId, thread?.messages])
-  const allItems = useMemo(() => thread ? [...items, ...(thread.items ?? [])] : [...items], [items, thread])
+  const allItems = useMemo(() => thread ? [...items, ...(thread.items ?? []).filter(item => !isOwnerComment(item))] : [...items], [items, thread])
   /** Replies queued in the main process for this thread's message items; they ride the next Send. */
   const queuedCount = thread ? (thread.items ?? []).filter((item) => item.draftReply !== undefined).length : 0
 
@@ -207,12 +210,13 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
   </section>
   if (!thread || !selected) return <div className="engine-empty">No conversation open.<small>Choose a thread under Projects.</small></div>
   const running = thread.status === 'running' || thread.status === 'starting'
-  return <section className="conversation-panel" aria-label="Conversation" data-placement={placement} style={placement === 'center' ? { '--conversation-measure': `${documentMeasure}px` } as CSSProperties : undefined} onKeyDownCapture={workspace.onKeyDown}>
+  return <section ref={panelRef} className="conversation-panel" aria-label="Conversation" data-placement={placement} style={placement === 'center' ? { '--conversation-measure': `${documentMeasure}px` } as CSSProperties : undefined} onKeyDownCapture={workspace.onKeyDown}>
     <header>
       <div className="conversation-title"><strong><span>{selected.project}</span><i aria-hidden="true">/</i>{thread.title}</strong>{running && <button type="button" className="stop-button" onClick={() => onStop(thread.id)}>Stop</button>}{onMove && <button type="button" onClick={onMove}>{placement === 'side' ? 'Open in center' : 'Move to side'}</button>}</div>
       {workspace.toolbar}
     </header>
     {passage && <div className="conversation-passage">{passage}</div>}
+    <div className="conversation-reading-area">
     <ConversationHistory ref={history} active={visible} navigation={workspace.target?.serial} startMessage={workspace.target?.align === 'start' ? workspace.target.message : undefined} key={`history:${thread.id}`} className="conversation-messages">
       {placement === 'center' && onDocumentMeasure && <div className="conversation-measure" style={{ width: `min(${documentMeasure}px, 100%)` }}><Resizer axis="vertical" label="Resize conversation measure" value={documentMeasure} min={620} max={1600} onChange={(value) => onDocumentMeasure(value, false)} onCommit={(value) => onDocumentMeasure(value, true)} /></div>}
       <div className="conversation-column">
@@ -245,7 +249,6 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
             return <article className={`conversation-message ${message.role}`} key={message.id} data-history-row data-message-id={message.id} data-streaming={message.streaming || undefined}>
               <small>{message.role === 'assistant' ? 'Agent' : message.role === 'user' ? 'You' : 'System'}{message.role === 'user' && <span className="conversation-chip">{message.attachmentCount > 0 ? `${message.attachmentCount} attached` : 'Message'}</span>}{message.role === 'assistant' && <button type="button" className="conversation-copy" aria-label="Copy assistant message" onClick={() => void navigator.clipboard.writeText(prose)}>Copy</button>}</small>
               <div className={longUserMessage && !messageExpanded ? 'conversation-user-collapsed' : undefined} data-annotatable={message.role === 'assistant' && !message.streaming || undefined} data-block-ids={blocks.map((block) => block.id).join(' ')}>{message.role === 'assistant' && !message.streaming ? <ConversationMessage message={message} comments={(thread.comments ?? []).filter(comment => comment.anchor.message === message.id)} pinned={workspace.selection?.message === message.id || workspace.discussion?.anchor.message === message.id} target={workspace.target} root={selected.root} folds={workspace.folds(message.id)} onFold={(heading, folded) => workspace.foldHeading(message.id, heading, folded)} onSelection={range => workspace.select(message.id, range)} onOpen={workspace.open} /> : <MessageMarkdown text={prose} />}</div>
-              {workspace.discussion?.anchor.message === message.id && workspace.discussionView}
               {longUserMessage && <button type="button" className="conversation-message-toggle" aria-expanded={messageExpanded} onClick={() => setExpandedMessages((value) => ({ ...value, [message.id]: !messageExpanded }))}>{messageExpanded ? 'Show less' : 'Show more'}</button>}
               {message.id === lastAssistant && changedFiles.length > 0 && <ChangedFilesCard files={changedFiles} root={selected.root} {...(onOpenDocument ? { onOpen: onOpenDocument } : {})} />}
             </article>
@@ -257,7 +260,10 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
       })}
       </div>
     </ConversationHistory>
-    {workspace.overlay}
+    {visible && workspace.discussionView}
+    {visible && <ConversationNavigator key={thread.id} thread={thread} onJump={workspace.navigate} />}
+    </div>
+    {visible && workspace.overlay}
     <ConversationComposer deliveryId={workspace.previewId} key={`composer:${thread.id}`} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} context={<div className="conversation-context">{placement === 'side' && onDocumentContext && <button type="button" onClick={onDocumentContext}>Document context</button>}{workspace.tray}</div>} queuedCount={workspace.selectedCount} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} onSend={async input => { await onStart(thread.id, { ...input, ...workspace.outgoing }); workspace.sent() }} />
   </section>
 }

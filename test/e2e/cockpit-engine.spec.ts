@@ -472,8 +472,8 @@ test('conversation zoom: the side conversation follows the left window and the c
     await page.keyboard.press(primaryKey('Equal'))
     await expect.poll(() => zoomOf('[data-pane="editor"]')).toBe('1.1')
     await expect.poll(() => fontSize(centerProse)).toBeCloseTo(18.7, 0)
-    // Center conversations expose their outline in the left Contents tab.
-    await expect(navigation.getByRole('tab')).toHaveText(['Projects', 'Contents'])
+    // Center conversations keep Projects on the left and history beside the transcript.
+    await expect(navigation.getByRole('tab')).toHaveText(['Projects'])
 
     await openAppMenu(page)
     await page.getByRole('menuitem', { name: 'Reset zoom' }).click()

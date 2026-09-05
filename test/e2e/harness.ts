@@ -143,7 +143,7 @@ export class Scenario {
     await writeFile(path, `${JSON.stringify({ theme: 'strata-vivid', ...settings }, null, 2)}\n`)
   }
 
-  async launch(file = this.file): Promise<Page> {
+  async launch(file = this.file, extraArgs: string[] = []): Promise<Page> {
     await access(mainEntry, constants.R_OK)
     // Tests that wrote no settings still get an explicit theme so visual
     // assertions never depend on the fallback path.
@@ -154,7 +154,7 @@ export class Scenario {
       await this.writeSettings({})
     }
     this.app = await electron.launch({
-      args: [...launchArgs, mainEntry, file],
+      args: [...launchArgs, ...extraArgs, mainEntry, file],
       cwd: projectRoot,
       env: this.env
     })

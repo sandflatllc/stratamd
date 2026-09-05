@@ -18,16 +18,15 @@ Available verbs are comment, question, decision, suggest, edit, reply, resolve, 
 
 Use the block ids printed in the delivery. They belong to that delivery and document. A quoted-text anchor, {"document":"/absolute/file.md","quote":"exact text"}, is the fallback. Do not guess an old id after the passage changes. Strata reports every entry as applied or failed in the next delivery, with the created item id or nearest block candidates.
 
-Conversation passage feedback arrives as \`conversation-<deliveryId>.md\`, headed \`Conversation context\`, with Delivery and Thread IDs. Its New annotations, Replies, Message blocks, and Strata block outcomes sections are JSON arrays. Read the full selection and text, including line breaks. Range anchors identify the owner's exact selection with start/end block IDs and UTF-16 offsets, exclusive at the end. Use only supplied IDs. To add an item use a whole message block; to reply use its item ID:
+Conversation passage feedback arrives as \`conversation-<deliveryId>.md\`, headed \`Conversation context\`, with Delivery and Thread IDs. Its New annotations, Replies, Message blocks, and Strata block outcomes sections are JSON arrays. Read the full selection and text, including line breaks. Range anchors identify the owner's exact selection with start/end block IDs and UTF-16 offsets, exclusive at the end. Use only supplied IDs. Answer owner passage feedback in your normal response in the main conversation. Each comment is one-time context and stays saved for navigation; it does not need a threaded reply or resolution. To add an agent question or other item, use a whole message block:
 
 \`\`\`strata
 [
-  {"verb":"comment","anchor":{"message":"m_example","block":"b1234abcd"},"text":"A point about this answer."},
-  {"verb":"reply","anchor":{"item":"c_example"},"text":"My answer to the passage comment."}
+  {"verb":"comment","anchor":{"message":"m_example","block":"b1234abcd"},"text":"A point about this answer."}
 ]
 \`\`\`
 
-A message suggestion is feedback for a later answer; message prose stays immutable. Only the owner answers decisions or closes owner comments. You may resolve your own non-decision message items. Conversation outcomes arrive on the next owner Send; they do not start a turn themselves.
+A message suggestion is feedback for a later answer; message prose stays immutable. Only the owner answers decisions. You may resolve your own non-decision message items. Conversation outcomes arrive on the next owner Send; they do not start a turn themselves.
 
 Use Strata components in completed prose when they organize the answer: a Callout for context, a Verdict for a judgment, and ordinary headings, lists, tables, or Mermaid for structure. Keep components out of the final action block. Put only JSON actions there; use an empty array when there are no actions.
 

@@ -22,7 +22,7 @@ function shell(text = 'First thread', status: 'idle' | 'running' = 'idle', extra
       runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null,
       latestTurn: null, createdAt: at, updatedAt: at,
       session: { threadId: 't1', status, providerName: 'codex', providerInstanceId: 'codex-main', runtimeMode: 'full-access', activeTurnId: status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at },
-      latestUserMessageAt: at, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false,
+      backgroundLiveness: null as string | null, latestUserMessageAt: at, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false,
       ...extra,
     }],
     updatedAt: at,

@@ -1,15 +1,15 @@
 import { createPortal } from 'react-dom'
 import { readDraft } from '../conversationDrafts'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { ConversationInput, DraftKind, EngineThreadView, HeadingReference } from '../../shared/contracts'
 import type { EditorSelection } from '../../editor/types'
-import { conversationDelivery, renderConversationDelivery, resolveMessageAnchor } from '../../core/conversation-delivery'
+import { conversationDelivery, renderConversationDelivery, resolveMessageAnchor, isOwnerComment } from '../../core/conversation-delivery'
 import { conversationMatches, readConversationReading, writeConversationReading } from '../conversationReading'
-import { ConversationContents } from './ConversationContents'
+import type { ConversationMarker } from '../conversationNavigation'
 import { AnnotationComposer } from './AnnotationComposer'
 import type { PassageTarget } from './ConversationMessage'
 
-export function useConversationWorkspace(thread: EngineThreadView | undefined, onStart: (id: string, input: ConversationInput) => Promise<void>, onNewest: () => void) {
+export function useConversationWorkspace(thread: EngineThreadView | undefined, onStart: (id: string, input: ConversationInput) => Promise<void>, onNewest: () => void, panel: RefObject<HTMLElement | null>) {
   const [selection, setSelection] = useState<{ message: string; range: EditorSelection; id?: string } | null>(null)
   const [discussion, setDiscussion] = useState<string | null>(null)
   const returnPosition = useRef<{ message: string; offset: number } | null>(null)
@@ -18,12 +18,12 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   const [target, setTarget] = useState<PassageTarget | null>(null)
   const [excluded, setExcluded] = useState<string[]>([])
   const [reading, setReading] = useState<Record<string, string>>({})
-  const [menu, setMenu] = useState<'contents' | 'items' | 'find' | null>(null)
+  const [menu, setMenu] = useState<'items' | 'find' | null>(null)
   const [query, setQuery] = useState('')
   const [matchIndex, setMatchIndex] = useState(0)
   const [error, setError] = useState('')
   const [previewId, setPreviewId] = useState(() => readDraft(`thread:${thread?.id}`).messageId ?? crypto.randomUUID())
-  useEffect(() => { setReading(readConversationReading(thread?.id ?? '')); setSelection(null); setDiscussion(null); setTarget(null); setReplyItem(null); setExcluded([]); setReply(''); setPreviewId(readDraft(`thread:${thread?.id}`).messageId ?? crypto.randomUUID()) }, [thread?.id])
+  useEffect(() => { setReading(readConversationReading(thread?.id ?? '')); setSelection(null); setDiscussion(null); setMenu(null); setTarget(null); setReplyItem(null); setExcluded([]); setReply(''); setPreviewId(readDraft(`thread:${thread?.id}`).messageId ?? crypto.randomUUID()) }, [thread?.id])
   useEffect(() => { const refresh = () => setReading(readConversationReading(thread?.id ?? '')); window.addEventListener('conversation-reading', refresh); return () => window.removeEventListener('conversation-reading', refresh) }, [thread?.id])
   const remember = (key: string, value: string) => { if (thread) writeConversationReading(thread.id, { ...readConversationReading(thread.id), [key]: value }) }
   const attempt = async (action: () => Promise<unknown>) => { try { await action(); setError('') } catch (error) { setError(error instanceof Error ? error.message : String(error)) } }
@@ -35,31 +35,26 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   const outgoing = thread ? { comments: Object.fromEntries(selectedComments.map(comment => [comment.id, comment.revision])), replies: Object.fromEntries(Object.entries(selectedReplies).map(([id, reply]) => [id, reply.text])) } : {}
   let preview = ''
   try { if (thread && (selectedComments.length || Object.keys(selectedReplies).length || thread.outcomes?.length)) preview = renderConversationDelivery(conversationDelivery(thread.id, previewId, selectedComments, selectedReplies, thread.messages, thread.outcomes ?? [])) } catch (error) { preview = String(error) }
-  const jump = (message: string, from: number, to: number, align?: 'start') => {
+  const jump = (message: string, from: number, to: number, align?: 'start', annotation?: string) => {
     // A navigation reveal leaves the owner's persisted fold choices intact.
-    setTarget(previous => ({ message, from, to, ...(align ? { align } : {}), serial: (previous?.serial ?? 0) + 1 }))
+    setTarget(previous => ({ message, from, to, ...(align ? { align } : {}), ...(annotation ? { annotation } : {}), serial: (previous?.serial ?? 0) + 1 }))
     const targetMessage = thread?.messages.find(candidate => candidate.id === message)
     if (!align && (targetMessage?.role !== 'assistant' || targetMessage.streaming)) requestAnimationFrame(() => document.querySelector(`[data-message-id="${CSS.escape(message)}"]`)?.scrollIntoView({ block: 'center' }))
   }
-  useEffect(() => {
-    const navigate = (event: Event) => { const detail = (event as CustomEvent).detail; if (detail.thread === thread?.id) jump(detail.message, detail.from, detail.to) }
-    window.addEventListener('conversation-jump', navigate)
-    return () => window.removeEventListener('conversation-jump', navigate)
-  }, [thread?.id])
   const open = (id: string) => {
     const comment = comments.find(comment => comment.id === id)
     if (!comment) { setReplyItem(id); setReply(thread?.items?.find(item => item.id === id)?.draftReply ?? ''); return }
     const message = thread?.messages.find(message => message.id === comment.anchor.message)
     const range = resolveMessageAnchor(comment, message)
     if (discussion !== id) {
-      const viewport = document.querySelector('.conversation-panel .conversation-messages')
+      const viewport = panel.current?.querySelector('.conversation-messages')
       const top = viewport?.getBoundingClientRect().top ?? 0
       const row = Array.from(viewport?.querySelectorAll<HTMLElement>('[data-message-id]') ?? []).find(row => row.getBoundingClientRect().bottom > top)
       returnPosition.current = row ? { message: row.dataset.messageId!, offset: row.getBoundingClientRect().top - top } : null
     }
     setDiscussion(id)
     if (range) {
-      jump(comment.anchor.message, range.from, range.to)
+      jump(comment.anchor.message, range.from, range.to, undefined, comment.id)
       if (comment.state === 'held') setSelection({ message: comment.anchor.message, id, range: { ...range, quote: comment.selection, singleBlock: true, left: window.innerWidth / 2, top: window.innerHeight / 2, annotationKind: comment.kind } })
     }
   }
@@ -80,25 +75,23 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
     setDiscussion(null)
     const position = returnPosition.current
     if (!position) return
-    requestAnimationFrame(() => {
-      const viewport = document.querySelector('.conversation-panel .conversation-messages')
-      const row = viewport?.querySelector(`[data-message-id="${CSS.escape(position.message)}"]`)
-      if (viewport && row) viewport.scrollTop += row.getBoundingClientRect().top - viewport.getBoundingClientRect().top - position.offset
-    })
+    // The saved-comment card is an overlay, so returning needs no deferred
+    // layout. A queued restoration could otherwise override the next jump.
+    const viewport = panel.current?.querySelector('.conversation-messages')
+    const row = viewport?.querySelector(`[data-message-id="${CSS.escape(position.message)}"]`)
+    if (viewport && row) viewport.scrollTop += row.getBoundingClientRect().top - viewport.getBoundingClientRect().top - position.offset
   }
   const replyRecord = thread?.items?.find(item => item.id === replyItem)
   const focusReply = (id: string) => { setReplyItem(id); setReply(thread?.items?.find(item => item.id === id)?.draftReply ?? '') }
   const latestResponse = thread?.messages.findLast(message => message.role === 'assistant')
   const toolbar = <div className="conversation-reading-tools">
-    <button type="button" onClick={() => setMenu(menu === 'contents' ? null : 'contents')}>Contents</button>
     <button type="button" onClick={() => setMenu(menu === 'items' ? null : 'items')}>Items</button>
     <button type="button" onClick={() => setMenu(menu === 'find' ? null : 'find')}>Find</button>
     <button type="button" disabled={!latestResponse} onClick={() => { setMenu(null); if (latestResponse) jump(latestResponse.id, 0, 0, 'start') }}>Latest response</button>
     <button type="button" onClick={onNewest}>Newest</button>
     {menu && <div className="conversation-navigation" role="region" aria-label={`Conversation ${menu}`}>
       {menu === 'find' && <><input autoFocus aria-label="Find in conversation" value={query} onChange={event => { setQuery(event.target.value); setMatchIndex(0) }} onKeyDown={event => { if (event.key === 'Enter') findStep(matchIndex + (event.shiftKey ? -1 : 1)) }} /><span>{matches.length ? matchIndex + 1 : 0} of {matches.length}</span><button type="button" onClick={() => findStep(matchIndex - 1)}>Previous</button><button type="button" onClick={() => findStep(matchIndex + 1)}>Next</button></>}
-      {menu === 'contents' && <ConversationContents thread={thread} />}
-      {menu === 'items' && (thread?.items ?? []).map(item => <button type="button" key={item.id} onClick={() => { open(item.id); setMenu(null) }}>{item.status} · {item.kind}: {item.text}</button>)}
+      {menu === 'items' && (thread?.items ?? []).filter(item => !isOwnerComment(item)).map(item => <button type="button" key={item.id} onClick={() => { open(item.id); setMenu(null) }}>{item.status} · {item.kind}: {item.text}</button>)}
     </div>}
   </div>
   const tray = <>
@@ -112,8 +105,26 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
     {error && <p role="alert">{error}</p>}
   </>
   const overlay = selection && thread ? <AnnotationComposer messageTarget initialText={comments.find(comment => comment.id === selection.id)?.text ?? ''} selection={selection.range} spelling={null} size={{ width: 360, height: -1 }} zoom={Number(getComputedStyle(document.querySelector(`[data-message-id="${CSS.escape(selection.message)}"]`) ?? document.body).getPropertyValue('--zoom')) || 1} onSize={() => {}} onDismiss={() => setSelection(null)} onSubmit={() => {}} recipients={[{ id: thread.id, name: thread.title, color: "grape", attached: true }]} leadAgentId={null} activeConversationId={thread.id} onHold={(kind, text) => void attempt(() => hold(kind, text, false))} onSend={(kind, text) => void attempt(() => hold(kind, text, true))} onReplaceWord={() => {}} onAddToDictionary={() => {}} /> : null
-  const discussionView = activeComment ? <section className="conversation-discussion" aria-label="Passage discussion"><blockquote>{activeComment.selection}</blockquote><p>{activeComment.text}</p>{activeComment.replies.map((reply, index) => <p key={index}><strong>{reply.author === 'agent' ? 'Agent' : 'You'}</strong> {reply.text}</p>)}{!resolveMessageAnchor(activeComment, thread?.messages.find(message => message.id === activeComment.anchor.message)) && <p>Target unavailable</p>}<button type="button" onClick={() => open(activeComment.id)}>Jump to passage</button><button type="button" onClick={() => focusReply(activeComment.id)}>Reply</button>{activeComment.kind === 'suggestion' && activeComment.state !== 'held' && ['Accept', 'Reject'].map(action => <button type="button" key={action} onClick={() => void attempt(() => window.strata.queueItemReply(thread!.id, activeComment.id, action))}>{action}</button>)}{activeComment.state !== 'held' && <button type="button" onClick={() => void attempt(() => window.strata.actMessageComment(thread!.id, activeComment.id, activeComment.state === 'resolved' ? 'reopen' : 'resolve'))}>{activeComment.state === 'resolved' ? 'Reopen' : 'Resolve'}</button>}<button type="button" onClick={backToReading}>Back to reading</button></section> : null
-  return { selection, target, toolbar, tray, overlay: overlay ? createPortal(overlay, document.querySelector('.app-shell') ?? document.body) : null, discussion: activeComment, discussionView, open, setReplyItem: focusReply, outgoing, previewId, sent: () => setPreviewId(crypto.randomUUID()), selectedCount: selectedComments.length + Object.keys(selectedReplies).length,
+  const bounds = panel.current?.querySelector('.conversation-reading-area')?.getBoundingClientRect()
+  const recordWidth = Math.min(420, window.innerWidth - 32)
+  const recordPosition = bounds ? { position: 'fixed' as const, left: Math.max(16, Math.min(panel.current?.dataset.placement === 'side' ? bounds.left + 40 : bounds.right - recordWidth - 12, window.innerWidth - recordWidth - 16)), bottom: window.innerHeight - bounds.bottom + 12, width: recordWidth, maxHeight: Math.max(120, bounds.height * .6) } : undefined
+  const ownerComment = activeComment && isOwnerComment(activeComment)
+  const discussionView = activeComment ? createPortal(<section style={recordPosition} className="conversation-discussion" aria-label={ownerComment ? 'Saved comment' : 'Passage discussion'}>
+    <small>{ownerComment ? activeComment.state === 'held' ? 'Held comment' : activeComment.state === 'pending' ? 'Sending comment' : 'Sent comment' : 'Agent item'}</small>
+    <blockquote>{activeComment.selection}</blockquote><p>{activeComment.text}</p>
+    {activeComment.replies.length > 0 && <details><summary>Earlier replies</summary>{activeComment.replies.map((reply, index) => <p key={index}><strong>{reply.author === 'agent' ? 'Agent' : 'You'}</strong> {reply.text}</p>)}</details>}
+    {!resolveMessageAnchor(activeComment, thread?.messages.find(message => message.id === activeComment.anchor.message)) && <p>Original passage unavailable</p>}
+    <button type="button" onClick={() => open(activeComment.id)}>Jump to passage</button>
+    {!ownerComment && <button type="button" onClick={() => focusReply(activeComment.id)}>Answer</button>}
+    <button type="button" onClick={backToReading}>Back to reading</button>
+  </section>, document.querySelector('.app-shell') ?? document.body) : null
+  const navigate = (marker: ConversationMarker) => {
+    setMenu(null)
+    if (marker.comment) open(marker.comment)
+    else { setDiscussion(null); jump(marker.message, 0, 0, 'start') }
+  }
+
+  return { navigate, selection, target, toolbar, tray, overlay: overlay ? createPortal(overlay, document.querySelector('.app-shell') ?? document.body) : null, discussion: activeComment, discussionView, open, setReplyItem: focusReply, outgoing, previewId, sent: () => setPreviewId(crypto.randomUUID()), selectedCount: selectedComments.length + Object.keys(selectedReplies).length,
     select: (message: string, range: EditorSelection | null) => { if (range) setSelection(previous => previous?.message === message && previous.range.from === range.from && previous.range.to === range.to ? previous : { message, range }) },
     folds: (message: string): HeadingReference[] => { if (target?.message === message) return []; try { return JSON.parse(reading[`headings:${message}`] ?? '[]') } catch { return [] } },
     foldHeading: (message: string, heading: HeadingReference, folded: boolean) => { const previous: HeadingReference[] = JSON.parse(reading[`headings:${message}`] ?? '[]'); remember(`headings:${message}`, JSON.stringify([...previous.filter(value => JSON.stringify(value) !== JSON.stringify(heading)), ...(folded ? [heading] : [])])) },

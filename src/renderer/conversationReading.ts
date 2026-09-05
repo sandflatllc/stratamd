@@ -12,13 +12,6 @@ export function conversationParse(id: string, source: string): ParsedEditorMarkd
   completedMessageParses++
   return next
 }
-export function conversationHeadings(id: string, source: string) {
-  const headings: Array<{ text: string; level: number; from: number; to: number }> = []
-  conversationParse(id, source).doc.descendants(node => {
-    if (node.type.name === 'heading' && typeof node.attrs.sourceFrom === 'number') headings.push({ text: node.textContent, level: Number(node.attrs.level), from: node.attrs.sourceFrom, to: node.attrs.sourceTo })
-  })
-  return headings
-}
 export function readConversationReading(thread: string): Record<string, string> {
   try { return JSON.parse(localStorage.getItem(`conversation-reading:${thread}`) ?? '{}') } catch { return {} }
 }
