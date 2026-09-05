@@ -1,0 +1,103 @@
+{
+  "revision": 3,
+  "date": "2026-09-05",
+  "scope": "Interactive mockups only. No application or backend code changed.",
+  "ownerFeedback": {
+    "1": "Usage preserved",
+    "2": "Outcrop paused",
+    "3": "Terminal launch through logo menu, project menu and Ctrl+Backquote",
+    "4": "Code-review proposal removed",
+    "5": "Approved with final three walkthrough states removed; retain four composer-based steps.",
+    "6": "Project source and folder flows in a modal; current inline forms documented",
+    "7": "PR proposal set aside for this pass",
+    "8": "Existing Accounts popup extended",
+    "9": "Existing Engine dialog extended"
+  },
+  "captures": {
+    "t3": [
+      "t3-project-browse.png",
+      "t3-project-create.png",
+      "t3-project-destination.png",
+      "t3-project-github-lookup.png",
+      "t3-project-github.png",
+      "t3-project-local.png",
+      "t3-project-sources.png",
+      "t3-project-url.png",
+      "t3-provider-add-config.png",
+      "t3-provider-add.png",
+      "t3-provider-config.png",
+      "t3-provider-identity.png",
+      "t3-provider-models.png",
+      "t3-workspace-branches.png",
+      "t3-workspace-local-base.png",
+      "t3-workspace-menu.png",
+      "t3-workspace-new.png",
+      "t3-workspace-start.png"
+    ],
+    "strataCurrent": [
+      "strata-current-accounts.png",
+      "strata-current-add-project.png",
+      "strata-current-engine.png",
+      "strata-current-menu.png",
+      "strata-current-new-thread.png"
+    ],
+    "proposed": [
+      "strata-accounts-add.png",
+      "strata-accounts-config.png",
+      "strata-accounts-identity.png",
+      "strata-accounts-models.png",
+      "strata-accounts-overview.png",
+      "strata-accounts-provider-config.png",
+      "strata-connections-details.png",
+      "strata-connections-disconnected.png",
+      "strata-connections-pair.png",
+      "strata-repositories-created.png",
+      "strata-repositories-destination.png",
+      "strata-repositories-github.png",
+      "strata-repositories-local.png",
+      "strata-repositories-new-folder.png",
+      "strata-repositories-sources.png",
+      "strata-repositories-url.png",
+      "strata-terminal-closed.png",
+      "strata-terminal-drawer.png",
+      "strata-terminal-launch.png",
+      "strata-worktrees-base.png",
+      "strata-worktrees-new.png",
+      "strata-worktrees-start.png",
+      "strata-worktrees-workspace.png"
+    ]
+  },
+  "interactionChecks": {
+    "worktrees": 8,
+    "projectSetup": 8,
+    "accounts": 8,
+    "terminal": 4,
+    "connections": 5,
+    "gallery": 5,
+    "result": "passed",
+    "browserErrors": []
+  },
+  "repositoryGate": {
+    "typecheck": "passed",
+    "vitest": "89 files passed; 778 tests passed, 1 skipped",
+    "build": "passed",
+    "playwright": "170 passed",
+    "scope": "Results from revision 2; application source is unchanged. Revision 3 only trims design artifacts and is checked in the prototype browser."
+  },
+  "referenceLimits": [
+    "Live T3 flows were explored through the final submit boundary. No project add, folder create, clone, branch change, agent message, or provider save was performed.",
+    "The GitHub lookup did not reach a successful destination. The captured destination belongs to the Git URL flow.",
+    "Previous-worktree selection was verified in source; the proposed state uses sample data.",
+    "No separate worktree completion or recovery screen is proposed. Previous worktree remains a conditional menu shortcut, as in t3."
+  ],
+  "temporaryRuntime": "Review browser auth session revoked; isolated Strata app stopped; task-owned browser sessions closed.",
+  "reviewStatus": "Owner likes the remaining mockups. Outcrop remains paused; code review and PRs remain outside this pass.",
+  "revision3Checks": {
+    "worktreeWalkthroughSteps": 4,
+    "sendUsesNormalConversation": true,
+    "removedScreensReachable": false,
+    "javascriptSyntax": "passed",
+    "browserErrors": [],
+    "comparisonExport": "updated"
+  }
+}

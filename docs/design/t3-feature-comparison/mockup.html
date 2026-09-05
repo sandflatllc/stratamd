@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Strata · Feature mockup</title><link rel="icon" href="assets/strata.svg"><link rel="stylesheet" href="mockup.css"></head><body><div id="app"></div><div id="toast" role="status" aria-live="polite"></div><script>
+const legacyParams=new URLSearchParams(location.search);
+const legacyScreen=legacyParams.get('screen');
+if(!legacyParams.has('reference')&&['terminal','worktrees','repositories','accounts','connections'].includes(legacyScreen))location.replace('flows.html?screen='+legacyScreen);
+else { const script=document.createElement('script');script.src='mockup.js';document.body.appendChild(script); }
+</script></body></html>

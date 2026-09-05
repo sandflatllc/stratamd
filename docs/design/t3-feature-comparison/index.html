@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Revised Strata mockups · Design review</title>
+  <link rel="icon" href="assets/strata.svg">
+  <link rel="stylesheet" href="gallery.css">
+</head>
+<body>
+  <header class="review-header">
+    <div class="brand"><img src="assets/strata.svg" alt=""><span>StrataMD <span class="muted">/ Design review</span></span></div>
+    <div class="review-meta">5 September 2026 <span>•</span> Revision 3 · Reviewed direction</div>
+  </header>
+  <main>
+    <div class="intro">
+      <div><p class="eyebrow">T3 today → Strata proposal · Revised after your feedback</p><h1>Revised Strata mockups.</h1><p class="lead">Usage stays. The terminal gets a launch point. Workspace controls and project dialogs follow their actual flows.</p></div>
+      <div class="scope"><span class="status-dot"></span><div>Keep the existing engine.<small>These are mockups. They do not run commands or change projects.</small></div></div>
+    </div>
+    <nav id="features" aria-label="Feature comparisons"></nav>
+    <p class="deferred">02 Outcrop · paused for your separate work &nbsp; / &nbsp; 04 Changes &amp; Git · removed &nbsp; / &nbsp; 07 Pull requests · set aside for this pass</p>
+    <section class="feature-intro"><div><div class="feature-kicker"><span id="number"></span><span id="priority"></span></div><h2 id="title"></h2><p id="description"></p></div><div class="view-options" aria-label="Comparison layout"><button data-layout="compare" aria-pressed="true">Side by side</button><button data-layout="strata" aria-pressed="false">Strata larger</button><button data-layout="t3" aria-pressed="false">T3 larger</button></div></section>
+    <nav id="flow-steps" aria-label="Interaction steps"></nav>
+    <div class="step-context"><p id="step-note"></p><button id="current-strata" hidden>See Strata’s current UI</button></div>
+    <div class="comparison" id="comparison">
+      <section class="comparison-side t3-side"><header><div><span class="source-dot"></span><strong id="reference-title">T3 today</strong><small id="reference-label">Live capture</small></div><a id="reference-link" target="_blank" rel="noopener">Open full size ↗</a></header><div class="reference-frame"><img id="reference" alt="Current T3 feature screenshot"><div id="reference-boundary" hidden></div></div></section>
+      <section class="comparison-side strata-side"><header><div><img src="assets/strata.svg" alt=""><strong>In Strata</strong><small>Interactive mockup · example data</small></div><a id="mockup-link" target="_blank" rel="noopener">Open full size ↗</a></header><div class="mockup-frame" id="mockup-frame"><iframe id="mockup" title="Proposed Strata interface"></iframe></div></section>
+    </div>
+    <section class="notes"><article><h3>How t3 handles it</h3><p id="today"></p></article><article><h3>Where it fits in Strata</h3><p id="proposal"></p></article><article><h3>For your workflow</h3><p id="solo"></p></article></section>
+    <div class="feature-footer"><p id="interaction"></p><div><button id="prev">← Previous</button><button id="next">Next →</button></div></div>
+    <details class="provenance"><summary>Reference notes and scope</summary><p>The T3 screenshots show the running local application. This revision follows workspace selection, starting-branch selection, origin selection, local folder browsing and creation entry, Git URL entry and clone destination, GitHub lookup entry, provider configuration and models, and all three Add provider steps. The Strata “current UI” captures come from an isolated instance of the current built app using its existing components.</p><p>Actual project creation, cloning, checkout changes, first-message sending, and provider saves were not performed against your live server. Their code paths were inspected. The proposed project-completion state is labeled as an example. The worktree walkthrough ends after workspace and starting-branch selection. The GitHub lookup did not reach a successful destination in this capture session; the destination comparison uses the Git URL path.</p><p>The revised prototypes use Strata’s current Night colors, Baloo 2, title bar, Projects rail, centered composer, and dialog structure. All prototype form submissions and terminal commands are simulated. Usage remains the design you accepted, with illustrative chart data.</p><p id="source"></p><p>No application or backend implementation changed. The existing server remains responsible for executing the operations represented here.</p></details>
+  </main>
+  <script src="gallery.js"></script>
+</body>
+</html>
