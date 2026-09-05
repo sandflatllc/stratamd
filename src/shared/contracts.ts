@@ -729,6 +729,8 @@ export interface StartThreadFromDocumentInput extends StartThreadInput {
 export type PairEngineRequest = { link: string } | { host: string; code: string }
 
 export interface StrataApi {
+  /** Renderer bridge to the system browser. */
+  openExternal?(url: string): Promise<void>
   getState(): Promise<AppView>
   subscribe(listener: (state: AppView) => void): () => void
   pairEngine(request: PairEngineRequest): Promise<void>

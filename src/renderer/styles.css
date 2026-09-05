@@ -1651,7 +1651,7 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .engine-status .state-dot.state-ready { background: var(--controls-positive); box-shadow: 0 0 8px var(--controls-positive); }
 .engine-status .state-dot.state-starting { background: var(--controls-warning); }
 .engine-status .state-dot.state-disconnected { background: var(--controls-danger); }
-.engine-dialog { width: min(560px, 92vw); }
+.engine-dialog { width: min(560px, 92vw); max-height: calc(100vh - 40px); overflow-y: auto; }
 .engine-facts { display: grid; gap: 6px; margin: 6px 0 12px; }
 .engine-facts > div { display: grid; grid-template-columns: 90px 1fr; gap: 10px; }
 .engine-facts dt { color: var(--dim); font-weight: 700; }
@@ -1855,3 +1855,20 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .conversation-marker-preview blockquote { color: var(--muted); border-left: 2px solid var(--line); padding-left: 10px; }
 
 .app-shell > .conversation-discussion { z-index: 31; overflow: auto; margin: 0; background: var(--card); box-shadow: 0 8px 24px var(--shadow); }
+
+/* Shared framing for the engine setup dialogs. */
+.parity-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.parity-dialog-heading h2 { margin: 0; }
+.parity-dialog-footer { justify-content: space-between; border-top: 1px solid var(--line); padding-top: 16px; margin-top: 20px; }
+.parity-dialog-footer > :last-child { margin-left: auto; }
+.engine-dialog-row { display: flex; gap: 12px; margin: 18px 0; }
+.engine-pairing { display: block; padding-top: 16px; }
+.engine-pairing summary { cursor: pointer; }
+.engine-pairing-form { display: grid; gap: 10px; padding-top: 8px; }
+
+.engine-facts { gap: 0; margin: 22px 0 12px; }
+.engine-facts > div { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.engine-facts dt { font-weight: 400; }
+.engine-facts dd { text-align: right; }
+.engine-pairing { border-top: 0; }
+.engine-pairing label { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }

@@ -24,11 +24,13 @@ test('1 pairing: host plus code pairs through the dialog, shows the server, and 
     await expect(dialog.getByTestId('engine-server')).toHaveText(engine.origin)
     await expect(JSON.parse(await readFile(credentialPath(scenario), 'utf8'))).toMatchObject({ server: engine.origin, accessToken: 'session-for-first-code' })
 
+    await expect(dialog.getByRole('button', { name: 'Pairing…', exact: true })).toBeHidden()
+    await dialog.locator('summary').click()
     await dialog.getByLabel('Pairing link').fill(`${engine.origin}/pair?token=second-code`)
     await dialog.getByRole('button', { name: 'Pair again' }).click()
     await expect.poll(() => engine.tokenRequests).toEqual(['first-code', 'second-code'])
     await expect.poll(async () => JSON.parse(await readFile(credentialPath(scenario), 'utf8')).accessToken).toBe('session-for-second-code')
-    await dialog.getByRole('button', { name: 'Close' }).click()
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click()
     await expect(page.getByRole('button', { name: /^Open Live engine thread$/ })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Engine status' })).toHaveText(/Connected/)
   } finally {
