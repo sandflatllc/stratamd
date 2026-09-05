@@ -71,18 +71,18 @@ export const THEME_KEYS: readonly ThemeKeyEntry[] = Object.freeze([
   color('interface.secondary', 'Secondary interface text', 'Inactive tabs, file rows, toolbar icons, quiet controls, and supporting labels'),
   color('interface.muted', 'Fine print and timestamps', 'Timestamps, keyboard hints, default marks, and other fine print'),
 
-  color('document.body', 'Paragraph text', 'Paragraphs, list items, and ordinary table cells in the document'),
-  color('document.headings', 'Main headings', 'Lines starting with # or ## in the document'),
+  color('document.body', 'Paragraph text', 'Paragraphs, list items, and ordinary table cells in the document and in conversation messages'),
+  color('document.headings', 'Main headings', 'Lines starting with # or ## in the document, and headings in conversation messages'),
   color('document.small-headings', 'Smaller headings', 'Lines starting with ### or more in the document'),
-  color('document.bold', 'Bold text', 'Text wrapped in ** ** in the document'),
-  color('document.italic', 'Italic text', 'Text wrapped in * * in the document'),
-  color('document.code', 'Code text', 'Text inside `backticks`, code blocks, and the source view'),
-  color('document.link', 'Links', 'Link text in the document'),
-  color('document.quote', 'Quotes and list markers', 'Block quotes, bullet markers, and list numbers'),
-  color('document.table-heading', 'Table heading text', 'Header cells in document tables'),
+  color('document.bold', 'Bold text', 'Text wrapped in ** ** in the document and in conversation messages'),
+  color('document.italic', 'Italic text', 'Text wrapped in * * in the document and in conversation messages'),
+  color('document.code', 'Code text', 'Text inside `backticks`, code blocks, the source view, and code in conversation messages'),
+  color('document.link', 'Links', 'Link text in the document and in conversation messages'),
+  color('document.quote', 'Quotes and list markers', 'Block quotes, bullet markers, and list numbers in the document and in conversation messages'),
+  color('document.table-heading', 'Table heading text', 'Header cells in document and conversation tables'),
 
   color('controls.primary', 'Primary actions', 'Main buttons, add and reply controls, sliders, resizers, and toolbar hovers'),
-  color('controls.primary-highlight', 'Primary action highlight', 'The second color and glow on prominent buttons like Send and Copy'),
+  color('controls.primary-highlight', 'Primary action highlight', 'Text actions and links in the cockpit, the active rail tab, and the second color and glow on prominent buttons like Send and Copy'),
   color('controls.selected', 'Selected text and active items', 'Text selection, active files, counts, chosen recipients, and the Lead crown'),
   color('controls.positive', 'Accept, keep, and save', 'Accept, keep, resolve, and complete actions, the Save button, and the file-drop target'),
   color('controls.warning', 'Warnings and pending', 'Warnings, questions, waiting agents, unsaved marks, and theme problems'),
@@ -235,12 +235,17 @@ export function mixHex(a: string, b: string, weight: number): string {
   return `#${mix(ar, br)}${mix(ag, bg)}${mix(ab, bb)}`
 }
 
-/** Chooses black or white text for a surface from its relative luminance. */
+/** Chooses the dark or light text color that contrasts better with a filled surface. */
 export function contrastingText(hex: string): string {
+  // Whichever of the two fixed text colors reads better on the swatch (WCAG contrast).
   const channel = (index: number) => {
     const value = channels(hex)[index]! / 255
     return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
   }
   const luminance = 0.2126 * channel(0) + 0.7152 * channel(1) + 0.0722 * channel(2)
-  return luminance > 0.4 ? '#241f31' : '#f4f3f6'
+  const darkText = 0.0165 // #241f31
+  const lightText = 0.8905 // #f4f3f6
+  const onDark = (luminance + 0.05) / (darkText + 0.05)
+  const onLight = (lightText + 0.05) / (luminance + 0.05)
+  return onDark >= onLight ? '#241f31' : '#f4f3f6'
 }
