@@ -60,7 +60,6 @@ Use the bounded visual set.
 }
 
 test('extended visuals remain editable, accessible, document-safe, and collaborative', async ({}, testInfo) => {
-  test.setTimeout(120_000)
   const scenario = await Scenario.create(testInfo, '# Preparing\n', 'visual-components.md')
   try {
     const directory = dirname(scenario.file)

@@ -7,11 +7,19 @@ import { defineConfig } from '@playwright/test'
 // test/unit/e2e-clipboard-tags.test.ts fails when a clipboard test lacks the tag.
 const clipboardTag = /@clipboard/
 
-// Electron pointer and hover tests share one Xvfb display, so ordinary tests
-// run in one worker. The independent clipboard project may overlap it.
+// Ordinary tests run in parallel at the test level, each worker on its own X
+// display (test/e2e/display.ts), so windows never steal focus from one
+// another. On the 16-core workstation six workers ran the suite in 1:45
+// against 2:06 at four with no test slower than 16 s (three runs each,
+// 2026-09-05); eight had pushed tests past their 30-second timeout on a
+// shared display in 2026-09-02. Public-repo CI runners have four cores. A Mac
+// has one desktop, one focus, and one clipboard, so it runs one worker in
+// total and the override does not apply.
+const macHost = process.platform === 'darwin'
 function ordinaryWorkerCount(): number {
+  if (macHost) return 1
   const override = process.env.STRATAMD_E2E_WORKERS
-  if (override === undefined || override === '') return 1
+  if (override === undefined || override === '') return process.env.CI ? 2 : 6
   if (!/^[1-9]\d*$/.test(override)) {
     throw new Error(`STRATAMD_E2E_WORKERS must be a positive integer such as 4; got ${JSON.stringify(override)}`)
   }
@@ -25,8 +33,12 @@ export default defineConfig({
   expect: { timeout: 5_000 },
   // One slot more than the ordinary project may use, so the clipboard project
   // makes progress beside it. `--workers 1` on the command line caps this
-  // total and restores the old serial run.
-  workers: ordinaryWorkers + 1,
+  // total and gives a true serial run; STRATAMD_E2E_WORKERS=1 does not, it
+  // only sets the ordinary count. A Mac stays at one in total.
+  workers: macHost ? 1 : ordinaryWorkers + 1,
+  // Starts one Xvfb per worker slot on Linux and fails the run, naming the
+  // serial command, if it cannot.
+  globalSetup: './test/e2e/display.ts',
   // Shared CI runners stall long enough to trip timing-sensitive specs that
   // are deterministic on real machines; retried passes report as flaky.
   retries: process.env.CI ? 2 : 0,

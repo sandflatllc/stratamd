@@ -1,6 +1,6 @@
 import { useWindowState } from './useWindowState'
 import type { WindowAction } from '../shared/contracts'
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import type { ItemView, AnnotationContext, AnnotationKind, AnnotationView, AppView, AttachmentView, BufferOrigin, CreateDraftRequest, DocumentTabView, DocumentView, HunkView, NavigationTab, PaneId, PanelSize, PaneZoom, PanelSizes, QuickSendRequest, RedoResult, ReviewTab, SendPreviewRequest, TableViewState, ThemePanelGeometry, UndoResult, WalkthroughAction } from '../shared/contracts'
 import type { EditorHeading } from '../editor/headings'
 import type { RendererEditorFactory, RendererEditorHandle } from './editorAdapter'
@@ -102,6 +102,18 @@ export function App({ createEditor }: AppProps) {
   const [jumpHeading, setJumpHeading] = useState<{ id: string; token: number } | null>(null)
   const editorHandle = useRef<RendererEditorHandle | null>(null)
   const zoomRef = useRef<PaneZoom>(EMPTY_VIEW.settings.zoom)
+  // Shortcuts that act on the tab list read it from here. The keydown listener
+  // below re-registers in a passive effect after a tab switch commits, and a
+  // key that lands in that gap would otherwise cycle from the previous list
+  // and stop on the tab that is already active (a race the shell-keyboard
+  // spec caught under load). A layout effect updates the ref before anything
+  // can observe the new DOM.
+  const latestTabs = useRef(view.tabs)
+  useLayoutEffect(() => { latestTabs.current = view.tabs }, [view.tabs])
+  // The same for the active document: the source toggle read a mode from the
+  // previous closure and toggled back to it (view-sync spec, under load).
+  const latestDocument = useRef(view.activeDocument)
+  useLayoutEffect(() => { latestDocument.current = view.activeDocument }, [view.activeDocument])
   /** What this window last committed, so a push that merely echoes it never overrides a drag in progress (§5.14). */
   const committedPanels = useRef<PanelSizes | null>(null)
   const committedZoom = useRef<PaneZoom | null>(null)
@@ -687,19 +699,20 @@ export function App({ createEditor }: AppProps) {
         // flight would flip it straight back.
         if (event.target instanceof Element && event.target.closest('.prosemirror-host')) return
         event.preventDefault()
-        if (document.sourceOnly) report('This document can only open in source view.')
-        else void perform(() => window.strata.setSourceMode(document.path, !document.sourceMode))
+        const current = latestDocument.current ?? document
+        if (current.sourceOnly) report('This document can only open in source view.')
+        else void perform(() => window.strata.setSourceMode(current.path, !current.sourceMode))
       } else if (lower === 'w' && primary && !event.shiftKey && !event.altKey) {
         // Closes the active tab through the same confirmation a click gets (PRD §6.9).
         if (modalOpen()) return
         event.preventDefault()
-        const active = view.tabs.find((tab) => tab.active)
+        const active = latestTabs.current.find((tab) => tab.active)
         if (active) closeTab(active)
       } else if ((event.key === 'Tab' && event.ctrlKey && !event.altKey && !event.metaKey) || ((event.key === 'PageDown' || event.key === 'PageUp') && primary && !event.altKey)) {
         if (modalOpen()) return
         event.preventDefault()
         const backwards = event.key === 'PageUp' || (event.key === 'Tab' && event.shiftKey)
-        const next = cycleTab(view.tabs, backwards ? -1 : 1)
+        const next = cycleTab(latestTabs.current, backwards ? -1 : 1)
         if (next) void perform(() => window.strata.openDocument(next.path))
       } else if (event.key === 'F7' && !primary && !event.altKey) {
         if (modalOpen()) return
@@ -713,7 +726,7 @@ export function App({ createEditor }: AppProps) {
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [closeTab, composer, document, newFileHere, openComposer, openFile, perform, report, saveDocument, stepReview, stepThread, view.tabs])
+  }, [closeTab, composer, document, newFileHere, openComposer, openFile, perform, report, saveDocument, stepReview, stepThread])
 
   const fileDialogs = (
     <>

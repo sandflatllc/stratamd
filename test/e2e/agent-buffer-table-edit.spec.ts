@@ -12,7 +12,6 @@ import { agentEdits, attachThread, openThread } from './cockpit-agent'
 // so the document is the frozen corpus fixture; the edit now arrives as a
 // strata block from the agent's thread (§5.9).
 test('an agent table edit updates the open editor instead of blanking it', async ({}, testInfo) => {
-  test.setTimeout(120_000)
   const sample = await readFile(join(projectRoot, 'test/corpus/real/strata-product-page.md'), 'utf8')
   const anchor = '| Direct edits | A larger buffer edit appears as an attributed pending hunk. Keep advances the reviewed copy; Revert restores the earlier text. |'
   const insertion = `${anchor}\n| Messages | An attached agent can send a short note to another. The note wakes a waiting recipient and queues for an absent one; one note may wait per sender and recipient pair. |\n| The Lead | The one agent you put in charge. Only the Lead may accept or reject other agents' suggestions, resolve their threads, and save. Lead accepts and saves still leave pending changes for your review. |`

@@ -10,7 +10,6 @@ import { agentEdits, attachThread, openThread } from './cockpit-agent'
 // matches the buffer" because the captured from/to offsets refer to the
 // pre-edit markdown.
 test('a comment composed before an agent edit above still lands', async ({}, testInfo) => {
-  test.setTimeout(120_000)
   const sample = await readFile(join(projectRoot, 'test/corpus/real/strata-product-page.md'), 'utf8')
   const engine = await startEngine({ titles: { t1: 'Claude' } })
   const scenario = await seededScenario(testInfo, engine.origin, sample, 'strata.md')
