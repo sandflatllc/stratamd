@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import type { ConversationInput, EngineView, EngineThreadView } from '../../shared/contracts'
 import { continuationScope, modelDesignation, permitsSelection } from '../../shared/modelSelection'
 import { ProviderGlyph } from './ProviderGlyph'
+import { FolderIcon, FolderGit2Icon, GitBranchIcon } from '../icons/lucide'
 import { ModelPicker } from './ModelPicker'
 import { availableModels, clearDraft, readDraft, rememberSelection, selectionForModel, writeDraft, type ComposerSelection, type DraftAttachment } from '../conversationDrafts'
 import { acceptFiles, classifyFile, SUPPORTED_IMAGE_TYPES } from '../../core/composer-attachments'
@@ -201,7 +202,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
       </div>
     </div>
     {workspaceControls}
-    {!workspaceControls && (workspace || branch) && <div className="chat-workspace"><span title={workspace}>▱ {thread?.worktreePath ? 'Worktree' : 'Current checkout'}{workspace && <small>{thread?.worktreePath ?? workspace}</small>}</span>{branch && <span>{branch}</span>}</div>}
+    {!workspaceControls && (workspace || branch) && <div className="chat-workspace"><span title={workspace}>{thread?.worktreePath ? <FolderGit2Icon /> : <FolderIcon />}{thread?.worktreePath ? 'Worktree' : 'Current checkout'}{workspace && <small>{thread?.worktreePath ?? workspace}</small>}</span>{branch && <span><GitBranchIcon />{branch}</span>}</div>}
     {queuedCount > 0 && <small>{queuedCount} answers queued</small>}
     {account?.usable === false && <p role="alert">{account.name} cannot take a turn: {account.reason ?? account.state}. Choose another account.</p>}
     {unsaved && <p className="conversation-draft-unsaved" role="status">This draft could not be saved and will not survive reload.</p>}
