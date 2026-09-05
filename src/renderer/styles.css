@@ -1455,7 +1455,7 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .conversation-attachment-preview > span { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 5px; background: var(--card-2); color: var(--muted); }
 .conversation-attachment-preview > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--zoom, 1)); }
 .conversation-attachment-preview > button { border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; font: inherit; }
-.conversation-panel[data-placement="center"] { border-radius: 24px; background: var(--surfaces-window); }
+.conversation-panel[data-placement="center"] { border-radius: 24px; }
 /* Cockpit panels share the shell's type scale: every size is px times the pane's zoom factor. */
 .conversation-panel, .projects-panel, .engine-empty { font-size: calc(14px * var(--zoom, 1)); }
 .conversation-message { font-size: calc(12px * var(--zoom, 1)); }
