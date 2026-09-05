@@ -37,13 +37,13 @@ You can write and edit in the rendered document, then switch to source when the 
 
 ## Make it look like yours
 
-There is no single visual theme that would make a document easy for everyone to scan. StrataMD gives you seven included themes, from plain paper-like layouts to much louder color palettes, and lets you use any of them as the starting point for your own.
+There is no single visual theme that would make a document easy for everyone to scan. StrataMD includes four themes, a vivid and a quiet one in both dark and light, and lets you use any of them as the starting point for your own. Every one of them gives each kind of document text its own color, because that is what makes a dense document scannable.
 
-| Paper | Strata Vivid |
+| Strata Vivid | Strata Vivid Light |
 |:---:|:---:|
-| [![The full StrataMD window in the Paper theme during an active agent review](docs/screenshots/product/themes/paper-active-review.png)](docs/screenshots/product/themes/paper-active-review.png) | [![The full StrataMD window in the Strata Vivid theme during an active agent review](docs/screenshots/product/themes/strata-vivid-active-review.png)](docs/screenshots/product/themes/strata-vivid-active-review.png) |
-| Candyfloss | Ember |
-| [![The full StrataMD window in the Candyfloss theme during an active agent review](docs/screenshots/product/themes/candyfloss-active-review.png)](docs/screenshots/product/themes/candyfloss-active-review.png) | [![The full StrataMD window in the Ember theme during an active agent review](docs/screenshots/product/themes/ember-active-review.png)](docs/screenshots/product/themes/ember-active-review.png) |
+| [![The full StrataMD window in the Strata Vivid theme with a pending change and an open annotation](docs/screenshots/product/themes/strata-vivid-active-review.png)](docs/screenshots/product/themes/strata-vivid-active-review.png) | [![The full StrataMD window in the Strata Vivid Light theme with a pending change and an open annotation](docs/screenshots/product/themes/strata-vivid-light-active-review.png)](docs/screenshots/product/themes/strata-vivid-light-active-review.png) |
+| Strata Night | Strata Day |
+| [![The full StrataMD window in the Strata Night theme with a pending change and an open annotation](docs/screenshots/product/themes/strata-night-active-review.png)](docs/screenshots/product/themes/strata-night-active-review.png) | [![The full StrataMD window in the Strata Day theme with a pending change and an open annotation](docs/screenshots/product/themes/strata-day-active-review.png)](docs/screenshots/product/themes/strata-day-active-review.png) |
 
 The theme panel has separate controls for the document, the interface, changes, agent identities, and decorative effects. Forty color controls let you distinguish things such as large headings, small headings, bold text, code, links, quotes, table headings, and the different kinds of agent work. Text and code fonts are configurable separately.
 
@@ -87,7 +87,7 @@ When you want work to continue without waiting for you to referee every action, 
 
 Lead does not make the work invisible. Decisions made by the Lead still appear as pending changes for you to review when you return. You can transfer Lead to another agent or take it back at any time.
 
-[![The full StrataMD window in the Candyfloss theme with selected text, an open comment thread, reviewable changes, and two attached agents](docs/screenshots/product/states/collaboration.png)](docs/screenshots/product/states/collaboration.png)
+[![The full StrataMD window in the Strata Vivid Light theme with selected text, an open comment thread, reviewable changes, and two attached agents](docs/screenshots/product/states/collaboration.png)](docs/screenshots/product/states/collaboration.png)
 
 <img src="resources/readme/divider.svg" width="100%" alt="">
 

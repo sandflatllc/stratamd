@@ -47,25 +47,25 @@ describe('themes in the application', () => {
     const { theme } = (await app.getState()).settings
     expect(theme.active).toMatchObject({ id: 'strata-vivid', builtIn: true, missing: false, path: null })
     expect(theme.active.values['document.bold']).toBe('#ffbe5c')
-    expect(theme.available.map((summary) => summary.id)).toEqual(['strata-vivid', 'strata', 'ember', 'candyfloss', 'isotope', 'nebula', 'paper'])
+    expect(theme.available.map((summary) => summary.id)).toEqual(['strata-vivid', 'strata-vivid-light', 'strata-night', 'strata-day'])
     expect(await app.listFonts()).toEqual(['Baloo 2', 'JetBrains Mono', 'Abel'])
   })
 
   it('copies a stock theme with every value chosen, applies edits on the same call, and writes shortly after', async () => {
     const { app, themeStore, settingsStore, states } = await fixture()
-    const id = await app.createTheme('Copy of Strata', 'strata')
-    const strataValues = STOCK_THEMES.get('strata')!.values
-    expect(id).toBe('copy-of-strata')
+    const id = await app.createTheme('Copy of Strata Night', 'strata-night')
+    const strataValues = STOCK_THEMES.get('strata-night')!.values
+    expect(id).toBe('copy-of-strata-night')
     expect((await settingsStore.load()).theme).toBe(id)
 
     const complete = (values: Record<string, string | number>, name: string) => ({ 'schema-version': 3, ...nestThemeValues(name, values) })
     await app.setThemeValue('document.bold', '#ff8800')
     const latest = states.at(-1)!.settings.theme
     expect(latest.active.values['document.bold']).toBe('#ff8800')
-    expect(latest.active.sparse).toEqual(complete({ ...strataValues, 'document.bold': '#ff8800' }, 'Copy of Strata'))
+    expect(latest.active.sparse).toEqual(complete({ ...strataValues, 'document.bold': '#ff8800' }, 'Copy of Strata Night'))
 
     await app.flushThemeWrites()
-    expect(JSON.parse(await readFile(themeStore.pathFor(id), 'utf8'))).toEqual(complete({ ...strataValues, 'document.bold': '#ff8800' }, 'Copy of Strata'))
+    expect(JSON.parse(await readFile(themeStore.pathFor(id), 'utf8'))).toEqual(complete({ ...strataValues, 'document.bold': '#ff8800' }, 'Copy of Strata Night'))
 
     // Use default removes the one value; the rest of the copy stays chosen.
     await app.setThemeValue('document.bold', null)
@@ -78,22 +78,22 @@ describe('themes in the application', () => {
 
     await expect(app.setThemeValue('document.bold', 'orange')).rejects.toThrow(/Invalid value/)
     await expect(app.setThemeValue('nope.key', '#000000')).rejects.toThrow(/Unknown theme key/)
-    await expect(app.deleteTheme('strata')).rejects.toThrow(/ship with StrataMD/)
+    await expect(app.deleteTheme('strata-night')).rejects.toThrow(/ship with StrataMD/)
     // Deleting the active theme falls back to the built-in first.
     await app.deleteTheme(id)
     expect((await app.getState()).settings.theme.active.id).toBe('strata-vivid')
     expect((await settingsStore.load()).theme).toBe('strata-vivid')
     await expect(app.setThemeValue('document.bold', '#000000')).rejects.toThrow(/ship with StrataMD/)
-    expect(states.at(-1)!.settings.theme.available.map((summary) => summary.id)).toEqual(['strata-vivid', 'strata', 'ember', 'candyfloss', 'isotope', 'nebula', 'paper'])
+    expect(states.at(-1)!.settings.theme.available.map((summary) => summary.id)).toEqual(['strata-vivid', 'strata-vivid-light', 'strata-night', 'strata-day'])
   })
 
   it('reverts to a snapshot and lists broken files without applying them', async () => {
     const { app, themeStore } = await fixture()
-    const id = await app.createTheme('Dusk', 'strata')
+    const id = await app.createTheme('Dusk', 'strata-night')
     const snapshot = (await app.getState()).settings.theme.active.sparse
     await app.setThemeValue('surfaces.window', '#ffffff')
     await app.revertTheme(snapshot)
-    expect((await app.getState()).settings.theme.active.values['surfaces.window']).toBe('#0a0810')
+    expect((await app.getState()).settings.theme.active.values['surfaces.window']).toBe('#07080c')
     await app.flushThemeWrites()
 
     await writeFile(themeStore.pathFor('broken'), '{ nope')
@@ -108,7 +108,7 @@ describe('themes in the application', () => {
 
   it('follows external writes to the active file, ignores its own, keeps values when the file is deleted, and repairs a broken file on the next edit', async () => {
     const { app, themeStore, states } = await fixture(true)
-    const id = await app.createTheme('Dusk', 'strata')
+    const id = await app.createTheme('Dusk', 'strata-night')
     await app.flushThemeWrites()
     const path = themeStore.pathFor(id)
     const revisionBefore = (await app.getState()).settings.theme.externalRevision
@@ -137,7 +137,7 @@ describe('themes in the application', () => {
 
   it('reports a failed theme write beside the theme and clears it when a write lands', async () => {
     const { app, themeStore } = await fixture()
-    await app.createTheme('Fragile', 'strata')
+    await app.createTheme('Fragile', 'strata-night')
     const original = themeStore.write.bind(themeStore)
     let failing = true
     themeStore.write = async (id, sparse) => {

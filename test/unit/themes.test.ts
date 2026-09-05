@@ -47,8 +47,8 @@ describe('theme schema', () => {
 })
 
 describe('stock themes', () => {
-  it('declare all seven completely: every color and non-color value, explicitly', () => {
-    expect([...STOCK_THEMES.keys()]).toEqual(['strata-vivid', 'strata', 'ember', 'candyfloss', 'isotope', 'nebula', 'paper'])
+  it('declare all four completely: every color and non-color value, explicitly', () => {
+    expect([...STOCK_THEMES.keys()]).toEqual(['strata-vivid', 'strata-vivid-light', 'strata-night', 'strata-day'])
     for (const [id, theme] of STOCK_THEMES) {
       for (const entry of THEME_KEYS) {
         expect(theme.values[entry.key], `${id} ${entry.key}`).toBeDefined()
@@ -126,17 +126,17 @@ describe('ThemeStore', () => {
     await writeFile(store.pathFor('broken'), '{ not json')
     await writeFile(join(store.directory, 'Bad Name.json'), '{}')
     const list = await store.list()
-    expect(list.map((theme) => theme.id)).toEqual(['strata-vivid', 'strata', 'ember', 'candyfloss', 'isotope', 'nebula', 'paper', 'broken', 'dusk'])
+    expect(list.map((theme) => theme.id)).toEqual(['strata-vivid', 'strata-vivid-light', 'strata-night', 'strata-day', 'broken', 'dusk'])
     expect(list[0]).toMatchObject({ builtIn: true, broken: false })
-    expect(list[7]).toMatchObject({ broken: true, name: 'broken.json' })
-    expect(list[7]!.problems[0]!.key).toBe('file')
+    expect(list[4]).toMatchObject({ broken: true, name: 'broken.json' })
+    expect(list[4]!.problems[0]!.key).toBe('file')
     const dusk = await store.load('dusk')
     expect(dusk.values['document.bold']).toBe('#112233')
     expect(dusk.set).toEqual(['document.bold'])
     await expect(store.load('broken')).rejects.toBeInstanceOf(ThemeBrokenError)
     await expect(store.load('missing')).rejects.toMatchObject({ code: 'ENOENT' })
     expect(await store.load('strata-vivid')).toBe(BUILT_IN_THEME)
-    expect((await store.load('strata')).name).toBe('Strata')
+    expect((await store.load('strata-night')).name).toBe('Strata Night')
   })
 
   it('a sparse user theme falls back to Strata Vivid for missing values and Use default removes the value', async () => {
@@ -168,15 +168,15 @@ describe('ThemeStore', () => {
 
   it('creates copies with unique ids, writes privately, and guards the shipped and active themes', async () => {
     const store = new ThemeStore({ configDirectory: await temporaryDirectory() })
-    const first = await store.create('My Theme', 'strata')
+    const first = await store.create('My Theme', 'strata-night')
     expect(first.id).toBe('my-theme')
     await store.write(first.id, { name: 'My Theme', document: { bold: '#ff0000' } })
     const second = await store.create('My Theme', first.id)
     expect(second.id).toBe('my-theme-2')
     // A copy of a user theme stays sparse: only the source's set keys plus the marker.
     expect(second.sparse).toEqual({ 'schema-version': 3, name: 'My Theme', document: { bold: '#ff0000' } })
-    await expect(store.write('strata', {})).rejects.toThrow(/ship with StrataMD/)
-    await expect(store.delete('strata', first.id)).rejects.toThrow(/ship with StrataMD/)
+    await expect(store.write('strata-night', {})).rejects.toThrow(/ship with StrataMD/)
+    await expect(store.delete('strata-night', first.id)).rejects.toThrow(/ship with StrataMD/)
     await expect(store.delete(first.id, first.id)).rejects.toThrow(/active/)
     await store.delete(second.id, first.id)
     expect(await store.ids()).toEqual([first.id])
@@ -221,20 +221,20 @@ describe('bundled themes', () => {
       expect(theme.builtIn).toBe(true)
       expect(theme.set, id).toHaveLength(THEME_KEYS.length)
       await expect(store.write(id, {})).rejects.toThrow(/cannot be edited/)
-      await expect(store.delete(id, 'strata')).rejects.toThrow(/cannot be deleted/)
+      await expect(store.delete(id, 'strata-vivid')).rejects.toThrow(/cannot be deleted/)
     }
-    const copy = await store.create('Copy of Paper', 'paper')
-    expect(copy.id).toBe('copy-of-paper')
+    const copy = await store.create('Copy of Strata Day', 'strata-day')
+    expect(copy.id).toBe('copy-of-strata-day')
     expect(copy.builtIn).toBe(false)
-    expect(copy.values['surfaces.window']).toBe('#f3efe7')
+    expect(copy.values['surfaces.window']).toBe('#e9e6df')
   })
 
   it('cannot be shadowed by a user file of the same id', async () => {
     const store = new ThemeStore({ configDirectory: await temporaryDirectory() })
     await store.ensureDirectory()
-    await writeFile(store.pathFor('paper'), JSON.stringify({ name: 'Fake' }))
+    await writeFile(store.pathFor('strata-day'), JSON.stringify({ name: 'Fake' }))
     expect(await store.ids()).toEqual([])
-    expect((await store.load('paper')).name).toBe('Paper')
+    expect((await store.load('strata-day')).name).toBe('Strata Day')
   })
 })
 

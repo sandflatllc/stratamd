@@ -1,4 +1,4 @@
-// The one table behind themes (PRD §6.13, docs/plans/completed/theme-restructure-plan.md). The
+// The one table behind themes (PRD §6.13). The
 // theme panel renders one row per entry, the renderer maps each entry to a CSS
 // variable, and `stratamd theme` prints each key with its description. The
 // table owns labels, descriptions, kinds, grouping, ranges, and highlight

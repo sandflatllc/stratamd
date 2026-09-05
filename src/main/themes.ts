@@ -75,7 +75,7 @@ function isThemeId(value: string): boolean {
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
 }
 
-/** Read-only themes that ship with the app: built-in Strata Vivid plus the bundled alternatives. */
+/** Read-only themes that ship with the app: built-in Strata Vivid plus the three bundled alternatives. */
 export function isShippedThemeId(id: string): boolean {
   return id === BUILT_IN_THEME_ID || BUNDLED_THEMES.has(id)
 }

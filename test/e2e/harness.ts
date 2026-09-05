@@ -136,17 +136,17 @@ export class Scenario {
     })
   }
 
-  /** Tests run on the handoff (Strata) theme unless they choose one; the shipped default is Strata Vivid. */
+  /** Tests run on the shipped default, Strata Vivid, unless they choose a theme. */
   async writeSettings(settings: Record<string, unknown>): Promise<void> {
     const path = join(String(this.env.XDG_CONFIG_HOME), 'stratamd/settings.json')
     await mkdir(dirname(path), { recursive: true })
-    await writeFile(path, `${JSON.stringify({ theme: 'strata', ...settings }, null, 2)}\n`)
+    await writeFile(path, `${JSON.stringify({ theme: 'strata-vivid', ...settings }, null, 2)}\n`)
   }
 
   async launch(file = this.file): Promise<Page> {
     await access(mainEntry, constants.R_OK)
-    // Tests that wrote no settings still run on the handoff theme, not the
-    // shipped Strata Vivid default, so visual assertions stay against Strata.
+    // Tests that wrote no settings still get an explicit theme so visual
+    // assertions never depend on the fallback path.
     const settingsPath = join(String(this.env.XDG_CONFIG_HOME), 'stratamd/settings.json')
     try {
       await access(settingsPath, constants.R_OK)

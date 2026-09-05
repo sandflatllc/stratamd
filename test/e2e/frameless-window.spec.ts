@@ -79,7 +79,7 @@ test('the integrated bar keeps navigation, a drag area, and keyboard-accessible 
   if (capture) {
     const directory = join(projectRoot, capture)
     await mkdir(directory, { recursive: true })
-    for (const theme of ['strata-vivid', 'paper', 'strata']) {
+    for (const theme of ['strata-vivid', 'strata-day', 'strata-night']) {
       await page.evaluate(theme => window.strata.selectTheme(theme), theme)
       for (const width of [1440, 960]) {
         await page.setViewportSize({ width, height: 900 })

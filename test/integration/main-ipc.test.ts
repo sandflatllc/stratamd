@@ -24,7 +24,7 @@ const view: AppView = {
     },
     zoom: { explorer: 1, editor: 1, rightRail: 1, composer: 1 },
     theme: {
-      active: { id: 'strata', name: 'Strata', builtIn: true, missing: false, path: null, sparse: { name: 'Strata' }, values: {}, problems: [] },
+      active: { id: 'strata-vivid', name: 'Strata Vivid', builtIn: true, missing: false, path: null, sparse: { name: 'Strata Vivid' }, values: {}, problems: [] },
       available: [],
       externalRevision: 0
     }

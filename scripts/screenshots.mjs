@@ -25,7 +25,7 @@ const sourcePath = process.env.STRATAMD_SCREENSHOT_SOURCE
   : join(root, 'docs/plans/completed/agent-collaboration-plan.md')
 const viewport = { width: 2560, height: 1440 }
 const workspaceClip = { x: 430, y: 100, width: 2070, height: 1260 }
-const themeIds = ['strata', 'strata-vivid', 'ember', 'candyfloss', 'isotope', 'nebula', 'paper']
+const themeIds = ['strata-vivid', 'strata-vivid-light', 'strata-night', 'strata-day']
 const activeThemePath = (id) => join(themeDir, `${id}-active-review.png`)
 
 // A fixed path gives the explorer a believable project name while keeping the
@@ -51,7 +51,7 @@ await Promise.all([
 
 const withoutProductImages = (await readFile(sourcePath, 'utf8'))
   .replace(/^\*Screenshots open at their full captured resolution\.\*\n?/m, '')
-  .replace(/^\| Paper \| Strata Vivid \|\n\|:---:\|:---:\|\n.*screenshots\/product\/themes\/paper\.png.*\n\| Candyfloss \| Ember \|\n.*screenshots\/product\/themes\/candyfloss\.png.*\n?/m, '')
+  .replace(/^\| Strata Vivid \| Strata Vivid Light \|\n\|:---:\|:---:\|\n.*screenshots\/product\/themes\/strata-vivid-active-review\.png.*\n\| Strata Night \| Strata Day \|\n.*screenshots\/product\/themes\/strata-night-active-review\.png.*\n?/m, '')
   .replace(/^.*screenshots\/product\/.*\n?/gm, '')
 const sample = withoutProductImages.replace('../../resources/stratamd-icon.svg', 'resources/stratamd-icon.svg')
 const doc = join(notes, basename(sourcePath))
@@ -139,37 +139,37 @@ const scrollToText = async (text) => {
   await settle(350)
 }
 
-// A used project has context around the active plan. Keep supporting documents
-// open as tabs and expand the two folders most relevant to the review.
-await page.getByRole('button', { name: 'Scan', exact: true }).click()
-const plansFolder = page.locator('.folder-row.subfolder').filter({ hasText: 'plans' })
-const researchFolder = page.locator('.folder-row.subfolder').filter({ hasText: 'research' })
-await expect(plansFolder).toBeVisible()
-await expect(page.locator('.toast').filter({ hasText: 'Scan complete' })).toHaveCount(0, { timeout: 10_000 })
+// A used project has context around the active plan: keep supporting documents
+// open as tabs. (The Files explorer and its Scan were removed on 2026-09-04.)
 await page.evaluate(async (path) => window.strata.openDocument(path), reviewNotes)
 await page.evaluate(async (path) => window.strata.openDocument(path), requirements)
 await page.evaluate(async (path) => window.strata.openDocument(path), doc)
-await expect(page.getByRole('tab')).toHaveCount(3)
-await plansFolder.click()
-await researchFolder.click()
+await expect(page.getByRole('textbox', { name: /document editor/i })).toBeVisible()
 
 // 1. The theme picker over a plain theme so the control depth stays readable.
-await page.evaluate(() => window.strata.selectTheme('paper'))
-await page.getByRole('button', { name: /^Theme$/ }).click()
+await page.evaluate(() => window.strata.selectTheme('strata-day'))
+await page.getByRole('button', { name: 'StrataMD menu' }).click()
+await page.getByRole('menu', { name: 'StrataMD', exact: true }).getByRole('menuitem', { name: 'Theme', exact: true }).click()
 const panel = page.getByRole('dialog', { name: 'Theme' })
 await expect(panel).toBeVisible()
 await shot(join(stateDir, 'theme-panel.png'))
 await page.screenshot({ path: join(stateDir, 'theme-panel--workspace.png'), animations: 'disabled', clip: workspaceClip })
 console.log(`wrote ${join(stateDir, 'theme-panel--workspace.png').replace(`${root}/`, '')}`)
 await panel.getByRole('button', { name: /Close theme panel/ }).click()
-await page.getByRole('tab', { name: new RegExp(basename(sourcePath).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }).click()
+const planName = new RegExp(basename(sourcePath).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+const planPill = page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab', { name: planName })
+if (await planPill.count() > 0) await planPill.click()
+else {
+  await page.getByRole('button', { name: 'Docs menu' }).click()
+  await page.getByRole('menu', { name: 'Open docs' }).getByRole('menuitem', { name: planName }).click()
+}
 await expect(page.getByRole('textbox', { name: /document editor/i })).toContainText('Agent messages, the Lead agent, and the review board')
 
 // 2. Build a dense but real review round before the product captures. Three
 // agents join, Claude leads, one agent has a message waiting, several edits have
 // already been saved, three more remain unsaved, and seven annotations map the
 // discussion. This is the state the app is designed for.
-await page.evaluate(() => window.strata.selectTheme('ember'))
+await page.evaluate(() => window.strata.selectTheme('strata-night'))
 const codex = await payload(['attach', doc, '--as', 'codex', '--name', 'Codex', '--timeout', '0'])
 await payload(['attach', doc, '--as', 'claude', '--name', 'Claude', '--timeout', '0'])
 await payload(['attach', doc, '--as', 'gemini', '--name', 'Gemini', '--timeout', '0'])
@@ -246,14 +246,14 @@ for (const id of themeIds) {
 
 // 4. One collaboration frame carries the annotation, review, attribution, and
 // Lead story together. Source mode gets its own composition later.
-await page.evaluate(() => window.strata.selectTheme('candyfloss'))
+await page.evaluate(() => window.strata.selectTheme('strata-vivid-light'))
 await scrollToText('user in the loop')
 await page.locator('.annotation-row').filter({ hasText: 'user in the loop' }).click()
 await expect(page.getByRole('dialog', { name: /comment thread/i })).toBeVisible()
 await shot(join(stateDir, 'collaboration.png'))
 await page.getByRole('button', { name: /Close thread/i }).click()
 
-await page.evaluate(() => window.strata.selectTheme('isotope'))
+await page.evaluate(() => window.strata.selectTheme('strata-day'))
 await page.keyboard.press(`${primaryModifier}+/`)
 const sourceEditor = page.getByRole('textbox', { name: /source editor/i })
 await expect(sourceEditor).toBeVisible()
@@ -277,7 +277,7 @@ await page.keyboard.press(`${primaryModifier}+/`)
 await expect(page.locator('.ProseMirror')).toBeVisible()
 
 // 5. Per-recipient Send preview in the context of the complete app window.
-await page.evaluate(() => window.strata.selectTheme('strata'))
+await page.evaluate(() => window.strata.selectTheme('strata-night'))
 await page.getByRole('button', { name: /^Send(?:\b|$)/i }).click()
 const composer = page.getByRole('dialog', { name: /Send changes/i })
 await expect(composer).toBeVisible()

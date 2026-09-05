@@ -207,14 +207,14 @@ test('the theme panel floats over a live app, writes only chosen keys, follows o
     const page = await value.launch()
     const strong = page.locator('.editor-island .ProseMirror strong').first()
     const em = page.locator('.editor-island .ProseMirror em').first()
-    await expect(strong).toHaveCSS('color', 'rgb(219, 218, 222)')
-    await expect(em).toHaveCSS('color', 'rgb(219, 218, 222)')
+    await expect(strong).toHaveCSS('color', 'rgb(255, 190, 92)')
+    await expect(em).toHaveCSS('color', 'rgb(255, 112, 112)')
 
     await openAppMenu(page)
     await page.getByRole('menuitem', { name: 'Theme', exact: true }).click()
     const panel = page.getByRole('dialog', { name: 'Theme' })
     await expect(panel).toBeVisible()
-    await expect(panel).toContainText('Bundled theme')
+    await expect(panel).toContainText('Built-in theme')
     await expect(page.locator('.modal-backdrop')).toHaveCount(0)
     // The sample document opens as a real tab and explains each construct in its own words.
     await expect(page.getByRole('tab', { name: /Theme sample\.md/ })).toHaveAttribute('aria-selected', 'true')
@@ -229,13 +229,13 @@ test('the theme panel floats over a live app, writes only chosen keys, follows o
     await expect(page.locator('.editor-island .ProseMirror')).toContainText('More.')
 
     await panel.getByRole('button', { name: 'New from this' }).click()
-    await expect(panel.getByRole('combobox', { name: 'Theme' })).toHaveValue('copy-of-strata')
-    const themePath = join(String(value.env.XDG_CONFIG_HOME), 'stratamd', 'themes', 'copy-of-strata.json')
+    await expect(panel.getByRole('combobox', { name: 'Theme' })).toHaveValue('copy-of-strata-vivid')
+    const themePath = join(String(value.env.XDG_CONFIG_HOME), 'stratamd', 'themes', 'copy-of-strata-vivid.json')
     // A copy of a stock theme starts with all 40 swatches and six other values chosen.
     const parsedTheme = async () => { try { return JSON.parse(await readFile(themePath, 'utf8')) } catch { return {} } }
-    await expect.poll(async () => (await parsedTheme()).document?.bold).toBe('#dbdade')
+    await expect.poll(async () => (await parsedTheme()).document?.bold).toBe('#ffbe5c')
     await expect.poll(async () => (await parsedTheme())['schema-version']).toBe(3)
-    expect(await parsedTheme()).toMatchObject({ name: 'Copy of Strata', controls: { positive: '#3dc97c' }, effects: { intensity: 1 } })
+    expect(await parsedTheme()).toMatchObject({ name: 'Copy of Strata Vivid', controls: { positive: '#3dc97c' }, effects: { intensity: 1.5 } })
 
     const bold = panel.locator('.theme-row[data-key="document.bold"]')
     await expect(bold).toHaveClass(/is-set/)
@@ -247,19 +247,19 @@ test('the theme panel floats over a live app, writes only chosen keys, follows o
     await expect.poll(async () => (await parsedTheme()).document?.bold).toBe('#ff8800')
 
     // Another process rewrites the file: the row highlights and the app follows.
-    await writeFile(themePath, JSON.stringify({ name: 'Copy of Strata', document: { bold: '#00aa88', italic: '#123456' } }))
+    await writeFile(themePath, JSON.stringify({ name: 'Copy of Strata Vivid', document: { bold: '#00aa88', italic: '#123456' } }))
     await expect(strong).toHaveCSS('color', 'rgb(0, 170, 136)')
     await expect(em).toHaveCSS('color', 'rgb(18, 52, 86)')
     await expect(panel.locator('.theme-row[data-key="document.italic"]')).toHaveClass(/is-set/)
 
     await bold.getByRole('button', { name: 'Use default' }).click()
     await expect(strong).toHaveCSS('color', 'rgb(255, 190, 92)')
-    await expect.poll(async () => JSON.parse(await readFile(themePath, 'utf8'))).toEqual({ 'schema-version': 3, name: 'Copy of Strata', document: { italic: '#123456' } })
+    await expect.poll(async () => JSON.parse(await readFile(themePath, 'utf8'))).toEqual({ 'schema-version': 3, name: 'Copy of Strata Vivid', document: { italic: '#123456' } })
 
     // Revert restores the snapshot from when the panel opened: the complete copy.
     await panel.getByRole('button', { name: 'Revert to when opened' }).click()
-    await expect.poll(async () => (await parsedTheme()).document?.italic).toBe('#dbdade')
-    await expect.poll(async () => (await parsedTheme()).document?.bold).toBe('#dbdade')
+    await expect.poll(async () => (await parsedTheme()).document?.italic).toBe('#ff7070')
+    await expect.poll(async () => (await parsedTheme()).document?.bold).toBe('#ffbe5c')
 
     await panel.getByRole('button', { name: 'Decoration and motion' }).click()
     await panel.locator('.theme-row[data-key="effects.panel-style"] select').selectOption('starfield')
@@ -290,7 +290,7 @@ test('the theme panel floats over a live app, writes only chosen keys, follows o
     const reopened = restarted.getByRole('dialog', { name: 'Theme' })
     // Persisted, not the bottom-right default (about 200px away); the clamp may shift it a little with window size.
     expect(Math.abs((await reopened.boundingBox())!.x - moved.x)).toBeLessThan(60)
-    await expect(reopened.getByRole('combobox', { name: 'Theme' })).toHaveValue('copy-of-strata')
+    await expect(reopened.getByRole('combobox', { name: 'Theme' })).toHaveValue('copy-of-strata-vivid')
     await reopened.getByRole('combobox', { name: 'Theme' }).selectOption('strata-vivid')
     await expect(restarted.locator('.app-shell')).toHaveAttribute('data-ambient-windows', 'glow-orbs')
     await expect(reopened).toContainText('Built-in theme')

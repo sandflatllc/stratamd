@@ -10,7 +10,7 @@ These captures come from isolated Electron instances with temporary profiles:
 
 - [Logo menu with all actions and account attention](./captures/implementation/menu-all-actions.png)
 - [Strata Vivid at 1440 pixels](./captures/implementation/strata-vivid-1440.png) and [960 pixels](./captures/implementation/strata-vivid-960.png)
-- [Paper at 1440 pixels](./captures/implementation/paper-1440.png) and [960 pixels](./captures/implementation/paper-960.png)
+- [Paper at 1440 pixels](./captures/implementation/paper-1440.png) and [960 pixels](./captures/implementation/paper-960.png) (Paper was retired on 2026-09-04; the captures stay as evidence for this verification)
 - [Strata at 1440 pixels](./captures/implementation/strata-1440.png) and [960 pixels](./captures/implementation/strata-960.png)
 
 The header fits at 1440, 1200, 1000, and 960 pixels without wrapping or horizontal overflow. Tests inspect the draggable spacer and the navigation's non-draggable region. The screenshot review includes the updated shell, Contents, and component-sampler baselines against the previous captures and the structured-reading prototype. The table-header baseline did not change.
