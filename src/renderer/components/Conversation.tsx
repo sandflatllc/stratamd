@@ -197,17 +197,15 @@ export function Conversation({ documentMeasure = 860, onDocumentMeasure, engine,
 
   if (engine.state === 'disconnected' || engine.state === 'connecting') return <div className="engine-empty" data-testid="conversation-disconnected">{engine.server ?? 'Engine'} is {engine.state === 'connecting' ? 'connecting' : 'disconnected'}.<button type="button" onClick={onReconnect}>Reconnect</button></div>
   if (!thread && passage) return <section className="conversation-panel" aria-label="Conversation" data-placement={placement}>
-    <header><div className="conversation-scope" role="tablist" aria-label="Conversation scope"><button type="button" role="tab" disabled>Whole thread</button><button type="button" role="tab" aria-selected>This passage</button></div></header>
+    <header><strong>Comment discussion</strong></header>
     <div className="conversation-passage">{passage}</div>
   </section>
   if (!thread || !selected) return <div className="engine-empty">No conversation open.<small>Choose a thread under Projects.</small></div>
   const running = thread.status === 'running' || thread.status === 'starting'
   return <section className="conversation-panel" aria-label="Conversation" data-placement={placement}>
     <header>
-      <div className="conversation-title"><strong><span>{selected.project}</span><i aria-hidden="true">/</i>{thread.title}</strong>{onMove && <button type="button" onClick={onMove}>{placement === 'side' ? 'Open in center' : 'Move to side'}</button>}</div>
-      <small>{thread.model}{thread.effort ? ` · ${thread.effort}` : ''} · {thread.access}</small>
-      <div className="conversation-status"><span>{thread.status}{running ? ` · ${elapsed(thread.turnStartedAt, now)}` : ''}</span>{running && <button type="button" className="stop-button" onClick={() => onStop(thread.id)}>Stop</button>}</div>
-      <div className="conversation-scope" role="tablist" aria-label="Conversation scope"><button type="button" role="tab" aria-selected={scope === 'whole'} onClick={() => setScope('whole')}>Whole thread</button><button type="button" role="tab" aria-selected={scope === 'passage'} disabled={!passage} onClick={() => setScope('passage')}>This passage</button></div>
+      <div className="conversation-title"><strong><span>{selected.project}</span><i aria-hidden="true">/</i>{thread.title}</strong>{running && <button type="button" className="stop-button" onClick={() => onStop(thread.id)}>Stop</button>}{onMove && <button type="button" onClick={onMove}>{placement === 'side' ? 'Open in center' : 'Move to side'}</button>}</div>
+      {passage && <div className="conversation-scope" role="tablist" aria-label="Conversation scope"><button type="button" role="tab" aria-selected={scope === 'whole'} onClick={() => setScope('whole')}>Whole thread</button><button type="button" role="tab" aria-selected={scope === 'passage'} title="Show the discussion for the selected document comment or review item" onClick={() => setScope('passage')}>Comment discussion</button></div>}
     </header>
     {scope === 'passage' && passage ? <div className="conversation-passage">{passage}</div> : <ConversationHistory key={thread.id} className="conversation-messages">
       <div className="conversation-column" style={placement === 'center' ? { width: `min(${documentMeasure}px, 100%)` } : undefined}>
@@ -252,6 +250,6 @@ export function Conversation({ documentMeasure = 860, onDocumentMeasure, engine,
       })}
       </div>
     </ConversationHistory>}
-    <ConversationComposer key={thread.id} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} queuedCount={queuedCount} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} onSend={(input) => onStart(thread.id, input)} />
+    <ConversationComposer key={thread.id} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} queuedCount={queuedCount} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} onSend={(input) => onStart(thread.id, { ...input, replies: Object.fromEntries((thread.items ?? []).filter((item) => item.draftReply !== undefined).map((item) => [item.id, item.draftReply!])) })} />
   </section>
 }

@@ -13,6 +13,8 @@ export interface ConversationState {
   replies: Record<string, QueuedReply>
   /** Replies delivered but not yet acknowledged by the engine's message-sent event. */
   pending: Array<{ deliveryId: string; itemIds: string[]; replies: Record<string, QueuedReply> }>
+  /** Commands and bytes saved before the first upload. */
+  prepared?: Array<{ messageId: string; command: unknown; attachments: Array<{ name: string; text: string; uploaded?: { type: 'file'; id: string; name: string; mimeType: string; sizeBytes: number } }> }>
   /** Items whose reply the engine acknowledged. */
   answered: string[]
   /** Inferred items the owner dismissed; remembered for the message's lifetime. */
@@ -58,6 +60,7 @@ export function normalizeConversationsStore(value: unknown): ConversationsStore 
     store.threads[threadId] = {
       replies: replies(raw.replies),
       pending: Array.isArray(raw.pending) ? raw.pending.flatMap((entry) => isRecord(entry) && typeof entry.deliveryId === 'string' ? [{ deliveryId: entry.deliveryId, itemIds: strings(entry.itemIds), replies: replies(entry.replies) }] : []) : [],
+      prepared: Array.isArray(raw.prepared) ? raw.prepared.filter((entry): entry is NonNullable<ConversationState['prepared']>[number] => isRecord(entry) && typeof entry.messageId === 'string' && isRecord(entry.command) && Array.isArray(entry.attachments)) : [],
       answered: strings(raw.answered),
       dismissed: strings(raw.dismissed),
     }

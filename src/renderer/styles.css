@@ -1368,14 +1368,12 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .conversation-panel { display: flex; flex-direction: column; min-height: 0; height: 100%; }
 .conversation-panel > header { display: grid; gap: 6px; padding: 12px; border-bottom: 1px solid var(--line); }
 .conversation-panel > header small { color: var(--muted); }
-.conversation-title, .conversation-status { display: flex; align-items: center; gap: 8px; }
+.conversation-title { display: flex; align-items: center; gap: 8px; }
 .conversation-title strong { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conversation-title strong span { color: var(--muted); font-weight: 500; }
 .conversation-title strong i { margin: 0 6px; color: var(--muted); font-style: normal; }
-.conversation-title button, .conversation-status button, .conversation-scope button, .conversation-fold { border: 0; background: none; color: var(--controls-primary-highlight); cursor: pointer; font: inherit; }
-.conversation-status { color: var(--muted); font-size: calc(13px * var(--zoom, 1)); }
-.conversation-status span { flex: 1; }
-.conversation-status .stop-button { color: var(--controls-danger); font-weight: 700; }
+.conversation-title button, .conversation-scope button, .conversation-fold { border: 0; background: none; color: var(--controls-primary-highlight); cursor: pointer; font: inherit; }
+.conversation-title .stop-button { color: var(--controls-danger); font-weight: 700; }
 .conversation-scope { display: flex; gap: 5px; }
 .conversation-scope button { padding: 3px 7px; border-radius: 999px; color: var(--muted); }
 .conversation-scope button[aria-selected="true"] { background: var(--surfaces-inset); color: var(--text); }

@@ -55,7 +55,7 @@ test('long newest messages open at their beginning and arrivals preserve the rea
   } finally { await scenario.dispose(); await engine.close() }
 })
 
-test('This passage opens newest first and preserves position when a reply arrives', async ({}, testInfo) => {
+test('Comment discussion opens newest first and preserves position when a reply arrives', async ({}, testInfo) => {
   const engine = await startEngine()
   const scenario = await seededScenario(testInfo, engine.origin)
   try {

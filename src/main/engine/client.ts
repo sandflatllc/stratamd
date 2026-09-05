@@ -519,6 +519,8 @@ export class T3EngineClient implements EngineReadClient {
   async startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string }): Promise<void> {
     const thread = this.#shell?.threads.find((candidate) => candidate.id === threadId)
     if (!thread) throw new Error(`Thread was not found: ${threadId}`)
+    const existing = this.#conversations.threads[threadId]?.prepared?.find((entry) => entry.messageId === input.messageId)
+    if (existing) { await this.#resumePrepared(threadId, existing.messageId); return }
     const instanceId = input.instanceId ?? thread.modelSelection.instanceId
     const accounts = this.#accountViews()
     const driverFor = (id: string) => accounts.find(account => account.instanceId === id)?.driver ?? this.#models.find(model => model.instanceId === id)?.driver
@@ -535,24 +537,45 @@ export class T3EngineClient implements EngineReadClient {
     await this.#resolveInstance(thread.projectId, instanceId)
     // A conversation Send carries the queued item replies as its attachment (§5.4), keyed by item id; the text stays the owner's note.
     const state = this.#conversations.threads[threadId]
-    const queued = state && Object.keys(state.replies).length > 0 ? state.replies : null
+    const selection = Object.entries(input.replies ?? {})
+    for (const [id, text] of selection) if (state?.replies[id]?.text !== text) throw new Error(`Reply ${id} changed. Review the selected reply before sending.`)
+    const queued = selection.length ? Object.fromEntries(selection.map(([id]) => [id, state!.replies[id]!])) : null
     const messageId = input.messageId ?? randomUUID()
     const text = input.text.trim() || (queued ? `Replies to ${Object.keys(queued).length} item${Object.keys(queued).length === 1 ? '' : 's'}.` : input.attachment ? `Attached ${input.attachment.name}.` : '')
     if (!text) throw new Error('Write a message or queue a reply, or attach a file before sending')
     const attachmentInputs = [input.attachment, queued ? { name: `replies-${messageId}.md`, text: renderItemReplies(queued) } : undefined].filter((value): value is { name: string; text: string } => value !== undefined)
-    if (queued) {
-      this.#conversations.threads[threadId] = { ...state!, replies: {}, pending: [...state!.pending, { deliveryId: messageId, itemIds: Object.keys(queued), replies: queued }] }
-      await writeConversationsStore(this.#conversationsPath, this.#conversations)
-      this.#publish()
-    }
-    const attachments = await Promise.all(attachmentInputs.map((attachment) => this.#uploadTextAttachment(attachment)))
     const command = turnStartCommand.parse({
-      type: 'thread.turn.start', commandId: input.commandId ?? (queued ? `strata-${messageId}` : randomUUID()), threadId, createdAt: new Date(this.#now()).toISOString(),
-      message: { messageId, role: 'user', text, attachments },
+      type: 'thread.turn.start', commandId: input.commandId ?? `strata-${messageId}`, threadId, createdAt: new Date(this.#now()).toISOString(),
+      message: { messageId, role: 'user', text, attachments: [] },
       modelSelection: { instanceId, model: input.model, options: input.options ?? turnOptions(input, thread) },
       runtimeMode: input.access, interactionMode: thread.interactionMode,
     })
-    await this.#dispatch(command, `turn:${command.message.messageId}`, command.message.messageId)
+    const current = state ?? emptyConversationState()
+    this.#conversations.threads[threadId] = {
+      ...current,
+      replies: Object.fromEntries(Object.entries(current.replies).filter(([id]) => !queued?.[id])),
+      pending: [...current.pending, ...(queued ? [{ deliveryId: messageId, itemIds: Object.keys(queued), replies: queued }] : [])],
+      prepared: [...(current.prepared ?? []), { messageId, command, attachments: attachmentInputs }],
+    }
+    await writeConversationsStore(this.#conversationsPath, this.#conversations)
+    this.#publish()
+    await this.#resumePrepared(threadId, messageId)
+  }
+
+  async #resumePrepared(threadId: string, messageId: string): Promise<void> {
+    const prepared = this.#conversations.threads[threadId]?.prepared?.find((entry) => entry.messageId === messageId)
+    if (!prepared) return
+    for (const attachment of prepared.attachments) {
+      if (attachment.uploaded) continue
+      attachment.uploaded = await this.#uploadTextAttachment(attachment)
+      await writeConversationsStore(this.#conversationsPath, this.#conversations)
+    }
+    const command = turnStartCommand.parse(prepared.command)
+    command.message.attachments = prepared.attachments.map((attachment) => attachment.uploaded!)
+    await this.#dispatch(command, `turn:${messageId}`, messageId)
+    const state = this.#conversations.threads[threadId]!
+    state.prepared = (state.prepared ?? []).filter((entry) => entry.messageId !== messageId)
+    await writeConversationsStore(this.#conversationsPath, this.#conversations)
   }
 
   async queueItemReply(threadId: string, itemId: string, text: string): Promise<void> {
@@ -1061,6 +1084,18 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async #retryPendingCommands(): Promise<void> {
+    await this.#settleAcknowledgedCommands()
+    for (const [threadId, state] of Object.entries(this.#conversations.threads)) {
+      // Old stores could strand replies before a command existed. Restore only those without a command or transcript receipt.
+      const stranded = state.pending.filter((entry) => !state.prepared?.some((prepared) => prepared.messageId === entry.deliveryId) && !this.#pendingCommands.some((command) => command.messageId === entry.deliveryId))
+      for (const entry of stranded) for (const [id, reply] of Object.entries(entry.replies)) state.replies[id] ??= reply
+      state.pending = state.pending.filter((entry) => !stranded.includes(entry))
+      await writeConversationsStore(this.#conversationsPath, this.#conversations)
+      for (const prepared of [...(state.prepared ?? [])]) {
+        try { await this.#resumePrepared(threadId, prepared.messageId) }
+        catch (error) { logError('engine', `Delivery ${prepared.messageId} remains available for retry`, error) }
+      }
+    }
     for (const pending of this.#pendingCommands) await this.#postCommand(pending.command)
     if (this.#pendingCommands.length) await this.#settleAcknowledgedCommands()
   }
@@ -1075,11 +1110,12 @@ export class T3EngineClient implements EngineReadClient {
     for (const [threadId, entry] of this.#threads) {
       const listed = new Set(entry.detail?.thread.messages.map((message) => message.id) ?? [])
       const state = this.#conversations.threads[threadId]
-      if (!state || !state.pending.some((pending) => listed.has(pending.deliveryId))) continue
+      if (!state || (!state.pending.some((pending) => listed.has(pending.deliveryId)) && !state.prepared?.some((prepared) => listed.has(prepared.messageId)))) continue
       const acknowledged = state.pending.filter((pending) => listed.has(pending.deliveryId))
       this.#conversations.threads[threadId] = {
         ...state,
         pending: state.pending.filter((pending) => !listed.has(pending.deliveryId)),
+        prepared: (state.prepared ?? []).filter((prepared) => !listed.has(prepared.messageId)),
         answered: [...new Set([...state.answered, ...acknowledged.flatMap((pending) => pending.itemIds)])],
       }
       repliesChanged = true

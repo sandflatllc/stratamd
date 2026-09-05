@@ -85,10 +85,11 @@ test('2 conversation: moves between placements and dispatches a message, approva
     await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
     const side = page.getByRole('region', { name: 'Conversation' })
     await expect(side.locator('.conversation-message.assistant')).toContainText('Read-side conversation from T3.')
-    await expect(side.getByRole('tab', { name: 'This passage' })).toBeDisabled()
+    await expect(side.getByRole('tablist', { name: 'Conversation scope' })).toHaveCount(0)
     await side.getByRole('button', { name: 'Open in center' }).click()
     const center = page.locator('.conversation-panel[data-placement="center"]')
     await expect(center).toBeVisible()
+    await expect(center.getByRole('tablist', { name: 'Conversation scope' })).toHaveCount(0)
     await expect(page.getByRole('tab', { name: /^Live engine thread/ })).toBeVisible()
     await expect(center.locator('.conversation-message.assistant')).toContainText('Read-side conversation from T3.')
 
@@ -116,8 +117,8 @@ test('2 conversation: moves between placements and dispatches a message, approva
     await page.evaluate(async ({ path }) => window.strata.addAnnotation(path, { kind: 'comment', quote: 'Engine-safe', text: 'Passage context', from: 2, to: 13 }), { path })
     await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
     await page.locator('.annotations-panel .annotation-row').filter({ hasText: 'Engine-safe' }).click()
-    await expect(moved.getByRole('tab', { name: 'This passage' })).toBeEnabled()
-    await expect(moved.getByRole('tab', { name: 'This passage' })).toHaveAttribute('aria-selected', 'true')
+    await expect(moved.getByRole('tab', { name: 'Comment discussion' })).toBeEnabled()
+    await expect(moved.getByRole('tab', { name: 'Comment discussion' })).toHaveAttribute('aria-selected', 'true')
     await moved.getByRole('tab', { name: 'Whole thread' }).click()
     await expect(moved).toContainText('Read-side conversation from T3.')
   } finally {

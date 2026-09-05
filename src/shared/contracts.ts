@@ -224,6 +224,8 @@ export interface EngineModelView {
   options: ModelOptionDescriptor[]
 }
 export interface ConversationInput {
+  /** Explicit frozen reply selection. Omission selects no private replies. */
+  replies?: Record<string, string>
   messageId?: string
   commandId?: string
   text: string
