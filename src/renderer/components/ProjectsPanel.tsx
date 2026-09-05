@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
+import { AddProjectDialog } from './AddProjectDialog'
+import { PlusIcon } from '../icons/lucide'
 import { buildProjectsRail, moveProject, orderProjects, projectThreadState, resolveShelfThreads, type ProjectFolderState, type ProjectShelfEntry, type ProjectThreadSort, type ProjectThreadState } from '../../core/projects-rail'
 import type { EngineThreadChange, EngineThreadView, EngineView } from '../../shared/contracts'
 
@@ -156,8 +158,6 @@ export function ProjectsPanel({ engine, onOpenThread, onBeginRename, onReconnect
   const [menu, setMenu] = useState<{ thread: EngineThreadView; x: number; y: number } | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [addingProject, setAddingProject] = useState(false)
-  const [projectTitle, setProjectTitle] = useState('')
-  const [projectPath, setProjectPath] = useState('')
   const search = useRef<HTMLInputElement>(null)
 
   useEffect(() => { try { localStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences)) } catch { /* Disposable view preference. */ } }, [preferences])
@@ -238,16 +238,16 @@ export function ProjectsPanel({ engine, onOpenThread, onBeginRename, onReconnect
     const neighbour = folderIds[event.key === 'ArrowUp' ? index - 1 : index + 1]
     if (neighbour) commitOrder(projectId, neighbour, event.key === 'ArrowUp' ? 'before' : 'after')
   }
-  const submitProject = (event: FormEvent) => { event.preventDefault(); if (!projectPath.trim()) return; onAddProject({ title: projectTitle.trim() || projectPath.trim().split('/').at(-1) || 'Project', workspaceRoot: projectPath.trim() }); setAddingProject(false); setProjectTitle(''); setProjectPath('') }
+
 
   if (engine.state === 'unpaired') return <div className="engine-empty" data-testid="engine-unpaired">No engine paired.<small>Pair StrataMD with your T3 server to see its projects.</small>{onOpenEngine && <button type="button" onClick={onOpenEngine}>Pair engine</button>}</div>
   if (engine.state === 'disconnected' || engine.state === 'connecting') return <div className="engine-empty" data-testid="engine-disconnected">{engine.server ?? 'Engine'} is {engine.state === 'connecting' ? 'connecting' : 'disconnected'}.<button type="button" onClick={onReconnect}>Reconnect</button></div>
 
   return <div className="projects-panel">
     <div className="projects-search"><span aria-hidden="true">⌕</span><input ref={search} type="search" aria-label="Search threads" placeholder="Search threads" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>Ctrl K</kbd></div>
-    <header className="projects-header"><h2>Projects</h2><label title="Sort threads"><span className="sr-only">Sort projects</span><select aria-label="Sort projects" value={sort} onChange={(event) => setSort(event.target.value as ProjectThreadSort)}><option value="recent">Recent</option><option value="oldest">Oldest</option><option value="title">Name</option></select></label><button type="button" aria-label="Add project" title="Add project" onClick={() => setAddingProject((value) => !value)}>＋</button></header>
+    <header className="projects-header"><h2>Projects</h2><label title="Sort threads"><span className="sr-only">Sort projects</span><select aria-label="Sort projects" value={sort} onChange={(event) => setSort(event.target.value as ProjectThreadSort)}><option value="recent">Recent</option><option value="oldest">Oldest</option><option value="title">Name</option></select></label><button type="button" aria-label="Add project" title="Add project" onClick={() => setAddingProject((value) => !value)}><PlusIcon /></button></header>
     <div className="projects-primary-actions"><button type="button" title="New thread (Ctrl+Shift+N)" onClick={() => onNewThread()}>New thread</button></div>
-    {addingProject && <form className="projects-add-form" aria-label="Add project" onSubmit={submitProject}><input aria-label="Project title" placeholder="Project name" value={projectTitle} onChange={(event) => setProjectTitle(event.target.value)} /><input aria-label="Project folder" placeholder="/path/to/folder" value={projectPath} onChange={(event) => setProjectPath(event.target.value)} /><div><button type="button" onClick={() => setAddingProject(false)}>Cancel</button><button type="submit" disabled={!projectPath.trim()}>Add</button></div></form>}
+    {addingProject && <AddProjectDialog engine={engine} onClose={() => setAddingProject(false)} />}
     <div className="project-folders" ref={folderList} data-reordering={drag !== null || undefined}>
       {filtered.folders.map((folder) => {
         const state = preference(folder.project.id)

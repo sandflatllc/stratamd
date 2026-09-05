@@ -1872,3 +1872,27 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .engine-facts dd { text-align: right; }
 .engine-pairing { border-top: 0; }
 .engine-pairing label { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.setup-dialog { width: min(620px, 94vw); max-height: calc(100vh - 56px); display: flex; flex-direction: column; }
+.setup-dialog-header { display: flex; align-items: flex-start; gap: 18px; }
+.setup-dialog-header > div:first-child { flex: 1; }
+.setup-dialog-header h2 { margin: 0; }
+.setup-dialog-body { overflow-y: auto; min-height: 0; padding-top: 20px; }
+.setup-back { display: flex; align-items: center; gap: 5px; margin-bottom: 8px; }
+.setup-fields { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 16px; }
+.setup-fields > .quiet-button { justify-self: start; display: inline-flex; align-items: center; gap: 6px; }
+.setup-source-row { width: 100%; display: flex; align-items: center; gap: 14px; padding: 16px; text-align: left; border: 1px solid var(--line); border-radius: 12px; background: var(--surfaces-field); color: var(--text); }
+.setup-source-row > span:nth-child(2) { flex: 1; }
+.setup-source-row strong, .setup-source-row small, .setup-result small { display: block; }
+.setup-source-row small, .setup-field small, .setup-result small { color: var(--dim); font-size: 13px; }
+.setup-source-icon { display: grid; place-items: center; width: 36px; height: 36px; background: var(--card-2); border-radius: 9px; }
+.setup-field { display: grid; gap: 6px; margin-bottom: 14px; }
+.setup-field input, .setup-field textarea { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; background: var(--surfaces-field); color: var(--text); font: inherit; }
+.setup-input-row { display: flex; gap: 8px; }
+.setup-input-row input { flex: 1; }
+.folder-crumb { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.folder-browser { min-height: 180px; max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+.folder-browser > button { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px; text-align: left; background: transparent; color: var(--text); border: 0; border-bottom: 1px solid var(--line); }
+.folder-browser > button:hover { background: var(--card-2); }
+.folder-browser > button > span { margin-left: auto; color: var(--dim); }
+.folder-browser > p { padding: 18px; color: var(--dim); }
+.setup-result { display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 10px; }

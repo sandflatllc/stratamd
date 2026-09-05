@@ -1,3 +1,5 @@
+import { browseFolderInput, browseFolderResult, lookupRepositoryInput, repositoryResult, cloneRepositoryInput, cloneRepositoryResult, engineSettingsResult } from './t3-contract'
+import type { EngineSettings, EngineFolderListing, EngineRepository, CloneRepositoryInput } from '../../shared/contracts'
 import { conversationDelivery, renderConversationDelivery, messageAnchor, isOwnerComment, resolveMessageAnchor, type MessageComment } from '../../core/conversation-delivery'
 import { continuationScope, familyLabel, modelFamily, permitsSelection } from '../../shared/modelSelection'
 import { chmod, readFile } from 'node:fs/promises'
@@ -119,7 +121,7 @@ export interface EngineReadClient {
   respondApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
   respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
   createThread?(input: StartThreadInput): Promise<string>
-  createProject?(input: { title: string; workspaceRoot: string }): Promise<string>
+  createProject?(input: { title: string; workspaceRoot: string; createWorkspaceRootIfMissing?: boolean }): Promise<string>
   actOnThread?(threadId: string, action: 'archive' | 'settle' | 'unsettle' | 'delete'): Promise<void>
   updateThread?(threadId: string, change: EngineThreadChange): Promise<void>
   holdMessageComment?(threadId: string, input: { id?: string; messageId: string; from: number; to: number; kind: import("../../shared/contracts").DraftKind; text: string }): Promise<string>
@@ -129,6 +131,10 @@ export interface EngineReadClient {
   dismissItem?(threadId: string, itemId: string): Promise<void>
   parkAccount?(instanceId: string, parked: boolean): Promise<void>
   setTerminalDefault?(driver: string, selection: string | null): Promise<void>
+  readSettings?(): Promise<EngineSettings>
+  browseFolder?(path: string): Promise<EngineFolderListing>
+  lookupRepository?(repository: string): Promise<EngineRepository>
+  cloneRepository?(input: CloneRepositoryInput): Promise<{ cwd: string }>
   refreshAccounts?(): Promise<void>
   /** Keeps a composer image until it is sent or removed (§6.0). */
   stageAttachment?(input: { name: string; mimeType: string; bytes: Uint8Array }): Promise<{ id: string; sizeBytes: number }>
@@ -740,10 +746,27 @@ export class T3EngineClient implements EngineReadClient {
     return this.#shell?.threads.find((thread) => thread.projectId === projectId)?.modelSelection.instanceId ?? this.#shell?.threads[0]?.modelSelection.instanceId ?? 'codex'
   }
 
-  async createProject(input: { title: string; workspaceRoot: string }): Promise<string> {
+  async readSettings(): Promise<EngineSettings> {
+    return engineSettingsResult.parse(await this.#rpcOrSocket(T3_RPC.readSettings, {}, 'settings'))
+  }
+
+  async browseFolder(path: string): Promise<EngineFolderListing> {
+    return browseFolderResult.parse(await this.#rpcOrSocket(T3_RPC.browseFolder, browseFolderInput.parse({ partialPath: path }), `folder ${path}`))
+  }
+
+  async lookupRepository(repository: string): Promise<EngineRepository> {
+    return repositoryResult.parse(await this.#rpcOrSocket(T3_RPC.lookupRepository, lookupRepositoryInput.parse({ provider: 'github', repository }), `repository ${repository}`))
+  }
+
+  async cloneRepository(input: CloneRepositoryInput): Promise<{ cwd: string }> {
+    return cloneRepositoryResult.parse(await this.#rpcOrSocket(T3_RPC.cloneRepository, cloneRepositoryInput.parse(input), `clone into ${input.destinationPath}`, 300_000))
+  }
+
+  async createProject(input: { title: string; workspaceRoot: string; createWorkspaceRootIfMissing?: boolean }): Promise<string> {
     const projectId = randomUUID()
     await this.#dispatch(projectCreateCommand.parse({
       type: 'project.create', commandId: randomUUID(), projectId, title: input.title, workspaceRoot: input.workspaceRoot,
+      ...(input.createWorkspaceRootIfMissing ? { createWorkspaceRootIfMissing: true } : {}),
       createdAt: new Date(this.#now()).toISOString(),
     }))
     await this.#waitForShell((shell) => shell.projects.some((project) => project.id === projectId))
@@ -1120,9 +1143,9 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   /** The live socket answers when it is up; otherwise a one-shot connection does. */
-  async #rpcOrSocket(tag: string, payload: unknown, what: string): Promise<unknown> {
-    if (this.#socket && !this.#socket.closed) return this.#socket.request(tag, payload)
-    return this.#rpc(tag, payload, what)
+  async #rpcOrSocket(tag: string, payload: unknown, what: string, timeoutMs?: number): Promise<unknown> {
+    if (this.#socket && !this.#socket.closed) return this.#socket.request(tag, payload, timeoutMs)
+    return this.#rpc(tag, payload, what, timeoutMs)
   }
 
   /**
@@ -1130,7 +1153,7 @@ export class T3EngineClient implements EngineReadClient {
    * the matching `Exit`. Uploads go this way so a large attachment never
    * blocks the subscription socket.
    */
-  async #rpc(tag: string, payload: unknown, what = 'request'): Promise<unknown> {
+  async #rpc(tag: string, payload: unknown, what = 'request', timeoutMs = 5_000): Promise<unknown> {
     if (!this.#credential) throw new Error('No engine is paired')
     const ticketResponse = await this.#fetch(`${this.#credential.server}${T3_HTTP.websocketTicket}`, {
       method: 'POST', headers: { authorization: `Bearer ${this.#credential.accessToken}` }, signal: AbortSignal.timeout(3_000),
@@ -1143,7 +1166,7 @@ export class T3EngineClient implements EngineReadClient {
     return new Promise<unknown>((resolve, reject) => {
       const socket = new this.#WebSocket(socketUrl)
       const requestId = randomUUID()
-      const timeout = setTimeout(() => { socket.close(); reject(new Error(`The engine ${what} timed out`)) }, 5_000)
+      const timeout = setTimeout(() => { socket.close(); reject(new Error(`The engine ${what} timed out`)) }, timeoutMs)
       socket.addEventListener('open', () => socket.send(JSON.stringify({ _tag: 'Request', id: requestId, tag, payload, headers: [] })))
       socket.addEventListener('message', (event) => {
         try {

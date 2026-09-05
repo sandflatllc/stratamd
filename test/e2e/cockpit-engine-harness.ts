@@ -230,12 +230,19 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       if (values.length) chunk(connection, subscription, values)
     }
   }
-  function rpcValue(tag: string): unknown {
+  function rpcValue(tag: string, payload: Record<string, unknown>): unknown {
     if (tag === 'attachments.createUploadUrl') {
       uploadCount += 1
       const attachmentId = `upload-${uploadCount}`
       return { attachmentId, relativeUrl: `/upload/${attachmentId}`, expiresAt: Date.now() + 60_000 }
     }
+    if (tag === 'server.getSettings') return { addProjectBaseDirectory: '/home/owner/Projects', newWorktreesStartFromOrigin: true, providerInstances: { codex: { driver: 'codex', config: { homePath: '/home/owner/.codex-work' } } } }
+    if (tag === 'filesystem.browse') {
+      const parentPath = String(payload.partialPath).replace(/\/+$/, '') || '/'
+      return { parentPath, entries: parentPath === '/home/owner/Projects' ? [{ name: 'Example app', fullPath: '/home/owner/Projects/Example app' }] : [] }
+    }
+    if (tag === 'sourceControl.lookupRepository') return { provider: 'github', nameWithOwner: payload.repository, url: `https://github.com/${payload.repository}`, sshUrl: `git@github.com:${payload.repository}.git` }
+    if (tag === 'sourceControl.cloneRepository') return { cwd: payload.destinationPath, remoteUrl: payload.remoteUrl ?? `https://github.com/${payload.repository}`, repository: null }
     if (tag === 'server.getConfig') return { providers, settings: { providerInstances: { codex: { config: { homePath: '/home/owner/.codex-work' } } } } }
     if (tag === 'server.refreshProviders') return { providers }
     return null
@@ -349,7 +356,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
           chunk(connection, subscription, [...snapshotFor(subscription), { kind: 'synchronized' }])
           continue
         }
-        send(socket, { _tag: 'Exit', requestId: rpc.id, exit: { _tag: 'Success', value: rpcValue(rpc.tag) } })
+        send(socket, { _tag: 'Exit', requestId: rpc.id, exit: { _tag: 'Success', value: rpcValue(rpc.tag, rpc.payload as Record<string, unknown>) } })
       }
     })
     socket.on('error', () => undefined)

@@ -33,6 +33,10 @@ const view: AppView = {
 
 function fakeApi(): StrataApi {
   return {
+    readEngineSettings: vi.fn(async () => ({ providerInstances: {} })),
+    browseEngineFolder: vi.fn(async () => ({ parentPath: '/projects', entries: [] })),
+    lookupEngineRepository: vi.fn(async () => ({ provider: 'github', nameWithOwner: 'owner/repo', url: 'https://github.com/owner/repo', sshUrl: 'git@github.com:owner/repo.git' })),
+    cloneEngineRepository: vi.fn(async () => ({ cwd: '/projects/repo' })),
     getState: vi.fn(async () => view),
     stageConversationAttachment: vi.fn(async () => ({ id: 'a_00000000-0000-4000-8000-000000000000', sizeBytes: 1 })),
     discardConversationAttachment: vi.fn(async () => undefined),

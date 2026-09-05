@@ -700,7 +700,7 @@ export class StrataApplication implements StrataApi {
     return this.#engine.createThread(input)
   }
 
-  async createEngineProject(input: { title: string; workspaceRoot: string }): Promise<string> {
+  async createEngineProject(input: { title: string; workspaceRoot: string; createWorkspaceRootIfMissing?: boolean }): Promise<string> {
     if (!this.#engine.createProject) throw new Error('This engine cannot add projects')
     return this.#engine.createProject(input)
   }
@@ -758,6 +758,26 @@ export class StrataApplication implements StrataApi {
   async setTerminalDefault(driver: string, selection: string | null): Promise<void> {
     if (!this.#engine.setTerminalDefault) throw new Error('This engine has no terminal defaults')
     await this.#engine.setTerminalDefault(driver, selection)
+  }
+
+  async readEngineSettings() {
+    if (!this.#engine.readSettings) throw new Error('The engine does not support readSettings')
+    return this.#engine.readSettings()
+  }
+
+  async browseEngineFolder(path: string) {
+    if (!this.#engine.browseFolder) throw new Error('The engine does not support browseFolder')
+    return this.#engine.browseFolder(path)
+  }
+
+  async lookupEngineRepository(repository: string) {
+    if (!this.#engine.lookupRepository) throw new Error('The engine does not support lookupRepository')
+    return this.#engine.lookupRepository(repository)
+  }
+
+  async cloneEngineRepository(input: Parameters<StrataApi['cloneEngineRepository']>[0]) {
+    if (!this.#engine.cloneRepository) throw new Error('The engine does not support cloneRepository')
+    return this.#engine.cloneRepository(input)
   }
 
   async refreshAccounts(): Promise<void> {

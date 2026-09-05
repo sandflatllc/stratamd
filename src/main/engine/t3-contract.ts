@@ -19,6 +19,10 @@ export const T3_RPC = {
   getServerConfig: 'server.getConfig',
   refreshProviders: 'server.refreshProviders',
   subscribeServerConfig: 'subscribeServerConfig',
+  browseFolder: 'filesystem.browse',
+  lookupRepository: 'sourceControl.lookupRepository',
+  cloneRepository: 'sourceControl.cloneRepository',
+  readSettings: 'server.getSettings',
   createAttachmentUploadUrl: 'attachments.createUploadUrl',
 } as const
 
@@ -225,3 +229,15 @@ export type T3ThreadDetailSnapshot = z.infer<typeof threadDetailSnapshot>
 export type T3ThreadStreamItem = z.infer<typeof threadStreamItem>
 export type T3ServerProvider = z.infer<typeof serverProvider>
 export type T3ServerConfigSlice = z.infer<typeof serverConfigSlice>
+
+export const browseFolderInput = z.object({ partialPath: id.max(512) }).strict()
+export const browseFolderResult = z.object({ parentPath: id, entries: z.array(z.object({ name: id, fullPath: id })) })
+export const lookupRepositoryInput = z.object({ provider: z.literal('github'), repository: id }).strict()
+export const repositoryResult = z.object({ provider: id, nameWithOwner: id, url: id, sshUrl: id })
+export const cloneRepositoryInput = z.union([
+  z.object({ destinationPath: id, remoteUrl: id }).strict(),
+  z.object({ destinationPath: id, provider: z.literal('github'), repository: id }).strict(),
+])
+export const cloneRepositoryResult = z.object({ cwd: id, remoteUrl: id, repository: repositoryResult.nullable() })
+export const providerInstanceSettings = z.object({ driver: id, displayName: id.optional(), enabled: z.boolean().optional(), config: z.record(z.string(), z.unknown()).optional() }).passthrough()
+export const engineSettingsResult = z.object({ addProjectBaseDirectory: z.string().optional(), newWorktreesStartFromOrigin: z.boolean().optional(), providerInstances: z.record(z.string(), providerInstanceSettings).default({}) }).passthrough()

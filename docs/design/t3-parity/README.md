@@ -8,3 +8,16 @@ The reference gallery is [t3-feature-comparison](../t3-feature-comparison/index.
 | Pair again | ![Pair again](captures/engine-pair.png) | ![Reference](captures/reference-engine-pair.png) |
 
 Engine facts use the gallery's order and right alignment. A nonrenewing credential needs a longer Session explanation. The expanded form scrolls inside short windows. The existing shell and modal type scale are retained.
+
+## Add project
+
+Back links sit in the header as the plan requests. Folder paths can be typed and opened with Browse or Enter. This additional Browse action makes path navigation explicit. The source picker retains the gallery's row order; each later step retains Cancel and its named primary action.
+
+| Step | Built app | Gallery reference |
+| --- | --- | --- |
+| sources | ![Built app](captures/project-sources.png) | ![Reference](captures/reference-project-sources.png) |
+| local | ![Built app](captures/project-local.png) | ![Reference](captures/reference-project-local.png) |
+| new-folder | ![Built app](captures/project-new-folder.png) | ![Reference](captures/reference-project-new-folder.png) |
+| url | ![Built app](captures/project-url.png) | ![Reference](captures/reference-project-url.png) |
+| github | ![Built app](captures/project-github.png) | ![Reference](captures/reference-project-github.png) |
+| destination | ![Built app](captures/project-destination.png) | ![Reference](captures/reference-project-destination.png) |

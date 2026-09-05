@@ -71,11 +71,11 @@ export class EngineSocket {
     return this.#closed
   }
 
-  async request(tag: string, payload: unknown): Promise<unknown> {
+  async request(tag: string, payload: unknown, timeoutMs = this.#requestTimeoutMs): Promise<unknown> {
     await this.#opened
     const id = randomUUID()
     return new Promise<unknown>((resolve, reject) => {
-      const timer = this.#setTimer(() => { this.#requests.delete(id); reject(new Error(`The engine did not answer ${tag} in time`)) }, this.#requestTimeoutMs)
+      const timer = this.#setTimer(() => { this.#requests.delete(id); reject(new Error(`The engine did not answer ${tag} in time`)) }, timeoutMs)
       this.#requests.set(id, { resolve, reject, timer })
       this.#send({ _tag: 'Request', id, tag, payload, headers: [] })
     })

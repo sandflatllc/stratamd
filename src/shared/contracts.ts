@@ -728,7 +728,29 @@ export interface StartThreadFromDocumentInput extends StartThreadInput {
 /** How the owner pairs (§5.1): a pairing link from T3, or the host plus the code shown beside it. */
 export type PairEngineRequest = { link: string } | { host: string; code: string }
 
+export interface EngineSettings {
+  addProjectBaseDirectory?: string | undefined
+  newWorktreesStartFromOrigin?: boolean | undefined
+  providerInstances: Record<string, ProviderInstanceSettings>
+  [key: string]: unknown
+}
+export interface ProviderInstanceSettings {
+  driver: string
+  displayName?: string | undefined
+  enabled?: boolean | undefined
+  config?: Record<string, unknown> | undefined
+  [key: string]: unknown
+}
+export interface EngineFolderListing { parentPath: string; entries: Array<{ name: string; fullPath: string }> }
+export interface EngineRepository { provider: string; nameWithOwner: string; url: string; sshUrl: string }
+export type CloneRepositoryInput = { destinationPath: string } & ({ remoteUrl: string } | { provider: 'github'; repository: string })
+
 export interface StrataApi {
+  readEngineSettings(): Promise<EngineSettings>
+  browseEngineFolder(path: string): Promise<EngineFolderListing>
+  lookupEngineRepository(repository: string): Promise<EngineRepository>
+  cloneEngineRepository(input: CloneRepositoryInput): Promise<{ cwd: string }>
+
   /** Renderer bridge to the system browser. */
   openExternal?(url: string): Promise<void>
   getState(): Promise<AppView>
@@ -755,7 +777,7 @@ export interface StrataApi {
   answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
   createEngineThread(input: StartThreadInput): Promise<string>
   /** Adds a T3 project for a folder no project contains yet (§5.7 Add project); returns its id. */
-  createEngineProject(input: { title: string; workspaceRoot: string }): Promise<string>
+  createEngineProject(input: { title: string; workspaceRoot: string; createWorkspaceRootIfMissing?: boolean }): Promise<string>
   /** Creates the thread, attaches it to the document, and sends the pending comment and drafts as its first turn (§5.7, §5.14). */
   startThreadFromDocument(path: string, input: StartThreadFromDocumentInput): Promise<string>
   actOnEngineThread(threadId: string, action: 'archive' | 'settle' | 'unsettle' | 'delete'): Promise<void>

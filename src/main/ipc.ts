@@ -8,6 +8,7 @@ import { logRendererReport } from './log'
 import { annotationContextSchema } from './validation'
 import type { WindowController } from './window-controls'
 import { MAX_ATTACHMENTS, MAX_IMAGE_BYTES, MAX_TEXT_BYTES, SUPPORTED_IMAGE_TYPES } from '../core/composer-attachments'
+import { cloneRepositoryInput } from './engine/t3-contract'
 import { isStagedAttachmentId } from './engine/staged-attachments'
 
 type StrataIpcApi = Omit<StrataApi, 'subscribe'>
@@ -156,12 +157,16 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.reconnectEngine]: z.tuple([]),
   [IPC.openConversation]: z.tuple([idSchema]),
   [IPC.createEngineThread]: z.tuple([startThreadSchema]),
-  [IPC.createEngineProject]: z.tuple([z.object({ title: z.string().trim().min(1).max(512), workspaceRoot: pathSchema }).strict()]),
+  [IPC.createEngineProject]: z.tuple([z.object({ title: z.string().trim().min(1).max(512), workspaceRoot: pathSchema, createWorkspaceRootIfMissing: z.boolean().optional() }).strict()]),
   [IPC.startThreadFromDocument]: z.tuple([pathSchema, startThreadSchema.extend({ threadId: idSchema.optional(), note: textSchema.optional(), comment: draftRequestSchema.optional(), draftIds: z.array(idSchema).max(4_096).optional() }).strict()]),
   [IPC.actOnEngineThread]: z.tuple([idSchema, z.enum(['archive', 'settle', 'unsettle', 'delete'])]),
   [IPC.parkAccount]: z.tuple([idSchema, z.boolean()]),
   [IPC.updateEngineThread]: z.tuple([idSchema, z.object({ pinned: z.boolean().optional(), snoozedUntil: z.iso.datetime({ offset: true }).nullable().optional(), title: z.string().trim().min(1).max(512).optional(), unread: z.boolean().optional() }).strict()]),
   [IPC.setTerminalDefault]: z.tuple([idSchema, idSchema.nullable()]),
+  [IPC.readEngineSettings]: z.tuple([]),
+  [IPC.browseEngineFolder]: z.tuple([z.string().trim().min(1).max(512)]),
+  [IPC.lookupEngineRepository]: z.tuple([idSchema]),
+  [IPC.cloneEngineRepository]: z.tuple([cloneRepositoryInput]),
   [IPC.refreshAccounts]: z.tuple([]),
   [IPC.holdMessageComment]: z.tuple([idSchema, z.object({ id: idSchema.optional(), messageId: idSchema, from: z.number().int().nonnegative(), to: z.number().int().positive(), kind: z.enum(['comment', 'question', 'suggestion']), text: z.string().min(1).max(20000) }).strict()]),
   [IPC.actMessageComment]: z.tuple([idSchema, idSchema, z.enum(['resolve', 'reopen', 'discard'])]),
@@ -364,6 +369,10 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.parkAccount]: (instanceId: string, parked: boolean) => options.api.parkAccount(instanceId, parked),
     [IPC.updateEngineThread]: (threadId: string, change: Parameters<StrataApi['updateEngineThread']>[1]) => options.api.updateEngineThread(threadId, change),
     [IPC.setTerminalDefault]: (driver: string, selection: string | null) => options.api.setTerminalDefault(driver, selection),
+    [IPC.readEngineSettings]: () => options.api.readEngineSettings(),
+    [IPC.browseEngineFolder]: (path: string) => options.api.browseEngineFolder(path),
+    [IPC.lookupEngineRepository]: (repository: string) => options.api.lookupEngineRepository(repository),
+    [IPC.cloneEngineRepository]: (input: Parameters<StrataApi['cloneEngineRepository']>[0]) => options.api.cloneEngineRepository(input),
     [IPC.refreshAccounts]: () => options.api.refreshAccounts(),
     [IPC.holdMessageComment]: (threadId: string, input: Parameters<StrataApi['holdMessageComment']>[1]) => options.api.holdMessageComment(threadId, input),
     [IPC.actMessageComment]: (threadId: string, itemId: string, action: 'resolve' | 'reopen' | 'discard') => options.api.actMessageComment(threadId, itemId, action),
