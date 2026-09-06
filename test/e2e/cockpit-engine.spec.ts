@@ -212,7 +212,7 @@ test('8 and 9 projects: the blank draft is project-scoped, row actions dispatch,
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
     await page.getByRole('button', { name: 'New thread', exact: true }).click()
     const draft = page.getByRole('region', { name: 'New conversation' })
-    await expect(draft.getByLabel('Conversation project')).toHaveValue('p1')
+    await expect(draft.getByLabel('Conversation project')).toHaveAttribute('data-value', 'p1')
     await expect(draft.getByRole('button', { name: 'Choose model and account' })).toContainText('5.6')
     await expect(draft.getByRole('button', { name: 'Choose model and account' })).not.toContainText('GPT')
     await expect(draft.getByLabel('Message conversation')).toBeFocused()

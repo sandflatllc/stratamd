@@ -13,7 +13,8 @@ for (const source of ['local', 'new-folder', 'url', 'github'] as const) {
       await scenario.app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1440, 1000))
       await page.getByRole('tab', { name: 'Projects', exact: true }).click()
       await page.getByRole('button', { name: 'New thread in Cockpit project' }).click()
-      await page.locator('.new-conversation').getByRole('button', { name: 'Add project' }).click()
+      await page.getByLabel('Conversation project').click()
+      await page.getByRole('region', { name: 'Projects' }).getByRole('button', { name: 'Add project' }).click()
       await mkdir('docs/design/t3-parity/captures', { recursive: true })
       const capture = (step: string) => page.screenshot({ animations: 'disabled', path: `docs/design/t3-parity/captures/project-${step}.png` })
       await capture('sources')
@@ -49,7 +50,7 @@ for (const source of ['local', 'new-folder', 'url', 'github'] as const) {
       const command = engine.commands.find(command => command.type === 'project.create')!
       expect(command).toBeTruthy()
       if (source === 'new-folder') expect(command.createWorkspaceRootIfMissing).toBe(true)
-      await expect(page.getByLabel('Conversation project')).toHaveValue(String(command.projectId))
+      await expect(page.getByLabel('Conversation project')).toHaveAttribute('data-value', String(command.projectId))
     } finally { await scenario.dispose(); await engine.close() }
   })
 }

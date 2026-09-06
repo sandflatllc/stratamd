@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>StrataMD · Project picker</title>
+<style>
+@font-face { font-family: Baloo; src: url('../../../node_modules/@fontsource/baloo-2/files/baloo-2-latin-500-normal.woff2') format('woff2'); font-weight: 500; }
+@font-face { font-family: Baloo; src: url('../../../node_modules/@fontsource/baloo-2/files/baloo-2-latin-600-normal.woff2') format('woff2'); font-weight: 600; }
+@font-face { font-family: Baloo; src: url('../../../node_modules/@fontsource/baloo-2/files/baloo-2-latin-700-normal.woff2') format('woff2'); font-weight: 700; }
+:root {
+  --window:#07080c; --panel:#121318; --inset:#1c1e26; --field:#0d0e13; --line:#2a2d38;
+  --text:#f2f3f7; --body:#d3d6df; --dim:#9a9fae; --muted:#8a8f9e;
+  --primary:#8e97d6; --primary-tint:#b7a6e8; --selected:#5560a8; --focus:#7aa7ff;
+  color-scheme: dark; font-family: Baloo, sans-serif; font-weight: 500; color: var(--body); background: var(--window);
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 36px 44px; }
+h1 { margin: 0 0 6px; font-size: 22px; font-weight: 700; color: var(--text); }
+p.lede { margin: 0 0 28px; color: var(--dim); font-size: 14px; max-width: 900px; }
+.row { display: grid; grid-template-columns: 1fr 1fr; max-width: 1000px; gap: 28px; align-items: start; }
+.panel { position: relative; min-height: 560px; padding: 22px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); }
+.panel h2 { margin: 0 0 4px; font-size: 13px; font-weight: 700; letter-spacing: .02em; color: var(--muted); text-transform: uppercase; }
+.panel h3 { margin: 0 0 18px; font-size: 16px; font-weight: 600; color: var(--text); }
+.header { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--muted); }
+.link { color: var(--primary-tint); font-weight: 700; }
+/* today */
+select.native { max-width: 240px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: var(--field); font: inherit; }
+.native-list { position: absolute; left: 88px; top: 118px; width: 168px; padding: 2px 0; background: #16171c; border: 1px solid #3a3d4a; color: #e6e6ea; font-size: 15px; box-shadow: 0 2px 6px rgba(0,0,0,.6); }
+.native-list div { padding: 7px 12px; }
+.native-list .sel { background: #2b6bd6; color: #fff; }
+/* proposed trigger */
+.trigger { display: inline-flex; align-items: center; gap: 8px; min-width: 200px; padding: 7px 12px 7px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--inset); color: var(--text); font-size: 14px; font-weight: 600; }
+.trigger.open { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent); }
+.trigger svg.chev { margin-left: auto; color: var(--dim); }
+.icon { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+/* proposed menu, mirrors .chat-menu / .workspace-menu */
+.menu { position: absolute; z-index: 5; width: 300px; padding: 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); box-shadow: 0 12px 30px rgba(0,0,0,.55); }
+.menu.project { left: 88px; top: 120px; }
+.menu .search { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--muted); font-size: 13px; }
+.menu .search kbd { margin-left: auto; font: inherit; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
+.menu .label { padding: 6px 10px 4px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.opt { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--text); text-align: left; font: inherit; font-size: 14px; font-weight: 500; }
+.opt .icon { color: var(--dim); }
+.opt small { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.opt:hover, .opt.hover { background: var(--inset); }
+.opt.sel { background: color-mix(in srgb, var(--selected) 28%, transparent); color: var(--text); font-weight: 600; }
+.opt.sel .icon.check { color: var(--primary-tint); margin-left: auto; }
+.opt.sel small { margin-left: 0; }
+.divider { height: 1px; margin: 6px 4px; background: var(--line); }
+.opt.action { color: var(--primary-tint); font-weight: 600; }
+/* model picker panel */
+.picker { width: 300px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 12px 30px rgba(0,0,0,.55); font-size: 14px; }
+.picker .plabel { color: var(--muted); font-size: 12.5px; padding: 4px 6px; }
+.families { display: flex; gap: 8px; padding: 4px 6px 12px; }
+.families div { flex: 1; display: grid; place-items: center; min-height: 36px; border: 1px solid var(--line); border-radius: 8px; background: transparent; }
+.families div.on { background: color-mix(in srgb, var(--selected) 28%, transparent); border-color: color-mix(in srgb, var(--selected) 60%, var(--line)); }
+.glyph { width: 18px; height: 18px; border-radius: 50%; }
+.families .gpt .glyph { background: radial-gradient(circle at 50% 50%, #d3d6df 30%, transparent 32%), conic-gradient(#d3d6df 0 25%, transparent 0 50%, #d3d6df 0 75%, transparent 0); }
+.families .claude .glyph { background: conic-gradient(#e08a5c 0 12%, transparent 0 25%, #e08a5c 0 37%, transparent 0 50%, #e08a5c 0 62%, transparent 0 75%, #e08a5c 0 87%, transparent 0); border-radius: 50%; }
+.sub { padding: 0 6px 6px; }
+.sub .trigger { width: 100%; }
+.menu.sub-menu { left: 30px; top: 250px; width: 286px; }
+.flag { display: flex; align-items: center; justify-content: space-between; margin: 10px 6px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: color-mix(in srgb, var(--selected) 28%, transparent); font-weight: 700; color: var(--text); }
+.flag small { color: var(--muted); font-weight: 500; font-size: 12.5px; }
+.others { margin: 10px 6px 0; padding-top: 10px; border-top: 1px solid var(--line); color: var(--text); font-weight: 600; }
+.others small { display: block; margin: 4px 0 0 16px; color: var(--muted); font-weight: 500; font-size: 12.5px; }
+.note { margin-top: 22px; color: var(--dim); font-size: 13px; line-height: 1.5; }
+.note b { color: var(--body); font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>Project picker</h1>
+<p class="lede">The Project select on the new-thread screen is drawn by the OS. This replaces it with the same popover Strata already uses for the model menu and the workspace menu. The Subscription select inside the model picker is out of scope and stays as it is.</p>
+<div class="row">
+  <section class="panel">
+    <h2>Today</h2><h3>Native select</h3>
+    <div class="header">Project <select class="native"><option>StrataMD</option></select> <span class="link">Add project</span></div>
+    <div class="native-list"><div>Desktop</div><div>Mesa</div><div>Haru</div><div>Skills Dashboard</div><div>File Explorer</div><div class="sel">StrataMD</div><div>t3-strata</div><div>Outcrop</div><div>Open Design</div></div>
+    <p class="note" style="margin-top:400px">Square corners, a system blue highlight, and a font that isn't Baloo. Nothing else in the app looks like this.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Proposed</h2><h3>Project picker</h3>
+    <div class="header">Project <button class="trigger open"><svg class="icon" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>StrataMD<svg class="icon chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button> <span class="link">Add project</span></div>
+    <div class="menu project">
+      <div class="search"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>Find a project<kbd>type to filter</kbd></div>
+      <div class="label">Recent</div>
+      <button class="opt"><svg class="icon" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>Desktop<small>2 threads</small></button>
+      <button class="opt"><svg class="icon" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>Mesa<small>1 thread</small></button>
+      <button class="opt"><svg class="icon" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>Haru<small>4 threads</small></button>
+      <button class="opt hover"><svg class="icon" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>Skills Dashboard<small>3 threads</small></button>
+      <button class="opt"><svg class="icon" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>File Explorer<small>1 thread</small></button>
+      <button class="opt sel"><svg class="icon" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>StrataMD<svg class="icon check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button>
+      <button class="opt"><svg class="icon" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>t3-strata<small>6 threads</small></button>
+      <button class="opt"><svg class="icon" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>Outcrop<small>2 threads</small></button>
+      <button class="opt"><svg class="icon" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>Open Design<small>1 thread</small></button>
+      <div class="divider"></div>
+      <button class="opt action"><svg class="icon" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></svg>Add project</button>
+    </div>
+    <p class="note" style="margin-top:500px">The trigger is a full pill like the top bar's Docs pill, filled with the inset surface and ringed when open. The menu shares its card, border, radius, and row shape with the model menu. Selected row uses the theme's selected tint with a check. Hover is the inset surface. The filter line only appears with eight or more projects. Add project moves into the menu so the header loses the extra link.</p>
+  </section>
+
+</div>
+</body>
+</html>

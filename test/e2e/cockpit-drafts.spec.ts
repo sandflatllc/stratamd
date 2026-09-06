@@ -125,7 +125,7 @@ test('8: Start thread from a document preselects its project and sends the pendi
     await pending.locator('.composer-actions').getByRole('button', { name: 'Start thread' }).click()
 
     const picker = page.getByRole('region', { name: 'New conversation' })
-    await expect(picker.getByLabel('Conversation project')).toHaveValue('p1')
+    await expect(picker.getByLabel('Conversation project')).toHaveAttribute('data-value', 'p1')
     await expect(picker).toContainText('Pending comment.')
     await expect(picker).toContainText('1 held draft')
     await picker.getByRole('button', { name: 'Choose model and account' }).click()

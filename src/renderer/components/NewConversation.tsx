@@ -4,6 +4,7 @@ import { initialSelection, readDraft, writeDraft } from '../conversationDrafts'
 import { ConversationComposer } from './ConversationComposer'
 import { WorkspaceControls, type WorkspaceChoice } from './WorkspaceControls'
 import { AddProjectDialog } from './AddProjectDialog'
+import { ProjectPicker } from './ProjectPicker'
 import { projectForPath } from '../model'
 
 export function NewConversation({ engine, projectId: initialProjectId, document, comment, onStarted, onBeforeSend, onProjectChange }: {
@@ -38,7 +39,7 @@ export function NewConversation({ engine, projectId: initialProjectId, document,
     onStarted(threadId)
   }
   return <section className="new-conversation" aria-label="New conversation">
-    <header><label>Project<select aria-label="Conversation project" value={projectId} onChange={(event) => setProjectId(event.target.value)}>{engine.projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label><button type="button" className="text-action" onClick={() => setAdding(!adding)}>Add project</button></header>
+    <header><span>Project</span><ProjectPicker projects={engine.projects} value={projectId} onChange={setProjectId} onAdd={() => setAdding(true)} /></header>
     {adding && <AddProjectDialog engine={engine} onClose={() => setAdding(false)} onAdded={setProjectId} />}
     <div className="new-conversation-body">
       <h1>What would you like to work on{project ? <> in <span>{project.title}</span></> : null}?</h1>

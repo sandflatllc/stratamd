@@ -1690,7 +1690,12 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .new-conversation { display: flex; flex-direction: column; height: 100%; width: 100%; min-width: 0; overflow: auto; padding: 20px; font-size: calc(14px * var(--zoom, 1)); }
 .new-conversation > header { display: flex; flex: none; align-items: center; gap: 12px; color: var(--muted); }
 .new-conversation > header label { display: flex; align-items: center; gap: 8px; }
-.new-conversation select { max-width: 240px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: var(--surfaces-field); font: inherit; }
+.project-picker { position: relative; }
+.project-picker-trigger { display: inline-flex; align-items: center; gap: 8px; min-width: 200px; max-width: 320px; padding: 6px 12px 6px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surfaces-inset); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
+.project-picker-trigger svg { flex: none; width: 16px; height: 16px; }
+.project-picker-trigger svg:last-child { margin-left: auto; color: var(--dim); }
+.project-picker-trigger:hover { background: var(--card-2); }
+.project-picker-trigger[aria-expanded="true"] { border-color: var(--controls-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--controls-primary) 22%, transparent); }
 .new-conversation-body { width: min(100%, 900px); flex: none; margin: auto; padding: 28px 0 24px; }
 .new-conversation h1 { text-align: center; font-size: clamp(22px, 2.2vw, 34px); font-weight: 500; line-height: 1.3; margin: 0 0 36px; }
 .new-conversation h1 span { text-decoration: underline dotted var(--muted); text-underline-offset: 8px; }
@@ -1923,6 +1928,19 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .workspace-menu input { width: 100%; margin: 10px 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surfaces-field); color: var(--text); font: inherit; }
 .workspace-ref-list { max-height: 230px; overflow-y: auto; }
 .workspace-refs { left: auto; right: 0; }
+.project-menu { top: calc(100% + 6px); bottom: auto; width: min(320px, 90vw); padding: 8px; }
+.project-menu-filter { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surfaces-field); color: var(--muted); }
+.project-menu-filter svg { flex: none; width: 15px; height: 15px; }
+.project-menu-filter input { margin: 0; padding: 8px 0; border: 0; background: transparent; }
+.project-menu-list { max-height: min(420px, 55vh); overflow-y: auto; }
+.project-menu button { border-radius: 7px; padding: 9px 10px; }
+.project-menu button svg { flex: none; width: 16px; height: 16px; color: var(--dim); }
+.project-menu button span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-menu button small { display: inline; margin-left: auto; white-space: nowrap; }
+.project-menu button[aria-pressed="true"] { background: color-mix(in srgb, var(--controls-selected) 28%, transparent); font-weight: 600; }
+.project-menu button[aria-pressed="true"] svg:last-child { color: var(--controls-primary-highlight); }
+.project-menu-add { margin-top: 6px; border-top: 1px solid var(--line) !important; border-radius: 0 0 7px 7px !important; color: var(--controls-primary-highlight) !important; font-weight: 600; }
+.project-menu-add svg { color: inherit !important; }
 
 .center-column { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; gap: 12px; }
 .center-column > .editor-island { min-height: 0; flex: 1; }
