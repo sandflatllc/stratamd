@@ -152,6 +152,8 @@ export interface EngineReadClient {
   readSupport?(): Promise<EngineSupport>
   reportActivity?(activity: EngineActivity, managed: boolean): Promise<void>
   prepareLocalSetup?(): Promise<void>
+  resumeAfterMaintenance?(): Promise<void>
+  connectionRequest?(action: string, payload?: unknown): Promise<unknown>
   readSettings?(): Promise<EngineSettings>
   editSettings?(edit: EngineSettingsEdit): Promise<EngineSettings>
   editProvider?(edit: ProviderEdit): Promise<void>
@@ -1026,11 +1028,24 @@ export class T3EngineClient implements EngineReadClient {
     }
   }
 
+  async connectionRequest(action: string, payload?: unknown): Promise<unknown> {
+    const routes: Record<string, string> = { state: '/api/connect/link-state', links: '/api/auth/pairing-links', devices: '/api/auth/clients', 'create-link': '/api/auth/pairing-token', 'revoke-link': '/api/auth/pairing-links/revoke', 'revoke-device': '/api/auth/clients/revoke', unlink: '/api/connect/unlink', publish: '/api/connect/preferences' }
+    const path = routes[action]
+    if (!path || !this.#credential) throw new Error('Connection management is unavailable.')
+    return this.#operations.run(async () => {
+      const response = await this.#fetch(this.#credential!.server + path, { method: payload === undefined ? 'GET' : 'POST', headers: { authorization: `Bearer ${this.#credential!.accessToken}`, 'content-type': 'application/json' }, ...(payload === undefined ? {} : { body: JSON.stringify(payload) }), signal: AbortSignal.timeout(10000) })
+      if (!response.ok) throw new Error(response.status === 401 ? 'The engine pairing has expired. Reconnect before managing access.' : response.status === 403 ? 'This pairing cannot manage access. Pair again with Manage access permission.' : `Connection control ${action} is unavailable (${response.status}).`)
+      return response.json()
+    })
+  }
+
+  async resumeAfterMaintenance(): Promise<void> { await this.#operations.run(() => this.#retryPendingCommands()) }
+
   async prepareLocalSetup(): Promise<void> {
     await this.#operations.switch(async () => {
       const response = await this.#request(T3_HTTP.shell)
       const shell = shellSnapshot.parse(await response.json())
-      if (shell.threads.some(thread => thread.session?.status === 'running' || thread.session?.status === 'starting')) throw new Error('Wait for active conversations before provider setup.')
+      if (shell.threads.some(thread => thread.session?.status === 'running' || thread.session?.status === 'starting')) throw new Error('Wait for active conversations before changing this computer.')
       this.#reserveLocalSetup()
       await this.#cancelUsage()
     })
@@ -1697,6 +1712,7 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async #retryPendingCommands(): Promise<void> {
+    if (this.#localSetupBusy()) return
     await this.#settleAcknowledgedCommands()
     const resumed = new Set<string>()
     for (const [threadId, state] of Object.entries(this.#conversations.threads)) {

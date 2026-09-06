@@ -1,3 +1,7 @@
+import { hostname, networkInterfaces } from 'node:os'
+import { readTailscale } from './engine/tailscale'
+import { T3Connect } from './engine/connect'
+import type { ComputerRequest, ComputerView } from '../shared/computer'
 import { ProviderSetupJobs } from './engine/provider-setup'
 import { measureLocalUsage } from './engine/local-usage'
 import { LocalEngineManager } from './engine/manager'
@@ -266,6 +270,7 @@ interface ApplicationHistoryEntry {
 }
 
 export interface ApplicationOptions {
+  setStartAtLogin?(enabled: boolean): Promise<void>
   store?: GhostStore
   settingsStore?: SettingsStore
   themeStore?: ThemeStore
@@ -308,6 +313,8 @@ export class StrataApplication implements StrataApi {
   readonly #watch: boolean
   readonly #engine: EngineReadClient
   readonly #managedBundle: string | undefined
+  #connect = new T3Connect()
+  #setStartAtLogin: (enabled: boolean) => Promise<void>
   #providerSetupPreparing = false
   #providerSetup = new ProviderSetupJobs()
   #manager: LocalEngineManager | null = null
@@ -325,6 +332,7 @@ export class StrataApplication implements StrataApi {
   #lastView: AppView | null = null
 
   constructor(options: ApplicationOptions = {}) {
+    this.#setStartAtLogin = options.setStartAtLogin ?? (async () => { throw new Error('Start at login is unavailable in this build.') })
     this.#managedBundle = options.managedBundle
     this.#store = options.store ?? new GhostStore()
     this.#settingsStore = options.settingsStore ?? new SettingsStore()
@@ -673,6 +681,7 @@ export class StrataApplication implements StrataApi {
     this.#themeSubscription = null
     this.#unsubscribeEngine?.()
     this.#unsubscribeEngine = null
+    await this.#connect.cancel()
     await this.#providerSetup.cancel()
     await this.#engine.shutdown()
     await this.#manager?.stop()
@@ -714,7 +723,7 @@ export class StrataApplication implements StrataApi {
   }
 
   async pairEngine(request: PairEngineRequest): Promise<void> {
-    if (this.#providerSetupPreparing || this.#providerSetup.busy) throw new Error('Finish or cancel provider setup before changing engines.')
+    if (this.#providerSetupPreparing || this.#providerSetup.busy || this.#connect.busy) throw new Error('Finish or cancel provider setup before changing engines.')
     const target = resolvePairingTarget(request)
     if (target.server !== this.#engine.view().server && (this.#engineDispatching.size || this.#engine.view().projects.some(project => project.threads.some(thread => thread.status === 'running' || thread.status === 'starting')))) throw new Error('Wait for active work to finish before changing engines.')
     await Promise.all([...this.#sessionTurns.values()])
@@ -728,6 +737,7 @@ export class StrataApplication implements StrataApi {
     return new LocalEngineManager({
           directory: join(this.#store.dataDirectory, 'engine'), bundle: this.#managedBundle!,
           changed: () => this.#publish(),
+          network: () => this.#settings.engine,
           connect: async (address, token, identity) => { await this.#engine.pair(address, token, identity); if (this.#engine.view().state !== 'connected') throw new Error(this.#engine.view().problem ?? 'Engine subscriptions are unavailable') },
           authenticate: async address => {
             try { const credential = JSON.parse(await readFile(join(this.#store.dataDirectory, 'engine-credential.json'), 'utf8')); if (credential.server !== address) return false; return (await fetch(address + '/api/orchestration/shell', { headers: { authorization: `Bearer ${credential.accessToken}` }, signal: AbortSignal.timeout(3000) })).ok } catch { return false }
@@ -737,9 +747,11 @@ export class StrataApplication implements StrataApi {
   }
 
   async manageEngine(action: 'restart' | 'use-managed'): Promise<void> {
-    if (this.#providerSetupPreparing || this.#providerSetup.busy) throw new Error('Finish or cancel provider setup before changing engines.')
+    if (this.#providerSetupPreparing || this.#providerSetup.busy || this.#connect.busy) throw new Error('Finish or cancel provider setup before changing engines.')
     if (!this.#managedBundle) throw new Error('This build has no bundled engine')
     if (this.#engine.view().projects.some(project => project.threads.some(thread => thread.status === 'running' || thread.status === 'starting'))) throw new Error('Wait for active conversations to finish before restarting the engine.')
+    if (this.#engine.view().state === 'connected') await this.#engine.prepareLocalSetup?.()
+    try {
     if (action === 'use-managed') {
       await Promise.all([...this.#sessionTurns.values()])
       this.#manager ??= this.#createManager()
@@ -750,7 +762,79 @@ export class StrataApplication implements StrataApi {
     } else {
       if (!this.#manager) throw new Error('This connection is an external engine')
       await this.#manager.restart()
+      if (this.#manager.view().state !== 'running') throw new Error(this.#manager.view().problem ?? 'The engine could not restart.')
     }
+    } finally { this.#providerSetupPreparing = false; await this.#engine.resumeAfterMaintenance?.() }
+  }
+
+  async computer(request: ComputerRequest): Promise<ComputerView> {
+    const context = this.#manager?.runtimeContext()
+    if (!context || !this.#manager) throw new Error('Start the engine on This computer before managing its connections.')
+    const connection = async (action: string, payload?: unknown): Promise<any> => {
+      if (!this.#engine.connectionRequest) throw new Error('This engine does not support connection management.')
+      return this.#engine.connectionRequest(action, payload)
+    }
+    let createdLink: ComputerView['createdLink']
+    if (request.action === 'cancel') await this.#connect.cancel()
+    else if (request.action === 'input') this.#connect.input(request.text)
+    else if (request.action !== 'status') {
+      if (this.#connect.busy || this.#providerSetupPreparing || this.#providerSetup.busy) throw new Error('Finish or cancel the current setup first.')
+      if (request.action === 'preferences') {
+        if (request.startAtLogin !== this.#settings.engine.startAtLogin) await this.#setStartAtLogin(request.startAtLogin)
+        this.#settings = await this.#settingsStore.update({ engine: { ...this.#settings.engine, keepRunning: request.keepRunning, startAtLogin: request.startAtLogin } })
+        this.#publish()
+      } else if (request.action === 'create-link') {
+        const result = await connection('create-link', { label: request.label || 'Strata pairing', scopes: request.scopes })
+        createdLink = { credential: result.credential, expiresAt: result.expiresAt }
+      } else if (request.action === 'revoke-link') await connection('revoke-link', { id: request.id })
+      else if (request.action === 'revoke-device') await connection('revoke-device', { sessionId: request.id })
+      else if (request.action === 'network') {
+        await this.#engine.prepareLocalSetup?.()
+        const previous = this.#settings.engine
+        try {
+          this.#settings = await this.#settingsStore.update({ engine: { ...previous, lan: request.lan, tailscale: request.tailscale, tailscalePort: request.port } })
+          await this.#manager.restart()
+          if (this.#manager.view().state !== 'running') throw new Error(this.#manager.view().problem ?? 'The listener could not start.')
+        } catch (error) {
+          this.#settings = await this.#settingsStore.update({ engine: previous }); await this.#manager.restart(); throw error
+        } finally { this.#providerSetupPreparing = false; this.#publish(); await this.#engine.resumeAfterMaintenance?.() }
+      } else {
+        const args = request.action === 'login' ? ['login', '--headless'] : request.action === 'logout' ? ['logout'] : request.action === 'remote' ? request.enabled ? ['link', '--headless'] : ['unlink'] : request.action === 'publish' && request.enabled ? ['publish'] : ['publish', '--disable']
+        const restart = request.action !== 'login'
+        let stopped = false, preservePublishing = false
+        this.#connect.start(context, args, async () => {
+          const previous = await this.#connect.status(context)
+          if ((request.action === 'remote' || request.action === 'publish') && request.enabled && !previous.authenticated) throw new Error('Sign in to T3 before enabling this option.')
+          preservePublishing = request.action === 'remote' && !request.enabled && previous.publishAgentActivity
+          await this.#engine.prepareLocalSetup?.()
+          if (restart) { await this.#manager!.stop(); stopped = true }
+        }, async () => {
+          try {
+            if (stopped && preservePublishing) await this.#connect.command(context, ['publish'])
+            if (stopped) { await this.#manager!.start(); if (this.#manager!.view().state !== 'running') throw new Error(this.#manager!.view().problem ?? 'Restart the local engine to apply Connect.') }
+          } finally { this.#providerSetupPreparing = false; await this.#engine.resumeAfterMaintenance?.() }
+        })
+      }
+    }
+    const problems: string[] = []
+    let connect: ComputerView['connect'] = null
+    try { connect = await this.#connect.status(context) } catch { problems.push('T3 Connect status is unavailable. Check the network and refresh. Local documents remain available.') }
+    let remoteEnabled: boolean | null = null
+    let links: ComputerView['links'] = [], devices: ComputerView['devices'] = []
+    if (!this.#connect.busy && this.#engine.view().state === 'connected') {
+      try {
+        const live = await connection('state'); remoteEnabled = live.managedTunnelActive === true
+        const rows = await connection('links'); if (!Array.isArray(rows)) throw new Error('Pairing links are unsupported.')
+        links = rows.map(row => ({ id: row.id, label: row.label, expiresAt: row.expiresAt, scopes: row.scopes }))
+        const sessions = await connection('devices'); if (!Array.isArray(sessions)) throw new Error('Paired devices are unsupported.')
+        devices = sessions.map(row => ({ sessionId: row.sessionId, label: row.client?.label ?? row.subject ?? 'Paired device', current: row.current === true, connected: row.connected === true }))
+      } catch (error) { problems.push(String(error)) }
+    }
+    const prefs = this.#settings.engine
+    const server = this.#engine.view().server
+    const endpoints = server ? [server] : []
+    if (prefs.lan && server) for (const entries of Object.values(networkInterfaces())) for (const address of entries ?? []) if (!address.internal && address.family === 'IPv4') endpoints.push(`http://${address.address}:${new URL(server).port}`)
+    return { connect, remoteEnabled, tailscaleStatus: await readTailscale(), job: this.#connect.view(), preferences: { keepRunning: prefs.keepRunning, startAtLogin: prefs.startAtLogin, lan: prefs.lan === true, tailscale: prefs.tailscale === true, port: prefs.tailscalePort ?? 443 }, environmentName: hostname(), endpoints, links, devices, problems, ...(createdLink ? { createdLink } : {}) }
   }
 
   async reconnectEngine(): Promise<void> {
@@ -846,15 +930,15 @@ export class StrataApplication implements StrataApi {
     if (this.#engineDispatching.size || this.#engine.view().projects.some(project => project.threads.some(thread => ['starting', 'running'].includes(thread.status)))) throw new Error('Wait for active conversations before changing provider installation or sign-in.')
     const account = this.#engine.view().accounts.find(value => value.instanceId === request.instanceId)
     if (!account) throw new Error(`Account ${request.instanceId} is unavailable.`)
-    if (this.#providerSetupPreparing || this.#providerSetup.busy) throw new Error('Finish or cancel provider setup first.')
+    if (this.#providerSetupPreparing || this.#providerSetup.busy || this.#connect.busy) throw new Error('Finish or cancel provider setup first.')
     await this.#engine.prepareLocalSetup?.()
     try {
     const settings = await this.readEngineSettings()
     return await this.#providerSetup.start(request.action, context, account, settings, join(this.#store.dataDirectory, 'engine/providers'), async binary => {
       const base = settings.providerInstances[request.instanceId]!
       await this.editEngineProvider({ identity: request.identity, instanceId: request.instanceId, base, patch: { config: { binaryPath: binary } } })
-    }, async () => { await this.#engine.refreshAccounts?.() })
-    } finally { this.#providerSetupPreparing = false }
+    }, async () => { await this.#engine.refreshAccounts?.(); await this.#engine.resumeAfterMaintenance?.() })
+    } finally { this.#providerSetupPreparing = false; await this.#engine.resumeAfterMaintenance?.() }
   }
 
   async readEngineSupport() {

@@ -16,6 +16,7 @@ export interface EngineManagerOptions {
   authenticate(address: string): Promise<boolean>
   reconnect(): Promise<void>
   changed(view: ManagedEngineView): void
+  network?(): { lan?: boolean; tailscale?: boolean; tailscalePort?: number }
 }
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
 
@@ -76,17 +77,19 @@ export class LocalEngineManager {
     await new Promise<void>((resolve, reject) => { reservation.once('error', reject); reservation.listen(0, '127.0.0.1', resolve) })
     const port = (reservation.address() as { port: number }).port
     await new Promise<void>(resolve => reservation.close(() => resolve()))
+    const network = this.#options.network?.() ?? {}
+    const host = network.lan ? '0.0.0.0' : '127.0.0.1'
     const token = randomBytes(32).toString('base64url')
     const executable = join(runtime.directory, runtime.executable)
     const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('T3CODE_')))
     env.PATH = `${dirname(executable)}:${env.PATH ?? ''}`
-    const child = spawn(executable, [join(runtime.directory, runtime.entry), '--base-dir', baseDirectory, '--host', '127.0.0.1', '--port', String(port), '--no-browser', '--bootstrap-fd', '3'], { cwd: baseDirectory, env, detached: true, stdio: ['ignore', 'pipe', 'pipe', 'pipe'] })
+    const child = spawn(executable, [join(runtime.directory, runtime.entry), '--base-dir', baseDirectory, '--host', host, '--port', String(port), '--no-browser', '--bootstrap-fd', '3'], { cwd: baseDirectory, env, detached: true, stdio: ['ignore', 'pipe', 'pipe', 'pipe'] })
     this.#child = child
     let spawnError: Error | null = null
     child.once('error', error => { spawnError = error })
     const pipe = child.stdio[3] as import('node:stream').Writable
     pipe.on('error', () => undefined)
-    pipe.end(JSON.stringify({ mode: 'desktop', noBrowser: true, port, t3Home: baseDirectory, host: '127.0.0.1', desktopBootstrapToken: token, tailscaleServeEnabled: false, tailscaleServePort: 443 }))
+    pipe.end(JSON.stringify({ mode: 'desktop', noBrowser: true, port, t3Home: baseDirectory, host, desktopBootstrapToken: token, tailscaleServeEnabled: network.tailscale === true, tailscaleServePort: network.tailscalePort ?? 443 }))
     const log = (bytes: Buffer) => {
       const safe = bytes.toString().replaceAll(token, '[bootstrap omitted]').replace(/([#?]token=)[^\s]+/g, '$1[omitted]')
       this.#logQueue = this.#logQueue.then(() => this.#appendLog(safe)).catch(() => undefined)
@@ -99,7 +102,8 @@ export class LocalEngineManager {
       try {
         const reported = JSON.parse(await readFile(join(baseDirectory, 'userdata', 'server-runtime.json'), 'utf8'))
         const address = new URL(reported.origin)
-        if (reported.pid !== child.pid || address.hostname !== '127.0.0.1' || address.port !== String(port)) { await pause(50); continue }
+        if (reported.pid !== child.pid || !['127.0.0.1', host].includes(address.hostname) || address.port !== String(port)) { await pause(50); continue }
+        address.hostname = '127.0.0.1'
         const environmentId = (await readFile(join(baseDirectory, 'userdata', 'environment-id'), 'utf8')).trim()
         const record: RuntimeRecord = { pid: child.pid!, ...await processStamp(child.pid!), executable, baseDirectory, version: runtime.version, nodeVersion: runtime.nodeVersion, runtimeDirectory: runtime.directory, generation: randomUUID(), address: address.origin, environmentId }
         if (!await verifiedProcess(record)) throw new Error(`Could not verify newly launched engine process ${child.pid}`)

@@ -1,3 +1,4 @@
+import { ComputerControls } from './ComputerControls'
 import { useRef, useState, type ReactNode } from 'react'
 import type { EngineView, PairEngineRequest } from '../../shared/contracts'
 import { XIcon } from '../icons/lucide'
@@ -69,6 +70,7 @@ export function EngineDialog({ engine, onPair, onReconnect, onClose, onOpenAccou
           <button type="button" className="quiet-button" onClick={() => { void window.strata.manageEngine?.('restart').catch(error => setError(String(error))) }}>Restart engine</button>
           <details><summary>Engine details</summary><p>{engine.managed.directory}</p></details>
         </section>}
+        {engine.managed && window.strata.computer && <ComputerControls />}
         {engine.problem && engine.state !== 'unpaired' && <p className="engine-problem">{engine.problem}</p>}
         {paired && <div className="engine-dialog-row">
           <button type="button" className={engine.state === 'disconnected' ? 'primary-button' : 'quiet-button'} onClick={onReconnect}>Reconnect</button>

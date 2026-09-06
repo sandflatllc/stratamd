@@ -59,7 +59,7 @@ export interface Settings {
   readonly explorerFolders: readonly string[]
   readonly panels: PanelSettings
   readonly zoom: ZoomSettings
-  readonly engine: { mode: 'managed' | 'external'; keepRunning: boolean; startAtLogin: boolean }
+  readonly engine: { mode: 'managed' | 'external'; keepRunning: boolean; startAtLogin: boolean; lan?: boolean; tailscale?: boolean; tailscalePort?: number }
   readonly ambientMotion: boolean
 }
 
@@ -201,7 +201,7 @@ export function normalizeSettings(value: unknown): Settings {
       rightRail: normalizeZoom(zoomValue.rightRail),
       composer: normalizeZoom(zoomValue.composer),
     },
-    engine: { mode: isRecord(value.engine) && value.engine.mode === 'external' ? 'external' : 'managed', keepRunning: !isRecord(value.engine) || value.engine.keepRunning !== false, startAtLogin: isRecord(value.engine) && value.engine.startAtLogin === true },
+    engine: { mode: isRecord(value.engine) && value.engine.mode === 'external' ? 'external' : 'managed', keepRunning: !isRecord(value.engine) || value.engine.keepRunning !== false, startAtLogin: isRecord(value.engine) && value.engine.startAtLogin === true, ...(isRecord(value.engine) && value.engine.lan === true ? { lan: true } : {}), ...(isRecord(value.engine) && value.engine.tailscale === true ? { tailscale: true } : {}), ...(isRecord(value.engine) && typeof value.engine.tailscalePort === 'number' ? { tailscalePort: Math.round(numberInRange(value.engine.tailscalePort, 443, 1, 65535)) } : {}) },
     ambientMotion: typeof value.ambientMotion === 'boolean'
       ? value.ambientMotion
       : DEFAULT_SETTINGS.ambientMotion,

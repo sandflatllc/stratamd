@@ -1,6 +1,6 @@
 # Bundle the T3 server in Strata
 
-Status: phases 1, 2 and 3 complete with the recorded device/sign-in proof blockers. Phase 4 next; phase 5 remains deferred. Last revised September 6, 2026.
+Status: phases 1 through 4 complete with recorded hosted/device proof blockers and stock capability limits. Phase 5 is deferred. Phase 6 next. Last revised September 6, 2026.
 
 This file is the source of truth for the implementing agent. Rules are stated once, in the present tense. The [settings audit](settings-audit.md) is the scope checklist for every engine control, the [inspection record](references/README.md) holds the evidence captures, and the [design captures](../../../design/bundled-server/README.md) show the proposed dialogs inside the real app.
 
@@ -21,6 +21,7 @@ This file is the source of truth for the implementing agent. Rules are stated on
 - Codex usage windows are classified by duration. Claude's SDK usage method is experimental and absence means unavailable usage. Refresh provisional provider status before offering installation.
 - Model order and visibility remain in Strata. Stock T3 only owns custom model IDs; the audit originally misidentified upstream client preferences as server settings.
 - Provider setup uses official pinned npm packages with bundled npm, owns only its child jobs, and refuses concurrent conversations. Accounts with environment overrides are not usage-probed because a hidden override may select a different credential.
+- Stock pairing links use the server-defined expiry. Strata displays that expiry and offers endpoint/scope selection and revocation; it does not invent a TTL parameter absent from the API.
 - linux-arm64 is outside the first release: the published package ships no helper binary for it.
 
 ## What the user gets
@@ -85,7 +86,7 @@ Replaces the Engine dialog for the managed engine: engine facts and recovery act
 
 ![This computer, signed out of T3](../../../design/bundled-server/captures/this-computer.png)
 
-After sign-in the environment is named "Strata on [computer name]" so it is distinguishable from a separate T3 Code installation. Remote access and activity publishing are separate switches; T3's own copy says publishing works without the tunnel. Advanced connections holds network access, Tailscale, pairing links, and paired devices with revocation, under the upstream rules. This state is the intended result, not a tested one.
+The stock 0.0.38 server names environments from the OS computer name and exposes no supported rename setting or CLI flag. Strata shows that limitation; the proposed "Strata on [computer name]" mobile label is blocked pending an upstream naming capability. It never changes the OS name or patches the server. Remote access and activity publishing are separate switches; T3's own copy says publishing works without the tunnel. Advanced connections holds network access, Tailscale, pairing links, and paired devices with revocation, under the upstream rules. This state is the intended result, not a tested one.
 
 ![This computer, connected to T3](../../../design/bundled-server/captures/t3-connected.png)
 
@@ -169,7 +170,7 @@ Phase 2 starts with a written inventory of every such record, in main-process fi
 
 Use the upstream CLI's separate `connect login`, `link`, `status`, `publish`, `unlink`, and `logout` subcommands against Strata's base directory. Never the top-level `connect` onboarding, which offers a background service. Expose progress and status through main-process IPC. Host upstream interactive commands without treating their terminal text as structured state; query `connect status --json` and the authenticated server's live relay state after each action. Support the browser authorization lifecycle including cancellation and callback failure.
 
-T3 identity tokens and environment-link credentials stay in the upstream credential store for this environment. Use the package's baked-in public client configuration; never invent OAuth credentials or impersonate another application. After linking, apply the change the way upstream requires, including a controlled restart if needed, and check relay readiness before showing Connected. Publishing has its own visible opt-in. Sign-out disables remote access and publishing and says whether the T3 account stays signed in on its website.
+T3 identity tokens and environment-link credentials stay in the upstream credential store for this environment. Use the package's baked-in public client configuration; never invent OAuth credentials or impersonate another application. After linking, apply the change the way upstream requires, including a controlled restart if needed, and check relay readiness before showing Connected. Stock link-state and CLI status describe persisted configuration, not live reachability. Until a supported health proof is available, show "Environment linked. Remote reachability is unverified." Publishing has its own visible opt-in. Sign-out disables remote access and publishing and says whether the T3 account stays signed in on its website.
 
 Direct pairing stays for external servers and Advanced connections: reachable endpoints, link lifetimes, requested permissions, paired-session management, and revocation under the upstream rules. A network-listener change is always explicit, never a side effect of local startup.
 
@@ -309,3 +310,5 @@ The packaged native modules on both platforms; a clean-machine provider install 
 - **September 5, 2026, phase 2.** Implemented the managed runtime, process ownership, automatic connection, bounded recovery, tray lifecycle, and engine-scoped state. Legacy credentials are resolved before binding their original records. Document deliveries, Lead, renderer drafts, and account preferences remain with their engine. The full gate passed (840 unit/integration tests, 190 Electron tests) and the eight-worker repeat passed 380 checks. Repeated cross-worktree load failures reduced ordinary workers from six to four. A stress-exposed reply completion race now preserves the next draft. See [the phase 2 report](phase-2/report.md) and [identity inventory](phase-2/engine-identity.md).
 
 - **September 6, 2026, phase 3.** Added edited-field settings and provider saves, all audited settings/account controls, official provider setup jobs, host/client policy signals, and Strata-owned usage readers. Model-order audit keys were corrected to client preferences. A real Linux stock-server run returned Codex weekly 91%, Claude session 0% and weekly 9%, each with measurement time; this is observed usage rather than a fixture. T3 ignores host-power observations older than the accepted report. New provider sign-ins and macOS Keychain proof still require owner devices/authorization. Phase 3 gate results are recorded in its report.
+
+- **September 6, 2026, phase 4 findings.** Stock environment naming is OS-derived and has no supported override. Persisted CLI authentication does not prove current hosted authorization, and link configuration does not prove relay reachability. The UI states these limits. Pairing expiry is server-defined. Official unlink clears publishing too, so disabling remote access restores an explicitly enabled publishing choice through the official publish command. Hosted authorization, Android and macOS remain blocked proofs.

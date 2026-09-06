@@ -249,6 +249,14 @@ For an external connection, the Engine dialog shows Server, Status and Session, 
 - The keyboard reaches and operates every review action, annotation thread, composer tab, conflict, and banner.
 - Config lives in `$XDG_CONFIG_HOME/stratamd` (fallback `~/.config/stratamd`). `settings.json` stores the active theme id, the resolved-item preference, explorer folders, panel sizes (left width, right rail width, upper review height, document measure, theme-panel geometry, annotation and Send composer geometry), per-pane text zoom, and ambient motion. Private per-document reading state is atomically written to `reading.json` beside `meta.json` and `buffer.md`; shell tab choices do not cause high-frequency collaboration-state writes or alter Markdown.
 
+#### Bundled engine connections
+
+This computer owns T3 Connect sign-in, remote access, publishing, background behavior and Advanced connections. Official Connect subcommands operate only on Strata's base directory; the service-installing onboarding command is never invoked. Authorization output remains in memory, supports browser/code entry and cancellation, and is not written to logs. Status comes from the CLI JSON and authenticated local APIs. Stored authorization and a linked environment are distinct from verified remote reachability. Stock T3 names environments from the OS computer name; Strata does not change it. Hosted sign-in and phone proof remain release checks.
+
+Publishing is an explicit choice independent of the managed tunnel. Disabling the tunnel retains an enabled publishing choice. Sign-out disables both locally and reports upstream failures, including remote revocation that could not finish offline. The T3 website can remain signed in. Listener changes are explicit and restart only an idle engine; failure restores its prior settings. Local-only is the default. Tailscale availability is reported from its CLI. Pairing links expose supported endpoints, permissions and the upstream expiry. Links and paired sessions can be revoked independently; the current Strata session is protected from accidental UI revocation.
+
+Keep running in the tray and Start at login are separate preferences. Start at login is off by default. Linux writes only Strata's XDG autostart entry; macOS uses login-item settings. Quit stops the engine, with the existing active-work confirmation. Sleep and offline periods do not promise phone availability.
+
 ### 6.10 Edge cases
 
 - **File deleted while open:** the tab stays open with a banner; Save recreates the file. Attachments are unaffected.

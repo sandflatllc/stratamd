@@ -86,8 +86,8 @@ export class ProviderSetupJobs {
             if (this.#view.state === 'running') {
               if (error || code !== 0) throw error ?? new Error(`The provider tool exited with ${code ?? 'a signal'}. Review its message and try again.`)
               if (action === 'install') await saveBinary(installedBinary!)
-              await refresh()
               this.#view = { ...this.#view, state: 'done', message: action === 'install' ? 'Installed. Sign in to use this account.' : 'Sign-in finished. Account status refreshed.', output: '' }
+              await refresh()
             }
           } catch (error) { this.#view = { ...this.#view, state: 'failed', message: String(error) } }
           resolve()

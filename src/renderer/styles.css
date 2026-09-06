@@ -2010,3 +2010,9 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 
 .provider-setup-output { max-height: 180px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
 .provider-install { max-width: 100%; }
+
+.computer-controls section { border-top: 1px solid var(--line); padding-block: 12px; }
+.computer-controls h3 { font-size: 14px; margin: 8px 0; }
+.computer-controls label:not(.settings-check) { display: grid; gap: 5px; margin-block: 8px; }
+.computer-controls .settings-check { display: flex; align-items: center; gap: 8px; margin-block: 9px; }
+.computer-controls .settings-check input { width: auto; }

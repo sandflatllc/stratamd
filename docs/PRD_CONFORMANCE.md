@@ -144,3 +144,10 @@ Conversation navigation gate, 2026-09-05: verified in an isolated checkout of da
 | Stock-server persistence after restart, secret redaction and host policy | `test/integration/managed-settings.test.ts` with `STRATAMD_ENGINE_BUNDLE` |
 | Official provider jobs, existing-tool preference and cancellation | `test/unit/provider-setup-jobs.test.ts`; successful new-account sign-in needs the owner's provider authorization |
 | Local usage normalization, identity check, cancellation, cached limits and Auto; external usage unavailable | `test/unit/local-usage.test.ts`; `test/unit/engine-accounts.test.ts`; `test/e2e/cockpit-engine.spec.ts` scenario 10; Linux stock-server reading in the bundled-server phase 3 report. macOS Keychain proof remains blocked by device availability. |
+
+| Bundled connection requirement | Evidence |
+| --- | --- |
+| Official isolated Connect commands, cancellation and failed authorization | `test/unit/t3-connect.test.ts` |
+| Stock pairing expiry, scope selection, link/device revocation, explicit LAN restart | `test/integration/managed-connections.test.ts` |
+| This computer controls, persisted tray preference and isolated login entry | `test/e2e/computer-controls.spec.ts`, `test/unit/t3-connect.test.ts` |
+| Hosted sign-in, relay reachability, Android turn/reconnect, macOS login integration | Blocked release proofs; phase reports record missing sign-in/devices. |
