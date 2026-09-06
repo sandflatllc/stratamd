@@ -11,6 +11,8 @@ export interface WorkEntry {
   detail: string | null
   data: unknown
   status: string | null
+  /** The engine reported a status itself; a synthesized one does not count. */
+  statusReported: boolean
   toolCallId: string | null
   label: string
   heading: string
@@ -180,6 +182,7 @@ function fromActivity(activity: EngineActivityView): WorkEntry {
     detail,
     data: payload?.data,
     status: statusOf(activity, payload),
+    statusReported: text(payload?.status) !== null,
     toolCallId: text(payload?.toolCallId) ?? text(data?.toolCallId),
     label: text(payload?.toolTitle) ?? text(payload?.title) ?? activity.summary,
     command,
@@ -213,14 +216,41 @@ function merge(previous: WorkEntry, next: WorkEntry): WorkEntry {
   })
 }
 
+function markerIdentity(entry: WorkEntry): string {
+  return [entry.turnId ?? 'no-turn', entry.itemType ?? '', normalized(entry.label)].join('\u001f')
+}
+
+/**
+ * An update that carries no call id and no reported status is a lifecycle
+ * marker. When the same call later reports completion, the marker is the
+ * same call seen twice and must not count as a second one (T3's
+ * omitSupersededLifecycleMarkers).
+ */
+function omitSupersededMarkers(entries: readonly WorkEntry[]): WorkEntry[] {
+  const terminal = new Set<string>()
+  const kept: WorkEntry[] = []
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]!
+    const identity = markerIdentity(entry)
+    const marker = entry.toolCallId === null && !entry.statusReported && entry.sourceActivityKind === 'tool.updated'
+    if (marker && terminal.has(identity)) continue
+    kept.push(entry)
+    if (entry.sourceActivityKind === 'tool.completed' || (entry.statusReported && entry.status !== 'inProgress')) terminal.add(identity)
+  }
+  return kept.reverse()
+}
+
 /** Convert the raw activity feed into one display row per completed or live call. */
 export function deriveWorkEntries(activities: readonly EngineActivityView[]): WorkEntry[] {
-  const entries: WorkEntry[] = []
+  const raw: WorkEntry[] = []
   for (const activity of activities) {
     if (activity.kind === 'tool.started' || activity.kind === 'context-window.updated') continue
     if (activity.kind === 'task.started' && !isAgentSpawn(activity, record(activity.payload))) continue
     if (!['tool.updated', 'tool.completed', 'task.started', 'task.updated', 'task.completed', 'runtime.error', 'runtime.warning'].includes(activity.kind)) continue
-    const entry = fromActivity(activity)
+    raw.push(fromActivity(activity))
+  }
+  const entries: WorkEntry[] = []
+  for (const entry of omitSupersededMarkers(raw)) {
     const previous = entries.at(-1)
     if (previous && canCollapse(previous, entry)) entries[entries.length - 1] = merge(previous, entry)
     else entries.push(entry)
@@ -286,7 +316,7 @@ export function groupWorkRows(entries: readonly WorkEntry[], turns: readonly Wor
         summaryIcon: grouped[0]?.icon ?? 'tone',
         hasFailure: grouped.some((entry) => entry.failed),
         live,
-        foldedByDefault: !live,
+        foldedByDefault: true,
         showWorking: live,
         showThinking: live && !grouped.some((entry) => entry.active),
       }

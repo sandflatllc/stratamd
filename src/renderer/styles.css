@@ -1511,12 +1511,12 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .conversation-column { position: relative; max-width: 100%; margin: 0 auto; }
 .conversation-panel[data-placement="center"] .conversation-messages { padding: 34px 46px 80px; }
 .conversation-passage { display: flex; flex-direction: column; overflow: hidden; }
-.conversation-turn { position: relative; padding: 8px 0 14px; }
+.conversation-turn { position: relative; padding: 0; }
 .conversation-message { margin: 0 0 12px; padding: 8px 10px; border-radius: 10px; }
+.conversation-message.assistant { position: relative; padding: 0 4px; }
 .conversation-message.user { margin-left: 28px; border: 1px solid var(--line); background: var(--surfaces-inset); }
-.conversation-message.assistant { padding-inline: 4px; }
 .conversation-message > small { display: flex; align-items: center; color: var(--muted); }
-.conversation-message.assistant > small { min-height: 14px; justify-content: flex-end; overflow: hidden; font-size: 0; }
+.conversation-message.assistant > small { position: absolute; top: -4px; right: 4px; min-height: 0; justify-content: flex-end; overflow: hidden; font-size: 0; }
 .conversation-message[data-streaming] { opacity: .88; }
 .conversation-chip { margin-left: 6px; padding: 1px 5px; border-radius: 999px; background: var(--surfaces-inset); color: var(--text); }
 .conversation-copy, .conversation-message-toggle { margin-left: auto; border: 0; background: none; color: var(--controls-primary-highlight); cursor: pointer; font: inherit; font-size: calc(12px * var(--zoom, 1)); }
@@ -1548,33 +1548,36 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .conversation-file-row .conversation-file-name { flex: none; max-width: 55%; font-family: var(--font-code), "JetBrains Mono", monospace; }
 .conversation-file-dir { min-width: 0; flex: 1; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; font-size: calc(11px * var(--zoom, 1)); }
 .conversation-file-row .conversation-delta { flex: none; margin-left: auto; }
-.conversation-work-group, .conversation-live-work { margin: 0 8px 10px; }
+.conversation-work-group, .conversation-live-work { margin: 0 4px 12px; }
 /* The turn's one disclosure: the whole stretch of work between the owner's message and the answer, with a line beneath separating them. */
-.conversation-turn-fold { margin: 0 8px 12px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
-.conversation-turn-toggle { display: flex; width: 100%; min-height: 30px; align-items: center; gap: 6px; border: 0; border-radius: 6px; padding: 3px 5px; background: none; color: var(--muted); cursor: pointer; text-align: left; font-variant-numeric: tabular-nums; }
+.conversation-turn-fold { margin: 0 4px 12px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+.conversation-turn-toggle { display: flex; width: 100%; min-height: 28px; align-items: center; gap: 6px; border: 0; border-radius: 6px; padding: 2px 4px; background: none; color: var(--muted); cursor: pointer; text-align: left; font-size: calc(15px * var(--zoom, 1)); font-variant-numeric: tabular-nums; }
 .conversation-turn-toggle:hover { color: var(--text); background: color-mix(in srgb, var(--card-2) 55%, transparent); }
 .conversation-turn-toggle > .conversation-work-chevron { flex: 1; text-align: left; }
 .conversation-turn-toggle > b, .conversation-work-toggle > b { color: var(--controls-danger); }
 .conversation-turn-fold[data-interrupted] .conversation-turn-toggle { color: var(--dim); }
 /* Rows an open turn restores: intermediate prose and compact call groups, quieter than the answer. */
 .conversation-message[data-turn-trace] { color: var(--dim); }
-.conversation-work-toggle { display: flex; width: 100%; min-height: 28px; align-items: center; gap: 6px; border: 0; border-radius: 6px; padding: 3px 5px; background: none; color: var(--muted); cursor: pointer; text-align: left; font-size: calc(12px * var(--zoom, 1)); }
+.conversation-work-toggle { display: flex; width: 100%; min-height: 28px; align-items: center; gap: 6px; border: 0; border-radius: 6px; padding: 2px 4px; background: none; color: var(--muted); cursor: pointer; text-align: left; font-size: calc(15px * var(--zoom, 1)); }
 .conversation-work-toggle:hover { color: var(--text); background: color-mix(in srgb, var(--card-2) 55%, transparent); }
 .conversation-work-toggle > .conversation-work-chevron { flex: 1; text-align: left; }
 .conversation-work-list { display: grid; gap: 2px; margin-left: 16px; border-left: 1px solid var(--line); padding-left: 4px; }
 .conversation-work-entry { min-width: 0; }
-.conversation-work-entry > button { display: flex; width: 100%; min-width: 0; align-items: center; gap: 8px; border: 0; padding: 5px 7px; background: none; color: inherit; cursor: pointer; text-align: left; }
+.conversation-work-entry > button { display: flex; width: 100%; min-width: 0; align-items: center; gap: 8px; min-height: 28px; border: 0; border-radius: 6px; padding: 2px 4px; background: none; color: var(--muted); cursor: pointer; text-align: left; }
+.conversation-live-work > .conversation-work-entry > button:hover { color: var(--text); background: color-mix(in srgb, var(--card-2) 55%, transparent); }
 .conversation-work-entry[data-active] > button { background: linear-gradient(90deg, transparent, var(--surfaces-inset), transparent); background-size: 220% 100%; animation: conversation-shimmer 1.8s linear infinite; }
 .conversation-work-entry[data-tone="error"] .conversation-work-icon { color: var(--controls-danger); }
-.conversation-work-icon { width: 22px; flex: none; color: var(--muted); font-family: var(--font-code), "JetBrains Mono", monospace; font-size: calc(11px * var(--zoom, 1)); text-align: center; }
+.conversation-work-icon { width: 24px; flex: none; color: var(--muted); font-family: var(--font-code), "JetBrains Mono", monospace; font-size: calc(13px * var(--zoom, 1)); text-align: center; }
 .conversation-work-copy { display: flex; min-width: 0; flex: 1; align-items: baseline; gap: 8px; }
 .conversation-work-copy strong, .conversation-work-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.conversation-work-copy strong { flex: none; max-width: 42%; font-size: calc(12px * var(--zoom, 1)); }
-.conversation-work-copy small { min-width: 0; color: var(--muted); font-family: var(--font-code), "JetBrains Mono", monospace; font-size: calc(11px * var(--zoom, 1)); }
+.conversation-work-copy strong { flex: none; max-width: 42%; font-size: calc(15px * var(--zoom, 1)); font-weight: 500; }
+.conversation-work-copy small { min-width: 0; color: var(--muted); font-family: var(--font-code), "JetBrains Mono", monospace; font-size: calc(12px * var(--zoom, 1)); }
 .conversation-work-chevron { color: var(--muted); }
 .conversation-work-entry pre { max-height: 256px; margin: 0 7px 7px 37px; overflow: auto; border-left: 1px solid var(--line); padding-left: 10px; white-space: pre-wrap; color: var(--muted); font-size: calc(11px * var(--zoom, 1)); }
-.conversation-working-row, .conversation-thinking { display: flex; align-items: center; gap: 7px; padding: 5px 4px; color: var(--muted); font-size: calc(12px * var(--zoom, 1)); }
-.conversation-working-row time { margin-left: auto; }
+.conversation-working-row, .conversation-thinking { display: flex; align-items: center; gap: 7px; min-height: 28px; padding: 2px 4px; color: var(--muted); font-size: calc(15px * var(--zoom, 1)); font-variant-numeric: tabular-nums; }
+.conversation-working-row time { margin-left: 4px; }
+/* Work lines share the prose size in each placement, as T3 does. */
+.conversation-panel[data-placement="center"] :is(.conversation-turn-toggle, .conversation-work-toggle, .conversation-work-copy strong, .conversation-working-row, .conversation-thinking) { font-size: calc(17px * var(--zoom, 1)); }
 .working-pulse, .conversation-thinking > span { width: 7px; height: 7px; border-radius: 50%; background: var(--controls-primary-highlight); animation: conversation-pulse 1.2s ease-in-out infinite; }
 .conversation-thinking > span { box-shadow: 10px 0 0 color-mix(in srgb, var(--controls-primary-highlight) 60%, transparent), 20px 0 0 color-mix(in srgb, var(--controls-primary-highlight) 30%, transparent); margin-right: 20px; }
 @keyframes conversation-shimmer { to { background-position: -220% 0; } }

@@ -41,6 +41,17 @@ describe('work log', () => {
     expect(entries[0]).toMatchObject({ id: 'one', detail: 'Found the API', icon: 'search', active: false })
   })
 
+  it('drops an id-less, status-less update once the same call reports completion, so one command counts once', () => {
+    const entries = deriveWorkEntries([
+      activity('marker', 'tool.updated', { itemType: 'command_execution', detail: 'node build.mjs' }),
+      activity('other', 'tool.completed', { itemType: 'command_execution', detail: 'ls', toolCallId: 'c0', status: 'completed' }),
+      activity('done', 'tool.completed', { itemType: 'command_execution', detail: 'node build.mjs', toolCallId: 'c1', status: 'completed' }),
+      activity('late-marker', 'tool.updated', { itemType: 'command_execution', detail: 'node build.mjs' }),
+    ])
+    expect(entries.map((entry) => entry.id)).toEqual(['other', 'done', 'late-marker'])
+    expect(groupWorkRows(entries, [{ id: 'turn-1', finished: true }])[0]?.summary).toBe('Ran 3 commands')
+  })
+
   it('groups finished work behind a toggle and leaves the running turn live', () => {
     const entries = deriveWorkEntries([
       activity('old', 'tool.completed', { itemType: 'mcp_tool_call', detail: 'Read issue', status: 'completed' }, 'tool', 'turn-1'),
@@ -48,7 +59,7 @@ describe('work log', () => {
     ])
     expect(groupWorkRows(entries, [{ id: 'turn-1', finished: true }, { id: 'turn-2', running: true }])).toEqual([
       expect.objectContaining({ turnId: 'turn-1', hiddenCount: 1, foldedByDefault: true, live: false, summary: 'Used 1 tool', summaryIcon: 'wrench' }),
-      expect.objectContaining({ turnId: 'turn-2', hiddenCount: 1, foldedByDefault: false, live: true, showWorking: true, showThinking: false }),
+      expect.objectContaining({ turnId: 'turn-2', hiddenCount: 1, foldedByDefault: true, live: true, showWorking: true, showThinking: false }),
     ])
   })
 

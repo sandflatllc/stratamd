@@ -153,15 +153,16 @@ function WorkGroup({ group, expanded, onToggle }: { group: WorkGroupRow; expande
   </div>
 }
 
-function WorkEntryRow({ entry }: { entry: WorkEntry }) {
+/** One call. Alone it opens its own output; as the live line of a running turn, `onToggle` opens the whole group instead. */
+function WorkEntryRow({ entry, onToggle }: { entry: WorkEntry; onToggle?(): void }) {
   const [expanded, setExpanded] = useState(false)
   return <article className="conversation-work-entry" data-tone={entry.failed ? 'error' : entry.tone} data-icon={entry.icon} data-active={entry.active || undefined}>
-    <button type="button" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+    <button type="button" aria-expanded={onToggle ? false : expanded} onClick={onToggle ?? (() => setExpanded((value) => !value))}>
       <span className="conversation-work-icon" aria-hidden="true">{workIcons[entry.icon]}</span>
       <span className="conversation-work-copy"><strong>{entry.heading}</strong>{entry.preview && <small>{entry.preview}</small>}</span>
       <span className="conversation-work-chevron" aria-hidden="true">{expanded ? '⌄' : '›'}</span>
     </button>
-    {expanded && entry.expandedBody && <pre>{entry.expandedBody}</pre>}
+    {!onToggle && expanded && entry.expandedBody && <pre>{entry.expandedBody}</pre>}
   </article>
 }
 
@@ -300,19 +301,29 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
         }
         const lastAssistant = turn.messages.findLast((message) => message.role === 'assistant')?.id
         const changedFiles = thread.documents?.filter((file) => file.turnId === turn.id) ?? []
+        /** While the turn runs, T3's header sits where Worked for will: after the request, before the first work or answer. */
+        const workingRow = turnRunning && !fold ? <div className="conversation-turn-fold" data-history-row><div className="conversation-working-row"><span className="working-pulse" aria-hidden="true" />Working for <time>{elapsed(thread.turnStartedAt, now)}</time></div></div> : null
+        const headerIndex = timeline.findIndex((row) => row.kind === 'work' || row.message.role !== 'user')
         return <section className="conversation-turn" key={turn.id} data-running={turnRunning || undefined} data-folded={fold && !open ? '' : undefined}>
-          {timeline.map((row) => {
+          {timeline.map((row, index) => {
             const foldRow = fold && row.id === fold.anchorId ? <div className="conversation-turn-fold" data-history-row data-interrupted={fold.interrupted || undefined}>
               <button type="button" className="conversation-turn-toggle" aria-expanded={open} onClick={toggleTurn}>
                 <span>{fold.label}</span><span className="conversation-work-chevron" aria-hidden="true">{open ? '⌄' : '›'}</span>{fold.hasFailure && <b aria-label="Failed">!</b>}
               </button>
-            </div> : null
+            </div> : index === headerIndex ? workingRow : null
             const hidden = fold?.hiddenIds.includes(row.id) ?? false
             if (hidden && !open) return <Fragment key={row.id}>{foldRow}</Fragment>
             if (row.kind === 'work') {
               const group = row.group
               const expanded = expandedWork[group.id] ?? !group.foldedByDefault
-              if (group.live) return <Fragment key={row.id}>{foldRow}<div className="conversation-live-work" data-history-row><div className="conversation-working-row"><span className="working-pulse" aria-hidden="true" />Working <time>{elapsed(thread.turnStartedAt, now)}</time></div>{group.entries.map((entry) => <WorkEntryRow entry={entry} key={entry.id} />)}{group.showThinking && <div className="conversation-thinking"><span aria-hidden="true" />Thinking</div>}</div></Fragment>
+              if (group.live) {
+                const current = group.entries.findLast((entry) => entry.active) ?? group.entries.at(-1)
+                const toggle = () => setExpandedWork((value) => ({ ...value, [group.id]: !expanded }))
+                return <Fragment key={row.id}>{foldRow}<div className="conversation-live-work" data-history-row>
+                  {current && (expanded ? <WorkGroup group={group} expanded onToggle={toggle} /> : <WorkEntryRow entry={current} onToggle={toggle} />)}
+                  {group.showThinking && <div className="conversation-thinking"><span aria-hidden="true" />Thinking</div>}
+                </div></Fragment>
+              }
               return <Fragment key={row.id}>{foldRow}<WorkGroup group={group} expanded={expanded} onToggle={() => setExpandedWork((value) => ({ ...value, [group.id]: !expanded }))} /></Fragment>
             }
             const message = row.message
@@ -327,6 +338,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
               {message.id === lastAssistant && changedFiles.length > 0 && <ChangedFilesCard files={changedFiles} root={selected.root} {...(onOpenDocument ? { onOpen: onOpenDocument } : {})} />}
             </article></Fragment>
           })}
+          {headerIndex === -1 && workingRow}
           {approvals.filter((activity) => (activity.turnId ?? 'thread') === turn.id).map((activity) => { const payload = record(activity.payload); const requestId = String(payload.requestId ?? ''); return <section className="conversation-request" data-kind="approval" key={activity.id}><strong>{typeof payload.detail === 'string' ? payload.detail : activity.summary}</strong><div className="conversation-actions"><button type="button" onClick={() => onApproval(thread.id, requestId, 'accept')}>Approve</button><button type="button" onClick={() => onApproval(thread.id, requestId, 'decline')}>Decline</button></div></section> })}
           {userInputs.filter((activity) => (activity.turnId ?? 'thread') === turn.id).map((activity) => <UserInputCard key={activity.id} activity={activity} onAnswer={(requestId, answers) => onUserInput(thread.id, requestId, answers)} />)}
           <TurnChecklist items={allItems.filter((item) => item.threadId === thread.id && item.turnId === turn.id)} onReply={(item, value) => { if (item.annotationId && onReplyItem) onReplyItem(item, value); else onQueueReply?.(thread.id, item, value) }} onDismiss={(item) => onDismissItem?.(thread.id, item)} onOpen={item => { if (item.annotationId) onOpenItem?.(item); else workspace.open(item.id) }} {...(onActItem ? { onAct: onActItem } : {})} />
