@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
+import { parityCapture } from './captures'
 import { primaryKey } from './harness'
 
 test('terminal renders WASM, sends input, resizes and reattaches without closing the shell', async ({}, testInfo) => {
@@ -20,7 +21,7 @@ test('terminal renders WASM, sends input, resizes and reattaches without closing
     await expect.poll(() => engine.rpcRequests.filter(request => request.tag === 'terminal.write').map(request => (request.payload as { data: string }).data).join('')).toContain('printf hello\r')
     await scenario.app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1360, 960))
     await expect.poll(() => engine.rpcRequests.some(request => request.tag === 'terminal.resize')).toBe(true)
-    await page.screenshot({ animations: 'disabled', path: 'docs/design/t3-parity/captures/terminal-open.png' })
+    await parityCapture(page, 'terminal-open')
     await page.keyboard.press(primaryKey('Backquote'))
     await expect(drawer).toHaveCount(0)
     expect(engine.rpcRequests.some(request => request.tag === 'terminal.close')).toBe(false)

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
-import { mkdir } from 'node:fs/promises'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
+import { parityCapture } from './captures'
 import { openAppMenu } from './harness'
 
 test('provider configuration preserves fields, model preferences persist, and the add-provider steps write an instance', async ({}, testInfo) => {
@@ -12,8 +12,7 @@ test('provider configuration preserves fields, model preferences persist, and th
     await scenario.app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1440, 1000))
     const openAccounts = async () => { await openAppMenu(page); await page.getByRole('menuitem', { name: 'Accounts' }).click() }
     await openAccounts()
-    await mkdir('docs/design/t3-parity/captures', { recursive: true })
-    const capture = (step: string) => page.screenshot({ animations: 'disabled', path: `docs/design/t3-parity/captures/provider-${step}.png` })
+    const capture = (step: string) => parityCapture(page, `provider-${step}`)
     await capture('overview')
     await page.getByRole('button', { name: 'Manage Codex work' }).click()
     await expect(page.getByRole('switch', { name: 'Enabled' })).toBeChecked()

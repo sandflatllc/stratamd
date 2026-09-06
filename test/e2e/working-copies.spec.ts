@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
-import { mkdir } from 'node:fs/promises'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
+import { parityCapture } from './captures'
 
 test('working copies leave current checkout refs read-only and bootstrap a new worktree on first send', async ({}, testInfo) => {
   const engine = await startEngine({ previousWorktree: true })
@@ -12,8 +12,7 @@ test('working copies leave current checkout refs read-only and bootstrap a new w
     await page.getByRole('tab', { name: 'Projects', exact: true }).click()
     await page.getByRole('button', { name: 'New thread in Cockpit project' }).click()
     await expect(page.getByRole('button', { name: 'Workspace branch' })).toContainText('master')
-    await mkdir('docs/design/t3-parity/captures', { recursive: true })
-    const capture = (step: string) => page.screenshot({ animations: 'disabled', path: `docs/design/t3-parity/captures/workspace-${step}.png` })
+    const capture = (step: string) => parityCapture(page, `workspace-${step}`)
     await capture('start')
     await page.getByRole('button', { name: 'Workspace branch' }).click()
     const refs = page.getByRole('region', { name: 'Workspace refs' })

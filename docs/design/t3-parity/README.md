@@ -2,6 +2,8 @@
 
 The reference gallery is [t3-feature-comparison](../t3-feature-comparison/index.html). Captures use the shipped Strata Night theme and a 1440 by 1000 window. Sample project names, credentials, paths and accounts differ from the gallery. Controls use the existing Strata theme tokens and Lucide icons.
 
+The built-app captures are a record of what was reviewed. The specs that drive these dialogs rewrite them only when `STRATA_CAPTURES=1` is set, for example `STRATA_CAPTURES=1 xvfb-run -a ./node_modules/.bin/playwright test add-project engine-dialog provider-setup terminal-drawer usage working-copies`.
+
 | Flow | Built app | Gallery reference |
 | --- | --- | --- |
 | Engine details | ![Engine details](captures/engine-details.png) | ![Reference](captures/reference-engine-details.png) |

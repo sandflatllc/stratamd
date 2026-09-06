@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
+import { parityCapture } from './captures'
 
 test('usage changes windows and metrics, groups by hour, refreshes and opens Accounts', async ({}, testInfo) => {
   const engine = await startEngine()
@@ -14,10 +15,10 @@ test('usage changes windows and metrics, groups by hour, refreshes and opens Acc
     await expect(dialog.locator('.usage-metrics')).toContainText('4 sessions')
     await expect(dialog.getByRole('img', { name: 'Tokens by provider over time' })).toBeVisible()
     await expect(dialog.getByRole('row')).toHaveCount(3)
-    await page.screenshot({ animations: 'disabled', path: 'docs/design/t3-parity/captures/usage-tokens.png' })
+    await parityCapture(page, 'usage-tokens')
     await dialog.getByRole('button', { name: 'API estimate', exact: true }).click()
     await expect(dialog.getByRole('img', { name: 'API estimate by provider over time' })).toBeVisible()
-    await page.screenshot({ animations: 'disabled', path: 'docs/design/t3-parity/captures/usage-cost.png' })
+    await parityCapture(page, 'usage-cost')
     for (const name of ['7 days', '90 days', 'Past 24h']) {
       await dialog.getByRole('button', { name, exact: true }).click()
       await expect(dialog.locator('.usage-metrics')).toContainText(`4 sessions · ${name}`)
@@ -33,7 +34,7 @@ test('usage changes windows and metrics, groups by hour, refreshes and opens Acc
     await expect(dialog).toHaveCount(0)
     const accounts = page.getByRole('dialog', { name: 'Accounts', exact: true })
     await expect(accounts).toBeVisible()
-    await page.screenshot({ animations: 'disabled', path: 'docs/design/t3-parity/captures/provider-overview.png' })
+    await parityCapture(page, 'provider-overview')
     await accounts.getByRole('button', { name: 'Usage', exact: true }).click()
     await expect(dialog).toBeVisible()
     await page.keyboard.press('Escape')

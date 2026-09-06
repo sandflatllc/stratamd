@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
-import { mkdir } from 'node:fs/promises'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
+import { parityCapture } from './captures'
 
 for (const source of ['local', 'new-folder', 'url', 'github'] as const) {
   test(`add project from ${source} selects the project after the shell update`, async ({}, testInfo) => {
@@ -15,8 +15,7 @@ for (const source of ['local', 'new-folder', 'url', 'github'] as const) {
       await page.getByRole('button', { name: 'New thread in Cockpit project' }).click()
       await page.getByLabel('Conversation project').click()
       await page.getByRole('region', { name: 'Projects' }).getByRole('button', { name: 'Add project' }).click()
-      await mkdir('docs/design/t3-parity/captures', { recursive: true })
-      const capture = (step: string) => page.screenshot({ animations: 'disabled', path: `docs/design/t3-parity/captures/project-${step}.png` })
+      const capture = (step: string) => parityCapture(page, `project-${step}`)
       await capture('sources')
       if (source === 'local' || source === 'new-folder') {
         await page.getByRole('button', { name: /Local folder Browse/ }).click()
