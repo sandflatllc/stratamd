@@ -33,11 +33,13 @@ const view: AppView = {
 
 function fakeApi(): StrataApi {
   return {
+    editEngineSettings: vi.fn(async () => ({ providerInstances: {} })),
+    editEngineProvider: vi.fn(async () => undefined),
+    readEngineSupport: vi.fn(async () => ({ sourceControl: [], problems: [] })),
     readEngineSettings: vi.fn(async () => ({ providerInstances: {} })),
     browseEngineFolder: vi.fn(async () => ({ parentPath: '/projects', entries: [] })),
     lookupEngineRepository: vi.fn(async () => ({ provider: 'github', nameWithOwner: 'owner/repo', url: 'https://github.com/owner/repo', sshUrl: 'git@github.com:owner/repo.git' })),
     cloneEngineRepository: vi.fn(async () => ({ cwd: '/projects/repo' })),
-    updateEngineProviderInstances: vi.fn(async () => undefined),
     setModelPreference: vi.fn(async () => undefined),
     listEngineRefs: vi.fn(async () => ({ refs: [], isRepo: false, hasPrimaryRemote: false })),
     attachEngineTerminal: vi.fn(async () => undefined),
@@ -337,7 +339,7 @@ describe('engine setup IPC boundary', () => {
     try {
       const invalid: Array<[string, unknown[]]> = [
         [IPC.readEngineSettings, ['extra']], [IPC.browseEngineFolder, ['']], [IPC.listEngineRefs, ['/project', 'x'.repeat(257)]],
-        [IPC.cloneEngineRepository, [{ repoUrl: 'x' }]], [IPC.updateEngineProviderInstances, [{ 'bad id': { driver: 'codex', config: {} } }]],
+        [IPC.cloneEngineRepository, [{ repoUrl: 'x' }]],
         [IPC.setModelPreference, ['codex', 'model', { hidden: 'yes' }]], [IPC.readEngineUsage, ['365d']],
         [IPC.attachEngineTerminal, [{ attachmentId: 'one', threadId: 'thread', terminalId: 'term-1', cwd: '/project', cols: 0, rows: 24 }]],
         [IPC.resizeEngineTerminal, [{ threadId: 'thread', terminalId: 'term-1', cols: 80, rows: 501 }]],
@@ -346,7 +348,6 @@ describe('engine setup IPC boundary', () => {
       for (const [channel, args] of invalid) await expect(handlers.get(channel)!(event, ...args), channel).rejects.toThrow()
       expect(api.readEngineUsage).not.toHaveBeenCalled()
       expect(api.attachEngineTerminal).not.toHaveBeenCalled()
-      expect(api.updateEngineProviderInstances).not.toHaveBeenCalled()
       await handlers.get(IPC.readEngineUsage)!(event, '24h')
       expect(api.readEngineUsage).toHaveBeenCalledWith('24h')
       await handlers.get(IPC.resizeEngineTerminal)!(event, { threadId: 'thread', terminalId: 'term-1', cols: 80, rows: 24 })

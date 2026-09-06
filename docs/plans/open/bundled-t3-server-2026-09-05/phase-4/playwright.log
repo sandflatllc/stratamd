@@ -1,0 +1,253 @@
+
+Running 197 tests using 5 workers
+
+(node:1580252) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1580248) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1580260) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1580247) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1580249) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓    4 [ordinary] › test/e2e/add-project.spec.ts:6:3 › add project from local selects the project after the shell update (2.5s)
+  ✓    1 [ordinary] › test/e2e/add-project.spec.ts:6:3 › add project from new-folder selects the project after the shell update (3.0s)
+  ✓    5 [ordinary] › test/e2e/add-project.spec.ts:6:3 › add project from url selects the project after the shell update (3.2s)
+  ✓    3 [ordinary] › test/e2e/add-project.spec.ts:6:3 › add project from github selects the project after the shell update (3.6s)
+  ✓    7 [ordinary] › test/e2e/agent-buffer-table-edit.spec.ts:14:1 › an agent table edit updates the open editor instead of blanking it (2.3s)
+  ✓    6 [ordinary] › test/e2e/agent-activity.spec.ts:9:1 › an agent edit raises a note with the author and count, and Show jumps to the change (2.8s)
+  ✓    9 [ordinary] › test/e2e/agent-collaboration.spec.ts:117:1 › 3. the review board is a map: centered spans, rich rows, capped change rows, and the crown (4.7s)
+  ✓    8 [ordinary] › test/e2e/agent-collaboration.spec.ts:71:1 › 2. the full mode-3 round: brief, claim, denial, Lead accept and save, user Keep (6.9s)
+  ✓   11 [ordinary] › test/e2e/agent-collaboration.spec.ts:206:1 › 4. an item pages below the fold opens in Conversation with the span centered, works, and shares the left window width (5.8s)
+  ✓   12 [ordinary] › test/e2e/agent-collaboration.spec.ts:304:1 › 5. an orphaned item keeps every affordance except the jump (3.7s)
+[07:32:43.443] launched
+  ✓   10 [ordinary] › test/e2e/agent-collaboration.spec.ts:168:1 › 3b. detach confirms only when queued sends would be discarded, and ends the attachment (7.5s)
+[07:32:44.032] launched
+[07:32:44.960] launched
+  ✓    2 [managed] › test/e2e/computer-controls.spec.ts:6:1 › This computer manages real pairing links, tray and login choices in an isolated stock environment @managed (14.2s)
+[07:32:45.232] dragged; browser selection = "Other than the paired T3 engine, Strata ...on and privacy policy.\n\n"
+[07:32:45.327] clicked Comment
+  ✓   13 [ordinary] › test/e2e/agent-collaboration.spec.ts:343:1 › 6. save state is always visible: groups, the tab dot, the Save button, and the tinted total (4.2s)
+[07:32:46.159] submitted comment
+{
+ "typeFirst": 0,
+ "selected": "Other than the paired T3 engine, Strata ...on and privacy policy.\n\n",
+ "composerQuote": "Other than the paired T3 engine, Strata ...and privacy policy.\n\n## ",
+ "storedQuote": "Other than the paired T3 engine, Strata ...and privacy policy.\n\n## ",
+ "highlight": "Other than the paired T3 engine, Strata ...tion and privacy policy."
+}
+[07:32:46.239] typed 63 chars at the start of the first paragraph
+  ✓   14 [ordinary] › test/e2e/annotation-highlight-after-edit.spec.ts:100:1 › control: comment without prior edits (4.1s)
+[07:32:46.818] dragged; browser selection = "Other than the paired T3 engine, Strata ...on and privacy policy.\n\n"
+[07:32:46.929] clicked Comment
+  ✓   18 [ordinary] › test/e2e/annotation-hotkeys.spec.ts:35:1 › typing over a keyboard selection replaces the text instead of opening the pill composer (1.6s)
+[07:32:47.062] dragged; browser selection = "Other than the paired T3 engine, Strata ...on and privacy policy.\n\n"
+[07:32:47.118] clicked Comment
+[07:32:47.756] submitted comment
+{
+ "typeFirst": 0,
+ "selected": "Other than the paired T3 engine, Strata ...on and privacy policy.\n\n",
+ "composerQuote": "Other than the paired T3 engine, Strata ...and privacy policy.\n\n## ",
+ "storedQuote": "Other than the paired T3 engine, Strata ...and privacy policy.\n\n## ",
+ "highlight": "Other than the paired T3 engine, Strata ...tion and privacy policy."
+}
+[07:32:47.946] submitted comment
+{
+ "typeFirst": 63,
+ "selected": "Other than the paired T3 engine, Strata ...on and privacy policy.\n\n",
+ "composerQuote": "Other than the paired T3 engine, Strata ...and privacy policy.\n\n## ",
+ "storedQuote": "Other than the paired T3 engine, Strata ...and privacy policy.\n\n## ",
+ "highlight": "Other than the paired T3 engine, Strata ...tion and privacy policy."
+}
+  ✓   15 [ordinary] › test/e2e/annotation-highlight-after-edit.spec.ts:105:1 › after typing 63 chars above, comment highlight lands where it was selected (5.0s)
+  ✓   19 [ordinary] › test/e2e/annotation-hotkeys.spec.ts:56:1 › letters typed into an item reply stay there while a selection pill is up (2.4s)
+  ✓   20 [ordinary] › test/e2e/annotation-hotkeys.spec.ts:92:1 › a bare C opens the comment composer and Enter quick sends it (2.0s)
+[07:32:49.601] dragged the end handle to the end of the Project status paragraph
+{
+ "storedAfter": "Other than the paired T3 engine, Strata ...d, or Windows build yet.",
+ "highlightAfter": "Other than the paired T3 engine, Strata ...d, or Windows build yet."
+}
+  ✓   16 [ordinary] › test/e2e/annotation-highlight-after-edit.spec.ts:110:1 › dragging the end handle moves the stored quote to the new span (6.3s)
+  ✓   21 [ordinary] › test/e2e/annotation-right-click.spec.ts:7:1 › right-click selects the word under the cursor and opens the annotate menu (2.9s)
+  ✓   23 [ordinary] › test/e2e/annotation-table-comment.spec.ts:10:1 › a comment lands on text selected inside a table cell (3.5s)
+  ✓   22 [ordinary] › test/e2e/annotation-stale-selection.spec.ts:12:1 › a comment composed before an agent edit above still lands (4.7s)
+  ✓   25 [ordinary] › test/e2e/cockpit-drafts.spec.ts:79:1 › 7: active conversation is the sole default until Lead changes it (3.6s)
+  ✓   24 [ordinary] › test/e2e/cockpit-drafts.spec.ts:32:1 › 5 and 6: quick send carries one comment while held drafts stay private and return checked (4.5s)
+  ✓   26 [ordinary] › test/e2e/cockpit-drafts.spec.ts:109:1 › 8: Start thread from a document preselects its project and sends the pending comment, held draft, and document as the first turn (2.8s)
+  ✓   27 [ordinary] › test/e2e/cockpit-drafts.spec.ts:157:1 › 5.6: the active conversation in the same project is a recipient before it is attached, and the first Send attaches it (2.2s)
+  ✓   28 [ordinary] › test/e2e/cockpit-drafts.spec.ts:185:1 › a held comment waits without a recipient: Hold keeps it private and Start thread is the only way out (1.6s)
+  ✓   17 [managed] › test/e2e/managed-engine.spec.ts:9:3 › managed engine @managed › opens documents immediately, connects locally, restarts after a crash and retains identity (11.7s)
+  ✓   29 [ordinary] › test/e2e/cockpit-drafts.spec.ts:209:1 › an orphaned held draft stays out of preview and can be discarded (3.2s)
+  ✓   31 [ordinary] › test/e2e/cockpit-engine.spec.ts:42:1 › 1 and 2 read side: disconnect is isolated and reconnect restores the active live conversation (2.4s)
+  ✓   30 [ordinary] › test/e2e/cockpit-engine.spec.ts:8:1 › 1 pairing: host plus code pairs through the dialog, shows the server, and pairing again replaces the credential (3.1s)
+  ✓   32 [ordinary] › test/e2e/cockpit-engine.spec.ts:81:1 › 2 conversation: moves between placements and dispatches a message, approval, user input, and Stop (3.0s)
+  ✓   34 [ordinary] › test/e2e/cockpit-engine.spec.ts:133:1 › 4 explicit message item: completed agent prose has block ids and its posted item appears once (1.9s)
+  ✓   36 [ordinary] › test/e2e/cockpit-engine.spec.ts:207:1 › 8 and 9 projects: the blank draft is project-scoped, row actions dispatch, and turn files stay closed (1.8s)
+  ✓   39 [ordinary] › test/e2e/cockpit-engine.spec.ts:323:1 › cockpit parity: Conversation keeps prose visible and groups finished and live work like T3 (2.0s)
+  ✓   37 [ordinary] › test/e2e/cockpit-engine.spec.ts:231:1 › 10 accounts: external usage is unavailable, parking from the top bar, and the model menu refuses parked accounts after reload (3.1s)
+  ✓   35 [ordinary] › test/e2e/cockpit-engine.spec.ts:155:1 › 4 inference: seven prose questions queue four keyed replies in one delivery and leave three open (4.6s)
+  ✓   38 [ordinary] › test/e2e/cockpit-engine.spec.ts:273:1 › 5.2 rows and notifications: pin, rename, and snooze go to T3, and a turn finishing elsewhere badges Projects and the thread until it opens (2.8s)
+  ✓   40 [ordinary] › test/e2e/cockpit-engine.spec.ts:363:1 › cockpit parity: Projects renders folders, shelves, hover Settle, and the T3 action menu (2.4s)
+  ✓   33 [managed] › test/e2e/managed-engine.spec.ts:35:1 › external connection switches to the managed engine with separate drafts and a retained credential @managed (9.1s)
+  ✓   41 [ordinary] › test/e2e/cockpit-engine.spec.ts:416:1 › conversation zoom: the side conversation follows the left window and the center conversation follows the editor, and messages render as blocks (3.9s)
+  ✓   44 [ordinary] › test/e2e/cold-tabs.spec.ts:107:3 › cold tabs (STRATAMD_EDITOR_CACHE=0) › 3. scroll position is restored after a switch (1.5s)
+  ✓   43 [ordinary] › test/e2e/cold-tabs.spec.ts:94:3 › cold tabs (STRATAMD_EDITOR_CACHE=0) › 2. redo crosses a switch and restores the undone typing (4.7s)
+  ✓   48 [ordinary] › test/e2e/components.spec.ts:75:1 › invalid registered syntax becomes a preserved error card while unknown and inline tags stay raw (1.2s)
+  ✓   42 [ordinary] › test/e2e/cold-tabs.spec.ts:78:3 › cold tabs (STRATAMD_EDITOR_CACHE=0) › 1. burst granularity survives a switch: two bursts undo as two entries (6.4s)
+  ✓   47 [ordinary] › test/e2e/cold-tabs.spec.ts:130:3 › cold tabs (STRATAMD_EDITOR_CACHE=0) › 4. source caret lands at the change start after a cold undo (2.9s)
+  ✓   46 [ordinary] › test/e2e/components.spec.ts:31:1 › registered components render semantically, edit their Markdown children, and preserve wrapper bytes (4.4s)
+  ✓   50 [ordinary] › test/e2e/composer-attachments.spec.ts:75:1 › 6.0: an unsupported image type is refused by name and plain text still pastes as text (1.8s)
+  ✓   49 [ordinary] › test/e2e/composer-attachments.spec.ts:28:1 › 6.0: a pasted screenshot stages as an image attachment, survives reload, and uploads with its real type (3.0s)
+  ✓   51 [ordinary] › test/e2e/conversation-background.spec.ts:4:1 › conversations keep the panel background, with an inline side header and no line under the header (2.8s)
+  ✓   54 [ordinary] › test/e2e/conversation-comments.spec.ts:92:54 › 100 exchanges mount only nearby editors and navigate old content in side (3.5s)
+  ✓   45 [managed] › test/e2e/managed-engine.spec.ts:59:1 › an app crash adopts only its surviving authenticated engine @managed (9.2s)
+(node:1592083) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   55 [ordinary] › test/e2e/conversation-comments.spec.ts:92:54 › 100 exchanges mount only nearby editors and navigate old content in center (3.9s)
+  ✓   57 [clipboard] › test/e2e/annotation-hotkeys.spec.ts:15:1 › Ctrl+C over a selection copies instead of opening the composer @clipboard (1.2s)
+  ✓   52 [ordinary] › test/e2e/conversation-comments.spec.ts:6:54 › owner holds and sends a rich message passage in side (7.1s)
+  ✓   53 [ordinary] › test/e2e/conversation-comments.spec.ts:6:54 › owner holds and sends a rich message passage in center (7.0s)
+  ✓   56 [ordinary] › test/e2e/conversation-measure.spec.ts:4:1 › center conversation shares the saved document measure and fits the side pane (4.4s)
+  ✓   61 [ordinary] › test/e2e/conversation-order.spec.ts:4:1 › conversation messages and history markers run oldest to newest in both placements (1.7s)
+  ✓   58 [ordinary] › test/e2e/conversation-navigation.spec.ts:5:54 › conversation markers revisit five comments without a discussion workflow in center (5.6s)
+  ✓   59 [clipboard] › test/e2e/editor-context-menu.spec.ts:7:1 › right-click offers Copy, Cut, Paste, and Select all on the word under the pointer @clipboard (4.9s)
+  ✓   62 [ordinary] › test/e2e/conversation-order.spec.ts:35:45 › latest response aligns long and short answers at the top in side (2.4s)
+  ✓   63 [ordinary] › test/e2e/conversation-order.spec.ts:35:45 › latest response aligns long and short answers at the top in center (2.3s)
+  ✓   60 [ordinary] › test/e2e/conversation-navigation.spec.ts:5:54 › conversation markers revisit five comments without a discussion workflow in side (5.5s)
+  ✓   64 [ordinary] › test/e2e/conversation-order.spec.ts:75:1 › streaming and incoming messages follow the bottom while scrolling up preserves reading position (2.1s)
+  ✓   65 [clipboard] › test/e2e/editor-paste.spec.ts:7:1 › pasting markdown text creates structure while plain prose pastes as words @clipboard (1.8s)
+  ✓   67 [ordinary] › test/e2e/conversation-turns.spec.ts:21:54 › a completed turn folds to the owner's message, one disclosure, the answer, and its files in side (2.6s)
+  ✓   66 [ordinary] › test/e2e/conversation-order.spec.ts:104:1 › Comment discussion opens oldest first and preserves position when a reply arrives (2.9s)
+  ✓   70 [clipboard] › test/e2e/renderer-shell.spec.ts:93:1 › document tabs copy full paths from a right-click menu @clipboard (1.2s)
+  ✓   69 [ordinary] › test/e2e/conversation-turns.spec.ts:71:1 › a running turn stays open and folds once it completes (1.9s)
+  ✓   68 [ordinary] › test/e2e/conversation-turns.spec.ts:21:54 › a completed turn folds to the owner's message, one disclosure, the answer, and its files in center (2.9s)
+  ✓   74 [ordinary] › test/e2e/crash-containment.spec.ts:30:1 › a pane crash shows the pane card, leaves the rest working, logs once, and reloads intact (1.5s)
+  ✓   72 [ordinary] › test/e2e/conversation-turns.spec.ts:125:1 › Find and a comment marker open the folded turn that holds their target (2.5s)
+  ✓   76 [ordinary] › test/e2e/crash-containment.spec.ts:88:1 › event-handler failures and detached rejections are logged without touching the UI (1.0s)
+  ✓   75 [ordinary] › test/e2e/crash-containment.spec.ts:66:1 › a root crash right after typing keeps the newest keystrokes through reload (1.9s)
+  ✓   71 [ordinary] › test/e2e/conversation-turns.spec.ts:97:1 › a turn the owner stops stays open with You stopped after, and folds on reload (3.7s)
+  ✓   78 [ordinary] › test/e2e/decision-annotations.spec.ts:95:1 › keyboard passage and rail document decisions expose explicit anchors (2.0s)
+  ✓   80 [ordinary] › test/e2e/decision-annotations.spec.ts:167:1 › a requoted annotation produces one send item (2.1s)
+  ✓   73 [clipboard] › test/e2e/shell-keyboard.spec.ts:61:1 › an error toast uses the danger color, outlives a success, and clears from its button or Escape @clipboard (5.8s)
+  ✓   79 [ordinary] › test/e2e/decision-annotations.spec.ts:141:1 › an orphaned decision remains answerable (2.8s)
+  ✓   77 [ordinary] › test/e2e/decision-annotations.spec.ts:8:1 › owner decisions keep choice, discussion, delivery, and edits separate (4.2s)
+  ✓   82 [ordinary] › test/e2e/document-intelligence.spec.ts:284:1 › invalid and nonlocal constructs stay inert and preserve their source (1.6s)
+  ✓   83 [clipboard] › test/e2e/visual-components.spec.ts:174:1 › copy and paste preserves explicit component properties @clipboard (1.9s)
+  ✓   85 [ordinary] › test/e2e/document-intelligence.spec.ts:372:1 › typing from a folded heading opens the new text temporarily (1.5s)
+  ✓   86 [ordinary] › test/e2e/edge-cases.spec.ts:8:1 › Save permission failure keeps disk and shadow unchanged and shows the error (1.4s)
+  ✓   84 [ordinary] › test/e2e/document-intelligence.spec.ts:339:1 › a nested fold keeps source identity through a heading rename and restart (3.3s)
+  ✓   88 [ordinary] › test/e2e/edge-cases.spec.ts:68:1 › invalid UTF-8 opens source-only and read-only without creating document metadata (934ms)
+  ✓   87 [ordinary] › test/e2e/edge-cases.spec.ts:35:1 › deleted while open keeps the tab and attachment, then Save recreates the exact shadow (2.7s)
+  ✓   90 [ordinary] › test/e2e/editor-link-image.spec.ts:9:1 › Ctrl+K adds a link to the selection, edits an existing link, and the Image menu inserts an image (1.7s)
+  ✓   91 [ordinary] › test/e2e/engine-dialog.spec.ts:5:1 › connection details keep pairing collapsed and support keyboard dismissal (2.0s)
+  ✓   81 [ordinary] › test/e2e/document-intelligence.spec.ts:37:1 › diagrams, trees, images, local previews, and durable folds remain document-safe (8.1s)
+  ✓   94 [ordinary] › test/e2e/engine-settings.spec.ts:73:1 › a conflicting save retains edits, reload is explicit, and absent settings stay unsupported (1.8s)
+  ✓   93 [ordinary] › test/e2e/engine-settings.spec.ts:52:1 › background tuning edits all eight controls and keeps unknown policy values (2.7s)
+  ✓   92 [ordinary] › test/e2e/engine-settings.spec.ts:12:1 › settings change defaults and writer options, preserve concurrent fields, and survive app restart (5.2s)
+  ✓   95 [ordinary] › test/e2e/find.spec.ts:9:1 › the find bar counts, steps, and closes back to the visual editor (1.5s)
+  ✓   89 [ordinary] › test/e2e/edge-cases.spec.ts:92:1 › a document over 2 MB opens in the full visual editor while review and Send still work (7.6s)
+  ✓   96 [ordinary] › test/e2e/find.spec.ts:52:1 › find works over the source text and follows the view toggle (1.8s)
+  ✓   97 [ordinary] › test/e2e/frameless-window.spec.ts:10:1 › the logo retains account attention and exposes all moved actions (1.4s)
+  ✓   98 [ordinary] › test/e2e/frameless-window.spec.ts:39:1 › the integrated bar keeps navigation, a drag area, and keyboard-accessible app actions at narrow widths (1.3s)
+  ✓   99 [ordinary] › test/e2e/frameless-window.spec.ts:98:3 › Close flushes a rapid edit, Cancel keeps the window, then Save uses the native close path (1.4s)
+  ✓  100 [ordinary] › test/e2e/frameless-window.spec.ts:98:3 › Close flushes a rapid edit, Cancel keeps the window, then Discard uses the native close path (1.5s)
+  ✓  101 [ordinary] › test/e2e/list-rendering.spec.ts:71:1 › a document renders bullet, numbered, nested, tight, and loose lists with markers and a gutter (1.2s)
+  ✓  103 [ordinary] › test/e2e/mac-shell.spec.ts:12:1 › an open-file event opens the document through the command path (933ms)
+  ✓  104 [ordinary] › test/e2e/mac-shell.spec.ts:29:1 › the application menu is minimal on macOS and absent on Linux (959ms)
+  ✓  102 [ordinary] › test/e2e/list-rendering.spec.ts:87:1 › a completed conversation message keeps its list markers once the read-only editor mounts (2.0s)
+  ✓  107 [ordinary] › test/e2e/model-selector.spec.ts:80:1 › a stale cross-family draft keeps its text but cannot change an existing GPT conversation (2.0s)
+  ✓  105 [ordinary] › test/e2e/model-selector.spec.ts:7:3 › GPT: family, subscription, flagship, and ongoing conversation restrictions (2.8s)
+  ✓  106 [ordinary] › test/e2e/model-selector.spec.ts:7:3 › Claude: family, subscription, flagship, and ongoing conversation restrictions (3.0s)
+  ✓  110 [ordinary] › test/e2e/new-conversation.spec.ts:100:1 › an empty workspace opens a focused draft from the keyboard without creating a thread (995ms)
+  ✓  109 [ordinary] › test/e2e/new-conversation.spec.ts:77:1 › first-send refusal keeps the draft and retries the same thread, including after reload (1.7s)
+  ✓  108 [ordinary] › test/e2e/new-conversation.spec.ts:6:1 › new conversation: one click, saved draft, model/account options, first send and streamed title (4.3s)
+  ✓  114 [ordinary] › test/e2e/prd-6.12.spec.ts:162:3 › PRD §6.12 acceptance scenarios › 5. Save rechecks disk and stops for a racing external write (1.5s)
+  ✓  113 [ordinary] › test/e2e/prd-6.12.spec.ts:145:3 › PRD §6.12 acceptance scenarios › 4. Save writes the shadow but leaves overlapped agent work pending (2.9s)
+  ✓  112 [ordinary] › test/e2e/prd-6.12.spec.ts:122:3 › PRD §6.12 acceptance scenarios › 3. a mixed proposal confirms Revert and Keep preserves the user edit (3.8s)
+  ✓  111 [ordinary] › test/e2e/prd-6.12.spec.ts:92:3 › PRD §6.12 acceptance scenarios › 1. deliveries queued while the engine is down reach the thread in Send order (5.8s)
+  ✓  115 [ordinary] › test/e2e/prd-6.12.spec.ts:185:3 › PRD §6.12 acceptance scenarios › 6. crash recovery offers Recover without replacing the newer buffer (2.8s)
+  ✓  117 [ordinary] › test/e2e/prd-6.12.spec.ts:245:3 › PRD §6.12 acceptance scenarios › 7. Discard on close removes buffer-only pending hunks on reopen (2.4s)
+  ✓  118 [ordinary] › test/e2e/prd-6.12.spec.ts:259:3 › PRD §6.12 acceptance scenarios › 8. renaming an open file moves its one session and ghost entry (936ms)
+  ✓  120 [ordinary] › test/e2e/prd-6.12.spec.ts:297:3 › PRD §6.12 acceptance scenarios › 9b. visual cross-block comments retain exact markdown separators and reject suggestions (996ms)
+  ✓  116 [ordinary] › test/e2e/prd-6.12.spec.ts:204:3 › PRD §6.12 acceptance scenarios › 6b. undo walks later typing, the agent merge, and earlier typing in order (4.0s)
+  ✓  119 [ordinary] › test/e2e/prd-6.12.spec.ts:278:3 › PRD §6.12 acceptance scenarios › 9. a mismatched suggestion becomes orphaned and cannot be accepted (2.9s)
+  ✓  122 [ordinary] › test/e2e/prd-6.12.spec.ts:341:3 › PRD §6.12 acceptance scenarios › 11. StrataMD mirror and Save writes do not create external review hunks (2.5s)
+  ✓  121 [ordinary] › test/e2e/prd-6.12.spec.ts:314:3 › PRD §6.12 acceptance scenarios › 10. real corpus files no-op byte round-trip and strong edits stay local (4.6s)
+  ✓  126 [ordinary] › test/e2e/projects-order.spec.ts:6:1 › project folders reorder by drag and keyboard, keep their open state, and remember the order across reload (1.8s)
+  ✓  125 [ordinary] › test/e2e/prd-6.12.spec.ts:425:3 › PRD §6.12 acceptance scenarios › 15. Accept changes only the buffer, notifies its author, and reaches peers as user work (3.8s)
+  ✓  123 [ordinary] › test/e2e/prd-6.12.spec.ts:356:3 › PRD §6.12 acceptance scenarios › 12. an unacknowledged delivery survives close, restart, and the engine coming back (6.4s)
+  ✓  124 [ordinary] › test/e2e/prd-6.12.spec.ts:383:3 › PRD §6.12 acceptance scenarios › 14. one agent sees another agent edit only through changes or explicit inclusion (6.7s)
+  ✓  128 [ordinary] › test/e2e/provider-settings-fields.spec.ts:56:1 › Claude, Cursor, and OpenCode expose their own fields without enabling disabled accounts (4.2s)
+  ✓  127 [ordinary] › test/e2e/provider-settings-fields.spec.ts:13:1 › provider secrets keep explicit replacement/removal and only edited fields overwrite concurrent settings (5.4s)
+  ✓  131 [ordinary] › test/e2e/renderer-shell.spec.ts:10:1 › blank shell opens a document from the Open file button, the bridge, and drag and drop (1.2s)
+  ✓  133 [ordinary] › test/e2e/renderer-shell.spec.ts:138:1 › second-instance path launch opens a tab in the running instance (1.2s)
+  ✓  132 [ordinary] › test/e2e/renderer-shell.spec.ts:109:1 › send composer traps focus and Escape restores the trigger (2.1s)
+  ✓  129 [ordinary] › test/e2e/provider-settings-fields.spec.ts:77:1 › model order and custom ids persist separately, and a Claude-only account can repair generated text (6.2s)
+  ✓  130 [ordinary] › test/e2e/provider-setup.spec.ts:6:1 › provider configuration preserves fields, model preferences persist, and the add-provider steps write an instance (5.4s)
+  ✓  135 [ordinary] › test/e2e/review-actions.spec.ts:85:1 › a thread reply is a text box where Enter sends and Shift+Enter breaks the line (2.2s)
+  ✓  136 [ordinary] › test/e2e/review-actions.spec.ts:113:1 › Revert all confirms with the count and author, then reverts every change by that author (2.2s)
+  ✓  137 [ordinary] › test/e2e/review-actions.spec.ts:141:1 › F7 and Shift+F7 step through pending changes and open suggestions in document order (2.1s)
+  ✓  134 [ordinary] › test/e2e/review-actions.spec.ts:39:1 › the item panel accepts, rejects, and confirms before resolving an open suggestion (3.3s)
+  ✓  138 [ordinary] › test/e2e/review-actions.spec.ts:181:1 › a suggestion that cannot render inline keeps Accept and Reject on its rail row (2.0s)
+  ✓  140 [ordinary] › test/e2e/right-sidebar.spec.ts:4:1 › right sidebar collapses to its handle and only appears in document mode (3.0s)
+  ✓  139 [ordinary] › test/e2e/review-actions.spec.ts:199:1 › control names and headings use plain words: author and excerpt, not ids or internal vocabulary (4.4s)
+  ✓  141 [ordinary] › test/e2e/save-history.spec.ts:18:1 › an untracked file seeds from itself; agent edits stay named; save rounds persist (3.6s)
+  ✓  142 [ordinary] › test/e2e/send-composer.spec.ts:59:1 › a reverted agent edit reaches its author as a verdict and others as a user diff (4.1s)
+  ✓  143 [ordinary] › test/e2e/send-composer.spec.ts:103:1 › a deselected change is skipped, marked partial, and never offered again (3.2s)
+  ✓  146 [ordinary] › test/e2e/shell-conformance.spec.ts:43:1 › panel resize persists across an application restart (2.3s)
+  ✓  144 [ordinary] › test/e2e/send-composer.spec.ts:136:1 › a review-heavy composer puts the owner comment first and keeps its rows and scroll position while the note refreshes (4.3s)
+  ✓  145 [ordinary] › test/e2e/send-composer.spec.ts:219:1 › the composer resizes with a remembered size and zooms like the panes (4.5s)
+  ✓  147 [ordinary] › test/e2e/shell-conformance.spec.ts:75:1 › per-pane text zoom follows the hovered pane, resets from one button, and persists across restart (3.2s)
+  ✓  150 [ordinary] › test/e2e/shell-conformance.spec.ts:303:1 › production renderer blocks a remote image without making a remote request (1.4s)
+  ✓  148 [ordinary] › test/e2e/shell-conformance.spec.ts:141:1 › a theme file sets fonts and attribution colors, applies live when rewritten, and persists across restart (3.4s)
+  ✓  151 [ordinary] › test/e2e/shell-conformance.spec.ts:329:1 › keyboard reaches and operates direct Keep and Revert actions (2.4s)
+  ✓  153 [ordinary] › test/e2e/shell-conformance.spec.ts:436:3 › keyboard resolves a Save conflict by choosing mine (1.4s)
+  ✓  154 [ordinary] › test/e2e/shell-conformance.spec.ts:436:3 › keyboard resolves a Save conflict by choosing incoming (1.5s)
+  ✓  155 [ordinary] › test/e2e/shell-conformance.spec.ts:466:1 › keyboard dismisses an invalid UTF-8 banner (1.5s)
+  ✓  149 [ordinary] › test/e2e/shell-conformance.spec.ts:198:1 › the theme panel floats over a live app, writes only chosen keys, follows outside edits, reverts, and persists its geometry (6.2s)
+  ✓  156 [ordinary] › test/e2e/shell-keyboard.spec.ts:12:1 › tabs cycle from the keyboard, close with the primary modifier and W, and close on middle click (2.1s)
+  ✓  152 [ordinary] › test/e2e/shell-conformance.spec.ts:355:1 › keyboard operates composer recipient previews and an item thread (6.0s)
+  ✓  159 [ordinary] › test/e2e/shell-round2.spec.ts:60:1 › F1 lists the shortcuts, toolbar menus take arrow keys, and source view explains the disabled tools (1.1s)
+  ✓  158 [ordinary] › test/e2e/shell-round2.spec.ts:13:1 › an item focuses its reply and hands focus back on close; F8 steps through comments and questions (2.2s)
+  ✓  157 [ordinary] › test/e2e/shell-keyboard.spec.ts:108:1 › composer and reply drafts survive Escape, and Escape closes one surface at a time (3.6s)
+  ✓  160 [ordinary] › test/e2e/shell-round2.spec.ts:93:1 › the tab menu closes other, saved, or all tabs and keeps the ones with unsaved edits (2.0s)
+  ✓  161 [ordinary] › test/e2e/source-selection.spec.ts:8:1 › the selection carries into source view and back, and source typing lands in the visual view (1.8s)
+  ✓  163 [ordinary] › test/e2e/structured-reading.spec.ts:34:1 › tab hosts preserve the shell, expose counts, and keep Attached visible while Changes is pinned (2.2s)
+  ✓  165 [ordinary] › test/e2e/tab-overflow.spec.ts:37:1 › overflowing tabs scroll sideways instead of squishing (3.9s)
+  ✓  164 [ordinary] › test/e2e/structured-reading.spec.ts:70:1 › Contents follows the live document, centers jumps, and restores each document selection (4.3s)
+  ✓  168 [ordinary] › test/e2e/tab-overflow.spec.ts:74:1 › one long file name is capped with an ellipsis instead of eating the strip (1.1s)
+  ✓  166 [ordinary] › test/e2e/tab-overflow.spec.ts:48:1 › the active tab is scrolled into view when it changes (4.3s)
+  ✓  167 [ordinary] › test/e2e/tab-overflow.spec.ts:65:1 › a vertical wheel over the strip scrolls it sideways (3.8s)
+  ✓  162 [ordinary] › test/e2e/spellcheck.spec.ts:87:1 › right-click corrects a misspelling through the annotate menu and learns new words (9.6s)
+  ✓  172 [ordinary] › test/e2e/terminal-drawer.spec.ts:5:1 › terminal renders WASM, sends input, resizes and reattaches without closing the shell (1.7s)
+  ✓  169 [ordinary] › test/e2e/table-views.spec.ts:33:1 › table views stay read-only, return to the selected source cell, and separate durable state from session focus (4.4s)
+  ✓  170 [ordinary] › test/e2e/table-views.spec.ts:109:1 › cell discussion uses the exact row and hidden review targets reveal temporarily through find, F7, F8, and rail clicks (4.3s)
+  ✓  171 [ordinary] › test/e2e/table-views.spec.ts:183:1 › a blank header cell accepts table state and survives reopen (2.9s)
+  ✓  173 [ordinary] › test/e2e/terminal-drawer.spec.ts:37:1 › terminal follows the centered worktree and reattaches after an engine reconnect (1.9s)
+  ✓  174 [ordinary] › test/e2e/topbar-dropdowns.spec.ts:6:1 › dropdowns remain clickable above the workspace, scroll, and restore keyboard focus (3.7s)
+  ✓  175 [ordinary] › test/e2e/typing-flush.spec.ts:8:1 › keystrokes typed across several flush boundaries all survive and reach the buffer (4.3s)
+  ✓  176 [ordinary] › test/e2e/undo-redo.spec.ts:80:3 › undo and redo timeline › 1. plain document: undo restores only the deleted line and redo removes it again (5.2s)
+  ✓  177 [ordinary] › test/e2e/undo-redo.spec.ts:91:3 › undo and redo timeline › 2. pending outside hunk: undo and redo leave the hunk alone and never duplicate a line (5.3s)
+  ✓  178 [ordinary] › test/e2e/undo-redo.spec.ts:105:3 › undo and redo timeline › 2b. pending agent hunk: undo and redo of later typing leave the hunk alone, and one more undo lifts the hunk itself (6.5s)
+  ✓  181 [ordinary] › test/e2e/undo-redo.spec.ts:203:3 › undo and redo timeline › 5. a comment added before a Keep survives undoing the typing and the Keep (3.5s)
+  ✓  179 [ordinary] › test/e2e/undo-redo.spec.ts:141:3 › undo and redo timeline › 3. after Keep: typing undoes first, then the Keep itself, and redo re-keeps (5.9s)
+  ✓  180 [ordinary] › test/e2e/undo-redo.spec.ts:169:3 › undo and redo timeline › 4. interleaved typing and Keep undo all the way back and redo all the way forward (5.8s)
+  ✓  184 [ordinary] › test/e2e/usage.spec.ts:4:1 › usage changes windows and metrics, groups by hour, refreshes and opens Accounts (2.3s)
+  ✓  183 [ordinary] › test/e2e/undo-redo.spec.ts:267:3 › undo and redo timeline › 7. history survives switching tabs and coming back (2.7s)
+  ✓  182 [ordinary] › test/e2e/undo-redo.spec.ts:230:3 › undo and redo timeline › 6. source mode shares one history with visual mode (3.5s)
+  ✓  187 [ordinary] › test/e2e/visual-components.spec.ts:194:1 › a malformed pin cell does not shift later pin rows (1.3s)
+  ✓  185 [ordinary] › test/e2e/view-sync.spec.ts:5:3 › view sync › a busy session merges every update without divergence (4.1s)
+  ✓  186 [ordinary] › test/e2e/visual-components.spec.ts:62:1 › extended visuals remain editable, accessible, document-safe, and collaborative (4.6s)
+  ✓  188 [ordinary] › test/e2e/visual-handoff.spec.ts:25:1 › populated renderer preserves the handoff tokens, controls, and motion policy (4.6s)
+  ✓  190 [ordinary] › test/e2e/visual-recovery.spec.ts:172:1 › a single document shows all nine approved components with their own visual grammar (2.8s)
+  ✓  192 [ordinary] › test/e2e/walkthrough.spec.ts:89:1 › excluding every step leaves a recoverable empty walkthrough (1.4s)
+  ✓  193 [ordinary] › test/e2e/working-copies.spec.ts:5:1 › working copies leave current checkout refs read-only and bootstrap a new worktree on first send (1.8s)
+  ✓  194 [ordinary] › test/e2e/working-copies.spec.ts:45:1 › previous worktree is reused without a bootstrap command (1.3s)
+  ✓  195 [ordinary] › test/e2e/working-copies.spec.ts:64:1 › a document-started conversation carries the first-turn worktree bootstrap (1.5s)
+  ✓  191 [ordinary] › test/e2e/walkthrough.spec.ts:31:1 › walkthrough progress, inclusion, markers, exact restoration, and restart stay private (4.2s)
+  ✓  189 [ordinary] › test/e2e/visual-recovery.spec.ts:33:1 › the Mesa-style review reads as numbered sections with Contents, the walkthrough bar, composed tables, and populated review cards (8.9s)
+  ✓  196 [ordinary] › test/e2e/workspace-restore.spec.ts:39:1 › workspace restores center and side placement, open tabs, and thread switching in place (4.3s)
+  ✓  197 [ordinary] › test/e2e/workspace-restore.spec.ts:61:1 › losing the layout preference returns to the centered default, and a file named on launch takes focus once (5.1s)
+
+  197 passed (2.6m)

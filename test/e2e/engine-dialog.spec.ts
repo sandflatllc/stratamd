@@ -17,7 +17,7 @@ test('connection details keep pairing collapsed and support keyboard dismissal',
     await expect(dialog.getByRole('button', { name: 'Open t3 connection settings' })).toBeVisible()
     await mkdir('docs/design/t3-parity/captures', { recursive: true })
     await page.screenshot({ animations: 'disabled', path: 'docs/design/t3-parity/captures/engine-details.png' })
-    await dialog.locator('summary').click()
+    await dialog.locator('.engine-pairing > summary').click()
     await expect(dialog.getByLabel('Pairing link')).toBeVisible()
     await page.screenshot({ animations: 'disabled', path: 'docs/design/t3-parity/captures/engine-pair.png' })
     await page.keyboard.press('Escape')

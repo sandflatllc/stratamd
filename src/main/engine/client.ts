@@ -1,3 +1,6 @@
+import { effectiveProviderInstances, mergeEngineSettings, mergeProviderEdit, type EngineSettingsEdit, type ProviderEdit, type EngineSupport, type EngineActivity, isSettingsRecord } from '../../shared/engine-settings'
+import { ConnectionOperations } from './connection-operations'
+import { connectionDirectory, connectionIdentity } from './identity'
 import { makeUsageWindow } from '../../core/usage'
 import { usageSummaryInput, usageSummaryResult, usageWindow, terminalAttachInput, terminalWriteInput, terminalResizeInput, terminalTarget, terminalVoidResult, terminalStreamEvent, worktreeRequest, listRefsInput, listRefsResult, updateProviderInstancesInput, browseFolderInput, browseFolderResult, lookupRepositoryInput, repositoryResult, cloneRepositoryInput, cloneRepositoryResult, engineSettingsResult } from './t3-contract'
 import type { EngineSettings, EngineFolderListing, EngineRepository, CloneRepositoryInput } from '../../shared/contracts'
@@ -46,7 +49,7 @@ import { decideAttention } from './notifications'
 import { applyConversationState, emptyConversationState, readConversationsStore, writeConversationsStore, type ConversationsStore, type PreparedAttachment, type UploadedAttachment } from './conversation-state'
 import { StagedAttachmentStore } from './staged-attachments'
 import { attachmentLimitMessage, attachmentSummary, MAX_ATTACHMENTS } from '../../core/composer-attachments'
-import { accountViews, chooseInstance, emptyAccountsStore, providerInstancesOf, readAccountsStore, recordMeasurements, terminalShimTargets, writeAccountsStore, type AccountsStore, type EngineProviderInstance } from './accounts'
+import { accountViews, chooseInstance, emptyAccountsStore, providerInstancesOf, readAccountsStore, recordMeasurements, terminalShimTargets, writeAccountsStore, type AccountsStore, type AccountMeasurement, type EngineProviderInstance } from './accounts'
 import { writeTerminalShims } from '../account-shims'
 import { logError } from '../log'
 import type { ConversationInput, ModelOption, EngineModelView, StartThreadInput, EngineProjectView, EngineThreadChange, EngineThreadView, EngineView } from '../../shared/contracts'
@@ -62,6 +65,7 @@ class MissingStagedAttachmentError extends Error {
 
 interface EngineCredential {
   formatVersion: 1
+  identity?: string
   server: string
   accessToken: string
   expiresAt: number
@@ -86,6 +90,10 @@ export interface EngineNotification { threadId: string; title: string; body: str
 
 export interface EngineClientOptions {
   dataDirectory: string
+  reserveLocalSetup?: () => void
+  localSetupBusy?: () => boolean
+  localUsageAvailable?: () => boolean
+  measureUsage?: (provider: EngineProviderInstance, settings: EngineSettings, signal: AbortSignal) => Promise<AccountMeasurement | null>
   fetch?: typeof globalThis.fetch
   now?: () => number
   webSocket?: typeof WebSocket
@@ -108,11 +116,11 @@ export interface EngineClientOptions {
 }
 
 export interface EngineReadClient {
-  initialize(): Promise<void>
+  initialize(connect?: boolean): Promise<void>
   shutdown(): Promise<void>
   view(): EngineView
   subscribe(listener: (view: EngineView) => void): () => void
-  pair(server: string, pairingCode: string): Promise<void>
+  pair(server: string, pairingCode: string, environmentId?: string): Promise<void>
   reconnect(): Promise<void>
   openThread(threadId: string): Promise<void>
   /** Threads whose transcripts Strata must follow besides the active one: every thread attached to an open document (§5.9). */
@@ -132,8 +140,7 @@ export interface EngineReadClient {
   dismissItem?(threadId: string, itemId: string): Promise<void>
   parkAccount?(instanceId: string, parked: boolean): Promise<void>
   setTerminalDefault?(driver: string, selection: string | null): Promise<void>
-  updateProviderInstances?(instances: Record<string, import('../../shared/contracts').ProviderInstanceSettings>): Promise<void>
-  setModelPreference?(instanceId: string, slug: string, preference: { favorite?: boolean; hidden?: boolean }): Promise<void>
+  setModelPreference?(instanceId: string, slug: string, preference: { favorite?: boolean; hidden?: boolean; order?: string[] }): Promise<void>
   usageSummary?(window: import('../../shared/usage').UsageWindow): Promise<import('../../shared/usage').UsageSummary>
   attachTerminal?(input: import('../../shared/contracts').TerminalAttachRequest): Promise<void>
   detachTerminal?(attachmentId: string): Promise<void>
@@ -142,7 +149,17 @@ export interface EngineReadClient {
   closeTerminal?(input: import('../../shared/contracts').TerminalTarget): Promise<void>
   onTerminalEvent?(listener: (push: import('../../shared/contracts').TerminalPush) => void): () => void
   listRefs?(cwd: string, query?: string): Promise<import('../../shared/contracts').EngineRefs>
+  readSupport?(): Promise<EngineSupport>
+  reportActivity?(activity: EngineActivity, managed: boolean): Promise<void>
+  prepareLocalSetup?(): Promise<void>
+  resumeAfterMaintenance?(): Promise<void>
+  freezeForBackup?(): Promise<void>
+  assertNoPendingSends?(): void
+  reloadStoredState?(): Promise<void>
+  connectionRequest?(action: string, payload?: unknown): Promise<unknown>
   readSettings?(): Promise<EngineSettings>
+  editSettings?(edit: EngineSettingsEdit): Promise<EngineSettings>
+  editProvider?(edit: ProviderEdit): Promise<void>
   browseFolder?(path: string): Promise<EngineFolderListing>
   lookupRepository?(repository: string): Promise<EngineRepository>
   cloneRepository?(input: CloneRepositoryInput): Promise<{ cwd: string }>
@@ -233,12 +250,15 @@ function statusOf(thread: T3ShellSnapshot['threads'][number]): EngineThreadView[
 export class T3EngineClient implements EngineReadClient {
   readonly #fetch: typeof globalThis.fetch
   readonly #now: () => number
-  readonly #credentialPath: string
-  readonly #readingPath: string
-  readonly #commandsPath: string
-  readonly #accountsPath: string
-  readonly #conversationsPath: string
-  readonly #staged: StagedAttachmentStore
+  readonly #operations = new ConnectionOperations()
+  readonly #dataDirectory: string
+  #identity: string | undefined
+  #credentialPath: string
+  #readingPath: string
+  #commandsPath: string
+  #accountsPath: string
+  #conversationsPath: string
+  #staged: StagedAttachmentStore
   #conversations: ConversationsStore = { formatVersion: 1, threads: {} }
   readonly #WebSocket: typeof WebSocket
   readonly #configRefreshMs: number
@@ -250,6 +270,16 @@ export class T3EngineClient implements EngineReadClient {
   #accounts: AccountsStore = emptyAccountsStore()
   #providers: EngineProviderInstance[] = []
   #models: EngineModelView[] = []
+  #settingsWrite: Promise<unknown> = Promise.resolve()
+  #accountsWrite: Promise<void> = Promise.resolve()
+  readonly #reserveLocalSetup: () => void
+  readonly #localSetupBusy: () => boolean
+  readonly #measureUsage: EngineClientOptions['measureUsage']
+  readonly #localUsageAvailable: () => boolean
+  #usageSuspensions = 0
+  #usageJobs = new Map<string, { abort: AbortController; done: Promise<void> }>()
+  #usageAttempt = new Map<string, number>()
+  #backgroundAllowed = true
   #configFetchedAt = 0
   #configProblem: string | null = null
   readonly #listeners = new Set<(view: EngineView) => void>()
@@ -284,6 +314,7 @@ export class T3EngineClient implements EngineReadClient {
   readonly #shellWaiters = new Set<() => void>()
 
   constructor(options: EngineClientOptions) {
+    this.#dataDirectory = options.dataDirectory
     this.#fetch = options.fetch ?? globalThis.fetch
     this.#now = options.now ?? Date.now
     this.#reconnectDelaysMs = options.reconnectDelaysMs?.length ? options.reconnectDelaysMs : DEFAULT_RECONNECT_DELAYS_MS
@@ -300,24 +331,53 @@ export class T3EngineClient implements EngineReadClient {
     this.#staged = new StagedAttachmentStore(join(options.dataDirectory, 'composer-attachments'), this.#now)
     this.#WebSocket = options.webSocket ?? WebSocket
     this.#configRefreshMs = options.configRefreshMs ?? 30_000
+    this.#reserveLocalSetup = options.reserveLocalSetup ?? (() => undefined)
+    this.#localSetupBusy = options.localSetupBusy ?? (() => false)
+    this.#measureUsage = options.measureUsage
+    this.#localUsageAvailable = options.localUsageAvailable ?? (() => false)
     this.#shimDirectory = options.terminalShimDirectory ?? null
     this.#writeShims = options.writeShims ?? writeTerminalShims
   }
 
-  async initialize(): Promise<void> {
+  async initialize(connect = true): Promise<void> {
     this.#credential = await this.#readCredential()
+    if (this.#credential) {
+      let identity = this.#credential.identity
+      if (!identity && connect) {
+        try {
+          const response = await this.#fetch(this.#credential.server + '/.well-known/t3/environment', { headers: { authorization: `Bearer ${this.#credential.accessToken}` }, signal: AbortSignal.timeout(3000) })
+          const descriptor = await response.json() as { environmentId?: unknown }
+          if (response.ok && typeof descriptor.environmentId === 'string') identity = connectionIdentity(this.#credential.server, descriptor.environmentId)
+        } catch { /* Servers predating environment descriptors keep origin identity. */ }
+      }
+      await this.#selectIdentity(identity ?? connectionIdentity(this.#credential.server))
+      if (this.#identity) this.#credential.identity = this.#identity
+      await atomicWriteFile(this.#credentialPath, JSON.stringify(this.#credential), { mode: PRIVATE_FILE_MODE })
+    }
     this.#reading = await this.#readReading()
     this.#pendingCommands = await this.#readCommands()
     this.#accounts = await readAccountsStore(this.#accountsPath)
     this.#conversations = await readConversationsStore(this.#conversationsPath)
-    if (!this.#credential) return
+    if (!this.#credential || !connect) return
     this.#running = true
     await this.reconnect()
     await this.#retryPendingCommands()
   }
 
+  async #selectIdentity(identity: string): Promise<void> {
+    const directory = await connectionDirectory(this.#dataDirectory, identity)
+    this.#identity = identity
+    this.#readingPath = join(directory, 'engine-reading.json')
+    this.#commandsPath = join(directory, 'engine-commands.json')
+    this.#accountsPath = join(directory, 'engine-accounts.json')
+    this.#conversationsPath = join(directory, 'engine-conversations.json')
+    this.#staged = new StagedAttachmentStore(join(directory, 'composer-attachments'), this.#now)
+  }
+
   async shutdown(): Promise<void> {
-    if (this.#terminalAttachment) await this.detachTerminal(this.#terminalAttachment)
+    await this.#cancelUsage()
+    this.#usageAttempt.clear()
+    if (this.#terminalAttachment) await this.#detachTerminal(this.#terminalAttachment)
     this.#terminalListeners.clear()
     this.#running = false
     this.#clearReconnect()
@@ -328,6 +388,8 @@ export class T3EngineClient implements EngineReadClient {
     if (this.#configTimer) clearTimeout(this.#configTimer)
     this.#configTimer = null
     this.#closeSocket()
+    await this.#readingWrite
+    await this.#accountsWrite
     await this.#refreshing
     await this.#connecting?.catch(() => undefined)
   }
@@ -414,6 +476,7 @@ export class T3EngineClient implements EngineReadClient {
     }))
     const accounts = this.#accountViews()
     return {
+      ...(this.#identity ? { identity: this.#identity } : {}),
       state: this.#state,
       server: this.#credential?.server ?? null,
       problem: this.#problem,
@@ -421,7 +484,7 @@ export class T3EngineClient implements EngineReadClient {
       projects,
       activeThreadId: this.#reading.activeThreadId,
       accounts,
-      models: this.#models.map(model => ({ ...model, favorite: this.#accounts.modelPreferences?.[model.instanceId]?.favorites.includes(model.slug) ?? false, hidden: this.#accounts.modelPreferences?.[model.instanceId]?.hidden.includes(model.slug) ?? false })),
+      models: this.#models.map(model => ({ order: this.#accounts.modelPreferences?.[model.instanceId]?.order?.indexOf(model.slug) ?? -1, ...model, favorite: this.#accounts.modelPreferences?.[model.instanceId]?.favorites.includes(model.slug) ?? false, hidden: this.#accounts.modelPreferences?.[model.instanceId]?.hidden.includes(model.slug) ?? false })).sort((left, right) => left.instanceId === right.instanceId ? (left.order < 0 ? 1e6 : left.order) - (right.order < 0 ? 1e6 : right.order) : 0),
       terminalDefaults: { ...this.#accounts.terminalDefaults },
       autoInstanceIds: Object.fromEntries([...new Set(accounts.map((account) => account.driver))].map((driver) => [driver, chooseInstance(this.#accounts, accounts, null, driver)])),
       terminalShimDirectory: this.#shimDirectory,
@@ -437,17 +500,25 @@ export class T3EngineClient implements EngineReadClient {
    * survives restarts and never touches T3's settings.
    */
   async parkAccount(instanceId: string, parked: boolean): Promise<void> {
+    return this.#operations.run(() => this.#parkAccount(instanceId, parked))
+  }
+
+  async #parkAccount(instanceId: string, parked: boolean): Promise<void> {
     const current = this.#accounts.parked.includes(instanceId)
     if (current === parked) return
     this.#accounts = { ...this.#accounts, parked: parked ? [...this.#accounts.parked, instanceId] : this.#accounts.parked.filter((id) => id !== instanceId) }
-    await writeAccountsStore(this.#accountsPath, this.#accounts)
+    await this.#persistAccounts()
     this.#publish()
     await this.#syncShims()
   }
 
   async setTerminalDefault(driver: string, selection: string | null): Promise<void> {
+    return this.#operations.run(() => this.#setTerminalDefault(driver, selection))
+  }
+
+  async #setTerminalDefault(driver: string, selection: string | null): Promise<void> {
     this.#accounts = { ...this.#accounts, terminalDefaults: { ...this.#accounts.terminalDefaults, [driver]: selection } }
-    await writeAccountsStore(this.#accountsPath, this.#accounts)
+    await this.#persistAccounts()
     this.#publish()
     await this.#syncShims()
   }
@@ -458,15 +529,25 @@ export class T3EngineClient implements EngineReadClient {
    * old to refresh still answers the read.
    */
   async refreshAccounts(): Promise<void> {
+    return this.#operations.run(() => this.#refreshAccounts())
+  }
+
+  async #refreshAccounts(): Promise<void> {
     if (!this.#credential) throw new Error('No engine is paired')
     await this.#rpcOrSocket(T3_RPC.refreshProviders, {}, 'provider refresh').catch(() => undefined)
     this.#configFetchedAt = 0
+    this.#usageAttempt.clear()
     await this.#refreshConfig()
     this.#publish()
     if (this.#configProblem) throw new Error(this.#configProblem)
   }
 
-  async pair(server: string, pairingCode: string): Promise<void> {
+  async pair(server: string, pairingCode: string, environmentId?: string): Promise<void> {
+    await this.#operations.switch(() => this.#pair(server, pairingCode, environmentId))
+    this.#publish()
+  }
+
+  async #pair(server: string, pairingCode: string, environmentId?: string): Promise<void> {
     const origin = cleanServer(server)
     this.#state = 'connecting'
     this.#problem = null
@@ -491,9 +572,41 @@ export class T3EngineClient implements EngineReadClient {
       this.#publish()
       throw new Error(this.#problem)
     }
-    await this.#writeCredential(origin, await response.json())
+    const exchange = tokenExchangeResult.parse(await response.json())
+    let descriptorId = environmentId
+    if (!descriptorId) {
+      try {
+        const token = tokenExchangeResult.parse(exchange)
+        const response = await this.#fetch(origin + '/.well-known/t3/environment', { headers: { authorization: `Bearer ${token.access_token}` }, signal: AbortSignal.timeout(3000) })
+        const descriptor = await response.json() as { environmentId?: unknown }
+        if (response.ok && typeof descriptor.environmentId === 'string') descriptorId = descriptor.environmentId
+      } catch { /* Older servers retain origin-based identity until an explicit new pairing. */ }
+    }
+    let sameCredentialStore = false
+    if (!descriptorId && this.#credential?.server === origin) {
+      try { sameCredentialStore = (await this.#fetch(origin + T3_HTTP.shell, { headers: { authorization: `Bearer ${this.#credential.accessToken}` }, signal: AbortSignal.timeout(3000) })).ok } catch {}
+    }
+    const identity = sameCredentialStore && this.#identity ? this.#identity : connectionIdentity(origin, descriptorId ?? (this.#identity && this.#credential?.server === origin ? `pairing:${randomUUID()}` : undefined))
+    if (identity !== this.#identity && this.view().projects.some(project => project.threads.some(thread => thread.status === 'running' || thread.status === 'starting'))) throw new Error('Wait for active work to finish before changing engines.')
+    if (identity !== this.#identity) {
+      if (this.#identity) {
+        await this.shutdown()
+        if (this.#credential) await atomicWriteFile(join(this.#dataDirectory, 'engine-connections', this.#identity, 'engine-credential.json'), JSON.stringify({ ...this.#credential, identity: this.#identity }), { mode: PRIVATE_FILE_MODE })
+      }
+      await this.#selectIdentity(identity)
+      this.#shell = null; this.#threads.clear(); this.#watched.clear(); this.#messageCache.clear()
+      this.#shellSequence = 0; this.#lastThreads = []; this.#providers = []; this.#models = []
+      this.#configFetchedAt = 0; this.#configProblem = null
+      this.#reading = { formatVersion: 1, activeThreadId: null, lastVisited: {}, attention: {} }
+      this.#reading = await this.#readReading()
+      this.#pendingCommands = await this.#readCommands()
+      this.#accounts = await readAccountsStore(this.#accountsPath)
+      this.#conversations = await readConversationsStore(this.#conversationsPath)
+    }
+    await this.#writeCredential(origin, exchange)
     this.#running = true
-    await this.reconnect()
+    await this.#reconnect()
+    await this.#retryPendingCommands()
   }
 
   /**
@@ -503,6 +616,15 @@ export class T3EngineClient implements EngineReadClient {
    * the backoff after a dropped socket; each call resubscribes exactly once.
    */
   async reconnect(): Promise<void> {
+    return this.#operations.run(async () => {
+      const resuming = !this.#running
+      this.#running = !!this.#credential
+      await this.#reconnect()
+      if (resuming && this.#state === 'connected') await this.#retryPendingCommands()
+    })
+  }
+
+  async #reconnect(): Promise<void> {
     if (!this.#credential) {
       this.#state = 'unpaired'
       this.#publish()
@@ -536,6 +658,10 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async openThread(threadId: string): Promise<void> {
+    return this.#operations.run(() => this.#openThread(threadId))
+  }
+
+  async #openThread(threadId: string): Promise<void> {
     if (!this.#shell?.threads.some((thread) => thread.id === threadId)) await this.#waitForShell((shell) => shell.threads.some((thread) => thread.id === threadId))
     if (!this.#shell?.threads.some((thread) => thread.id === threadId)) throw new Error(`Thread was not found: ${threadId}`)
     this.#reading.activeThreadId = threadId
@@ -548,6 +674,10 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async watchThreads(threadIds: readonly string[]): Promise<void> {
+    return this.#operations.run(() => this.#watchThreads(threadIds))
+  }
+
+  async #watchThreads(threadIds: readonly string[]): Promise<void> {
     const next = new Set(threadIds)
     const added = [...next].filter((id) => !this.#watched.has(id) && !this.#threads.has(id))
     this.#watched = next
@@ -579,6 +709,10 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string; context?: import("../../core/conversation-delivery").ConversationDelivery }): Promise<void> {
+    return this.#operations.run(() => this.#startTurn(threadId, input))
+  }
+
+  async #startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string; context?: import("../../core/conversation-delivery").ConversationDelivery }): Promise<void> {
     const thread = this.#shell?.threads.find((candidate) => candidate.id === threadId)
     if (!thread) throw new Error(`Thread was not found: ${threadId}`)
     const existing = this.#conversations.threads[threadId]?.prepared?.find((entry) => entry.messageId === input.messageId)
@@ -666,6 +800,10 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async holdMessageComment(threadId: string, input: { id?: string; messageId: string; from: number; to: number; kind: import('../../shared/contracts').DraftKind; text: string }): Promise<string> {
+    return this.#operations.run(() => this.#holdMessageComment(threadId, input))
+  }
+
+  async #holdMessageComment(threadId: string, input: { id?: string; messageId: string; from: number; to: number; kind: import('../../shared/contracts').DraftKind; text: string }): Promise<string> {
     const message = this.view().projects.flatMap(project => project.threads).find(thread => thread.id === threadId)?.messages.find(message => message.id === input.messageId)
     if (!message) throw new Error(`Message ${input.messageId} was not found`)
     if (!input.text.trim()) throw new Error('Write a comment before holding it')
@@ -682,6 +820,10 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async actMessageComment(threadId: string, itemId: string, action: 'resolve' | 'reopen' | 'discard'): Promise<void> {
+    return this.#operations.run(() => this.#actMessageComment(threadId, itemId, action))
+  }
+
+  async #actMessageComment(threadId: string, itemId: string, action: 'resolve' | 'reopen' | 'discard'): Promise<void> {
     const state = this.#conversations.threads[threadId]
     const comment = state?.comments?.find(comment => comment.id === itemId)
     if (!comment || !state) throw new Error(`Comment ${itemId} was not found`)
@@ -694,6 +836,10 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async queueItemReply(threadId: string, itemId: string, text: string): Promise<void> {
+    return this.#operations.run(() => this.#queueItemReply(threadId, itemId, text))
+  }
+
+  async #queueItemReply(threadId: string, itemId: string, text: string): Promise<void> {
     const item = this.#threadItem(threadId, itemId)
     if (!item) throw new Error(`Item was not found: ${itemId}`)
     if (!text.trim()) throw new Error('Write a reply before queueing it')
@@ -704,6 +850,10 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async discardItemReply(threadId: string, itemId: string): Promise<void> {
+    return this.#operations.run(() => this.#discardItemReply(threadId, itemId))
+  }
+
+  async #discardItemReply(threadId: string, itemId: string): Promise<void> {
     const state = this.#conversations.threads[threadId]
     if (!state?.replies[itemId]) return
     const { [itemId]: _dropped, ...replies } = state.replies
@@ -714,6 +864,10 @@ export class T3EngineClient implements EngineReadClient {
 
   /** Dismissals are remembered per message (§5.12): the item id is derived from the message id and the sentence. */
   async dismissItem(threadId: string, itemId: string): Promise<void> {
+    return this.#operations.run(() => this.#dismissItem(threadId, itemId))
+  }
+
+  async #dismissItem(threadId: string, itemId: string): Promise<void> {
     const state = this.#conversations.threads[threadId] ?? emptyConversationState()
     if (state.dismissed.includes(itemId)) return
     const { [itemId]: _dropped, ...replies } = state.replies
@@ -727,6 +881,10 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async createThread(input: StartThreadInput): Promise<string> {
+    return this.#operations.run(() => this.#createThread(input))
+  }
+
+  async #createThread(input: StartThreadInput): Promise<string> {
     if (!this.#shell?.projects.some((project) => project.id === input.projectId)) throw new Error(`Project was not found: ${input.projectId}`)
     const threadId = input.threadId ?? randomUUID()
     const existing = this.#shell?.threads.find((thread) => thread.id === threadId)
@@ -763,7 +921,7 @@ export class T3EngineClient implements EngineReadClient {
     if (chosen) {
       if (chosen !== this.#accounts.stickyInstanceId) {
         this.#accounts = { ...this.#accounts, stickyInstanceId: chosen }
-        await writeAccountsStore(this.#accountsPath, this.#accounts)
+        await this.#persistAccounts()
       }
       return chosen
     }
@@ -771,17 +929,23 @@ export class T3EngineClient implements EngineReadClient {
     return this.#shell?.threads.find((thread) => thread.projectId === projectId)?.modelSelection.instanceId ?? this.#shell?.threads[0]?.modelSelection.instanceId ?? 'codex'
   }
 
-  async updateProviderInstances(instances: Record<string, import('../../shared/contracts').ProviderInstanceSettings>): Promise<void> {
+
+
+  async #updateProviderInstances(instances: Record<string, import('../../shared/contracts').ProviderInstanceSettings>): Promise<void> {
     engineSettingsResult.parse(await this.#rpcOrSocket('server.updateSettings', updateProviderInstancesInput.parse({ patch: { providerInstances: instances } }), 'provider settings'))
     // The write is complete even if the subsequent probe cannot reach a provider.
     await this.refreshAccounts().catch(() => undefined)
   }
 
-  async setModelPreference(instanceId: string, slug: string, preference: { favorite?: boolean; hidden?: boolean }): Promise<void> {
+  async setModelPreference(instanceId: string, slug: string, preference: { favorite?: boolean; hidden?: boolean; order?: string[] }): Promise<void> {
+    return this.#operations.run(() => this.#serializeSettings(() => this.#setModelPreference(instanceId, slug, preference)))
+  }
+
+  async #setModelPreference(instanceId: string, slug: string, preference: { favorite?: boolean; hidden?: boolean; order?: string[] }): Promise<void> {
     const previous = this.#accounts.modelPreferences?.[instanceId] ?? { favorites: [], hidden: [] }
     const update = (values: string[], selected: boolean | undefined) => selected === undefined ? values : selected ? [...new Set([...values, slug])] : values.filter(value => value !== slug)
-    this.#accounts = { ...this.#accounts, modelPreferences: { ...this.#accounts.modelPreferences, [instanceId]: { favorites: update(previous.favorites, preference.favorite), hidden: update(previous.hidden, preference.hidden) } } }
-    await writeAccountsStore(this.#accountsPath, this.#accounts)
+    this.#accounts = { ...this.#accounts, modelPreferences: { ...this.#accounts.modelPreferences, [instanceId]: { favorites: update(previous.favorites, preference.favorite), hidden: update(previous.hidden, preference.hidden), order: preference.order ?? previous.order ?? [] } } }
+    await this.#persistAccounts()
     this.#publish()
   }
 
@@ -797,6 +961,10 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async attachTerminal(input: import('../../shared/contracts').TerminalAttachRequest): Promise<void> {
+    return this.#operations.run(() => this.#attachTerminal(input))
+  }
+
+  async #attachTerminal(input: import('../../shared/contracts').TerminalAttachRequest): Promise<void> {
     if (!this.#socket || this.#socket.closed) throw new Error('Connect the engine before opening a terminal')
     this.#terminalStream?.interrupt()
     this.#terminalStream = null
@@ -818,6 +986,10 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async detachTerminal(attachmentId: string): Promise<void> {
+    return this.#operations.run(() => this.#detachTerminal(attachmentId))
+  }
+
+  async #detachTerminal(attachmentId: string): Promise<void> {
     if (attachmentId !== this.#terminalAttachment) return
     this.#terminalAttachment = null
     this.#terminalStream?.interrupt()
@@ -825,14 +997,26 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async writeTerminal(input: import('../../shared/contracts').TerminalTarget & { data: string }): Promise<void> {
+    return this.#operations.run(() => this.#writeTerminal(input))
+  }
+
+  async #writeTerminal(input: import('../../shared/contracts').TerminalTarget & { data: string }): Promise<void> {
     terminalVoidResult.parse(await this.#rpcOrSocket('terminal.write', terminalWriteInput.parse(input), 'terminal input'))
   }
 
   async resizeTerminal(input: import('../../shared/contracts').TerminalTarget & { cols: number; rows: number }): Promise<void> {
+    return this.#operations.run(() => this.#resizeTerminal(input))
+  }
+
+  async #resizeTerminal(input: import('../../shared/contracts').TerminalTarget & { cols: number; rows: number }): Promise<void> {
     terminalVoidResult.parse(await this.#rpcOrSocket('terminal.resize', terminalResizeInput.parse(input), 'terminal resize'))
   }
 
   async closeTerminal(input: import('../../shared/contracts').TerminalTarget): Promise<void> {
+    return this.#operations.run(() => this.#closeTerminal(input))
+  }
+
+  async #closeTerminal(input: import('../../shared/contracts').TerminalTarget): Promise<void> {
     terminalVoidResult.parse(await this.#rpcOrSocket('terminal.close', terminalTarget.parse(input), 'terminal close'))
   }
 
@@ -847,8 +1031,118 @@ export class T3EngineClient implements EngineReadClient {
     }
   }
 
+  async connectionRequest(action: string, payload?: unknown): Promise<unknown> {
+    const routes: Record<string, string> = { state: '/api/connect/link-state', links: '/api/auth/pairing-links', devices: '/api/auth/clients', 'create-link': '/api/auth/pairing-token', 'revoke-link': '/api/auth/pairing-links/revoke', 'revoke-device': '/api/auth/clients/revoke', unlink: '/api/connect/unlink', publish: '/api/connect/preferences' }
+    const path = routes[action]
+    if (!path || !this.#credential) throw new Error('Connection management is unavailable.')
+    return this.#operations.run(async () => {
+      const response = await this.#fetch(this.#credential!.server + path, { method: payload === undefined ? 'GET' : 'POST', headers: { authorization: `Bearer ${this.#credential!.accessToken}`, 'content-type': 'application/json' }, ...(payload === undefined ? {} : { body: JSON.stringify(payload) }), signal: AbortSignal.timeout(10000) })
+      if (!response.ok) throw new Error(response.status === 401 ? 'The engine pairing has expired. Reconnect before managing access.' : response.status === 403 ? 'This pairing cannot manage access. Pair again with Manage access permission.' : `Connection control ${action} is unavailable (${response.status}).`)
+      return response.json()
+    })
+  }
+
+  async freezeForBackup(): Promise<void> { await this.#operations.switch(async () => { this.#operations.suspend() }) }
+  assertNoPendingSends(): void {
+    if (this.#pendingCommands.length || Object.values(this.#conversations.threads).some(thread => thread.prepared?.length || thread.pending.length)) throw new Error('Finish or discard queued conversation sends before updating or restoring the engine.')
+  }
+  async reloadStoredState(): Promise<void> {
+    await this.shutdown()
+    this.#shell = null; this.#threads.clear(); this.#watched.clear(); this.#messageCache.clear(); this.#lastThreads = []
+    this.#shellSequence = 0; this.#configFetchedAt = 0
+    this.#reading = { formatVersion: 1, activeThreadId: null, lastVisited: {}, attention: {} }
+    await this.initialize(false)
+  }
+  async resumeAfterMaintenance(): Promise<void> { this.#operations.resume(); await this.#operations.run(() => this.#retryPendingCommands()) }
+
+  async prepareLocalSetup(): Promise<void> {
+    await this.#operations.switch(async () => {
+      const response = await this.#request(T3_HTTP.shell)
+      const shell = shellSnapshot.parse(await response.json())
+      if (shell.threads.some(thread => thread.session?.status === 'running' || thread.session?.status === 'starting')) throw new Error('Wait for active conversations before changing this computer.')
+      this.#reserveLocalSetup()
+      await this.#cancelUsage()
+    })
+  }
+
   async readSettings(): Promise<EngineSettings> {
-    return engineSettingsResult.parse(await this.#rpcOrSocket(T3_RPC.readSettings, {}, 'settings'))
+    const identity = this.#identity
+    const settings = engineSettingsResult.parse(await this.#rpcOrSocket(T3_RPC.readSettings, {}, 'settings'))
+    if (identity !== this.#identity) throw new Error('The selected engine changed while reading settings. Reopen the dialog.')
+    return { ...settings, identity: identity ?? null, providerInstances: effectiveProviderInstances(settings) }
+  }
+
+  async readSupport(): Promise<EngineSupport> {
+    const result: EngineSupport = { sourceControl: [], problems: [] }
+    try {
+      const raw = await this.#rpcOrSocket('server.discoverSourceControl', {}, 'source control readiness')
+      if (isSettingsRecord(raw)) {
+        const unwrap = (value: unknown): string | undefined => typeof value === 'string' ? value : isSettingsRecord(value) && value._tag === 'Some' && typeof value.value === 'string' ? value.value : undefined
+        for (const row of [...(Array.isArray(raw.versionControlSystems) ? raw.versionControlSystems : []), ...(Array.isArray(raw.sourceControlProviders) ? raw.sourceControlProviders : [])]) {
+          if (!isSettingsRecord(row) || typeof row.label !== 'string' || typeof row.status !== 'string') continue
+          const auth = isSettingsRecord(row.auth) ? row.auth : {}
+          const detail = unwrap(row.detail) ?? (row.status === 'missing' ? unwrap(row.installHint) : undefined)
+          const account = unwrap(auth.account)
+          result.sourceControl.push({ label: row.label, status: typeof auth.status === 'string' && row.status === 'available' ? auth.status : row.status, ...(detail ? { detail } : {}), ...(account ? { account } : {}) })
+        }
+      }
+    } catch { result.problems.push('This engine could not report source control readiness. Ordinary conversations remain available.') }
+    return result
+  }
+
+  async reportActivity(activity: EngineActivity, managed: boolean): Promise<void> {
+    if (this.#state !== 'connected') return
+    const identity = this.#identity
+    try {
+      const host = activity.hostPower
+      await this.#rpcOrSocket('server.reportClientActivity', { clientId: activity.clientId, clientKind: 'desktop-renderer', visible: activity.visible, focused: activity.focused, recentlyInteracted: activity.recentlyInteracted, appState: activity.visible ? 'active' : 'background', lowPowerMode: host.lowPowerMode, batteryState: host.onBattery === 'true' ? 'unplugged' : host.onBattery === 'false' ? 'charging' : 'unknown', scopes: [{ type: 'server-config' }, { type: 'provider-status' }, ...(this.#reading.activeThreadId ? [{ type: 'thread', threadId: this.#reading.activeThreadId }] : [])], ttlMs: 120000, observedAt: new Date().toISOString() }, 'client activity', 3000)
+      if (managed && identity === this.#identity) {
+        await this.#rpcOrSocket('server.reportHostPowerState', host, 'host power', 3000)
+        const policy = await this.#rpcOrSocket('server.getBackgroundPolicy', {}, 'background policy', 3000)
+        if (identity === this.#identity && isSettingsRecord(policy) && typeof policy.shouldRunOpportunisticWork === 'boolean') {
+          this.#backgroundAllowed = policy.shouldRunOpportunisticWork
+          if (!this.#backgroundAllowed) await this.#cancelUsage()
+        }
+      }
+    } catch { /* Optional on external engines. Their own host state remains authoritative. */ }
+  }
+
+  #serializeSettings<T>(job: () => Promise<T>): Promise<T> {
+    const result = this.#settingsWrite.then(job)
+    this.#settingsWrite = result.catch(() => undefined)
+    return result
+  }
+
+  async editSettings(edit: EngineSettingsEdit): Promise<EngineSettings> {
+    return this.#operations.run(() => this.#serializeSettings(async () => {
+      if (edit.identity !== (this.#identity ?? null)) throw new Error('The selected engine changed. Reopen Settings before saving.')
+      const current = await this.readSettings()
+      const patch = mergeEngineSettings(current, edit)
+      if (patch.addProjectBaseDirectory?.trim()) await this.browseFolder(patch.addProjectBaseDirectory.trim().replace(/\/$/, '') + '/')
+      const saved = engineSettingsResult.parse(await this.#rpcOrSocket('server.updateSettings', { patch }, 'settings update'))
+      this.#configFetchedAt = 0
+      await this.#refreshConfig()
+      this.#publish()
+      return { ...saved, identity: this.#identity ?? null, providerInstances: effectiveProviderInstances(saved) }
+    }))
+  }
+
+  async editProvider(edit: ProviderEdit): Promise<void> {
+    return this.#operations.run(() => this.#serializeSettings(async () => {
+      if (edit.identity !== (this.#identity ?? null)) throw new Error('The selected engine changed. Reopen Accounts before saving.')
+      this.#usageSuspensions++
+      try {
+        await this.#cancelUsage()
+        const latest = await this.readSettings()
+        const instances = mergeProviderEdit(latest, edit)
+        await this.#updateProviderInstances(instances)
+        if (edit.patch.environment || ['homePath', 'shadowHomePath', 'binaryPath'].some(key => key in (edit.patch.config ?? {}))) {
+          const measurements = { ...this.#accounts.measurements }; delete measurements[edit.instanceId]
+          this.#accounts = { ...this.#accounts, measurements }; await this.#persistAccounts(); this.#publish()
+        }
+        this.#usageAttempt.delete(edit.instanceId)
+      } finally { this.#usageSuspensions-- }
+    }))
   }
 
   async browseFolder(path: string): Promise<EngineFolderListing> {
@@ -864,6 +1158,10 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async createProject(input: { title: string; workspaceRoot: string; createWorkspaceRootIfMissing?: boolean }): Promise<string> {
+    return this.#operations.run(() => this.#createProject(input))
+  }
+
+  async #createProject(input: { title: string; workspaceRoot: string; createWorkspaceRootIfMissing?: boolean }): Promise<string> {
     const projectId = randomUUID()
     await this.#dispatch(projectCreateCommand.parse({
       type: 'project.create', commandId: randomUUID(), projectId, title: input.title, workspaceRoot: input.workspaceRoot,
@@ -876,11 +1174,19 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async actOnThread(threadId: string, action: 'archive' | 'settle' | 'unsettle' | 'delete'): Promise<void> {
+    return this.#operations.run(() => this.#actOnThread(threadId, action))
+  }
+
+  async #actOnThread(threadId: string, action: 'archive' | 'settle' | 'unsettle' | 'delete'): Promise<void> {
     await this.#dispatch(threadActionCommand.parse({ type: `thread.${action}`, commandId: randomUUID(), threadId }))
   }
 
   /** Pin, snooze, and rename are T3's own commands (§5.2); the shell stream reflects them. */
   async updateThread(threadId: string, change: EngineThreadChange): Promise<void> {
+    return this.#operations.run(() => this.#updateThread(threadId, change))
+  }
+
+  async #updateThread(threadId: string, change: EngineThreadChange): Promise<void> {
     if (!this.#shell?.threads.some((thread) => thread.id === threadId)) throw new Error(`Thread was not found: ${threadId}`)
     if (change.unread !== undefined) {
       if (change.unread) this.#reading.lastVisited[threadId] = 0
@@ -906,6 +1212,10 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async interrupt(threadId: string): Promise<void> {
+    return this.#operations.run(() => this.#interrupt(threadId))
+  }
+
+  async #interrupt(threadId: string): Promise<void> {
     const thread = this.#shell?.threads.find((candidate) => candidate.id === threadId)
     if (!thread) throw new Error(`Thread was not found: ${threadId}`)
     const command = turnInterruptCommand.parse({
@@ -917,6 +1227,10 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async respondApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void> {
+    return this.#operations.run(() => this.#respondApproval(threadId, requestId, decision))
+  }
+
+  async #respondApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void> {
     await this.#dispatch(approvalRespondCommand.parse({
       type: 'thread.approval.respond', commandId: randomUUID(), threadId, requestId, decision,
       createdAt: new Date(this.#now()).toISOString(),
@@ -924,6 +1238,10 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void> {
+    return this.#operations.run(() => this.#respondUserInput(threadId, requestId, answers))
+  }
+
+  async #respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void> {
     await this.#dispatch(userInputRespondCommand.parse({
       type: 'thread.user-input.respond', commandId: randomUUID(), threadId, requestId, answers,
       createdAt: new Date(this.#now()).toISOString(),
@@ -1141,7 +1459,8 @@ export class T3EngineClient implements EngineReadClient {
     this.#reconnectAttempt += 1
     this.#reconnectTimer = setTimeout(() => {
       this.#reconnectTimer = null
-      void this.reconnect()
+      if (!this.#operations.accepting) { this.#scheduleReconnect(); return }
+      void this.reconnect().catch(() => { if (this.#running && this.#state !== 'connected') this.#scheduleReconnect() })
     }, delay)
     this.#reconnectTimer.unref?.()
   }
@@ -1156,7 +1475,8 @@ export class T3EngineClient implements EngineReadClient {
     this.#configTimer = setTimeout(() => {
       this.#configTimer = null
       if (!this.#socket || this.#socket.closed) return
-      void this.#refreshConfig().then(() => { this.#publish(); this.#scheduleConfigRefresh() })
+      if (!this.#operations.accepting) { this.#scheduleConfigRefresh(); return }
+      void this.#operations.run(() => this.#refreshConfig()).then(() => this.#publish()).catch(() => undefined).finally(() => { if (this.#running) this.#scheduleConfigRefresh() })
     }, this.#configRefreshMs)
     this.#configTimer.unref?.()
   }
@@ -1169,25 +1489,61 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   /**
-   * Provider instances and usage come from `server.getConfig` (§5.13). Live
-   * usage is folded into the persisted measurements; a failure keeps the last
-   * measurement on screen and never marks the engine disconnected.
+   * Provider readiness comes from stock T3. Verified local usage is measured
+   * separately and persisted; failed measurements retain their original time.
    */
   async #refreshConfig(): Promise<void> {
+    const identity = this.#identity
     this.#configFetchedAt = this.#now()
     try {
       const config = serverConfigSlice.parse(await this.#rpcOrSocket(T3_RPC.getServerConfig, {}, 'provider report'))
-      this.#providers = providerInstancesOf(config)
+      if (identity !== this.#identity) return
+      this.#providers = providerInstancesOf(config).map(provider => ({ ...provider, usageLocal: this.#localUsageAvailable() }))
       this.#models = config.providers.flatMap((provider) => (provider.models ?? []).map((model) => ({ instanceId: provider.instanceId, accountName: provider.displayName ?? provider.instanceId, driver: provider.driver, slug: model.slug, name: model.name, ...(model.isDefault !== undefined ? { isDefault: model.isDefault } : {}), options: model.capabilities?.optionDescriptors ?? [] })))
-      const next = recordMeasurements(this.#accounts, this.#providers, new Date(this.#now()).toISOString())
-      if (next !== this.#accounts) {
-        this.#accounts = next
-        await writeAccountsStore(this.#accountsPath, this.#accounts)
+      const settings = engineSettingsResult.parse(config.settings ?? {})
+      if (settings.backgroundActivity && this.#localUsageAvailable()) {
+        const policy = await this.#rpcOrSocket('server.getBackgroundPolicy', {}, 'background policy', 3000).catch(() => null)
+        if (isSettingsRecord(policy) && typeof policy.shouldRunOpportunisticWork === 'boolean') this.#backgroundAllowed = policy.shouldRunOpportunisticWork
       }
+      this.#probeUsage({ ...settings, providerInstances: effectiveProviderInstances(settings) })
       this.#configProblem = null
       await this.#syncShims()
     } catch (error) {
       this.#configProblem = error instanceof Error ? error.message : 'The engine did not report its providers'
+    }
+  }
+
+  #persistAccounts(): Promise<void> {
+    const path = this.#accountsPath, snapshot = structuredClone(this.#accounts)
+    const next = this.#accountsWrite.then(() => writeAccountsStore(path, snapshot))
+    this.#accountsWrite = next.catch(() => undefined)
+    return next
+  }
+
+  async #cancelUsage(): Promise<void> {
+    const jobs = [...this.#usageJobs.values()]
+    for (const job of jobs) job.abort.abort()
+    await Promise.allSettled(jobs.map(job => job.done))
+  }
+
+  #probeUsage(settings: EngineSettings): void {
+    if (!this.#measureUsage || !this.#localUsageAvailable() || !this.#backgroundAllowed || this.#localSetupBusy() || this.#usageSuspensions || this.#pendingCommands.some(pending => (pending.command as { type?: string }).type === 'thread.turn.start')) return
+    const interval = typeof settings.providerHealthRefreshInterval === 'number' ? settings.providerHealthRefreshInterval : 300000
+    if (interval <= 0) return
+    const identity = this.#identity
+    for (const provider of this.#providers) {
+      if (!provider.installed || !provider.enabled || provider.auth.status !== 'authenticated' || !['codex', 'claudeAgent'].includes(provider.driver)) continue
+      if (this.#usageJobs.has(provider.instanceId) || this.#now() - (this.#usageAttempt.get(provider.instanceId) ?? -Infinity) < interval) continue
+      if (provider.driver === 'codex' && this.view().projects.some(project => project.threads.some(thread => thread.providerInstanceId === provider.instanceId && ['running', 'starting'].includes(thread.status)))) continue
+      this.#usageAttempt.set(provider.instanceId, this.#now())
+      const abort = new AbortController()
+      const done = this.#measureUsage(provider, settings, abort.signal).then(async measurement => {
+        if (!measurement || abort.signal.aborted || identity !== this.#identity) return
+        this.#accounts = recordMeasurements(this.#accounts, [{ ...provider, usage: measurement }], measurement.measuredAt)
+        await this.#persistAccounts()
+        this.#publish()
+      }).catch(() => undefined).finally(() => { this.#usageJobs.delete(provider.instanceId) })
+      this.#usageJobs.set(provider.instanceId, { abort, done })
     }
   }
 
@@ -1232,8 +1588,16 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async #postCommand(command: unknown): Promise<void> {
+    const isTurn = (command as { type?: string }).type === 'thread.turn.start'
+    if (isTurn && this.#localSetupBusy()) throw new Error('Finish or cancel provider setup before starting a conversation.')
+    if (isTurn) this.#usageSuspensions++
+    try { await this.#postCommandPaused(command) } finally { if (isTurn) this.#usageSuspensions-- }
+  }
+
+  async #postCommandPaused(command: unknown): Promise<void> {
     if (!this.#credential) throw new Error('No engine is paired')
     const turn = command as { type?: string; threadId?: string; bootstrap?: unknown }
+    if (turn.type === 'thread.turn.start') await this.#cancelUsage()
     if (turn.type === 'thread.turn.start' && turn.bootstrap) {
       // T3's HTTP handler dispatches directly to the engine. Worktree preparation
       // lives in the socket handler and may include a remote fetch.
@@ -1334,22 +1698,36 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async stageAttachment(input: { name: string; mimeType: string; bytes: Uint8Array }): Promise<{ id: string; sizeBytes: number }> {
+    return this.#operations.run(() => this.#stageAttachment(input))
+  }
+
+  async #stageAttachment(input: { name: string; mimeType: string; bytes: Uint8Array }): Promise<{ id: string; sizeBytes: number }> {
     const record = await this.#staged.stage(input)
     return { id: record.id, sizeBytes: record.sizeBytes }
   }
 
   async discardAttachment(id: string): Promise<void> {
+    return this.#operations.run(() => this.#discardAttachment(id))
+  }
+
+  async #discardAttachment(id: string): Promise<void> {
     await this.#staged.discard(id)
   }
 
   /** Saved preparations keep their images too; only what neither a draft nor a preparation names is deleted. */
   async retainAttachments(ids: readonly string[]): Promise<void> {
+    if (!this.#operations.accepting) return
+    return this.#operations.run(() => this.#retainAttachments(ids))
+  }
+
+  async #retainAttachments(ids: readonly string[]): Promise<void> {
     const keep = new Set(ids)
     for (const state of Object.values(this.#conversations.threads)) for (const prepared of state.prepared ?? []) for (const attachment of prepared.attachments) if (attachment.kind === 'image' && !attachment.uploaded) keep.add(attachment.id)
     await this.#staged.sweep(keep)
   }
 
   async #retryPendingCommands(): Promise<void> {
+    if (this.#localSetupBusy()) return
     await this.#settleAcknowledgedCommands()
     const resumed = new Set<string>()
     for (const [threadId, state] of Object.entries(this.#conversations.threads)) {
@@ -1450,7 +1828,14 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   #publish(): void {
-    void this.#reconcileComments().catch(error => logError('engine', 'Could not save conversation actions', error))
+    // A phone or another client can start a turn without using Strata's dispatch path.
+    // Stop only our reader as soon as that active session reaches the subscription.
+    for (const thread of this.#shell?.threads ?? []) {
+      if (!['running', 'starting'].includes(statusOf(thread))) continue
+      const instanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId
+      if (this.#providers.some(provider => provider.instanceId === instanceId && provider.driver === 'codex')) this.#usageJobs.get(instanceId)?.abort.abort()
+    }
+    if (this.#operations.accepting) void this.#operations.run(() => this.#reconcileComments()).catch(error => logError('engine', 'Could not save conversation actions', error))
     let view = this.view()
     const threads = view.projects.flatMap((project) => project.threads)
     if (this.#reachable() && this.#lastThreads.length) {
@@ -1470,6 +1855,7 @@ export class T3EngineClient implements EngineReadClient {
     const token = tokenExchangeResult.parse(exchange)
     this.#credential = {
       formatVersion: 1,
+      ...(this.#identity ? { identity: this.#identity } : {}),
       server,
       accessToken: token.access_token,
       expiresAt: this.#now() + token.expires_in * 1_000,
@@ -1477,6 +1863,10 @@ export class T3EngineClient implements EngineReadClient {
     }
     await atomicWriteFile(this.#credentialPath, `${JSON.stringify(this.#credential, null, 2)}\n`, { mode: PRIVATE_FILE_MODE })
     await chmod(this.#credentialPath, PRIVATE_FILE_MODE)
+    if (this.#identity) {
+      const directory = join(this.#dataDirectory, 'engine-connections', this.#identity)
+      await atomicWriteFile(join(directory, 'engine-credential.json'), JSON.stringify(this.#credential), { mode: PRIVATE_FILE_MODE })
+    }
   }
 
   /**
@@ -1535,7 +1925,7 @@ export class T3EngineClient implements EngineReadClient {
     try {
       const value = JSON.parse(await readFile(this.#credentialPath, 'utf8')) as Partial<EngineCredential>
       if (value.formatVersion !== 1 || typeof value.server !== 'string' || typeof value.accessToken !== 'string' || typeof value.expiresAt !== 'number') return null
-      return { formatVersion: 1, server: cleanServer(value.server), accessToken: value.accessToken, expiresAt: value.expiresAt, scopes: Array.isArray(value.scopes) ? value.scopes.filter((scope): scope is string => typeof scope === 'string') : [] }
+      return { formatVersion: 1, ...(typeof value.identity === 'string' ? { identity: value.identity } : {}), server: cleanServer(value.server), accessToken: value.accessToken, expiresAt: value.expiresAt, scopes: Array.isArray(value.scopes) ? value.scopes.filter((scope): scope is string => typeof scope === 'string') : [] }
     } catch {
       return null
     }
@@ -1555,9 +1945,11 @@ export class T3EngineClient implements EngineReadClient {
 
   #readingWrite: Promise<void> = Promise.resolve()
   async #writeReading(): Promise<void> {
+    const path = this.#readingPath
     const bytes = `${JSON.stringify(this.#reading, null, 2)}\n`
-    this.#readingWrite = this.#readingWrite.catch(() => undefined).then(() => atomicWriteFile(this.#readingPath, bytes, { mode: PRIVATE_FILE_MODE }))
+    this.#readingWrite = this.#readingWrite.catch(() => undefined).then(() => atomicWriteFile(path, bytes, { mode: PRIVATE_FILE_MODE }))
     await this.#readingWrite
+    await this.#accountsWrite
   }
 
   async #readCommands(): Promise<Array<{ key: string; command: unknown; messageId?: string }>> {

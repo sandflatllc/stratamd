@@ -128,3 +128,37 @@ Repository gate, 2026-09-04: `tsc --noEmit` passed; Vitest passed 760 tests in 8
 Conversation navigation screenshot review (2026-09-05): the agent inspected the [compact strip](design/conversation-navigation/captures/center-strip.png), [comment preview](design/conversation-navigation/captures/center-preview.png), [side-pane preview](design/conversation-navigation/captures/side-preview.png), and [saved feedback](design/conversation-navigation/captures/side-saved-comment.png). A separate agent-browser CDP attachment captured the [reopened app at a smaller window size](design/conversation-navigation/captures/center-browser-review.png). The captures use isolated test profiles. They record agent inspection, not owner approval.
 
 Conversation navigation gate, 2026-09-05: verified in an isolated checkout of da8397a plus this change because concurrent theme/editor work was changing the owner checkout. TypeScript passed; Vitest passed 768 tests in 89 files with one existing skip. The full Electron suite passed all 164 cases under Xvfb: 162 on the first attempt, with the existing annotation-stale-selection and shell-keyboard cases passing on retry. Document visual baselines passed unchanged. The packaged CLI passed both checks and the packaged GUI launched with an isolated profile.
+
+| Requirement | Evidence | Conditions |
+| --- | --- | --- |
+| Bundled engine ownership and isolation | `test/unit/engine-identity.test.ts`, `test/integration/managed-engine.test.ts`, `test/e2e/managed-engine.spec.ts` | Stock runtime tests require `STRATAMD_ENGINE_BUNDLE`; separate data, automatic pairing, restart and identity are exercised. |
+
+
+### Bundled engine settings and accounts
+
+| Behavior | Evidence |
+| --- | --- |
+| Edited-field patches, conflict refusal, legacy provider materialization, unknown fields and secret references | `test/unit/engine-settings-edit.test.ts`; `test/e2e/engine-settings.spec.ts`; `test/e2e/provider-settings-fields.spec.ts` |
+| Every general/background control, workspace default, generated model and writer options | `test/e2e/engine-settings.spec.ts`; `test/e2e/provider-settings-fields.spec.ts` |
+| Provider-specific fields, model order/custom IDs, favorites and hidden models | `test/e2e/provider-settings-fields.spec.ts`; `test/e2e/provider-setup.spec.ts` |
+| Stock-server persistence after restart, secret redaction and host policy | `test/integration/managed-settings.test.ts` with `STRATAMD_ENGINE_BUNDLE` |
+| Official provider jobs, existing-tool preference and cancellation | `test/unit/provider-setup-jobs.test.ts`; successful new-account sign-in needs the owner's provider authorization |
+| Local usage normalization, identity check, cancellation, cached limits and Auto; external usage unavailable | `test/unit/local-usage.test.ts`; `test/unit/engine-accounts.test.ts`; `test/e2e/cockpit-engine.spec.ts` scenario 10; Linux stock-server reading in the bundled-server phase 3 report. macOS Keychain proof remains blocked by device availability. |
+
+| Bundled connection requirement | Evidence |
+| --- | --- |
+| Official isolated Connect commands, cancellation and failed authorization | `test/unit/t3-connect.test.ts` |
+| Stock pairing expiry, scope selection, link/device revocation, explicit LAN restart | `test/integration/managed-connections.test.ts` |
+| This computer controls, persisted tray preference and isolated login entry | `test/e2e/computer-controls.spec.ts`, `test/unit/t3-connect.test.ts` |
+| Hosted sign-in, relay reachability, Android turn/reconnect, macOS login integration | Blocked release proofs; phase reports record missing sign-in/devices. |
+
+### Bundled distribution and recovery
+
+| Behavior | Evidence |
+| --- | --- |
+| Verified runtime staging, stopped consistent backups, failed/interrupted upgrade recovery and selected rollback runtime | `test/integration/engine-upgrade.test.ts` with the stock runtime |
+| Matching engine records, document links, Lead and payloads; newer Markdown, buffers and staged images preserved | `test/unit/strata-engine-backup.test.ts`; `test/e2e/engine-recovery-bindings.spec.ts`; `test/e2e/engine-recovery.spec.ts` |
+| Drain and suspend writes during maintenance, allow the owned reconnect, resume afterward | `test/unit/connection-maintenance.test.ts` |
+| Unpacked Linux fresh profile, no system Node, private official provider installs and owned-engine Quit | Bundled-server phase 6 packaged proof; `packaging/engine/README.md` documents the artifact and platform limits |
+
+The upgrade fixtures use distinct runtime manifests around the same official server artifact. They verify transition mechanics; each future release must also test its actual upstream schema migration. macOS package/Keychain and hosted Android proofs remain release blockers, not automated passes.

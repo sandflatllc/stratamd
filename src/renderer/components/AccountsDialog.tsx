@@ -1,4 +1,6 @@
-import { useRef, useState } from 'react'
+import { ProviderInstall } from './ProviderInstall'
+import { generatedModelSchema } from '../../shared/engine-settings'
+import { useEffect, useRef, useState } from 'react'
 import type { AccountView, EngineView } from '../../shared/contracts'
 import { useDialogFocus } from '../useDialogFocus'
 import { ProviderSetup } from './ProviderSetup'
@@ -10,6 +12,7 @@ interface AccountsDialogProps {
   onPark(instanceId: string, parked: boolean): void
   onTerminalDefault(driver: string, selection: string | null): void
   onClose(): void
+  onOpenSettings?(): void
   onOpenUsage?(): void
   onOpenEngine?(): void
 }
@@ -81,13 +84,13 @@ function UsageBar({ label, window, now }: { label: string; window: AccountView['
   )
 }
 
-function AccountRow({ account, auto, now, onPark, onManage }: { account: AccountView; auto: boolean; now: number; onPark: AccountsDialogProps['onPark']; onManage(): void }) {
+function AccountRow({ account, engine, auto, now, onPark, onManage }: { account: AccountView; engine: EngineView; auto: boolean; now: number; onPark: AccountsDialogProps['onPark']; onManage(): void }) {
   const quiet = account.state === 'ready'
   const chip = account.state === 'parked'
   const state = <span className="account-state" data-testid={`account-state-${account.instanceId}`} data-quiet={quiet || undefined} data-chip={chip || undefined}>{accountStateLine(account)}</span>
   return (
     <div className="account-row" data-instance={account.instanceId} data-state={account.state} data-usable={account.usable} data-parked={account.parked || undefined}>
-      <span className="account-dot" aria-hidden="true" />
+      <span className="account-dot" aria-hidden="true" style={account.accentColor ? { backgroundColor: account.accentColor } : undefined} />
       <div className="account-identity">
         <div className="account-name">
           <strong>{account.name}</strong>
@@ -96,13 +99,15 @@ function AccountRow({ account, auto, now, onPark, onManage }: { account: Account
           {account.homePath && <span className="account-chip" data-kind="home" title={account.homePath}>own home</span>}
         </div>
         {!chip && state}
+        <ProviderInstall account={account} engine={engine} />
         <div className="account-meta">
           {account.email && <span>{account.email}</span>}
           {account.plan && <span title={account.plan}>{shortPlan(account.plan)}</span>}
-          {account.measuredAt && !account.live && <span className="account-measured">measured {shortResetLabel(account.measuredAt, now)}</span>}
+          {account.measuredAt && <span className="account-measured">measured {shortResetLabel(account.measuredAt, now)}</span>}
         </div>
       </div>
       <div className="account-windows">
+        {account.usageAvailable === false && <small>Usage unavailable for this connection</small>}
         <UsageBar label="Session" window={account.session} now={now} />
         <UsageBar label="Weekly" window={account.weekly} now={now} />
       </div>
@@ -119,14 +124,18 @@ function AccountRow({ account, auto, now, onPark, onManage }: { account: Account
  * Accounts (§5.13): provider logins, subscription limits and reset times,
  * parking, and terminal defaults, as a modal opened from the engine status.
  */
-export function AccountsDialog({ engine, onPark, onTerminalDefault, onClose, onOpenEngine, onOpenUsage }: AccountsDialogProps) {
+export function AccountsDialog({ engine, onPark, onTerminalDefault, onClose, onOpenEngine, onOpenUsage, onOpenSettings }: AccountsDialogProps) {
   const [manage, setManage] = useState<AccountView | 'new' | null>(null)
-  return manage ? <ProviderSetup engine={engine} account={manage === 'new' ? null : manage} onBack={() => setManage(null)} onClose={onClose} /> : <AccountsOverview engine={engine} onPark={onPark} onTerminalDefault={onTerminalDefault} onClose={onClose} {...(onOpenEngine ? { onOpenEngine } : {})} {...(onOpenUsage ? { onOpenUsage } : {})} onManage={setManage} />
+  return manage ? <ProviderSetup engine={engine} account={manage === 'new' ? null : manage} onBack={() => setManage(null)} onClose={onClose} /> : <AccountsOverview engine={engine} onPark={onPark} onTerminalDefault={onTerminalDefault} onClose={onClose} {...(onOpenEngine ? { onOpenEngine } : {})} {...(onOpenUsage ? { onOpenUsage } : {})} onManage={setManage} {...(onOpenSettings ? { onOpenSettings } : {})} />
 }
 
-function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEngine, onOpenUsage, onManage }: AccountsDialogProps & { onManage(account: AccountView | 'new'): void }) {
+function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEngine, onOpenUsage, onOpenSettings, onManage }: AccountsDialogProps & { onManage(account: AccountView | 'new'): void }) {
   const dialogRef = useRef<HTMLElement>(null)
   useDialogFocus(dialogRef, onClose)
+  const [generatedInstance, setGeneratedInstance] = useState<string | null>(null)
+  useEffect(() => { let alive = true; void window.strata.readEngineSettings().then(settings => { const parsed = generatedModelSchema.safeParse(settings.textGenerationModelSelection); if (alive && parsed.success) setGeneratedInstance(parsed.data.instanceId) }).catch(() => undefined); return () => { alive = false } }, [engine.identity])
+  const generatedAccount = engine.accounts.find(account => account.instanceId === generatedInstance)
+  const generatedUnavailable = generatedInstance && (!generatedAccount?.installed || !generatedAccount.usable)
   const now = Date.now()
   const drivers = [...new Set(engine.accounts.map((account) => account.driver))]
   const active = drivers.filter((driver) => engine.accounts.some((account) => account.driver === driver && account.state !== 'disabled'))
@@ -138,6 +147,8 @@ function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEn
           <div className="parity-dialog-heading"><h2 id="accounts-title">Accounts</h2><button type="button" className="quiet-button" onClick={() => onManage('new')}><PlusIcon /> Add provider</button></div>
           <p className="modal-subtitle">Provider logins on {engine.server ? <code>{engine.server.replace(/^https?:\/\//, '')}</code> : 'the engine'}. Auto picks the least loaded account that can take a thread.</p>
           {engine.state !== 'connected' && <p className="engine-problem">The engine is {engine.state === 'unpaired' ? 'not paired' : engine.state}. Showing what Strata last measured.</p>}
+          {!engine.accounts.some(account => account.usable) && <p className="engine-hint">Documents keep working while you set up an account.</p>}
+          {generatedUnavailable && <p className="engine-hint">The account for generated text is not ready. <button type="button" className="text-action" onClick={onOpenSettings}>Choose a model in Settings</button>.</p>}
           {engine.accounts.length === 0 && <div className="empty-subtle">No provider accounts reported yet.</div>}
           {active.map((driver) => {
             const accounts = engine.accounts.filter((account) => account.driver === driver)
@@ -159,7 +170,7 @@ function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEn
                   </label>
                 </div>
                 <div className="accounts-list">
-                  {accounts.map((account) => <AccountRow account={account} auto={account.instanceId === auto} now={now} onPark={onPark} onManage={() => onManage(account)} key={account.instanceId} />)}
+                  {accounts.map((account) => <AccountRow account={account} engine={engine} auto={account.instanceId === auto} now={now} onPark={onPark} onManage={() => onManage(account)} key={account.instanceId} />)}
                 </div>
               </section>
             )
@@ -173,7 +184,7 @@ function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEn
               <div className="accounts-list">
                 {inactive.map((account) => (
                   <div className="account-row" data-instance={account.instanceId} data-state={account.state} data-usable={account.usable} key={account.instanceId}>
-                    <span className="account-dot" aria-hidden="true" />
+                    <span className="account-dot" aria-hidden="true" style={account.accentColor ? { backgroundColor: account.accentColor } : undefined} />
                     <div className="account-identity"><div className="account-name"><strong>{account.name}</strong></div></div>
                     <span className="account-state" data-testid={`account-state-${account.instanceId}`}>{accountStateLine(account)}</span><button type="button" className="quiet-button" aria-label={`Manage ${account.name}`} onClick={() => onManage(account)}><EllipsisIcon /></button>
                   </div>
@@ -184,7 +195,7 @@ function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEn
         </div>
         <div className="modal-actions accounts-actions">
           {engine.terminalShimDirectory && <p className="engine-hint">Terminal launchers live in <code>{engine.terminalShimDirectory}</code>. Put that directory on PATH before the provider binaries.</p>}
-          {onOpenEngine && <button type="button" className="quiet-button" onClick={onOpenEngine}>Engine</button>}
+          {onOpenEngine && <button type="button" className="quiet-button" onClick={onOpenEngine}>{engine.managed ? 'This computer' : 'Engine'}</button>}
           {onOpenUsage && <button type="button" className="quiet-button" onClick={onOpenUsage}>Usage</button>}
           <button type="button" className="primary-button" data-dialog-initial-focus onClick={onClose}>Close</button>
         </div>

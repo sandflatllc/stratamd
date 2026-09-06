@@ -1,0 +1,6 @@
+{
+  "name": "stratamd-bundled-engine",
+  "version": "0.0.38",
+  "private": true,
+  "dependencies": { "t3": "0.0.38" }
+}

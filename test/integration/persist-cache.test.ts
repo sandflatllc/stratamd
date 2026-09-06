@@ -47,12 +47,16 @@ describe('persist blob caching', () => {
 
     let buffer = '# Plan\n\nParagraph one.\n\nParagraph two.\n\nParagraph three.\n'
     for (let step = 0; step < 12; step += 1) {
+      // Model an agent reading the acknowledged mirror, not racing the editor's debounced write.
+      buffer = (await app.getState()).activeDocument!.content
       buffer = buffer.replace('Paragraph two.', `Paragraph two. Agent pass ${step}.`)
       await store.writeBuffer(path, buffer)
       await app.recheckFocused()
       const content = (await app.getState()).activeDocument!.content
       const typed = content.replace('Paragraph one.', `Paragraph one. User pass ${step}.`)
       await app.updateBuffer(path, typed)
+      await expect.poll(async () => (await store.readBuffer(path))?.toString('utf8'), { timeout: 2500 }).toBe(typed)
+      await app.recheckFocused()
     }
     await expectMetaBlobsPresent(store, path)
 

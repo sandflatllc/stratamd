@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { atomicWriteFile, isRecord, PRIVATE_FILE_MODE } from '../storage'
 import { deriveAccountState, resolveNewThreadInstance, type AccountProvider, type UsageWindow } from '../../core/accountState'
@@ -17,10 +18,11 @@ export interface AccountsStore {
   stickyInstanceId: string | null
   /** Per driver: `auto`, an instance id, or null for the system default (§5.13 terminal defaults). */
   terminalDefaults: Record<string, string | null>
-  modelPreferences?: Record<string, { favorites: string[]; hidden: string[] }>
+  modelPreferences?: Record<string, { favorites: string[]; hidden: string[]; order?: string[] }>
 }
 
 export interface AccountMeasurement {
+  accountKey?: string
   session: UsageWindow | null
   weekly: UsageWindow | null
   planLabel?: string
@@ -36,6 +38,8 @@ export interface EngineProviderInstance {
   homePath: string | null
   enabled: boolean
   installed: boolean
+  usageLocal?: boolean
+  accentColor?: string
   status: string
   availability?: string
   unavailableReason?: string
@@ -60,13 +64,9 @@ export function providerInstancesOf(config: T3ServerConfigSlice): EngineProvider
       ...(provider.unavailableReason ? { unavailableReason: provider.unavailableReason } : {}),
       ...(provider.message ? { message: provider.message } : {}),
       auth: { status: provider.auth.status, ...(provider.auth.type ? { type: provider.auth.type } : {}), ...(provider.auth.label ? { label: provider.auth.label } : {}), ...(provider.auth.email ? { email: provider.auth.email } : {}) },
-      ...(provider.usage ? { usage: { session: usageWindow(provider.usage.session), weekly: usageWindow(provider.usage.weekly), applicable: provider.usage.applicable, ...(provider.usage.planLabel ? { planLabel: provider.usage.planLabel } : {}) } } : {}),
+      ...(typeof config.settings?.providerInstances?.[provider.instanceId]?.accentColor === 'string' ? { accentColor: config.settings!.providerInstances![provider.instanceId]!.accentColor as string } : {}),
     }
   })
-}
-
-function usageWindow(value: { usedPercent: number; resetsAt: string | null; measuredAt: string } | null): UsageWindow | null {
-  return value ? { usedPercent: value.usedPercent, resetsAt: value.resetsAt, measuredAt: value.measuredAt } : null
 }
 
 export function emptyAccountsStore(): AccountsStore {
@@ -87,6 +87,7 @@ export function normalizeAccountsStore(value: unknown): AccountsStore {
     for (const [instanceId, raw] of Object.entries(value.measurements)) {
       if (!isRecord(raw) || typeof raw.measuredAt !== 'string') continue
       store.measurements[instanceId] = {
+        ...(typeof raw.accountKey === 'string' ? { accountKey: raw.accountKey } : {}),
         session: window(raw.session), weekly: window(raw.weekly), applicable: raw.applicable !== false, measuredAt: raw.measuredAt,
         ...(typeof raw.planLabel === 'string' ? { planLabel: raw.planLabel } : {}),
       }
@@ -102,7 +103,7 @@ export function normalizeAccountsStore(value: unknown): AccountsStore {
     store.modelPreferences = Object.fromEntries(Object.entries(value.modelPreferences).flatMap(([id, raw]) => {
       if (!isRecord(raw)) return []
       const strings = (input: unknown) => Array.isArray(input) ? input.filter((item): item is string => typeof item === 'string') : []
-      return [[id, { favorites: strings(raw.favorites), hidden: strings(raw.hidden) }]]
+      return [[id, { favorites: strings(raw.favorites), hidden: strings(raw.hidden), order: strings(raw.order) }]]
     }))
   }
   return store
@@ -128,6 +129,7 @@ export function recordMeasurements(store: AccountsStore, providers: readonly Eng
   for (const provider of providers) {
     if (!provider.usage) continue
     const next: AccountMeasurement = {
+      accountKey: measurementAccountKey(provider),
       session: provider.usage.session, weekly: provider.usage.weekly, applicable: provider.usage.applicable, measuredAt: nowIso,
       ...(provider.usage.planLabel ? { planLabel: provider.usage.planLabel } : {}),
     }
@@ -139,8 +141,14 @@ export function recordMeasurements(store: AccountsStore, providers: readonly Eng
   return changed ? { ...store, measurements } : store
 }
 
+function measurementAccountKey(instance: EngineProviderInstance): string { return createHash('sha256').update(JSON.stringify([instance.driver, instance.auth.email?.trim().toLowerCase() ?? '', instance.homePath ?? ''])).digest('hex') }
+function measurementFor(instance: EngineProviderInstance, store: AccountsStore): AccountMeasurement | undefined {
+  const stored = store.measurements[instance.instanceId]
+  return instance.usageLocal === false || stored?.accountKey && stored.accountKey !== measurementAccountKey(instance) ? undefined : stored
+}
+
 function providerFor(instance: EngineProviderInstance, store: AccountsStore): AccountProvider {
-  const measurement = store.measurements[instance.instanceId]
+  const measurement = measurementFor(instance, store)
   const usage = instance.usage ?? (measurement ? { session: measurement.session, weekly: measurement.weekly, applicable: measurement.applicable, ...(measurement.planLabel ? { planLabel: measurement.planLabel } : {}) } : undefined)
   return {
     instanceId: instance.instanceId, driver: instance.driver, enabled: instance.enabled, status: instance.status,
@@ -158,9 +166,12 @@ export function accountViews(store: AccountsStore, providers: readonly EnginePro
     const provider = providerFor(instance, store)
     const parked = store.parked.includes(instance.instanceId)
     const derived = deriveAccountState({ provider, parked, nowMs })
-    const measurement = store.measurements[instance.instanceId]
+    const measurement = measurementFor(instance, store)
     return {
       instanceId: instance.instanceId,
+      installed: instance.installed, enabled: instance.enabled,
+      ...(instance.accentColor ? { accentColor: instance.accentColor } : {}),
+      usageAvailable: instance.usageLocal !== false,
       driver: instance.driver,
       name: instance.displayName,
       homePath: instance.homePath,

@@ -1,0 +1,118 @@
+vite v7.3.6 building ssr environment for production...
+transforming...
+✓ 85 modules transformed.
+rendering chunks...
+out/main/cli.js                       30.31 kB
+out/main/chunks/runtime-CQ0m4-oe.js   73.38 kB
+out/main/index.js                    585.44 kB
+✓ built in 783ms
+vite v7.3.6 building ssr environment for production...
+transforming...
+✓ 3 modules transformed.
+rendering chunks...
+out/preload/index.js  19.46 kB
+✓ built in 25ms
+vite v7.3.6 building client environment for production...
+transforming...
+../../StrataMD/node_modules/.pnpm/zod@4.5.2/node_modules/zod/v4/core/regexes.js (70:0): A comment
+
+"/** Anchors a pattern source. The interpolation lives here rather than at the call site because
+ * esbuild will not drop a `@__PURE__` call whose own argument interpolates a variable, but it
+ * will drop `anchor(dateSource)`. Keeping it inline pinned `date` into every bundle. */"
+
+in "../../StrataMD/node_modules/.pnpm/zod@4.5.2/node_modules/zod/v4/core/regexes.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+../../StrataMD/node_modules/.pnpm/zod@4.5.2/node_modules/zod/v4/core/util.js (330:0): A comment
+
+"// Wrapped in a `@__PURE__` IIFE: esbuild never tree-shakes a top-level initializer that contains a member access on `Number`, so the bare object literal survived into every bundle."
+
+in "../../StrataMD/node_modules/.pnpm/zod@4.5.2/node_modules/zod/v4/core/util.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+✓ 2531 modules transformed.
+rendering chunks...
+[plugin vite:reporter] 
+(!) /home/dillonc/Projects/StrataMD-wt/bundled-t3-server/src/editor/mermaid-renderer.ts is dynamically imported by /home/dillonc/Projects/StrataMD-wt/bundled-t3-server/src/renderer/main.tsx but also statically imported by /home/dillonc/Projects/StrataMD-wt/bundled-t3-server/src/editor/code-blocks.ts, dynamic import will not move module into another chunk.
+
+../../out/renderer/assets/ghostty-write-pty-hgyAvVbe.wasm                     0.11 kB
+../../out/renderer/index.html                                                 0.63 kB
+../../out/renderer/assets/stratamd-logo-BwCBnbu2.svg                          4.42 kB
+../../out/renderer/assets/nunito-latin-700-italic-BMy3YKdf.woff2             17.15 kB
+../../out/renderer/assets/nunito-latin-500-italic-e2La9S3U.woff2             17.30 kB
+../../out/renderer/assets/nunito-latin-600-italic-DyEvecIf.woff2             17.38 kB
+../../out/renderer/assets/nunito-latin-800-italic-B1qCGdl6.woff2             17.48 kB
+../../out/renderer/assets/baloo-2-latin-800-normal-BbF3Etk1.woff2            18.63 kB
+../../out/renderer/assets/baloo-2-latin-700-normal-CqTg7A15.woff2            19.44 kB
+../../out/renderer/assets/baloo-2-latin-600-normal-tIfxVoAe.woff2            19.50 kB
+../../out/renderer/assets/baloo-2-latin-500-normal-CmLZ27r7.woff2            19.56 kB
+../../out/renderer/assets/jetbrains-mono-latin-400-normal-V6pRDFza.woff2     21.17 kB
+../../out/renderer/assets/jetbrains-mono-latin-500-normal-BWZEU5yA.woff2     21.83 kB
+../../out/renderer/assets/baloo-2-latin-800-normal-B8BXfZF7.woff             22.60 kB
+../../out/renderer/assets/baloo-2-latin-700-normal-Ld3Zm3l2.woff             23.41 kB
+../../out/renderer/assets/baloo-2-latin-500-normal-BSdEhq8m.woff             23.50 kB
+../../out/renderer/assets/baloo-2-latin-600-normal-B4tNaogw.woff             23.54 kB
+../../out/renderer/assets/jetbrains-mono-latin-400-normal-6-qcROiO.woff      27.50 kB
+../../out/renderer/assets/jetbrains-mono-latin-500-normal-CJOVTJB7.woff      28.21 kB
+../../out/renderer/assets/ghostty-vt-DdA0Zryv.wasm                          630.93 kB
+../../out/renderer/assets/SymbolsNerdFontMono-Regular-aK5vsLov.woff2      1,177.58 kB
+../../out/renderer/assets/index-fwv3e51I.css                                291.41 kB
+../../out/renderer/assets/channel-DK49qbq7.js                                 0.20 kB
+../../out/renderer/assets/init-ZxktEp_H.js                                    0.26 kB
+../../out/renderer/assets/chunk-JWPE2WC7-C9pJwbGg.js                          0.37 kB
+../../out/renderer/assets/chunk-2Q5K7J3B-DmG-L_q3.js                          0.38 kB
+../../out/renderer/assets/chunk-5VM5RSS4-BEDFm6Yy.js                          0.43 kB
+../../out/renderer/assets/chunk-XXDRQBXY-DLN_nyJY.js                          0.48 kB
+../../out/renderer/assets/stateDiagram-v2-MP3YSRHH-BVJQPZ-0.js                0.71 kB
+../../out/renderer/assets/classDiagram-ZZMXUADV-BB7aigeu.js                   0.75 kB
+../../out/renderer/assets/classDiagram-v2-VYDZK3BY-BB7aigeu.js                0.75 kB
+../../out/renderer/assets/swimlanesDiagram-VR7AAH4N-C1pdfDF2.js               0.75 kB
+../../out/renderer/assets/infoDiagram-27XIBGKW-P-1jX5w0.js                    0.99 kB
+../../out/renderer/assets/chunk-POPQ4Y6H-BrKrwRGP.js                          1.07 kB
+../../out/renderer/assets/chart-renderer-Cx5HXKFG.js                          1.65 kB
+../../out/renderer/assets/sizeCapture-INFHLROL-affcdybE.js                    1.78 kB
+../../out/renderer/assets/ordinal-CxptdPJm.js                                 2.20 kB
+../../out/renderer/assets/railroadDiagram-O6MQD6OU-CPyIzelk.js                2.82 kB
+../../out/renderer/assets/abnfDiagram-VCTEODGH-Gwn5BPOv.js                    3.45 kB
+../../out/renderer/assets/pegDiagram-XKGWAZYB-a36-q2YI.js                     3.69 kB
+../../out/renderer/assets/chunk-F27PBJKO-DXzyPAfu.js                          3.75 kB
+../../out/renderer/assets/ebnfDiagram-PWID7BFC-FVAiIuXv.js                    3.86 kB
+../../out/renderer/assets/arc-ejHi981i.js                                     6.95 kB
+../../out/renderer/assets/diagram-Z3DM3KII-COukFL6l.js                        7.35 kB
+../../out/renderer/assets/defaultLocale-B2RvLBDe.js                           9.37 kB
+../../out/renderer/assets/linear-CEfpO-3J.js                                 11.25 kB
+../../out/renderer/assets/diagram-UQ7AKVKN-CA310Q6u.js                       11.42 kB
+../../out/renderer/assets/pieDiagram-E7YTZNPT-Duyoqg8H.js                    12.54 kB
+../../out/renderer/assets/diagram-S7CK7UJ4-BqGxkP30.js                       16.01 kB
+../../out/renderer/assets/cynefinDiagram-5FMLGOSQ-Ce1_Qt4x.js                18.33 kB
+../../out/renderer/assets/stateDiagram-D77RDMKH-DSXrZHl5.js                  19.03 kB
+../../out/renderer/assets/diagram-VSXAHHWV-zWooyF_M.js                       21.57 kB
+../../out/renderer/assets/dagre-GXQ25YYZ-CfD4MzoL.js                         23.29 kB
+../../out/renderer/assets/chunk-SVP7TREG-B1Jnwh2l.js                         30.85 kB
+../../out/renderer/assets/diagram-VX7I27RA-DxcBv3BE.js                       32.35 kB
+../../out/renderer/assets/ishikawaDiagram-5VMMS53U-GjBtDHav.js               35.07 kB
+../../out/renderer/assets/kanban-definition-UXKFOSKX-CwLI7SZW.js             38.11 kB
+../../out/renderer/assets/mindmap-definition-YA3MSWOX-ByXxdxaW.js            43.29 kB
+../../out/renderer/assets/wardleyDiagram-VM6X3IG4-BToz8GRu.js                44.51 kB
+../../out/renderer/assets/journeyDiagram-3NMN7TZE-0He8v36K.js                45.28 kB
+../../out/renderer/assets/sankeyDiagram-P5KCCOFB-ChEgHA7k.js                 46.14 kB
+../../out/renderer/assets/requirementDiagram-BXWQKSXE-PKV6UVDk.js            52.54 kB
+../../out/renderer/assets/erDiagram-RLTQ6QDP-Dm2WkJW0.js                     56.19 kB
+../../out/renderer/assets/gitGraphDiagram-WWUBYQGX-pU57v9-R.js               57.47 kB
+../../out/renderer/assets/timeline-definition-24CTP7MA-CqePHj_0.js           60.48 kB
+../../out/renderer/assets/quadrantDiagram-AXDQQJYC-Xh6S6eTp.js               61.63 kB
+../../out/renderer/assets/chunk-IMKFNOWR-CGNiaurC.js                         72.84 kB
+../../out/renderer/assets/blockDiagram-I7D4REHJ-BFJnqlVo.js                  76.00 kB
+../../out/renderer/assets/layout-ClzL_aYu.js                                 78.73 kB
+../../out/renderer/assets/xychartDiagram-S5SC5T6Z-DlQMW51c.js                83.25 kB
+../../out/renderer/assets/chunk-TICWLB2K-C7_-jb2Z.js                         84.46 kB
+../../out/renderer/assets/vennDiagram-4TSXK5OY-TgF7uCKO.js                   88.83 kB
+../../out/renderer/assets/flowDiagram-HODETNUW-BO-UZB9B.js                  105.32 kB
+../../out/renderer/assets/c4Diagram-7LVT6UL2-DP7RglhO.js                    111.12 kB
+../../out/renderer/assets/ganttDiagram-EL5Y4UJY-CUwDWl2H.js                 133.55 kB
+../../out/renderer/assets/sequenceDiagram-WJ2MYXX4-Ddx6d9Lj.js              201.65 kB
+../../out/renderer/assets/cose-bilkent-JH36ORCC-COX3G3Jq.js                 214.53 kB
+../../out/renderer/assets/swimlanes-42K2YHIH-t7GU-o0C.js                    298.66 kB
+../../out/renderer/assets/architectureDiagram-5GKGNRK7-DOY43yf9.js          423.23 kB
+../../out/renderer/assets/katex-oVG3DVWa.js                                 484.52 kB
+../../out/renderer/assets/cytoscape.esm-CHzIQniu.js                         961.04 kB
+../../out/renderer/assets/mermaid.core-CwnIFep5.js                        1,229.26 kB
+../../out/renderer/assets/cynefin-OW5HDTMX-D00pCMFg.js                    1,304.47 kB
+../../out/renderer/assets/index-l2en17Ds.js                               2,974.09 kB
+✓ built in 9.30s

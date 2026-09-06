@@ -67,8 +67,8 @@ test('a reverted agent edit reaches its author as a verdict and others as a user
     await revert.click()
 
     const dialog = await openComposer(page)
-    await dialog.getByRole('checkbox', { name: 'Agent A' }).check()
-    await dialog.getByRole('checkbox', { name: 'Agent B' }).check()
+    await dialog.getByRole('checkbox', { name: 'Agent A', exact: true }).check()
+    await dialog.getByRole('checkbox', { name: 'Agent B', exact: true }).check()
     await dialog.getByRole('tab', { name: 'Agent A' }).click()
     // The author sees its verdict, never its own change as an item.
     await expect(dialog.locator('.send-item-event')).toHaveCount(1)
@@ -153,8 +153,8 @@ test('a review-heavy composer puts the owner comment first and keeps its rows an
     await expect(annotationComposer).toBeHidden()
 
     const dialog = await openComposer(page)
-    await dialog.getByRole('checkbox', { name: 'Agent A' }).check()
-    await dialog.getByRole('checkbox', { name: 'Agent B' }).uncheck()
+    await dialog.getByRole('checkbox', { name: 'Agent A', exact: true }).check()
+    await dialog.getByRole('checkbox', { name: 'Agent B', exact: true }).uncheck()
     await dialog.getByRole('tab', { name: 'Agent A' }).click()
     const body = dialog.locator('.send-tab-body')
     await expect(body).toHaveAttribute('aria-busy', 'false')

@@ -1,3 +1,4 @@
+import { engineStorage } from './engineStorage'
 import { findInDocument } from '../editor/find'
 import { sourceSelectionForEditor } from '../editor/selection'
 import { parseMarkdownForEditor } from '../editor/markdown'
@@ -13,9 +14,9 @@ export function conversationParse(id: string, source: string): ParsedEditorMarkd
   return next
 }
 export function readConversationReading(thread: string): Record<string, string> {
-  try { return JSON.parse(localStorage.getItem(`conversation-reading:${thread}`) ?? '{}') } catch { return {} }
+  try { return JSON.parse(engineStorage.getItem(`conversation-reading:${thread}`) ?? '{}') } catch { return {} }
 }
-export function writeConversationReading(thread: string, state: Record<string, string>) { localStorage.setItem(`conversation-reading:${thread}`, JSON.stringify(state)); window.dispatchEvent(new Event('conversation-reading')) }
+export function writeConversationReading(thread: string, state: Record<string, string>) { engineStorage.setItem(`conversation-reading:${thread}`, JSON.stringify(state)); window.dispatchEvent(new Event('conversation-reading')) }
 
 /** Search the same displayed text as document Find, then reuse visual/source mapping. */
 export function conversationMatches(id: string, source: string, query: string) {

@@ -25,7 +25,7 @@ test('provider configuration preserves fields, model preferences persist, and th
     await page.getByRole('button', { name: 'Save changes' }).click()
     await expect(page.getByRole('dialog', { name: 'Accounts', exact: true })).toBeVisible()
     const settingsWrite = engine.rpcRequests.find(request => request.tag === 'server.updateSettings')!
-    expect(settingsWrite.payload).toMatchObject({ patch: { providerInstances: { codex: { driver: 'codex', displayName: 'Codex renamed', enabled: true, config: { homePath: '/home/owner/.codex-work', binaryPath: '/opt/bin/codex', preserved: 'keep' } } } } })
+    expect(settingsWrite.payload).toMatchObject({ patch: { providerInstances: { codex: { driver: 'codex', displayName: 'Codex renamed', config: { homePath: '/home/owner/.codex-work', binaryPath: '/opt/bin/codex', preserved: 'keep' } } } } })
     await page.getByRole('button', { name: 'Manage Codex work' }).click()
     await page.getByRole('tab', { name: 'Models', exact: true }).click()
     await page.getByRole('button', { name: 'Favorite GPT-5.6' }).click()

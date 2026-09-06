@@ -10,6 +10,7 @@ import { Scenario } from './harness'
 const at = '2026-09-03T12:00:00.000Z'
 
 export interface FakeEngineOptions {
+  settings?: Record<string, unknown>
   /** The one-time codes the fake accepts at the token endpoint; each returns a session token derived from it. */
   pairingCodes?: string[]
   /** The workspace root of the one seeded project; a scenario's document folder makes it the containing project (§5.7). */
@@ -90,6 +91,7 @@ export interface FakeEngine {
   setOnline(value: boolean): void
   setMessage(value: string): void
   setWorkspaceRoot(value: string): void
+  setSettings(patch: Record<string, unknown>): void
   setProviders(value: unknown[]): void
   finish(): void
   /** The live turn in `t1` completes normally: T3 reports the session idle and the turn completed with both stamps. */
@@ -234,6 +236,8 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     }
   }
   let providerInstances: Record<string, Record<string, unknown>> = { codex: { driver: 'codex', config: { homePath: '/home/owner/.codex-work', preserved: 'keep' } } }
+  let settings: Record<string, unknown> = { addProjectBaseDirectory: '/home/owner/Projects', newWorktreesStartFromOrigin: true, providerInstances, ...options.settings }
+  providerInstances = settings.providerInstances as typeof providerInstances
   function rpcValue(tag: string, payload: Record<string, unknown>): unknown {
     if (tag === 'attachments.createUploadUrl') {
       uploadCount += 1
@@ -241,8 +245,8 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       return { attachmentId, relativeUrl: `/upload/${attachmentId}`, expiresAt: Date.now() + 60_000 }
     }
     if (tag === 'server.getUsageSummary') return usageFixture(payload as unknown as import('../../src/shared/usage').UsageSummaryInput)
-    if (tag === 'server.getSettings') return { addProjectBaseDirectory: '/home/owner/Projects', newWorktreesStartFromOrigin: true, providerInstances }
-    if (tag === 'server.updateSettings') { providerInstances = (payload.patch as { providerInstances: typeof providerInstances }).providerInstances; return { providerInstances } }
+    if (tag === 'server.getSettings') return settings
+    if (tag === 'server.updateSettings') { settings = { ...settings, ...payload.patch as object }; providerInstances = settings.providerInstances as typeof providerInstances; return settings }
     if (tag === 'vcs.listRefs') return { refs: ['master', 'develop'].filter(name => !payload.query || name.includes(String(payload.query))).map(name => ({ name, current: name === 'master', isDefault: name === 'master', worktreePath: null })), isRepo: true, hasPrimaryRemote: true, totalCount: 2, nextCursor: null }
     if (tag === 'filesystem.browse') {
       const parentPath = String(payload.partialPath).replace(/\/+$/, '') || '/'
@@ -250,7 +254,8 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     }
     if (tag === 'sourceControl.lookupRepository') return { provider: 'github', nameWithOwner: payload.repository, url: `https://github.com/${payload.repository}`, sshUrl: `git@github.com:${payload.repository}.git` }
     if (tag === 'sourceControl.cloneRepository') return { cwd: payload.destinationPath, remoteUrl: payload.remoteUrl ?? `https://github.com/${payload.repository}`, repository: null }
-    if (tag === 'server.getConfig') return { providers, settings: { providerInstances: { codex: { config: { homePath: '/home/owner/.codex-work' } } } } }
+    if (tag === 'server.getConfig') return { providers, settings }
+    if (tag === 'server.discoverSourceControl') return { versionControlSystems: [{ label: 'Git', status: 'available' }], sourceControlProviders: [{ label: 'GitHub', status: 'missing', installHint: { _tag: 'Some', value: 'Install and sign in with gh.' } }] }
     if (tag === 'server.refreshProviders') return { providers }
     return null
   }
@@ -411,6 +416,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     setMessage: (value) => { message = value; broadcast() },
     setWorkspaceRoot: (value) => { workspaceRoot = value; broadcast() },
     failNextTurn: () => { rejectNextTurn = true },
+    setSettings: (patch) => { settings = { ...settings, ...patch }; providerInstances = settings.providerInstances as typeof providerInstances },
     setProviders: (value) => { providers = value; broadcast() },
     finish: () => { stop(); broadcast() },
     complete: () => { stop('completed'); broadcast() },

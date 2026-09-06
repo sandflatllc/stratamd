@@ -128,6 +128,8 @@ export class ThemeStore {
         const theme = await this.load(id)
         summaries.push({ id, name: theme.name, builtIn: false, broken: false, problems: theme.problems })
       } catch (error) {
+        // A theme can disappear after ids() while an external editor replaces it.
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
         if (!(error instanceof ThemeBrokenError)) throw error
         summaries.push({ id, name: `${id}.json`, builtIn: false, broken: true, problems: [{ key: 'file', reason: error.detail }] })
       }

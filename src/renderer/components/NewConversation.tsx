@@ -24,7 +24,16 @@ export function NewConversation({ engine, projectId: initialProjectId, document,
   const project = engine.projects.find((candidate) => candidate.id === projectId)
   const draftKey = document ? `document:${document.path}:${projectId}` : `new:${projectId}`
   const [workspace, setWorkspace] = useState<WorkspaceChoice>(() => readDraft(draftKey).workspace ?? { kind: 'current' })
-  useEffect(() => { setWorkspace(readDraft(draftKey).workspace ?? { kind: 'current' }) }, [draftKey])
+  useEffect(() => {
+    let active = true
+    const stored = readDraft(draftKey)
+    setWorkspace(stored.workspace ?? { kind: 'current' })
+    if (!stored.workspace && !stored.threadId && project) void Promise.all([window.strata.readEngineSettings(), window.strata.listEngineRefs(project.workspaceRoot, '')]).then(([settings, refs]) => {
+      if (!active || readDraft(draftKey).workspace || settings.defaultThreadEnvMode !== 'worktree' || !refs.isRepo) return
+      setWorkspace({ kind: 'worktree', baseBranch: refs.refs.find(ref => ref.isDefault && !ref.isRemote)?.name ?? refs.refs.find(ref => ref.current)?.name ?? '', startFromOrigin: settings.newWorktreesStartFromOrigin === true && refs.hasPrimaryRemote })
+    }).catch(() => undefined)
+    return () => { active = false }
+  }, [draftKey, project?.workspaceRoot])
   const changeWorkspace = (value: WorkspaceChoice) => { setWorkspace(value); writeDraft(draftKey, { ...readDraft(draftKey), workspace: value }) }
   const send = async (input: ConversationInput) => {
     if (workspace.kind === 'worktree' && !workspace.baseBranch) throw new Error('Choose the branch to start the worktree from.')

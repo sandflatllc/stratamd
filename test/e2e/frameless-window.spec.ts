@@ -17,7 +17,7 @@ test('the logo retains account attention and exposes all moved actions', async (
     await expect(page.locator('.app-menu-trigger .attention-dot')).toBeVisible()
     await openAppMenu(page)
     const menu = page.getByRole('menu', { name: 'StrataMD', exact: true })
-    await expect(menu.getByRole('menuitem')).toHaveText([/Open file/, /Accounts.*Needs attention/, 'Usage', /Terminal/, 'Theme', 'Reset zoom'])
+    await expect(menu.getByRole('menuitem')).toHaveText([/Open file/, 'Settings', /Accounts.*Needs attention/, 'Usage', /Terminal/, 'Theme', 'Reset zoom'])
     const capture = process.env.STRATAMD_FRAMELESS_CAPTURES
     if (capture) {
       const directory = join(projectRoot, capture)

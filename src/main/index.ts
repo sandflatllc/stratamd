@@ -1,3 +1,8 @@
+import { assertSupportedPlatform } from '../platform/runtime'
+import { setStartAtLogin } from './start-at-login'
+import { installEngineActivity } from './engine/background-activity'
+import { engineTray } from './engine/tray'
+import { readFile, writeFile } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, Notification } from 'electron'
 import type { AppView, StrataApi } from '../shared/contracts'
@@ -12,6 +17,7 @@ import { documentPathsFromArgv } from './session'
 import { APP_HOST, installAppProtocol, installLocalImageProtocol, registerPrivilegedSchemes } from './protocols'
 
 export interface MainApplication extends StrataApi {
+  reportEngineActivity?(activity: import('../shared/engine-settings').EngineActivity): Promise<void>
   recheckFocused?(): Promise<void>
   shutdown?(): Promise<void>
   /** Reopen the tabs the previous run left open; returns what came back. */
@@ -145,6 +151,8 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
   }
 
   let mainWindow: BrowserWindow | null = null
+  let tray: ReturnType<typeof engineTray> | null = null
+  let keepRunning = false
   let quitting = false
   let registeredIpc: RegisteredIpc | null = null
   let unsubscribeState: (() => void) | null = null
@@ -157,6 +165,7 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
   }
 
   await app.whenReady()
+  const stopEngineActivity = installEngineActivity(options.api)
   // Zoom is per pane in the renderer (PRD §6.9); the default menu's window
   // zoom roles must not exist. Linux keeps no menu; macOS gets the minimal one.
   Menu.setApplicationMenu(buildApplicationMenu())
@@ -170,6 +179,7 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
 
   const createWindow = async (): Promise<BrowserWindow> => {
     const initialState = await options.api.getState()
+    keepRunning = !!initialState.engine.managed && initialState.settings.engine?.keepRunning !== false
     const window = new BrowserWindow({
       width: 1440,
       height: 940,
@@ -219,6 +229,9 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
     })
     let pageBackground = String(initialState.settings.theme.active.values['surfaces.window'] ?? '')
     unsubscribeState = options.api.subscribe((state) => {
+      keepRunning = !!state.engine.managed && state.settings.engine?.keepRunning !== false
+      if (keepRunning && !tray) tray = engineTray(() => { void showAndFocus() })
+      if (!keepRunning && tray) { tray.destroy(); tray = null }
       registeredIpc?.publish(state)
       const next = String(state.settings.theme.active.values['surfaces.window'] ?? '')
       if (next && next !== pageBackground) {
@@ -233,6 +246,20 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
     let closePromptOpen = false
     window.on('close', (event) => {
       if (closeApproved || quitting) return
+      if (keepRunning) {
+        event.preventDefault()
+        const marker = join(app.getPath('userData'), 'background-close-explained')
+        void (async () => {
+          let explained = false
+          try { explained = await readFile(marker, 'utf8') === '1' } catch {}
+          if (!explained) {
+            await dialog.showMessageBox(window, { type: 'info', title: 'Strata keeps running', message: 'Closing the window keeps your agents and remote access running.', detail: 'Open Strata from the tray. Choose Quit Strata there to stop the engine.', buttons: ['Got it'] })
+            await writeFile(marker, '1', { mode: 0o600 })
+          }
+          window.hide()
+        })().catch(error => logError('main', 'Could not hide Strata in the tray', error))
+        return
+      }
       const dirty = options.api.dirtyDocumentPaths?.() ?? []
       if (dirty.length === 0) return
       event.preventDefault()
@@ -285,11 +312,8 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
   }
 
   app.on('window-all-closed', () => {
-    // Closing the last window quits (PRD §6.9). Queued deliveries and
-    // attachments are durable, and `open` or `attach` starts the app again
-    // when an agent or the owner needs it, so nothing is served by a process
-    // with no window. before-quit flushes every buffer on the way out.
-    app.quit()
+    // Managed mode retains its engine and tray; external mode keeps ordinary close behavior.
+    if (!keepRunning) app.quit()
   })
   app.on('second-instance', (_event, argv, workingDirectory) => {
     void openLaunchDocuments(argv, workingDirectory).then(showAndFocus)
@@ -299,6 +323,7 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
   // look like a new file-open intent and replace its saved center placement.
   await options.api.restoreOpenDocuments?.()
   mainWindow = await ensureWindow()
+  if (keepRunning && !tray) tray = engineTray(() => { void showAndFocus() })
   // Anything named on the command line opens after restored tabs and takes focus.
   await openLaunchDocuments(options.argv ?? process.argv.slice(1))
   adoptOpenFileHandler((path) => {
@@ -316,6 +341,14 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
     quitting = true
     event.preventDefault()
     void (async () => {
+      const state = await options.api.getState()
+      const active = state.engine.projects.flatMap(project => project.threads).filter(thread => thread.status === 'running' || thread.status === 'starting')
+      if (state.engine.managed && active.length) {
+        const choice = await dialog.showMessageBox({ type: 'question', title: 'Quit Strata?', message: `${active.length} conversation${active.length === 1 ? ' is' : 's are'} still running.`, detail: active.map(thread => thread.title).join('\n'), buttons: ['Keep running', 'Quit and interrupt'], defaultId: 0, cancelId: 0 })
+        if (choice.response === 0) { quitting = false; return }
+      }
+      tray?.destroy()
+      stopEngineActivity()
       registeredIpc?.dispose()
       unsubscribeState?.()
       try {
@@ -360,7 +393,11 @@ if (!process.env.VITEST) {
   if (process.env.STRATAMD_USER_DATA) app.setPath('userData', process.env.STRATAMD_USER_DATA)
   installFailureLogging()
   installOpenFileQueue()
-  void createStrataApplication({
+  if (!app.requestSingleInstanceLock()) app.quit()
+  else void createStrataApplication({
+    setStartAtLogin: async enabled => { await app.whenReady(); await setStartAtLogin(enabled, process.execPath, assertSupportedPlatform(), openAtLogin => app.setLoginItemSettings({ openAtLogin, path: process.execPath })) },
+    managedBundle: process.env.STRATAMD_ENGINE_BUNDLE ?? join(process.resourcesPath, 'engine'),
+    engineUsageHelper: app.isPackaged ? join(process.resourcesPath, 'resources/engine-helpers/usage.mjs') : join(import.meta.dirname, '../../resources/engine-helpers/usage.mjs'),
     // Badges when the owner is elsewhere, an OS notification when the window is not focused (§5.2).
     notifications: {
       isFocused: () => BrowserWindow.getAllWindows().some((window) => window.isFocused()),

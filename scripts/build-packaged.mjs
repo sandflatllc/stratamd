@@ -13,10 +13,11 @@ if (process.platform !== 'linux' && process.platform !== 'darwin') {
   process.exit(1)
 }
 
-run('pnpm', ['build'])
+run(process.execPath, ['scripts/stage-engine.mjs'])
+run('./node_modules/.bin/electron-vite', ['build'])
 if (process.platform === 'darwin') {
-  run('node', ['scripts/mac-icon.mjs'])
-  run('npx', ['electron-builder', '--mac', 'dir'])
+  run(process.execPath, ['scripts/mac-icon.mjs'])
+  run('./node_modules/.bin/electron-builder', [ '--mac', 'dir'])
 } else {
-  run('npx', ['electron-builder', '--linux', 'dir'])
+  run('./node_modules/.bin/electron-builder', [ '--linux', 'dir'])
 }

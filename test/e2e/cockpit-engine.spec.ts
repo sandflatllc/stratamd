@@ -25,7 +25,7 @@ test('1 pairing: host plus code pairs through the dialog, shows the server, and 
     await expect(JSON.parse(await readFile(credentialPath(scenario), 'utf8'))).toMatchObject({ server: engine.origin, accessToken: 'session-for-first-code' })
 
     await expect(dialog.getByRole('button', { name: 'Pairing…', exact: true })).toBeHidden()
-    await dialog.locator('summary').click()
+    await dialog.locator('.engine-pairing > summary').click()
     await dialog.getByLabel('Pairing link').fill(`${engine.origin}/pair?token=second-code`)
     await dialog.getByRole('button', { name: 'Pair again' }).click()
     await expect.poll(() => engine.tokenRequests).toEqual(['first-code', 'second-code'])
@@ -228,7 +228,7 @@ test('8 and 9 projects: the blank draft is project-scoped, row actions dispatch,
   }
 })
 
-test('10 accounts: usage from the engine, parking from the top bar, and the model menu refuses parked accounts after reload', async ({}, testInfo) => {
+test('10 accounts: external usage is unavailable, parking from the top bar, and the model menu refuses parked accounts after reload', async ({}, testInfo) => {
   const engine = await startEngine()
   const scenario = await seededScenario(testInfo, engine.origin)
   try {
@@ -237,10 +237,11 @@ test('10 accounts: usage from the engine, parking from the top bar, and the mode
     await openAppMenu(page)
     await page.getByRole('menuitem', { name: 'Accounts', exact: true }).click()
     let modal = page.getByRole('dialog', { name: 'Accounts' })
-    await expect(modal.getByTestId('account-state-codex')).toHaveText('Ready · 40% used')
+    await expect(modal.getByTestId('account-state-codex')).toHaveText('Ready · not measured')
     await expect(modal.getByTestId('account-state-claude-main')).toHaveText('Ready · not measured')
     await expect(modal.locator('[data-instance="codex"]')).toContainText('owner@example.com')
-    await expect(modal.locator('[data-instance="codex"] .account-usage[data-window="session"] small')).toContainText('40%')
+    await expect(modal.locator('[data-instance="codex"]')).toContainText('Usage unavailable for this connection')
+    await expect(modal.getByRole('meter')).toHaveCount(0)
     // Opening Accounts probes the engine for fresh usage (§5.13) before reading its configuration.
     await expect.poll(() => engine.rpcRequests.map((request) => request.tag)).toContain('server.refreshProviders')
     expect(engine.rpcRequests.map((request) => request.tag)).toContain('server.getConfig')

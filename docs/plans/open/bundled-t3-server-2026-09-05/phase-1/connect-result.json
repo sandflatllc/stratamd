@@ -1,0 +1,58 @@
+[
+  {
+    "command": "status --json",
+    "exitCode": 0,
+    "signal": null,
+    "cancelled": false,
+    "output": "{\n  \"desired\": false,\n  \"authenticated\": false,\n  \"linked\": false,\n  \"cloudUserId\": null,\n  \"relayUrl\": null,\n  \"publishAgentActivity\": false,\n  \"relayClient\": {\n    \"status\": \"missing\",\n    \"version\": \"2026.5.2\"\n  }\n}\n"
+  },
+  {
+    "command": "login --headless",
+    "exitCode": 130,
+    "signal": null,
+    "cancelled": true,
+    "output": "T3 Connect\n\nHeadless authorization\nOpen this URL on a device with a browser:\n  https://app.t3.codes/connect [authorization parameters omitted]\n\nAfter signing in, return here and enter the code shown in your browser.\n\u001b[96m?\u001b[0m \u001b[1mAuthorization code\u001b[0m \u001b[90m›\u001b[0m \u001b[90m\u001b[0m\u001b[?25h"
+  },
+  {
+    "command": "link --headless",
+    "exitCode": 0,
+    "signal": null,
+    "cancelled": false,
+    "output": "T3 Connect\n\n\u001b[?25l\u001b[96m?\u001b[0m \u001b[1mThe T3 relay client is required for T3 Connect. Download and install version 2026.5.2?\u001b[0m \u001b[90m›\u001b[0m \u001b[90m(y/N)\u001b[0m\u001b[2K\u001b1 G\u001b[2K\u001b[G\u001b[32m✔\u001b[0m \u001b[1mThe T3 relay client is required for T3 Connect. Download and install version 2026.5.2?\u001b[0m \u001b[90m…\u001b[0m no\n\u001b[?25hT3 Connect setup cancelled. The relay client was not installed.\n"
+  },
+  {
+    "command": "publish",
+    "exitCode": 0,
+    "signal": null,
+    "cancelled": false,
+    "output": "Publishing agent activity enabled.\nRun `t3 connect login` first so this environment can be authorized to publish.\n"
+  },
+  {
+    "command": "status --json",
+    "exitCode": 0,
+    "signal": null,
+    "cancelled": false,
+    "output": "{\n  \"desired\": false,\n  \"authenticated\": false,\n  \"linked\": false,\n  \"cloudUserId\": null,\n  \"relayUrl\": null,\n  \"publishAgentActivity\": true,\n  \"relayClient\": {\n    \"status\": \"missing\",\n    \"version\": \"2026.5.2\"\n  }\n}\n"
+  },
+  {
+    "command": "unlink",
+    "exitCode": 0,
+    "signal": null,
+    "cancelled": false,
+    "output": "T3 Connect is disabled locally.\n"
+  },
+  {
+    "command": "logout",
+    "exitCode": 0,
+    "signal": null,
+    "cancelled": false,
+    "output": "T3 Connect is disabled locally.\nSigned out of T3 Connect locally.\nThe background service is managed separately with `t3 service`.\n"
+  },
+  {
+    "command": "status --json",
+    "exitCode": 0,
+    "signal": null,
+    "cancelled": false,
+    "output": "{\n  \"desired\": false,\n  \"authenticated\": false,\n  \"linked\": false,\n  \"cloudUserId\": null,\n  \"relayUrl\": null,\n  \"publishAgentActivity\": false,\n  \"relayClient\": {\n    \"status\": \"missing\",\n    \"version\": \"2026.5.2\"\n  }\n}\n"
+  }
+]
