@@ -177,6 +177,12 @@ to an earlier revision stays readable but does not make the comment ready.
 `file` is optional and names a screenshot you took yourself. Only the owner
 accepts or reopens a visual comment; `resolve` on one fails.
 
+An `adjustments` list gives the exact property and value the owner tried on
+a mark, and a capture marked `requested` shows the page with those applied.
+Implement the intent with the project's styling rules rather than copying
+the values. Once you reply `ready`, Strata takes its own picture of the
+marked thing and shows the owner then and now.
+
 When Strata is the engine's browser host, your preview tools (open, navigate,
 click, type, press, scroll, wait for, resize, evaluate, snapshot, screenshot)
 land in a tab of your own in the owner's Strata window, under the project's

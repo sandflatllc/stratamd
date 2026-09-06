@@ -25,7 +25,7 @@ describe('the page scripts', () => {
     expect(RELEVANT_STYLE.length).toBeLessThanOrEqual(16)
     expect(RELEVANT_STYLE).toContain('font-size')
     expect(outlineScript({ selector: 'a', testIds: [], role: null, name: null }, 1500.6)).toContain('1501')
-    expect(CLEAR_STRATA_SCRIPT).toContain('[data-strata-visual]')
+    expect(CLEAR_STRATA_SCRIPT).toContain('[data-strata-visual="outline"]')
   })
 })
 

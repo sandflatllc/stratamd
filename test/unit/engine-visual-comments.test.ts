@@ -291,3 +291,48 @@ describe('a comment on a running page (phase 3)', () => {
     await instance.shutdown()
   })
 })
+
+describe('Then / now and adjustments (phase 4)', () => {
+  it('takes the comparison on a ready reply through the host, retakes it on the next, and carries the requested appearance with adjustments', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'strata-visual-compare-'))
+    const fake = engine()
+    let outcome: { then: { bytes: Uint8Array; width: number; height: number }; now: { bytes: Uint8Array; width: number; height: number } | null; note: string | null } = { then: { bytes: png, width: 1, height: 1 }, now: { bytes: png, width: 1, height: 1 }, note: null }
+    const compare = vi.fn(async () => outcome)
+    const instance = await client(fake, directory, { operations: [], handle: async () => ({ ok: true, result: null }), setRegistered: () => undefined, recheckVisual: async () => ({ refusal: null, found: {} }), compareVisual: compare })
+    const clean = await instance.storeVisualCapture({ bytes: png, width: 1, height: 1 })
+    const requested = await instance.storeVisualCapture({ bytes: marked, width: 1, height: 1 })
+    const page = { tabId: 'tab_1', captures: [{ id: clean, width: 1, height: 1, scroll: { x: 0, y: 0 }, scale: 1 }, { id: requested, width: 1, height: 1, scroll: { x: 0, y: 0 }, scale: 1, requested: true }], url: 'http://localhost:5173/clients', title: 'Clients', viewport: { width: 1200, height: 800 }, preset: null, deviceScale: 1 }
+    const id = await instance.holdVisualComment({
+      projectId: 'p1', threadId: 't1', page, text: 'Bigger, like this.',
+      marks: [{ id: 'k1', kind: 'element', label: 'New client button', captureId: clean, rect: { x: 0, y: 0, width: 1, height: 1 }, found: true, identity: { role: 'button', name: 'New client', selector: 'button#new-client', testIds: [] } }],
+      strokes: [], adjustments: [{ markId: 'k1', property: 'font-size', value: '18px', label: 'Text size: slightly larger' }], marked: [{ captureId: clean, bytes: marked }],
+    })
+    await instance.startTurn('t1', { text: '', ...turn, visual: [id] })
+    const command = fake.commands.find((candidate) => candidate.type === 'thread.turn.start')!
+    const attachments = (command.message as { attachments: Array<{ name: string }> }).attachments
+    // The marked capture, the requested appearance, and the context file.
+    expect(attachments).toHaveLength(3)
+    const brief = contextSection(Buffer.from(fake.uploads.find((upload) => upload.name.endsWith('.md'))!.bytes).toString('utf8'), 'Visual comments')[0]
+    expect(brief.adjustments).toEqual([{ mark: 'k1', property: 'font-size', value: '18px' }])
+    expect(brief.captures.map((capture: { requested?: boolean }) => capture.requested ?? false)).toEqual([false, true])
+    fake.acknowledge(String((command.message as { messageId: string }).messageId), 'Bigger, like this.')
+    await vi.waitFor(() => expect(visual(instance)[0]!.status).toBe('sent'))
+    // Ready for review is a trigger: the host captures "now", and the record keeps both crops on that revision.
+    fake.reply('a1', `Done.\n\n\`\`\`strata\n${JSON.stringify([{ verb: 'reply', anchor: { item: id }, revision: 1, text: 'Done.', ready: true }])}\n\`\`\``)
+    await vi.waitFor(() => expect(visual(instance)[0]!.revisions[0]!.comparison).toBeDefined())
+    expect(compare).toHaveBeenCalledTimes(1)
+    const first = visual(instance)[0]!.revisions[0]!.comparison!
+    expect(first.nowUrl).toMatch(/^strata-visual:\/\/evidence\/e_/)
+    expect(first.note).toBeNull()
+    expect(visual(instance)[0]!.status).toBe('ready')
+    // The next ready reply retakes it; the views differ and the note says so, with no empty pair.
+    outcome = { then: { bytes: png, width: 1, height: 1 }, now: null, note: 'The views differ: New client button was not found on the page now.' }
+    fake.reply('a2', `Again.\n\n\`\`\`strata\n${JSON.stringify([{ verb: 'reply', anchor: { item: id }, revision: 1, text: 'Again.', ready: true }])}\n\`\`\``)
+    await vi.waitFor(() => expect(visual(instance)[0]!.revisions[0]!.comparison?.nowUrl).toBeNull())
+    expect(visual(instance)[0]!.revisions[0]!.comparison?.note).toContain('views differ')
+    // The earlier crops were released; the current ones and the comment's own captures remain.
+    const files = (await readdir(join(directory, 'visual-evidence'))).filter((name) => name.endsWith('.bin'))
+    expect(files).toHaveLength(4)
+    await instance.shutdown()
+  })
+})

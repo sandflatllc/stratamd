@@ -321,8 +321,8 @@ export function outlineScript(identity: Pick<PageIdentity, 'selector' | 'testIds
 })()`
 }
 
-/** Remove anything Strata drew or overrode in the page, so a capture or an agent screenshot never carries it. */
+/** Remove anything Strata drew in the page, its outline, so a capture never carries it; overrides are the owner's request and are cleared separately. */
 export const CLEAR_STRATA_SCRIPT = `(() => {
-  document.querySelectorAll('[data-strata-visual]').forEach(function (node) { node.remove(); });
+  document.querySelectorAll('[data-strata-visual="outline"]').forEach(function (node) { node.remove(); });
   return true;
 })()`

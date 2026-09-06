@@ -106,6 +106,11 @@ export interface PreviewHostBridge {
    * Returns a refusal in plain words when navigation replaced the page or a target is gone, else which marks are found now.
    */
   recheckVisual?(comment: VisualCommentRecord): Promise<{ refusal: string | null; found: Record<string, boolean> }>
+  /**
+   * Then / now (phase 4): a ready reply asks Strata for its own "now" capture of the marked target at the original size,
+   * cropped like the original. `now` is null with a note in plain words when the views differ or the page cannot be reached.
+   */
+  compareVisual?(comment: VisualCommentRecord, revision: VisualRevision): Promise<{ then: { bytes: Uint8Array; width: number; height: number }; now: { bytes: Uint8Array; width: number; height: number } | null; note: string | null } | null>
 }
 
 export interface EngineClientOptions {
@@ -315,6 +320,9 @@ export class T3EngineClient implements EngineReadClient {
   #renewalTimer: ReturnType<typeof setTimeout> | null = null
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null
   #reconnectAttempt = 0
+  /** Comparisons owed to ready replies, taken after the state is written. */
+  #comparisons: Array<{ id: string; number: number }> = []
+  #comparing = false
   #messageCache = new Map<string, { text: string; prose: string; blocks: ReturnType<typeof mapMarkdownBlocks>["blocks"]; visualReplies: Array<{ id: string; revision?: number; ready: boolean }> }>()
   #publishTimer: ReturnType<typeof setTimeout> | null = null
   #configTimer: ReturnType<typeof setTimeout> | null = null
@@ -621,6 +629,8 @@ export class T3EngineClient implements EngineReadClient {
     const ids = new Set<string>(this.#watched)
     if (this.#reading.activeThreadId) ids.add(this.#reading.activeThreadId)
     for (const [threadId, state] of Object.entries(this.#conversations.threads)) if (state.pending.length > 0) ids.add(threadId)
+    // A sent visual revision awaits the agent's reply in its thread; the reply is what moves the card.
+    for (const comment of Object.values(this.#visual.comments)) { const latest = comment.revisions.at(-1); if (latest && latest.state === 'sent' && !latest.accepted) ids.add(latest.destination.threadId) }
     return [...ids].filter((id) => this.#shell?.threads.some((thread) => thread.id === id))
   }
 
@@ -694,7 +704,9 @@ export class T3EngineClient implements EngineReadClient {
     for (const comment of visualDrafts) {
       const draft = comment.draft!
       const referenced = [...new Set([...draft.marks.map((mark) => mark.captureId), ...draft.strokes.map((stroke) => stroke.captureId)])]
-      const captureIds = referenced.length ? referenced : comment.captures.slice(0, 1).map((capture) => capture.id)
+      // The requested appearance rides along as a reference when the draft carries adjustments.
+      const requested = draft.adjustments.length ? comment.captures.filter((capture) => capture.requested && !referenced.includes(capture.id)).slice(-1).map((capture) => capture.id) : []
+      const captureIds = [...(referenced.length ? referenced : comment.captures.filter((capture) => !capture.requested).slice(0, 1).map((capture) => capture.id)), ...requested]
       const number = comment.revisions.length + 1
       const names = new Map<string, string>()
       for (const [index, captureId] of captureIds.entries()) {
@@ -822,14 +834,21 @@ export class T3EngineClient implements EngineReadClient {
       const captures: VisualCapture[] = []
       for (const entry of input.page.captures) {
         if (!(await this.#evidence.exists(entry.id))) throw new Error('The captured frame is no longer available. Capture the page again.')
-        captures.push({ id: entry.id, width: entry.width, height: entry.height, scroll: entry.scroll, scale: entry.scale, takenAt: now })
+        captures.push({ id: entry.id, width: entry.width, height: entry.height, scroll: entry.scroll, scale: entry.scale, ...(entry.requested ? { requested: true } : {}), takenAt: now })
       }
       if (!comment) {
         const workingFolder = this.#shell?.projects.find((project) => project.id === input.projectId)?.workspaceRoot ?? null
         comment = { id: `v_${randomUUID()}`, projectId: input.projectId, engine: null, anchor: { kind: 'page', url: input.page.url, title: input.page.title, instance: input.page.tabId, workingFolder, viewport: { width: input.page.viewport.width, height: input.page.viewport.height, preset: input.page.preset }, deviceScale: input.page.deviceScale }, captures, draft: null, revisions: [], createdAt: now, updatedAt: now }
         this.#visual.comments[comment.id] = comment
       } else {
-        for (const capture of captures) if (!comment.captures.some((candidate) => candidate.id === capture.id)) comment.captures.push(capture)
+        // A newer requested appearance replaces an unsent one; frames a sent revision carried stay.
+        const existing = comment
+        const incomingRequested = captures.some((capture) => capture.requested)
+        if (incomingRequested) {
+          const stale = existing.captures.filter((capture) => capture.requested && !captures.some((incoming) => incoming.id === capture.id) && !existing.revisions.some((revision) => revision.captures.includes(capture.id)))
+          for (const capture of stale) { existing.captures = existing.captures.filter((candidate) => candidate.id !== capture.id); await this.#evidence.discard(capture.id); if (capture.markedId) await this.#evidence.discard(capture.markedId) }
+        }
+        for (const capture of captures) if (!existing.captures.some((candidate) => candidate.id === capture.id)) existing.captures.push(capture)
       }
     }
     if (!comment) throw new Error('A visual comment needs an image. Paste or capture one first.')
@@ -867,6 +886,7 @@ export class T3EngineClient implements EngineReadClient {
   async actVisualComment(id: string, action: VisualCommentAction): Promise<void> {
     const comment = this.#visual.comments[id]
     if (!comment) throw new Error(`Visual comment ${id} was not found`)
+    if (action === 'compare') { await this.compareVisualComment(id); return }
     const latest = comment.revisions.at(-1)
     const now = this.#now()
     if (action === 'accept') {
@@ -1759,6 +1779,8 @@ export class T3EngineClient implements EngineReadClient {
                 revision.replies.push({ messageId: message.id, text: entry.text, ready: entry.ready === true, ...(entry.file ? { file: entry.file } : {}), at: this.#now() })
                 target.updatedAt = this.#now()
                 visualChanged = true
+                // Ready for review is a trigger: Strata takes its own "now" capture of the target and attaches the comparison to this reply.
+                if (entry.ready === true && revision === target.revisions.at(-1)) this.#comparisons.push({ id: target.id, number: revision.number })
               } catch (error) { reason = error instanceof Error ? error.message : String(error) }
               state.receipts.push(key)
               state.outcomes.push({ message: message.id, index: result.index, status: reason ? 'failed' : 'applied', ...(reason ? { reason } : { itemId: anchor.item }) })
@@ -1798,6 +1820,38 @@ export class T3EngineClient implements EngineReadClient {
       if (visualChanged) await writeVisualCommentsStore(this.#visualPath, this.#visual)
     } finally { this.#reconcilingComments = false }
     if (changed) this.#publish()
+    if (this.#comparisons.length) void this.#takeComparisons()
+  }
+
+  /** Then / now, one at a time: Strata's own capture of each target a ready reply named, attached to that revision. */
+  async #takeComparisons(): Promise<void> {
+    if (this.#comparing) return
+    this.#comparing = true
+    try {
+      while (this.#comparisons.length) {
+        const next = this.#comparisons.shift()!
+        try { await this.compareVisualComment(next.id, next.number) } catch (error) { logError('engine', `Then / now could not be taken for ${next.id}`, error) }
+      }
+    } finally { this.#comparing = false }
+  }
+
+  /** Takes or retakes the comparison for a revision; the bridge does the capture, the record keeps the crops. */
+  async compareVisualComment(id: string, number?: number): Promise<void> {
+    const comment = this.#visual.comments[id]
+    if (!comment) throw new Error(`Visual comment ${id} was not found`)
+    const revision = number === undefined ? comment.revisions.at(-1) : comment.revisions.find((candidate) => candidate.number === number)
+    if (!revision) throw new Error(`Visual comment ${id} has no revision ${number}`)
+    if (!this.#previewHost?.compareVisual) return
+    const result = await this.#previewHost.compareVisual(comment, revision)
+    if (!result) return
+    const then = await this.#evidence.put({ bytes: result.then.bytes, width: result.then.width, height: result.then.height, mimeType: 'image/png' })
+    const now = result.now ? await this.#evidence.put({ bytes: result.now.bytes, width: result.now.width, height: result.now.height, mimeType: 'image/png' }) : null
+    const previous = revision.comparison
+    revision.comparison = { thenId: then.id, nowId: now?.id ?? null, note: result.note, takenAt: this.#now() }
+    comment.updatedAt = this.#now()
+    if (previous) { await this.#evidence.discard(previous.thenId); if (previous.nowId) await this.#evidence.discard(previous.nowId) }
+    await writeVisualCommentsStore(this.#visualPath, this.#visual)
+    this.#publish()
   }
 
   #publish(): void {

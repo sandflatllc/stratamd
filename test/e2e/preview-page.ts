@@ -9,6 +9,8 @@ import { createServer, type Server } from 'node:http'
  */
 export interface PreviewPageServer {
   origin: string
+  /** "The code changed": the clients page is served with a different button until reset. */
+  setVariant(variant: 'original' | 'bigger'): void
   close(): Promise<void>
 }
 
@@ -75,16 +77,18 @@ root.appendChild(button)
 const STATIC = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>About · Mesa Office</title></head><body style="font-family: sans-serif; margin: 24px"><h1>About</h1><p id="blurb">Mesa Office keeps small practices organized.</p></body></html>`
 
 export async function startPreviewPage(): Promise<PreviewPageServer> {
+  let variant: 'original' | 'bigger' = 'original'
   const server: Server = createServer((request, response) => {
     response.setHeader('content-type', 'text/html; charset=utf-8')
+    response.setHeader('cache-control', 'no-store')
     if (request.url?.startsWith('/invoices')) { response.end(INVOICES); return }
     if (request.url?.startsWith('/schedule')) { response.end(REACT); return }
     if (request.url?.startsWith('/about')) { response.end(STATIC); return }
     if (request.url?.startsWith('/gone')) { response.writeHead(404).end('<!doctype html><title>Not here</title><p>Not here.</p>'); return }
-    response.end(CLIENTS)
+    response.end(variant === 'bigger' ? CLIENTS.replace('#new-client { margin-left: auto; padding: 8px 14px;', '#new-client { margin-left: auto; padding: 14px 22px; font-size: 20px;') : CLIENTS)
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('The preview page did not bind')
-  return { origin: `http://127.0.0.1:${address.port}`, close: () => new Promise((resolve) => server.close(() => resolve())) }
+  return { origin: `http://127.0.0.1:${address.port}`, setVariant: (value) => { variant = value }, close: () => new Promise((resolve) => server.close(() => resolve())) }
 }

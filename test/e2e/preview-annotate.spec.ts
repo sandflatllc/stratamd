@@ -45,10 +45,22 @@ async function annotate(page: Page, window: Locator) {
   return dialog
 }
 
+/** A box read twice across two animation frames and accepted only when it holds: the card growing under the picture moves it a frame later. */
+async function settledBox(page: Page, locator: Locator): Promise<{ x: number; y: number; width: number; height: number }> {
+  let previous = (await locator.boundingBox())!
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+    const next = (await locator.boundingBox())!
+    if (Math.abs(next.x - previous.x) < 0.5 && Math.abs(next.y - previous.y) < 0.5 && Math.abs(next.width - previous.width) < 0.5 && Math.abs(next.height - previous.height) < 0.5) return next
+    previous = next
+  }
+  return previous
+}
+
 /** Page pixels onto the session's surface: the displayed capture is the page's viewport scaled to fit. */
 async function surfaceMap(page: Page, engine: FakeEngine, tabId: string): Promise<(point: { x: number; y: number }) => { x: number; y: number }> {
   const viewport = (await engine.automation('t1', 'evaluate', { expression: '({ vw: window.innerWidth, vh: window.innerHeight })' }, { tabId })).result as { vw: number; vh: number }
-  const surface = (await page.locator('.visual-surface').boundingBox())!
+  const surface = await settledBox(page, page.locator('.visual-surface'))
   return (point) => ({ x: surface.x + point.x * surface.width / viewport.vw, y: surface.y + point.y * surface.height / viewport.vh })
 }
 
@@ -95,6 +107,8 @@ test('Annotate captures the frame and hides the view, Mark names things from the
     const to = map({ x: 210, y: 58 })
     await page.mouse.move(from.x, from.y)
     await page.mouse.down()
+    // The drag rectangle appears once the session has taken the press; moving before that would be a click somewhere else.
+    await expect(dialog.locator('.visual-drag')).toHaveCount(1)
     await page.mouse.move(to.x, to.y, { steps: 4 })
     await page.mouse.up()
     const region = dialog.locator('.visual-chip').filter({ hasText: 'Region 1' })
@@ -144,7 +158,7 @@ test('marking after a scroll takes a second capture at the new position, and Sen
     await page.mouse.click(button.x, button.y)
     await expect(dialog.locator('.visual-chip').filter({ hasText: 'New client button' })).toBeVisible()
     // Scrolling over the session scrolls the live page and takes another capture.
-    const surface = (await dialog.locator('.visual-surface').boundingBox())!
+    const surface = await settledBox(page, dialog.locator('.visual-surface'))
     await page.mouse.move(surface.x + surface.width / 2, surface.y + surface.height / 2)
     await page.mouse.wheel(0, 1800)
     await expect(dialog).toHaveAttribute('data-captures', '2')

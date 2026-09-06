@@ -3,7 +3,7 @@ import { TerminalDrawer } from './components/TerminalDrawer'
 import { useWindowState } from './useWindowState'
 import type { WindowAction } from '../shared/contracts'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
-import type { ItemView, AnnotationContext, AnnotationKind, AnnotationView, AppView, AttachmentView, BufferOrigin, CreateDraftRequest, DocumentTabView, DocumentView, HoldVisualCommentInput, VisualCaptureView, VisualPageCapture, VisualPointView, VisualRectView, HunkView, NavigationTab, PaneId, PanelSize, PaneZoom, PanelSizes, PreviewNavigation, PreviewViewportRequest, QuickSendRequest, RedoResult, ReviewTab, SendPreviewRequest, TableViewState, ThemePanelGeometry, UndoResult, VisualDestinationView, WalkthroughAction } from '../shared/contracts'
+import type { ItemView, AnnotationContext, AnnotationKind, AnnotationView, AppView, AttachmentView, BufferOrigin, CreateDraftRequest, DocumentTabView, DocumentView, HoldVisualCommentInput, VisualAdjustmentView, VisualCaptureView, VisualMarkView, VisualPageCapture, VisualPointView, VisualRectView, HunkView, NavigationTab, PaneId, PanelSize, PaneZoom, PanelSizes, PreviewNavigation, PreviewViewportRequest, QuickSendRequest, RedoResult, ReviewTab, SendPreviewRequest, TableViewState, ThemePanelGeometry, UndoResult, VisualDestinationView, WalkthroughAction } from '../shared/contracts'
 import { VisualSession, type VisualProposal } from './components/VisualSession'
 import { toCaptureRect, toPagePoint, toPageRect } from '../core/visual-comments'
 import { PreviewWindow } from './components/PreviewWindow'
@@ -416,6 +416,20 @@ export function App({ createEditor }: AppProps) {
   const activeThreadProject = view.engine.projects.find((project) => project.threads.some((candidate) => candidate.id === view.engine.activeThreadId)) ?? null
   const allVisual = view.engine.projects.flatMap((project) => project.visualComments ?? [])
   const visualById = (id: string) => allVisual.find((comment) => comment.id === id) ?? null
+  /** Adjustments on the live page: the whole set at once, then the requested appearance comes back as a frame. */
+  const adjustOn = (tabId: string) => async (adjustments: VisualAdjustmentView[], marks: VisualMarkView[]): Promise<VisualCaptureView | null> => {
+    if (adjustments.length === 0) { await window.strata.clearPreviewOverrides(tabId); return null }
+    const targets = new Map<string, { markId: string; identity: NonNullable<VisualMarkView['identity']>; declarations: Record<string, string> }>()
+    for (const adjustment of adjustments) {
+      const mark = marks.find((candidate) => candidate.id === adjustment.markId)
+      if (!mark?.identity) continue
+      const target = targets.get(mark.id) ?? { markId: mark.id, identity: mark.identity, declarations: {} }
+      target.declarations[adjustment.property] = adjustment.value
+      targets.set(mark.id, target)
+    }
+    const result = await window.strata.adjustPreview(tabId, [...targets.values()])
+    return result.capture
+  }
   /** Mark on a page: the click or box goes to the live page in its own pixels and the answer comes back in capture pixels. */
   const describeOn = (tabId: string, capture: VisualCaptureView) => async (target: { point: VisualPointView } | { rect: VisualRectView }): Promise<VisualProposal | null> => {
     const scale = capture.scale ?? 1
@@ -450,6 +464,7 @@ export function App({ createEditor }: AppProps) {
     onReopen: (comment) => void perform(async () => { await window.strata.actVisualComment(comment.id, 'reopen'); setVisualOpen(null); setVisualSession({ kind: 'comment', id: comment.id }) }),
     onRetry: (comment) => void perform(() => window.strata.actVisualComment(comment.id, 'retry'), 'Sending again.'),
     onDiscard: (comment) => void perform(() => window.strata.actVisualComment(comment.id, 'discard'), 'Visual comment discarded.'),
+    onCompare: (comment) => { setVisualFallback(null); setVisualOpen(comment.id) },
     // Show me: the original tab when it still shows the page, else the saved evidence with a way to open the page.
     onShowMe: (comment) => void perform(async () => {
       const result = await window.strata.showVisualComment(comment.id)
@@ -477,7 +492,8 @@ export function App({ createEditor }: AppProps) {
     const destination = comment.draft.destination
     // A held page comment reopens over its captures; the live tab answers Mark again while it still shows that page.
     const liveTab = comment.anchor.kind === 'page' ? view.preview.tabs.find((tab) => tab.id === (comment.anchor as { instance: string }).instance && tab.url.replace(/#.*$/, '') === (comment.anchor as { url: string }).url.replace(/#.*$/, '')) ?? null : null
-    return <VisualSession key={comment.id} capture={capture} captures={comment.captures} commentId={comment.id} projectId={comment.projectId} destination={destination} place={comment.place} initial={{ text: comment.draft.text, marks: comment.draft.marks, strokes: comment.draft.strokes, adjustments: comment.draft.adjustments }} describe={liveTab ? describeOn(liveTab.id, comment.captures.at(-1)!) : undefined} onHold={holdVisual} onSend={(id) => sendVisual(id, destination.threadId)} onClose={() => setVisualSession(null)} onError={reportError} />
+    const clean = comment.captures.filter((frame) => !frame.requested)
+    return <VisualSession key={comment.id} capture={capture} captures={clean.length ? clean : comment.captures} commentId={comment.id} projectId={comment.projectId} destination={destination} place={comment.place} initial={{ text: comment.draft.text, marks: comment.draft.marks, strokes: comment.draft.strokes, adjustments: comment.draft.adjustments }} describe={liveTab ? describeOn(liveTab.id, clean.at(-1) ?? capture) : undefined} onAdjust={liveTab ? adjustOn(liveTab.id) : undefined} adjustStatus={liveTab ? 'shown live' : 'not shown: the page is not open'} onHold={holdVisual} onSend={(id) => sendVisual(id, destination.threadId)} onClose={() => { setVisualSession(null); if (liveTab) void window.strata.clearPreviewOverrides(liveTab.id).catch(() => undefined) }} onError={reportError} />
   })()
   const visualPanelNode = visualOpen && visualById(visualOpen) ? <VisualCommentPanel comment={visualById(visualOpen)!} actions={visualActions} notice={visualFallback?.id === visualOpen ? visualFallback.reason : null} onOpenPage={visualFallback?.id === visualOpen && visualFallback.url ? () => { const url = visualFallback.url!; const projectId = visualById(visualOpen)!.projectId; setVisualOpen(null); setVisualFallback(null); showPreview(projectId); void perform(async () => { const id = await window.strata.openPreviewTab({ projectId, url }); setActivePreviewTabs((current) => ({ ...current, [projectId]: id })) }) } : undefined} onClose={() => { setVisualOpen(null); setVisualFallback(null) }} /> : null
   // ---- Preview windows (docs/plans/open/visual-review, phase 2)
@@ -553,7 +569,8 @@ export function App({ createEditor }: AppProps) {
       describe={changed ? undefined : describeOn(annotating.tabId, capture)}
       onScroll={changed ? undefined : async (delta) => { await window.strata.scrollPreview(annotating.tabId, { by: delta }); const next = await window.strata.capturePreviewFrame(annotating.tabId); setAnnotating((current) => current && current.tabId === annotating.tabId ? { ...current, captures: [...current.captures, next.capture] } : current) }}
       notice={changed ? 'The live page changed while you were marking. Your note and the captured frame are kept; new marks are regions.' : null}
-      onHold={holdVisual} onSend={(id) => sendVisual(id, destination.threadId)} onClose={() => setAnnotating(null)} onError={reportError} />
+      onAdjust={changed ? undefined : adjustOn(annotating.tabId)} adjustStatus={changed ? 'not shown: the page changed' : 'shown live'}
+      onHold={holdVisual} onSend={(id) => sendVisual(id, destination.threadId)} onClose={() => { const tabId = annotating.tabId; setAnnotating(null); void window.strata.clearPreviewOverrides(tabId).catch(() => undefined) }} onError={reportError} />
   })()
   const previewNode = previewShown ? (() => {
     const project = view.engine.projects.find((candidate) => candidate.id === previewShown)!
@@ -571,7 +588,7 @@ export function App({ createEditor }: AppProps) {
   const previewRailNode = previewShown ? <div data-pane="rightRail" style={{ width: panelSizes.rightRailWidth, flex: 'none', minWidth: 0, '--zoom': zoom.rightRail } as CSSProperties}><Boundary region="rightRail"><PreviewRail projectId={previewShown} engine={view.engine} tabs={previewTabs.filter((tab) => tab.projectId === previewShown)} serving={view.preview.serving} visualComments={view.engine.projects.find((candidate) => candidate.id === previewShown)?.visualComments ?? []} visualActions={visualActions} upperReviewHeight={panelSizes.upperReviewHeight} onHeight={(value, commit) => updatePanel('upperReviewHeight', value, commit)} onOpenConversation={(id) => { showCenterConversation(id); void perform(() => window.strata.openConversation(id)) }} onStop={(id) => void perform(() => window.strata.stopConversationTurn(id), 'Stop requested.')} /></Boundary></div> : null
   /** A held comment opens back into the session; anything sent opens its card. */
   const openVisual = (id: string) => { const comment = visualById(id); if (comment?.draft) { setVisualOpen(null); setVisualSession({ kind: 'comment', id }) } else setVisualOpen(id) }
-  const runVisual = { visualComments: activeThreadProject?.visualComments ?? [], onOpenVisual: openVisual, onMarkUpImage: markUpImage, consumedAttachmentIds: consumedStaged }
+  const runVisual = { visualComments: activeThreadProject?.visualComments ?? [], onOpenVisual: openVisual, onShowVisual: (id: string) => { const comment = visualById(id); if (comment) visualActions.onShowMe?.(comment) }, onMarkUpImage: markUpImage, consumedAttachmentIds: consumedStaged }
   /** Shows a thread in the center and keeps its tab listed until closed. */
   const showCenterConversation = (threadId: string) => {
     setDocumentPicker(null)

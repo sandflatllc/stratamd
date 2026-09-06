@@ -152,8 +152,25 @@ import { CURRENT_META_VERSION, DEFAULT_LOCK_TIMEOUT_MS, GhostStore, type Attachm
 import { DebouncedMirror, HashReconciler, WatchCoordinator, watchDirectory, type DirectorySubscription } from './watcher'
 import { T3EngineClient, type EngineReadClient } from './engine/client'
 import { PreviewHost } from './preview/host'
-import { visualSendRefusal, type VisualCommentRecord } from '../core/visual-comments'
+import { locateScript, scrollScript as pageScrollScript } from './preview/inspect'
+import { CLEAR_OVERRIDES_SCRIPT } from './preview/overrides'
+import { nativeImage } from 'electron'
+import { visualSendRefusal, type VisualCommentRecord, type VisualRevision } from '../core/visual-comments'
 import { visualImageUrl } from '../shared/visual-urls'
+
+/** A window of a PNG in page pixels, cut at the capture's own scale and clamped to it. */
+function cropPng(bytes: Uint8Array, window: { x: number; y: number; width: number; height: number }, scale: number, size: { width: number; height: number }): { bytes: Uint8Array; width: number; height: number } | null {
+  const x = Math.max(0, Math.min(size.width - 1, Math.round(window.x * scale)))
+  const y = Math.max(0, Math.min(size.height - 1, Math.round(window.y * scale)))
+  const width = Math.max(1, Math.min(size.width - x, Math.round(window.width * scale)))
+  const height = Math.max(1, Math.min(size.height - y, Math.round(window.height * scale)))
+  const image = nativeImage.createFromBuffer(Buffer.from(bytes))
+  if (image.isEmpty()) return null
+  const cropped = image.crop({ x, y, width, height })
+  if (cropped.isEmpty()) return null
+  const cropSize = cropped.getSize()
+  return { bytes: new Uint8Array(cropped.toPNG()), width: cropSize.width, height: cropSize.height }
+}
 
 /** The same page, ignoring the fragment: a hash change is not navigation away. */
 function samePage(current: string, original: string): boolean {
@@ -345,7 +362,7 @@ export class StrataApplication implements StrataApi {
     })
     this.#engine = options.engine ?? new T3EngineClient({
       dataDirectory: this.#store.dataDirectory, now: this.#now,
-      previewHost: { operations: this.#preview.operations, handle: (request) => this.#preview.handle(request), setRegistered: (registered) => this.#preview.setRegistered(registered), recheckVisual: (comment) => this.#recheckVisual(comment) },
+      previewHost: { operations: this.#preview.operations, handle: (request) => this.#preview.handle(request), setRegistered: (registered) => this.#preview.setRegistered(registered), recheckVisual: (comment) => this.#recheckVisual(comment), compareVisual: (comment, revision) => this.#compareVisual(comment, revision) },
       // Terminal launchers are scripts Strata writes on Linux (§5.13); macOS gets none.
       terminalShimDirectory: isDarwin() ? null : join(this.#store.dataDirectory, 'bin'),
       ...(options.notifications ? { isFocused: () => options.notifications!.isFocused(), notify: (notification) => options.notifications!.notify(notification) } : {}),
@@ -1000,6 +1017,64 @@ export class StrataApplication implements StrataApi {
     const firstCapture = comment.captures.find((capture) => capture.id === current?.marks[0]?.captureId) ?? comment.captures[0]
     const outlined = await this.#preview.show(tab.id, { viewport: anchor.viewport, scroll: firstCapture?.scroll ?? null, marks })
     return { shown: true, tabId: tab.id, outlined }
+  }
+
+  // ---- Comparisons and adjustments (docs/plans/open/visual-review, phase 4)
+
+  /** Adjustments: Strata's whole set of overrides goes onto the live page at once, and the result is captured as the requested appearance. */
+  async adjustPreview(tabId: string, targets: Parameters<StrataApi['adjustPreview']>[1]): Promise<VisualPageCapture & { applied: string[] }> {
+    const applied = await this.#preview.applyOverrides(tabId, targets.map((target) => ({ markId: target.markId, identity: { selector: target.identity.selector ?? null, testIds: target.identity.testIds ?? [], role: target.identity.role ?? null, name: target.identity.name ?? null }, declarations: target.declarations })))
+    const capture = await this.capturePreviewFrame(tabId)
+    return { ...capture, capture: { ...capture.capture, requested: true }, applied }
+  }
+
+  async clearPreviewOverrides(tabId: string): Promise<void> {
+    await this.#preview.clearOverrides(tabId)
+  }
+
+  /**
+   * Then / now: the original crop of the marked target beside Strata's own capture of the same target now, at the same
+   * size and scroll, with no override applied. The live tab serves when it still shows the page at that size; otherwise
+   * the page opens out of sight at the original size. When the target is not found, the views differ and the note says so.
+   */
+  async #compareVisual(comment: VisualCommentRecord, revision: VisualRevision): Promise<{ then: { bytes: Uint8Array; width: number; height: number }; now: { bytes: Uint8Array; width: number; height: number } | null; note: string | null } | null> {
+    if (comment.anchor.kind !== 'page' || !this.#engine.readVisualImage) return null
+    const anchor = comment.anchor
+    const mark = revision.marks.find((candidate) => candidate.kind === 'element' && candidate.identity) ?? revision.marks[0]
+    if (!mark) return null
+    const capture = comment.captures.find((candidate) => candidate.id === mark.captureId)
+    const original = capture ? await this.#engine.readVisualImage('evidence', capture.id) : null
+    if (!capture || !original) return null
+    const scale = capture.scale ?? 1
+    // The same window in both pictures: the mark with room around it, in page pixels, so movement stays visible.
+    const margin = 48
+    const window = { x: Math.max(0, mark.rect.x / scale - margin), y: Math.max(0, mark.rect.y / scale - margin), width: mark.rect.width / scale + margin * 2, height: mark.rect.height / scale + margin * 2 }
+    const then = cropPng(original.bytes, window, scale, { width: capture.width, height: capture.height })
+    if (!then) return null
+    const identity = mark.kind === 'element' && mark.identity ? { selector: mark.identity.selector ?? null, testIds: mark.identity.testIds ?? [], role: mark.identity.role ?? null, name: mark.identity.name ?? null } : null
+    const takeNow = async (contents: import('electron').WebContents): Promise<{ now: { bytes: Uint8Array; width: number; height: number } | null; note: string | null }> => {
+      await contents.executeJavaScript(CLEAR_OVERRIDES_SCRIPT, true).catch(() => undefined)
+      if (capture.scroll) await contents.executeJavaScript(pageScrollScript({ to: capture.scroll }), true).catch(() => undefined)
+      if (identity) {
+        const match = await contents.executeJavaScript(locateScript(identity), true).catch(() => null) as { matches: number } | null
+        if (!match || match.matches !== 1) return { now: null, note: `The views differ: ${mark.label} was not found on the page now.` }
+      }
+      const frame = await this.#preview.frameOf(contents)
+      const now = cropPng(frame.bytes, window, frame.scale, { width: frame.width, height: frame.height })
+      return now ? { now, note: null } : { now: null, note: 'The views differ: the page could not be captured now.' }
+    }
+    const tab = this.#preview.tab(anchor.instance)
+    let outcome: { now: { bytes: Uint8Array; width: number; height: number } | null; note: string | null }
+    const liveSize = tab && samePage(tab.url, anchor.url) ? await this.#preview.viewportOf(tab.id).catch(() => null) : null
+    if (tab && liveSize && liveSize.width === anchor.viewport.width && liveSize.height === anchor.viewport.height) {
+      outcome = await takeNow(this.#preview.contentsOf(tab.id))
+    } else {
+      const project = this.#engine.view().projects.find((candidate) => candidate.id === comment.projectId)
+      const workingFolder = anchor.workingFolder ?? project?.workspaceRoot
+      if (!workingFolder) return { then, now: null, note: 'The views differ: the page could not be opened.' }
+      outcome = await this.#preview.withScratchView({ workingFolder, url: anchor.url, viewport: anchor.viewport }, takeNow).catch((error: unknown) => ({ now: null, note: `The views differ: the page could not be opened (${error instanceof Error ? error.message : String(error)}).` }))
+    }
+    return { then, ...outcome }
   }
 
   /** The re-check before Send: the page must be the one the marks were made on, and every marked thing must still be there. */

@@ -52,6 +52,11 @@ export function VisualCommentCard({ comment, actions = {}, compact = false, chil
       {comment.summary && <div className="visual-meta">{comment.summary}</div>}
       {latest?.state === 'failed' && <p className="visual-error" role="alert">Send failed{latest.error ? `: ${latest.error}` : ''}</p>}
       {reply && !compact && <div className="visual-reply"><small>{reply.from}</small>{reply.text}</div>}
+      {latest?.comparison && !compact && <figure className="visual-compare" aria-label="Then and now">
+        <div><img src={latest.comparison.thenUrl} alt="" /><figcaption>then</figcaption></div>
+        <div>{latest.comparison.nowUrl ? <img src={latest.comparison.nowUrl} alt="" /> : <span className="visual-compare-missing">views differ</span>}<figcaption>now</figcaption></div>
+        {latest.comparison.note && <p className="visual-compare-note">{latest.comparison.note}</p>}
+      </figure>}
       {children}
       {!compact && <div className="visual-actions">
         {comment.status === 'held' && actions.onOpen && <button type="button" onClick={() => actions.onOpen!(comment)}>Open</button>}

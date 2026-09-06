@@ -128,6 +128,8 @@ interface ConversationProps {
   /** The project's visual comments (docs/plans/open/visual-review); held ones addressed to this thread ride its composer. */
   visualComments?: VisualCommentView[]
   onOpenVisual?(id: string): void
+  /** Show me under an agent reply that references a page comment (phase 3). */
+  onShowVisual?(id: string): void
   onMarkUpImage?(attachment: DraftAttachment): void
   consumedAttachmentIds?: readonly string[]
 }
@@ -189,7 +191,7 @@ function TurnChecklist({ items, onReply, onOpen, onAct, onDismiss }: { items: re
   </section>
 }
 
-export function Conversation({ visible = true, onDocumentContext, documentMeasure = 860, onDocumentMeasure, engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput, items = [], onReplyItem, onQueueReply, onDismissItem, onOpenItem, onActItem, onOpenDocument, visualComments = [], onOpenVisual, onMarkUpImage, consumedAttachmentIds }: ConversationProps) {
+export function Conversation({ visible = true, onDocumentContext, documentMeasure = 860, onDocumentMeasure, engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput, items = [], onReplyItem, onQueueReply, onDismissItem, onOpenItem, onActItem, onOpenDocument, visualComments = [], onOpenVisual, onShowVisual, onMarkUpImage, consumedAttachmentIds }: ConversationProps) {
   const selected = activeThread(engine)
   const [expandedWork, setExpandedWork] = useState<Record<string, boolean>>({})
   /** The owner's own turn disclosures. A navigation reveal is separate: it comes from the target and ends when the owner closes that turn. */
@@ -344,7 +346,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
               <small>{message.role === 'assistant' ? 'Agent' : message.role === 'user' ? 'You' : 'System'}{message.role === 'user' && <span className="conversation-chip">{message.attachmentCount > 0 ? `${message.attachmentCount} attached` : 'Message'}</span>}{message.role === 'assistant' && <button type="button" className="conversation-copy" aria-label="Copy assistant message" onClick={() => void navigator.clipboard.writeText(prose)}>Copy</button>}</small>
               <div className={longUserMessage && !messageExpanded ? 'conversation-user-collapsed' : undefined} data-annotatable={message.role === 'assistant' && !message.streaming || undefined} data-block-ids={blocks.map((block) => block.id).join(' ')}>{message.role === 'assistant' && !message.streaming ? <ConversationMessage message={message} comments={(thread.comments ?? []).filter(comment => comment.anchor.message === message.id)} pinned={workspace.selection?.message === message.id || workspace.discussion?.anchor.message === message.id} target={workspace.target} root={selected.root} folds={workspace.folds(message.id)} onFold={(heading, folded) => workspace.foldHeading(message.id, heading, folded)} onSelection={range => workspace.select(message.id, range)} onOpen={workspace.open} /> : <MessageMarkdown text={prose} />}</div>
               {longUserMessage && <button type="button" className="conversation-message-toggle" aria-expanded={messageExpanded} onClick={() => setExpandedMessages((value) => ({ ...value, [message.id]: !messageExpanded }))}>{messageExpanded ? 'Show less' : 'Show more'}</button>}
-              {message.role === 'assistant' && !message.streaming && (() => { const replies = message.visualReplies ?? []; return replies.length ? <div className="conversation-visual-replies">{replies.map((reply) => { const comment = visualById.get(reply.id); return <button type="button" key={`${reply.id}:${reply.revision ?? ''}`} className="conversation-visual-reply" data-ready={reply.ready || undefined} onClick={() => onOpenVisual?.(reply.id)}><span>Visual comment</span>{comment ? ` · ${comment.title}` : ''}<em>{comment && comment.status === 'ready' ? 'ready for review' : reply.ready ? 'marked ready' : 'answered'}</em></button> })}</div> : null })()}
+              {message.role === 'assistant' && !message.streaming && (() => { const replies = message.visualReplies ?? []; return replies.length ? <div className="conversation-visual-replies">{replies.map((reply) => { const comment = visualById.get(reply.id); const latest = comment?.revisions.at(-1); return <span className="conversation-visual-reply-row" key={`${reply.id}:${reply.revision ?? ''}`}><button type="button" className="conversation-visual-reply" data-ready={reply.ready || undefined} onClick={() => onOpenVisual?.(reply.id)}><span>Visual comment</span>{comment ? ` · ${comment.title}` : ''}<em>{comment && comment.status === 'ready' ? 'ready for review' : reply.ready ? 'marked ready' : 'answered'}</em></button>{comment?.anchor.kind === 'page' && onShowVisual && <button type="button" className="conversation-visual-action" onClick={() => onShowVisual(reply.id)}>Show me</button>}{latest?.comparison && onOpenVisual && <button type="button" className="conversation-visual-action" onClick={() => onOpenVisual(reply.id)}>Then / now</button>}</span> })}</div> : null })()}
               {message.id === lastAssistant && changedFiles.length > 0 && <ChangedFilesCard files={changedFiles} root={selected.root} {...(onOpenDocument ? { onOpen: onOpenDocument } : {})} />}
             </article></Fragment>
           })}

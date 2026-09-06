@@ -11,6 +11,7 @@ import { screenshotPlan } from './capture-budget'
 import { PreviewFailure, PreviewTabModel, partitionFor, type PersistedPreviewTab, type PreviewTabRecord } from './tabs'
 import { FOCUSED_EDITABLE_SCRIPT, findScript, focusScript, keyEvent, parseLocator, scrollScript, snapshotScript, waitConditionScript, type ParsedLocator } from './scripts'
 import { CLEAR_STRATA_SCRIPT, describeScript, locateScript, outlineScript, scrollScript as pageScrollScript, type PageDescription, type PageIdentity, type PageMatch, type PageRect } from './inspect'
+import { applyOverridesScript, CLEAR_OVERRIDES_SCRIPT, type OverrideTarget } from './overrides'
 
 /**
  * The preview host (docs/plans/open/visual-review, phase 2): main-process
@@ -511,6 +512,55 @@ export class PreviewHost {
 
   async scroll(id: string, move: { by: { x: number; y: number } } | { to: { x: number; y: number } }): Promise<{ x: number; y: number }> {
     return await this.query<{ x: number; y: number }>(id, pageScrollScript(move))
+  }
+
+  /** Adjustments: the whole set of Strata's overrides at once; returns the marks that were found and styled. */
+  async applyOverrides(id: string, targets: OverrideTarget[]): Promise<string[]> {
+    return await this.query<string[]>(id, applyOverridesScript(targets))
+  }
+
+  /** Removes only Strata's overrides; the page's own styles, live or not, are left as they are. */
+  async clearOverrides(id: string): Promise<void> {
+    await this.query(id, CLEAR_OVERRIDES_SCRIPT).catch(() => undefined)
+  }
+
+  /**
+   * A page opened out of sight at a given size, for a comparison when the original tab is gone or shows
+   * another size: no tab, no strip entry, gone again when the work is done. Storage is the project's.
+   */
+  async withScratchView<T>(input: { workingFolder: string; url: string; viewport: { width: number; height: number }; timeoutMs?: number }, work: (contents: WebContents) => Promise<T>): Promise<T> {
+    const partition = partitionFor(input.workingFolder)
+    this.#session(partition)
+    const view = new WebContentsView({ webPreferences: { partition, contextIsolation: true, sandbox: true, nodeIntegration: false, nodeIntegrationInWorker: false, nodeIntegrationInSubFrames: false, webviewTag: false, spellcheck: false } })
+    const contents = view.webContents
+    contents.setBackgroundThrottling(false)
+    contents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    contents.on('will-navigate', (event, url) => { if (!/^https?:/i.test(url)) event.preventDefault() })
+    const window = this.#window
+    try {
+      view.setBounds({ x: 0, y: 0, width: input.viewport.width, height: input.viewport.height })
+      view.setVisible(true)
+      if (window && !window.isDestroyed()) window.contentView.addChildView(view, 0)
+      await this.#load(contents, input.url, 'load', input.timeoutMs ?? DEFAULT_TIMEOUT_MS, () => undefined)
+      return await work(contents)
+    } finally {
+      if (window && !window.isDestroyed() && window.contentView.children.includes(view)) window.contentView.removeChildView(view)
+      if (!contents.isDestroyed()) contents.close()
+    }
+  }
+
+  /** A frame from any web contents, Strata's outline cleared first, with the page's own size and scroll. */
+  async frameOf(contents: WebContents): Promise<{ bytes: Uint8Array; width: number; height: number; cssWidth: number; cssHeight: number; scroll: { x: number; y: number }; scale: number }> {
+    await contents.executeJavaScript(CLEAR_STRATA_SCRIPT, true).catch(() => undefined)
+    const viewport = await contents.executeJavaScript('({ width: window.innerWidth, height: window.innerHeight, scroll: { x: Math.round(window.scrollX), y: Math.round(window.scrollY) }, deviceScale: window.devicePixelRatio || 1 })', true) as { width: number; height: number; scroll: { x: number; y: number }; deviceScale: number }
+    const image = await contents.capturePage()
+    const size = image.getSize()
+    return { bytes: new Uint8Array(image.toPNG()), width: size.width, height: size.height, cssWidth: viewport.width, cssHeight: viewport.height, scroll: viewport.scroll, scale: viewport.width > 0 && size.width > 0 ? size.width / viewport.width : viewport.deviceScale }
+  }
+
+  /** The web contents behind a tab, for a comparison run in place. */
+  contentsOf(id: string): WebContents {
+    return this.#contents(id)
   }
 
   /** Show me: the size and scroll the comment was made at, then an outline on each thing still found with confidence. */

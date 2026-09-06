@@ -50,6 +50,8 @@ export const IPC = {
   describePreview: 'strata:describe-preview',
   scrollPreview: 'strata:scroll-preview',
   showVisualComment: 'strata:show-visual-comment',
+  adjustPreview: 'strata:adjust-preview',
+  clearPreviewOverrides: 'strata:clear-preview-overrides',
   startConversationTurn: 'strata:start-conversation-turn',
   stageConversationAttachment: 'strata:stage-conversation-attachment',
   discardConversationAttachment: 'strata:discard-conversation-attachment',

@@ -72,6 +72,8 @@ export interface VisualCapture {
   scroll?: VisualPoint
   /** Capture pixels per page pixel; absent means one. */
   scale?: number
+  /** The requested appearance: the page with the owner's adjustments applied, a reference beside the marked captures. */
+  requested?: boolean
   /** Evidence id of the same capture with the marks drawn on it; refreshed on every Hold. */
   markedId?: string
   takenAt: number
@@ -302,7 +304,7 @@ export interface VisualBrief {
   text: string
   place: string
   anchor: VisualAnchor
-  captures: Array<{ name: string; width: number; height: number; scroll?: VisualPoint }>
+  captures: Array<{ name: string; width: number; height: number; scroll?: VisualPoint; requested?: boolean }>
   marks: Array<{ id: string; label: string; kind: VisualMark['kind']; capture: string; rect: VisualRect; found: boolean | null } & VisualMarkIdentity>
   strokes: Array<{ tool: VisualStroke['tool']; capture: string; from: VisualPoint; to: VisualPoint }>
   adjustments: Array<{ mark: string; property: string; value: string }>
@@ -313,7 +315,7 @@ export function visualBrief(comment: Pick<VisualCommentRecord, 'id' | 'anchor' |
     const capture = comment.captures.find((candidate) => candidate.id === captureId)
     const name = names.get(captureId)
     if (!capture || !name) return []
-    return [{ name, width: capture.width, height: capture.height, ...(capture.scroll ? { scroll: capture.scroll } : {}) }]
+    return [{ name, width: capture.width, height: capture.height, ...(capture.scroll ? { scroll: capture.scroll } : {}), ...(capture.requested ? { requested: true } : {}) }]
   })
   const nameOf = (captureId: string) => names.get(captureId) ?? captureId
   return {
@@ -380,7 +382,7 @@ export function visualCommentView(
     title: current ? visualTitle(current) : 'Visual comment',
     summary: current ? visualSummary(current) : '',
     thumbnail: thumbnailCapture ? options.captureUrl(thumbnailCapture.markedId ?? thumbnailCapture.id) : null,
-    captures: comment.captures.map((capture) => ({ id: capture.id, url: options.captureUrl(capture.id), width: capture.width, height: capture.height, ...(capture.scroll ? { scroll: capture.scroll } : {}), ...(capture.scale ? { scale: capture.scale } : {}) })),
+    captures: comment.captures.map((capture) => ({ id: capture.id, url: options.captureUrl(capture.id), width: capture.width, height: capture.height, ...(capture.scroll ? { scroll: capture.scroll } : {}), ...(capture.scale ? { scale: capture.scale } : {}), ...(capture.requested ? { requested: true } : {}) })),
     ...(comment.draft ? { draft: { text: comment.draft.text, marks: comment.draft.marks.map(visualMarkView), strokes: comment.draft.strokes.map(visualStrokeView), adjustments: comment.draft.adjustments.map(visualAdjustmentView), destination: destination(comment.draft.destination), updatedAt: comment.draft.updatedAt } } : {}),
     revisions,
     createdAt: comment.createdAt,

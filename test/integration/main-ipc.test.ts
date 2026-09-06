@@ -76,6 +76,8 @@ function fakeApi(): StrataApi {
     describePreview: vi.fn(async () => null),
     scrollPreview: vi.fn(async () => ({ x: 0, y: 0 })),
     showVisualComment: vi.fn(async () => ({ shown: false as const, reason: 'no preview', url: null })),
+    adjustPreview: vi.fn(async () => { throw new Error('no preview') }),
+    clearPreviewOverrides: vi.fn(async () => undefined),
     setTerminalDefault: vi.fn(async () => undefined),
     refreshAccounts: vi.fn(async () => undefined),
     startThreadFromDocument: vi.fn(async () => 'thread-new'),

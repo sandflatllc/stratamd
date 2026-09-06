@@ -120,6 +120,8 @@ const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyn
   describePreview: (tabId, target) => invoke(IPC.describePreview, tabId, target),
   scrollPreview: (tabId, move) => invoke(IPC.scrollPreview, tabId, move),
   showVisualComment: (id) => invoke(IPC.showVisualComment, id),
+  adjustPreview: (tabId, targets) => invoke(IPC.adjustPreview, tabId, targets),
+  clearPreviewOverrides: (tabId) => invoke(IPC.clearPreviewOverrides, tabId),
   startConversationTurn: (threadId, input) => invoke<void>(IPC.startConversationTurn, threadId, input),
   stageConversationAttachment: (input) => invoke<{ id: string; sizeBytes: number }>(IPC.stageConversationAttachment, input),
   discardConversationAttachment: (id) => invoke<void>(IPC.discardConversationAttachment, id),

@@ -384,6 +384,8 @@ export interface VisualCaptureView {
   scroll?: VisualPointView
   /** Capture pixels per page pixel; absent means one. */
   scale?: number
+  /** The page with the owner's adjustments applied: the requested appearance, a reference beside the marked captures. */
+  requested?: boolean
 }
 
 /** What Annotate on a page captured: the frame in the evidence store and the page it came from. */
@@ -480,7 +482,7 @@ export interface HoldVisualCommentInput {
   /** A staged composer image to open the comment over; its bytes move into the evidence store. */
   source?: { staged: string; name: string; width: number; height: number }
   /** A page capture to open the comment over: the frames Annotate stored and the page they came from. */
-  page?: { tabId: string; captures: Array<{ id: string; width: number; height: number; scroll: VisualPointView; scale: number }>; url: string; title: string; viewport: { width: number; height: number }; preset: string | null; deviceScale: number }
+  page?: { tabId: string; captures: Array<{ id: string; width: number; height: number; scroll: VisualPointView; scale: number; requested?: boolean }>; url: string; title: string; viewport: { width: number; height: number }; preset: string | null; deviceScale: number }
   text: string
   marks: VisualMarkView[]
   strokes: VisualStrokeView[]
@@ -489,7 +491,7 @@ export interface HoldVisualCommentInput {
   marked: Array<{ captureId: string; bytes: Uint8Array }>
 }
 
-export type VisualCommentAction = 'accept' | 'reopen' | 'discard' | 'retry'
+export type VisualCommentAction = 'accept' | 'reopen' | 'discard' | 'retry' | 'compare'
 
 /** A usage window the provider reports or Strata last measured (§5.13). */
 export interface UsageWindowView {
@@ -1048,6 +1050,9 @@ export interface StrataApi {
   describePreview(tabId: string, target: { point: VisualPointView } | { rect: VisualRectView }): Promise<VisualPageProposal | null>
   scrollPreview(tabId: string, move: { by: VisualPointView } | { to: VisualPointView }): Promise<VisualPointView>
   showVisualComment(id: string): Promise<VisualShowResult>
+  /** Adjustments (phase 4): apply the whole set of Strata's overrides to the live page and capture the result; remove only those overrides. */
+  adjustPreview(tabId: string, targets: Array<{ markId: string; identity: VisualMarkIdentityView; declarations: Record<string, string> }>): Promise<VisualPageCapture & { applied: string[] }>
+  clearPreviewOverrides(tabId: string): Promise<void>
   stopConversationTurn(threadId: string): Promise<void>
   answerEngineApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
   answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>

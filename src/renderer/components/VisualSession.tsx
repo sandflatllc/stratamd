@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import type { HoldVisualCommentInput, VisualAdjustmentView, VisualCaptureView, VisualDestinationView, VisualMarkView, VisualPointView, VisualRectView, VisualStrokeView } from '../../shared/contracts'
 import { nextRegionLabel } from '../../core/visual-comments'
+import { VisualAdjustments } from './VisualAdjustments'
 import { claimEscape, isEscapeClaimed } from '../escape'
 import { arrowHeadPath, clampRect, CLICK_MARK_SIZE, DRAG_THRESHOLD, loadImage, rectContains, rectFromPoints, renderMarkedCapture, strokeExtent, strokeHit, strokePath } from '../visualImage'
 
@@ -34,8 +35,13 @@ export interface VisualSessionProps {
   initial?: { text: string; marks: VisualMarkView[]; strokes: VisualStrokeView[]; adjustments: VisualAdjustmentView[] }
   /** Asks the live page what is at a point or in a box; absent for an image, where every mark is a region. */
   describe?: ((target: { point: VisualPointView } | { rect: VisualRectView }) => Promise<VisualProposal | null>) | undefined
-  /** Adjustments on the selected mark (phase 4); absent until a page backs them. */
-  adjustments?: React.ReactNode
+  /**
+   * Adjustments on the selected mark (phase 4): applies the whole set to the live page and returns the re-captured
+   * frame, the requested appearance, or null once nothing is adjusted. Absent when no live page backs the session.
+   */
+  onAdjust?: ((adjustments: VisualAdjustmentView[], marks: VisualMarkView[]) => Promise<VisualCaptureView | null>) | undefined
+  /** Whether the live page shows the adjustments right now, in plain words. */
+  adjustStatus?: string | undefined
   /** A plain notice when the live page changed under the session. */
   notice?: string | null
   onHold(input: HoldVisualCommentInput): Promise<string>
@@ -50,14 +56,18 @@ function inTextField(target: EventTarget | null): boolean {
   return target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement || (target instanceof HTMLElement && target.isContentEditable)
 }
 
-export function VisualSession({ capture: opened, captures: all, commentId, source, page, onScroll, projectId, destination, place, initial, describe, adjustments, notice, onHold, onSend, onClose, onError }: VisualSessionProps) {
+export function VisualSession({ capture: opened, captures: all, commentId, source, page, onScroll, projectId, destination, place, initial, describe, onAdjust, adjustStatus, notice, onHold, onSend, onClose, onError }: VisualSessionProps) {
   const captures = all && all.length ? all : [opened]
   const capture = captures[captures.length - 1]!
   const [tool, setTool] = useState<VisualTool>('mark')
   const [text, setText] = useState(initial?.text ?? '')
   const [marks, setMarks] = useState<VisualMarkView[]>(initial?.marks ?? [])
   const [strokes, setStrokes] = useState<VisualStrokeView[]>(initial?.strokes ?? [])
-  const [adjusted] = useState<VisualAdjustmentView[]>(initial?.adjustments ?? [])
+  const [adjusted, setAdjusted] = useState<VisualAdjustmentView[]>(initial?.adjustments ?? [])
+  const [history, setHistory] = useState<VisualAdjustmentView[][]>([])
+  /** The page with the adjustments applied, shown in place of the clean capture while any adjustment stands. */
+  const [requested, setRequested] = useState<VisualCaptureView | null>(null)
+  const [adjusting, setAdjusting] = useState(false)
   const [selectedMark, setSelectedMark] = useState<string | null>(null)
   const [drag, setDrag] = useState<{ from: VisualPointView; to: VisualPointView } | null>(null)
   const [live, setLive] = useState<VisualStrokeView | null>(null)
@@ -68,6 +78,8 @@ export function VisualSession({ capture: opened, captures: all, commentId, sourc
   const textarea = useRef<HTMLTextAreaElement>(null)
   const image = useRef<HTMLImageElement | null>(null)
   const pointerStart = useRef<VisualPointView | null>(null)
+  /** The drag in progress, kept beside the state so pointer up reads it even when no render has happened since pointer down. */
+  const dragRef = useRef<{ from: VisualPointView; to: VisualPointView } | null>(null)
   const wheel = useRef<{ x: number; y: number; timer: number }>({ x: 0, y: 0, timer: 0 })
   const [scrolling, setScrolling] = useState(false)
   const latest = useRef({ text, marks, strokes, busy })
@@ -132,7 +144,7 @@ export function VisualSession({ capture: opened, captures: all, commentId, sourc
         projectId,
         threadId: destination.threadId,
         ...(source ? { source: { staged: source.staged, name: source.name, width: capture.width, height: capture.height } } : {}),
-        ...(page ? { page } : {}),
+        ...(page ? { page: { ...page, captures: [...page.captures, ...(requested && adjusted.length ? [{ id: requested.id, width: requested.width, height: requested.height, scroll: requested.scroll ?? { x: 0, y: 0 }, scale: requested.scale ?? 1, requested: true }] : [])] } } : {}),
         text: latest.current.text,
         marks: latest.current.marks,
         strokes: latest.current.strokes,
@@ -144,7 +156,27 @@ export function VisualSession({ capture: opened, captures: all, commentId, sourc
       onError(error instanceof Error ? error.message : 'The comment could not be held')
       return null
     } finally { setBusy(false) }
-  }, [adjusted, capture, captures, commentId, destination.threadId, onError, onHold, page, projectId, source])
+  }, [adjusted, capture, captures, commentId, destination.threadId, onError, onHold, page, projectId, requested, source])
+
+  // Each adjustment step goes to the live page and comes back as a fresh frame; Undo and Reset walk the same path.
+  const applyAdjustments = async (next: VisualAdjustmentView[], remember = true) => {
+    if (!onAdjust || adjusting) return
+    setAdjusting(true)
+    try {
+      const frame = await onAdjust(next, latest.current.marks)
+      if (remember) setHistory((current) => [...current, adjusted])
+      setAdjusted(next)
+      setRequested(next.length ? frame : null)
+    } catch (error) { onError(error instanceof Error ? error.message : 'The adjustment could not be shown') }
+    finally { setAdjusting(false) }
+  }
+  const undoAdjustment = async () => {
+    const previous = history.at(-1)
+    if (!previous) return
+    setHistory((current) => current.slice(0, -1))
+    await applyAdjustments(previous, false)
+  }
+  const resetAdjustments = async () => { setHistory([]); await applyAdjustments([], false) }
 
   const holdAndClose = useCallback(async () => {
     const id = await hold()
@@ -216,14 +248,14 @@ export function VisualSession({ capture: opened, captures: all, commentId, sourc
       if (mark) setMarks((current) => current.filter((candidate) => candidate.id !== mark.id))
       return
     }
-    if (tool === 'mark') { setDrag({ from: point, to: point }); return }
+    if (tool === 'mark') { dragRef.current = { from: point, to: point }; setDrag(dragRef.current); return }
     setLive({ id: `s_${crypto.randomUUID().slice(0, 8)}`, tool: tool === 'draw' ? 'draw' : 'arrow', captureId: capture.id, points: [point] })
   }
 
   const move = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!pointerStart.current) return
     const point = pointFor(event)
-    if (tool === 'mark') { setDrag((current) => current ? { ...current, to: point } : current); return }
+    if (tool === 'mark') { if (dragRef.current) dragRef.current = { ...dragRef.current, to: point }; setDrag(dragRef.current); return }
     setLive((current) => {
       if (!current) return current
       const points = current.tool === 'draw' ? [...current.points, point] : [current.points[0]!, point]
@@ -234,8 +266,10 @@ export function VisualSession({ capture: opened, captures: all, commentId, sourc
   const up = () => {
     const start = pointerStart.current
     pointerStart.current = null
-    if (tool === 'mark' && start && drag) {
-      const box = rectFromPoints(drag.from, drag.to)
+    const dragging = dragRef.current
+    if (tool === 'mark' && start && dragging) {
+      const box = rectFromPoints(dragging.from, dragging.to)
+      dragRef.current = null
       setDrag(null)
       if (box.width > DRAG_THRESHOLD && box.height > DRAG_THRESHOLD) void propose({ rect: box })
       else void propose({ point: start })
@@ -266,7 +300,7 @@ export function VisualSession({ capture: opened, captures: all, commentId, sourc
       </div>
       <div className="visual-stage" ref={stage} onWheel={onWheel} data-scrolling={scrolling || undefined}>
         <div className="visual-surface" ref={surface} style={{ width: displayWidth, height: displayHeight }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
-          <img src={capture.url} alt="" width={displayWidth} height={displayHeight} draggable={false} />
+          <img src={requested && adjusted.length && requested.width === capture.width && requested.height === capture.height ? requested.url : capture.url} alt="" width={displayWidth} height={displayHeight} draggable={false} data-requested={requested && adjusted.length ? '' : undefined} />
           <svg className="visual-ink" viewBox={`0 0 ${capture.width} ${capture.height}`} width={displayWidth} height={displayHeight} aria-hidden="true">
             {[...shownStrokes, ...(live ? [live] : [])].map((stroke) => <g key={stroke.id} className="visual-stroke" data-tool={stroke.tool}>
               <path d={strokePath(stroke)} vectorEffect="non-scaling-stroke" />
@@ -289,7 +323,8 @@ export function VisualSession({ capture: opened, captures: all, commentId, sourc
             {chip.removable && <button type="button" aria-label={`Remove ${chip.label}`} onClick={(event) => { event.stopPropagation(); removeMark(chip.id) }}>×</button>}
           </span>)}
         </div>}
-        {adjustments}
+        {onAdjust && (() => { const mark = marks.find((candidate) => candidate.id === selectedMark && candidate.kind === 'element' && candidate.identity); return mark ? <VisualAdjustments mark={mark} adjustments={adjusted} status={adjustStatus ?? 'shown live'} busy={busy || adjusting} canUndo={history.length > 0} onChange={(next) => void applyAdjustments(next)} onUndo={() => void undoAdjustment()} onReset={() => void resetAdjustments()} /> : null })()}
+        {!onAdjust && adjusted.length > 0 && <p className="visual-adjustment-summary">{adjusted.map((adjustment) => adjustment.label).join(' · ')}</p>}
         <footer>
           <span className="visual-context">{place} · to <b>{destination.threadTitle}</b></span>
           <button type="button" className="quiet-button" disabled={busy} onClick={() => void holdAndClose()}>Hold</button>
