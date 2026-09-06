@@ -63,6 +63,8 @@ interface RightRailProps {
   /** The document's project's visual comments (docs/plans/open/visual-review), listed under Items with their own filter. */
   visualComments?: VisualCommentView[]
   visualActions?: VisualCardActions
+  /** Threads whose browser requests Strata is serving right now; their rows carry a badge. */
+  serving?: string[]
 }
 
 function colorOf(author: AgentIdentity | 'user' | null): string {
@@ -388,7 +390,7 @@ function ItemsPanel(props: RightRailProps & { pinChanges: boolean; onPinChanges(
   )
 }
 
-function AttachmentsPanel({ document, now, onStop, onOpenConversation, onSetLead, onDetach }: Pick<RightRailProps, 'document' | 'onStop' | 'onOpenConversation' | 'onSetLead' | 'onDetach'> & { now: number }) {
+function AttachmentsPanel({ document, now, serving = [], onStop, onOpenConversation, onSetLead, onDetach }: Pick<RightRailProps, 'document' | 'onStop' | 'onOpenConversation' | 'onSetLead' | 'onDetach' | 'serving'> & { now: number }) {
   return (
     <section className="island rail-panel agents-panel" aria-labelledby="attached-heading">
       <AmbientDecor variant="agents" />
@@ -411,6 +413,7 @@ function AttachmentsPanel({ document, now, onStop, onOpenConversation, onSetLead
               <span><i className={`state-dot state-${attachment.state}`} />{attachmentStatusLine(attachment)}</span>
             </span>
             <span className="agent-actions">
+              {serving.includes(attachment.agent.id) && <span className="agent-browser-badge" title="Strata is serving this thread's browser requests">browser</span>}
               <button
                 type="button"
                 className={`agent-icon crown${leads ? ' holds-lead' : ''}`}
@@ -473,7 +476,7 @@ export function RightRail(props: RightRailProps) {
         </section>
       </section>
       <Resizer axis="horizontal" label="Resize review window" value={props.upperReviewHeight} min={180} max={954} onChange={(value) => props.onHeight(value, false)} onCommit={(value) => props.onHeight(value, true)} />
-      <AttachmentsPanel document={props.document} now={now} onStop={props.onStop} onOpenConversation={props.onOpenConversation} onSetLead={props.onSetLead} onDetach={props.onDetach} />
+      <AttachmentsPanel document={props.document} now={now} serving={props.serving ?? []} onStop={props.onStop} onOpenConversation={props.onOpenConversation} onSetLead={props.onSetLead} onDetach={props.onDetach} />
       <div className="save-state-footer">{saveStateSentence(props.document.dirty, props.document.lastSavedAt, now)}</div>
     </aside>
   )

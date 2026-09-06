@@ -109,6 +109,13 @@ const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyn
   dismissItem: (threadId, itemId) => invoke<void>(IPC.dismissItem, threadId, itemId),
   holdVisualComment: (input) => invoke<string>(IPC.holdVisualComment, input),
   actVisualComment: (id, action) => invoke<void>(IPC.actVisualComment, id, action),
+  openPreviewTab: (input) => invoke<string>(IPC.openPreviewTab, input),
+  closePreviewTab: (tabId) => invoke<void>(IPC.closePreviewTab, tabId),
+  navigatePreview: (tabId, navigation) => invoke<void>(IPC.navigatePreview, tabId, navigation),
+  resizePreview: (tabId, viewport) => invoke<void>(IPC.resizePreview, tabId, viewport),
+  resumePreviewTab: (tabId) => invoke<void>(IPC.resumePreviewTab, tabId),
+  reportPreviewBounds: (report) => invoke<void>(IPC.reportPreviewBounds, report),
+  reportOverlay: (open) => invoke<void>(IPC.reportOverlay, open),
   startConversationTurn: (threadId, input) => invoke<void>(IPC.startConversationTurn, threadId, input),
   stageConversationAttachment: (input) => invoke<{ id: string; sizeBytes: number }>(IPC.stageConversationAttachment, input),
   discardConversationAttachment: (id) => invoke<void>(IPC.discardConversationAttachment, id),
@@ -207,6 +214,11 @@ if (editorCacheOverride !== undefined) {
 const parseVerify = process.env.STRATAMD_PARSE_VERIFY
 if (parseVerify !== undefined) {
   contextBridge.exposeInMainWorld('strataParseVerify', parseVerify)
+}
+
+// Preview probe for the e2e browser tests (docs/plans/open/visual-review, phase 2): a real input into a preview tab.
+if (process.env.STRATAMD_PREVIEW_PROBE === '1') {
+  contextBridge.exposeInMainWorld('strataPreviewProbe', Object.freeze({ humanInput: (tabId: string, point: { x: number; y: number }) => invoke<void>(IPC.previewProbe, tabId, point) }))
 }
 
 // Crash probe for the e2e containment tests (docs/plans/completed/crash-hardening-plan.md §4).

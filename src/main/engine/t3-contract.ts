@@ -24,6 +24,8 @@ export const T3_RPC = {
   cloneRepository: 'sourceControl.cloneRepository',
   readSettings: 'server.getSettings',
   createAttachmentUploadUrl: 'attachments.createUploadUrl',
+  previewAutomationConnect: 'previewAutomation.connect',
+  previewAutomationRespond: 'previewAutomation.respond',
 } as const
 
 const id = z.string().trim().min(1)

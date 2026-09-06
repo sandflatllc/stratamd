@@ -19,6 +19,7 @@ const idSchema = z.string().min(1).max(512)
 const textSchema = z.string().max(64 * 1_024)
 const stagedAttachmentIdSchema = z.string().refine(isStagedAttachmentId, 'Not a staged attachment id')
 const visualCommentIdSchema = z.string().max(64).refine(isVisualCommentId, 'Not a visual comment id')
+const previewTabIdSchema = z.string().regex(/^tab_[0-9a-f-]{36}$/u)
 const visualPointSchema = z.object({ x: z.number().finite(), y: z.number().finite() }).strict()
 const visualRectSchema = z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite().nonnegative(), height: z.number().finite().nonnegative() }).strict()
 const visualMarkSchema = z.object({ id: idSchema, kind: z.enum(['element', 'region']), label: z.string().max(512), captureId: idSchema, rect: visualRectSchema, found: z.boolean().nullable() }).strict()
@@ -207,6 +208,14 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.dismissItem]: z.tuple([idSchema, idSchema]),
   [IPC.holdVisualComment]: z.tuple([holdVisualCommentSchema]),
   [IPC.actVisualComment]: z.tuple([visualCommentIdSchema, z.enum(['accept', 'reopen', 'discard', 'retry'])]),
+  [IPC.openPreviewTab]: z.tuple([z.object({ projectId: idSchema, url: z.string().max(2_048).optional() }).strict()]),
+  [IPC.closePreviewTab]: z.tuple([previewTabIdSchema]),
+  [IPC.navigatePreview]: z.tuple([previewTabIdSchema, z.union([z.object({ url: z.string().max(2_048) }).strict(), z.object({ action: z.enum(['back', 'forward', 'reload', 'stop']) }).strict()])]),
+  [IPC.resizePreview]: z.tuple([previewTabIdSchema, z.discriminatedUnion('mode', [z.object({ mode: z.literal('fill') }).strict(), z.object({ mode: z.literal('preset'), preset: z.string().max(64) }).strict(), z.object({ mode: z.literal('freeform'), width: z.number().int().positive().max(8_192), height: z.number().int().positive().max(8_192) }).strict()])]),
+  [IPC.resumePreviewTab]: z.tuple([previewTabIdSchema]),
+  [IPC.reportPreviewBounds]: z.tuple([z.object({ tabId: previewTabIdSchema.nullable(), bounds: z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite().nonnegative(), height: z.number().finite().nonnegative() }).strict().nullable() }).strict()]),
+  [IPC.reportOverlay]: z.tuple([z.boolean()]),
+  [IPC.previewProbe]: z.tuple([previewTabIdSchema, z.object({ x: z.number().finite(), y: z.number().finite() }).strict()]),
   [IPC.startConversationTurn]: z.tuple([idSchema, conversationTurnSchema]),
   [IPC.stageConversationAttachment]: z.tuple([stageAttachmentSchema]),
   [IPC.discardConversationAttachment]: z.tuple([stagedAttachmentIdSchema]),
@@ -424,6 +433,15 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.dismissItem]: (threadId: string, itemId: string) => options.api.dismissItem(threadId, itemId),
     [IPC.holdVisualComment]: (input: Parameters<StrataApi['holdVisualComment']>[0]) => options.api.holdVisualComment(input),
     [IPC.actVisualComment]: (id: string, action: Parameters<StrataApi['actVisualComment']>[1]) => options.api.actVisualComment(id, action),
+    [IPC.openPreviewTab]: (input: Parameters<StrataApi['openPreviewTab']>[0]) => options.api.openPreviewTab(input),
+    [IPC.closePreviewTab]: (tabId: string) => options.api.closePreviewTab(tabId),
+    [IPC.navigatePreview]: (tabId: string, navigation: Parameters<StrataApi['navigatePreview']>[1]) => options.api.navigatePreview(tabId, navigation),
+    [IPC.resizePreview]: (tabId: string, viewport: Parameters<StrataApi['resizePreview']>[1]) => options.api.resizePreview(tabId, viewport),
+    [IPC.resumePreviewTab]: (tabId: string) => options.api.resumePreviewTab(tabId),
+    [IPC.reportPreviewBounds]: (report: Parameters<StrataApi['reportPreviewBounds']>[0]) => options.api.reportPreviewBounds(report),
+    [IPC.reportOverlay]: (open: boolean) => options.api.reportOverlay(open),
+    // The probe answers only when the harness asked for it; otherwise the channel refuses.
+    [IPC.previewProbe]: (tabId: string, point: { x: number; y: number }) => { if (process.env.STRATAMD_PREVIEW_PROBE !== '1') throw new Error('The preview probe is off'); const probe = (options.api as { previewHumanInput?(tabId: string, point: { x: number; y: number }): void }).previewHumanInput; if (!probe) throw new Error('No preview host'); probe.call(options.api, tabId, point) },
     [IPC.startConversationTurn]: (threadId: string, input: Parameters<StrataApi['startConversationTurn']>[1]) => options.api.startConversationTurn(threadId, input),
     [IPC.stageConversationAttachment]: (input: Parameters<StrataApi['stageConversationAttachment']>[0]) => options.api.stageConversationAttachment(input),
     [IPC.discardConversationAttachment]: (id: string) => options.api.discardConversationAttachment(id),

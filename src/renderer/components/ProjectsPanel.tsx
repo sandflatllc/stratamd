@@ -15,6 +15,8 @@ interface ProjectsPanelProps {
   onUpdate(threadId: string, change: EngineThreadChange): void
   onOpenEngine?(): void
   onOpenAccounts?(): void
+  /** Opens the project's preview window (docs/plans/open/visual-review, phase 2). */
+  onOpenPreview?(projectId: string): void
   attachedThreadIds?: ReadonlySet<string>
   now?: () => number
 }
@@ -143,7 +145,7 @@ function Shelf({ label, entries, activeThreadId, expanded, visibleCount, nowMs, 
   </section>
 }
 
-export function ProjectsPanel({ engine, onOpenThread, onBeginRename, onReconnect, onNewThread, onAddProject, onAction, onUpdate, onOpenEngine, attachedThreadIds = new Set(), now = Date.now }: ProjectsPanelProps) {
+export function ProjectsPanel({ engine, onOpenThread, onBeginRename, onReconnect, onNewThread, onAddProject, onAction, onUpdate, onOpenEngine, onOpenPreview, attachedThreadIds = new Set(), now = Date.now }: ProjectsPanelProps) {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<ProjectThreadSort>('recent')
   const [preferences, setPreferences] = useState<FolderPreferences>(readPreferences)
@@ -253,7 +255,7 @@ export function ProjectsPanel({ engine, onOpenThread, onBeginRename, onReconnect
         const state = preference(folder.project.id)
         const id = folder.project.id
         return <section className="project-group" key={id} data-project={id} data-open={state.open} data-dragging={drag?.id === id || undefined} data-drop={drag && drag.target === id && drag.id !== id ? drag.edge : undefined}>
-          <div className="project-folder-row" onPointerDown={(event) => pressFolder(event, id)} onPointerMove={moveFolder} onPointerUp={(event) => releaseFolder(event)} onPointerCancel={(event) => releaseFolder(event, true)} onClickCapture={guardFolderClick}><button type="button" className="project-folder-header" aria-expanded={state.open} aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" title={folder.project.workspaceRoot} onKeyDown={(event) => nudgeFolder(event, id)} onClick={() => updatePreference(id, { open: !state.open })}><i className="project-folder-chevron" aria-hidden="true">›</i><span className="project-folder-icon" aria-hidden="true">▱</span><strong>{folder.project.title}</strong>{folder.state && <span className="project-folder-state" data-state={folder.state} role="img" aria-label={FOLDER_STATE_LABEL[folder.state]} />}</button><button type="button" className="project-new-thread" aria-label={`New thread in ${folder.project.title}`} title={`New thread in ${folder.project.title}`} onClick={() => onNewThread(folder.project.id)}>＋</button></div>
+          <div className="project-folder-row" onPointerDown={(event) => pressFolder(event, id)} onPointerMove={moveFolder} onPointerUp={(event) => releaseFolder(event)} onPointerCancel={(event) => releaseFolder(event, true)} onClickCapture={guardFolderClick}><button type="button" className="project-folder-header" aria-expanded={state.open} aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" title={folder.project.workspaceRoot} onKeyDown={(event) => nudgeFolder(event, id)} onClick={() => updatePreference(id, { open: !state.open })}><i className="project-folder-chevron" aria-hidden="true">›</i><span className="project-folder-icon" aria-hidden="true">▱</span><strong>{folder.project.title}</strong>{folder.state && <span className="project-folder-state" data-state={folder.state} role="img" aria-label={FOLDER_STATE_LABEL[folder.state]} />}</button>{onOpenPreview && <button type="button" className="project-preview" aria-label={`Preview ${folder.project.title}`} title={`Open a preview of ${folder.project.title}`} onClick={() => onOpenPreview(folder.project.id)}>◎</button>}<button type="button" className="project-new-thread" aria-label={`New thread in ${folder.project.title}`} title={`New thread in ${folder.project.title}`} onClick={() => onNewThread(folder.project.id)}>＋</button></div>
           {state.open && <>{folder.visibleThreads.map((thread) => <ThreadRow key={thread.id} thread={thread} active={thread.id === engine.activeThreadId} attached={attachedThreadIds.has(thread.id)} nowMs={nowMs} renaming={renamingId === thread.id} onRename={() => beginRename(thread.id)} onDoneRenaming={() => setRenamingId(null)} onOpen={() => onOpenThread(thread.id)} onMenu={(event) => openMenu(event, thread)} onUpdate={(change) => onUpdate(thread.id, change)} onAction={(action) => onAction(thread.id, action)} />)}{folder.hasOverflow && folder.visibleThreads.length < folder.threads.length && <button type="button" className="project-show-more" onClick={() => updatePreference(folder.project.id, { previewCount: state.previewCount + 5 })}>Show more ({folder.threads.length - folder.visibleThreads.length})</button>}{folder.threads.length === 0 && <div className="empty-subtle">No active threads.</div>}</>}
         </section>
       })}

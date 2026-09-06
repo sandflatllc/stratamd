@@ -12,19 +12,19 @@ afterEach(() => vi.unstubAllGlobals())
 it('defaults to centered conversations with no state or invalid state', () => {
   for (const value of [null, '{', '{}', '{"conversationCentered":false,"conversationTabs":[1]}']) {
     setup(value)
-    expect(readWorkspace()).toEqual({ conversationCentered: true, conversationTabs: [] })
+    expect(readWorkspace()).toEqual({ conversationCentered: true, conversationTabs: [], previews: [], previewCentered: null })
   }
 })
 
 it('remembers either placement and the open tabs, including an empty center', () => {
   setup()
   for (const conversationCentered of [false, true]) {
-    const state = { conversationCentered, conversationTabs: ['t2', 't1'] }
+    const state = { conversationCentered, conversationTabs: ['t2', 't1'], previews: ['p1'], previewCentered: 'p1' }
     writeWorkspace(state)
     expect(readWorkspace()).toEqual(state)
   }
-  writeWorkspace({ conversationCentered: true, conversationTabs: [] })
-  expect(readWorkspace()).toEqual({ conversationCentered: true, conversationTabs: [] })
+  writeWorkspace({ conversationCentered: true, conversationTabs: [], previews: [], previewCentered: null })
+  expect(readWorkspace()).toEqual({ conversationCentered: true, conversationTabs: [], previews: [], previewCentered: null })
 })
 
 it('consumes an explicit file launch without overriding later layout changes on reload', () => {
@@ -32,6 +32,6 @@ it('consumes an explicit file launch without overriding later layout changes on 
   expect(readWorkspace().conversationCentered).toBe(false)
   expect(readWorkspace().conversationCentered).toBe(false)
   consumeDocumentLaunch()
-  writeWorkspace({ conversationCentered: true, conversationTabs: ['t1'] })
-  expect(readWorkspace()).toEqual({ conversationCentered: true, conversationTabs: ['t1'] })
+  writeWorkspace({ conversationCentered: true, conversationTabs: ['t1'], previews: [], previewCentered: null })
+  expect(readWorkspace()).toEqual({ conversationCentered: true, conversationTabs: ['t1'], previews: [], previewCentered: null })
 })

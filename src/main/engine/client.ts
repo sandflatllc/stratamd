@@ -48,7 +48,7 @@ import { StagedAttachmentStore } from './staged-attachments'
 import { attachmentLimitMessage, attachmentSummary, MAX_ATTACHMENTS } from '../../core/composer-attachments'
 import { accountViews, chooseInstance, emptyAccountsStore, providerInstancesOf, readAccountsStore, recordMeasurements, terminalShimTargets, writeAccountsStore, type AccountsStore, type EngineProviderInstance } from './accounts'
 import { writeTerminalShims } from '../account-shims'
-import { logError } from '../log'
+import { logError, logWarn } from '../log'
 import type { ConversationInput, ModelOption, EngineModelView, StartThreadInput, EngineProjectView, EngineThreadChange, EngineThreadView, EngineView } from '../../shared/contracts'
 import { assertSupportedPlatform } from '../../platform/runtime'
 import { mapMarkdownBlocks, parseStrataBlock } from '../../core/blocks'
@@ -58,6 +58,8 @@ import { pngSize, VisualEvidenceStore } from './visual-evidence'
 import { emptyVisualCommentsStore, readVisualCommentsStore, referencedEvidence, writeVisualCommentsStore, type VisualCommentsStore } from './visual-comments'
 import { isVisualCommentId, revisionForReply, sendCapacity, visualAttachmentName, visualBrief, visualCommentView, visualRepliesIn, visualSendSummary, type VisualCommentRecord, type VisualRevision } from '../../core/visual-comments'
 import { visualImageUrl } from '../../shared/visual-urls'
+import { readEngineIdentity } from './identity'
+import { z } from 'zod'
 import type { HoldVisualCommentInput, VisualCommentAction, VisualCommentView } from '../../shared/contracts'
 
 /** A staged image the owner removed or a sweep deleted before its upload; the preparation cannot proceed. */
@@ -94,8 +96,17 @@ interface EngineReadingState {
 
 export interface EngineNotification { threadId: string; title: string; body: string }
 
+/** The preview host the engine's browser requests go to (docs/plans/open/visual-review, phase 2). */
+export interface PreviewHostBridge {
+  operations: readonly string[]
+  handle(request: { requestId: string; threadId: string; tabId?: string | undefined; operation: string; input: unknown; timeoutMs: number }): Promise<{ ok: true; result: unknown } | { ok: false; error: { _tag: string; message: string; detail?: unknown } }>
+  setRegistered(registered: boolean): void
+}
+
 export interface EngineClientOptions {
   dataDirectory: string
+  /** Registers with the engine as its preview automation host once the socket is up; absent in tests that have no browser. */
+  previewHost?: PreviewHostBridge
   fetch?: typeof globalThis.fetch
   now?: () => number
   webSocket?: typeof WebSocket
@@ -300,6 +311,12 @@ export class T3EngineClient implements EngineReadClient {
   #configTimer: ReturnType<typeof setTimeout> | null = null
   #connecting: Promise<void> | null = null
   readonly #shellWaiters = new Set<() => void>()
+  readonly #previewHost: PreviewHostBridge | null
+  readonly #previewClientId = `strata-${randomUUID()}`
+  #previewStream: EngineStream | null = null
+  #previewConnectionId: string | null = null
+  /** The engine identity the browser registered with; a reconnect registers only with the same one. */
+  #previewEnvironmentId: string | null = null
 
   constructor(options: EngineClientOptions) {
     this.#fetch = options.fetch ?? globalThis.fetch
@@ -322,6 +339,7 @@ export class T3EngineClient implements EngineReadClient {
     this.#configRefreshMs = options.configRefreshMs ?? 30_000
     this.#shimDirectory = options.terminalShimDirectory ?? null
     this.#writeShims = options.writeShims ?? writeTerminalShims
+    this.#previewHost = options.previewHost ?? null
   }
 
   async initialize(): Promise<void> {
@@ -516,6 +534,8 @@ export class T3EngineClient implements EngineReadClient {
       throw new Error(this.#problem)
     }
     await this.#writeCredential(origin, await response.json())
+    // A new pairing is a new engine as far as the browser host is concerned.
+    this.#previewEnvironmentId = null
     this.#running = true
     await this.reconnect()
   }
@@ -1183,6 +1203,40 @@ export class T3EngineClient implements EngineReadClient {
     this.#shellStream = await socket.stream(T3_RPC.subscribeShell, { afterSequence: this.#shellSequence, requestCompletionMarker: true }, (item) => this.#onShellItem(item), (error) => { if (error && this.#socket === socket) this.#onSocketClosed(socket, error.message) })
     await this.#subscribeThreads()
     this.#scheduleConfigRefresh()
+    // Registration repeats on every reconnect; it never blocks the conversation coming up.
+    void this.#registerPreviewHost(socket).catch((error: unknown) => logError('engine', 'Strata could not register as the browser host', error))
+  }
+
+  /**
+   * Registers as the engine's preview automation host the way T3's desktop
+   * does, over the socket Strata already holds, advertising the operations it
+   * implements. The engine's environment id comes from one identity read; a
+   * reconnect registers only with the identity first registered with.
+   */
+  async #registerPreviewHost(socket: EngineSocket): Promise<void> {
+    const host = this.#previewHost
+    if (!host || !this.#credential) return
+    const identity = await readEngineIdentity(this.#fetch, this.#credential.server).catch(() => null)
+    if (!identity) return
+    if (this.#previewEnvironmentId && this.#previewEnvironmentId !== identity.environmentId) { logWarn('engine', `The engine now reports another identity (${identity.environmentId}); the browser stays registered only with ${this.#previewEnvironmentId}`); return }
+    if (this.#socket !== socket || socket.closed) return
+    this.#previewEnvironmentId = identity.environmentId
+    this.#previewStream = await socket.stream(T3_RPC.previewAutomationConnect, { clientId: this.#previewClientId, environmentId: identity.environmentId, supportedOperations: [...host.operations] }, (item) => {
+      const parsed = previewStreamEvent.safeParse(item)
+      if (!parsed.success) return
+      if (parsed.data.type === 'connected') { this.#previewConnectionId = parsed.data.connectionId; host.setRegistered(true); return }
+      void this.#servePreviewRequest(socket, parsed.data.connectionId, parsed.data.request)
+    }, () => { if (this.#socket === socket) { this.#previewStream = null; this.#previewConnectionId = null; host.setRegistered(false) } })
+  }
+
+  /** Every request carries its thread id; the host serves it and the answer goes back on the same socket. */
+  async #servePreviewRequest(socket: EngineSocket, connectionId: string, request: z.infer<typeof previewStreamEvent> extends infer T ? T extends { type: 'request'; request: infer R } ? R : never : never): Promise<void> {
+    const host = this.#previewHost
+    if (!host) return
+    const outcome = await host.handle({ requestId: request.requestId, threadId: request.threadId, ...(request.tabId !== undefined ? { tabId: request.tabId } : {}), operation: request.operation, input: request.input, timeoutMs: request.timeoutMs })
+    const response = { clientId: this.#previewClientId, connectionId, requestId: request.requestId, ...(outcome.ok ? { ok: true, result: outcome.result } : { ok: false, error: outcome.error }) }
+    try { await socket.request(T3_RPC.previewAutomationRespond, response, 15_000) }
+    catch (error) { logWarn('engine', `The engine did not take the browser answer for ${request.operation}: ${error instanceof Error ? error.message : String(error)}`) }
   }
 
   /** One subscription per followed thread; threads no longer followed are interrupted and forgotten. */
@@ -1321,6 +1375,9 @@ export class T3EngineClient implements EngineReadClient {
     if (this.#socket !== socket) return
     this.#socket = null
     this.#shellStream = null
+    this.#previewStream = null
+    this.#previewConnectionId = null
+    this.#previewHost?.setRegistered(false)
     for (const entry of this.#threads.values()) entry.stream = null
     if (this.#configTimer) clearTimeout(this.#configTimer)
     this.#configTimer = null
@@ -1335,6 +1392,9 @@ export class T3EngineClient implements EngineReadClient {
     const socket = this.#socket
     this.#socket = null
     this.#shellStream = null
+    this.#previewStream = null
+    this.#previewConnectionId = null
+    this.#previewHost?.setRegistered(false)
     for (const entry of this.#threads.values()) entry.stream = null
     socket?.close()
   }
@@ -1813,6 +1873,12 @@ export class T3EngineClient implements EngineReadClient {
 }
 
 export { EMPTY_ENGINE }
+
+const previewRequest = z.object({ requestId: z.string().min(1), threadId: z.string().min(1), tabId: z.string().optional(), tabIdExplicit: z.boolean().optional(), operation: z.string().min(1), input: z.unknown(), timeoutMs: z.number().int().positive() }).passthrough()
+const previewStreamEvent = z.union([
+  z.object({ type: z.literal('connected'), connectionId: z.string().min(1) }).passthrough(),
+  z.object({ type: z.literal('request'), connectionId: z.string().min(1), request: previewRequest }).passthrough(),
+])
 
 function publicOptions(options: Array<{ id: string; value?: unknown }> | undefined): ModelOption[] {
   return (options ?? []).flatMap(({ id, value }) => typeof value === 'string' || typeof value === 'boolean' ? [{ id, value }] : [])

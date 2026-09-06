@@ -22,6 +22,7 @@ export interface ViewUpdate {
     explorer?: AppView['explorer']
     settings?: AppView['settings']
     engine?: AppView['engine']
+    preview?: AppView['preview']
     activeDocument?: ActiveDocumentSection | null
   }
   /** Present in verify mode: the complete view the merged result must equal. */
@@ -67,6 +68,7 @@ export function encodeViewUpdate(previous: SyncedView | null, seq: number, next:
   if (next.explorer !== previous.view.explorer) sections.explorer = next.explorer
   if (next.settings !== previous.view.settings) sections.settings = next.settings
   if (next.engine !== previous.view.engine) sections.engine = next.engine
+  if (next.preview !== previous.view.preview) sections.preview = next.preview
   if (next.activeDocument !== previous.view.activeDocument) {
     if (next.activeDocument === null) {
       sections.activeDocument = null
@@ -122,6 +124,7 @@ export function applyViewUpdate(current: SyncedView | null, update: ViewUpdate):
     explorer: sections.explorer ?? current.view.explorer,
     settings: sections.settings ?? current.view.settings,
     engine: sections.engine ?? current.view.engine,
+    preview: sections.preview ?? current.view.preview,
     activeDocument,
   }
   return { status: 'applied', synced: { seq: update.seq, view } }

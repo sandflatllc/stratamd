@@ -7,6 +7,7 @@ import { IPC } from '../../src/preload/channels'
 import { isAllowedExternalUrl, registerStrataIpc, spellingContext } from '../../src/main/ipc'
 
 const view: AppView = {
+  preview: { tabs: [], registered: false, serving: [], reveal: null },
   tabs: [],
   activeDocument: null,
   explorer: [],
@@ -64,6 +65,13 @@ function fakeApi(): StrataApi {
     dismissItem: vi.fn(async () => undefined),
     holdVisualComment: vi.fn(async () => 'v_test'),
     actVisualComment: vi.fn(async () => undefined),
+    openPreviewTab: vi.fn(async () => 'tab_00000000-0000-4000-8000-000000000000'),
+    closePreviewTab: vi.fn(async () => undefined),
+    navigatePreview: vi.fn(async () => undefined),
+    resizePreview: vi.fn(async () => undefined),
+    resumePreviewTab: vi.fn(async () => undefined),
+    reportPreviewBounds: vi.fn(async () => undefined),
+    reportOverlay: vi.fn(async () => undefined),
     setTerminalDefault: vi.fn(async () => undefined),
     refreshAccounts: vi.fn(async () => undefined),
     startThreadFromDocument: vi.fn(async () => 'thread-new'),

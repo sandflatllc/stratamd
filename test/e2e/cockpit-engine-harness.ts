@@ -28,6 +28,8 @@ export interface FakeEngineOptions {
   pendingRequests?: boolean
   /** T3 background liveness per seeded thread (§6.9 thread states): `monitoring` draws the robot, `working` the pulse after the turn settles. */
   liveness?: Partial<Record<'t1' | 't2', 'working' | 'monitoring'>>
+  /** Accepts Strata as a preview automation host and lets a test send it browser requests (docs/plans/open/visual-review, phase 2). Off by default, so shell baselines never show Browser shared. */
+  previewAutomation?: boolean
 }
 
 const usageAt = '2026-09-03T11:59:00.000Z'
@@ -103,6 +105,10 @@ export interface FakeEngine {
   postAssistant(threadId: string, text: string): string
   /** Live sockets right now. */
   connections(): number
+  /** The registered browser hosts, oldest first, when `previewAutomation` is on. */
+  hosts(): Array<{ clientId: string; environmentId: string; supportedOperations: string[] }>
+  /** Sends one browser request to the registered host and resolves with its answer, as T3's broker would. */
+  automation(threadId: string, operation: string, input: unknown, options?: { tabId?: string; timeoutMs?: number }): Promise<{ ok: boolean; result?: unknown; error?: { _tag: string; message: string; detail?: unknown } }>
   close(): Promise<void>
 }
 
@@ -157,6 +163,9 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   const rpcRequests: Array<{ tag: string; payload: unknown }> = []
   const sockets = new Set<Socket>()
   const connections = new Set<Connection>()
+  const hosts: Array<{ clientId: string; environmentId: string; supportedOperations: string[]; connectionId: string; connection: Connection; requestId: string }> = []
+  const automationWaiters = new Map<string, (response: { ok: boolean; result?: unknown; error?: { _tag: string; message: string; detail?: unknown } }) => void>()
+  let automationCount = 0
 
   const shellThread = (thread: CreatedThread) => ({ id: thread.id, projectId: thread.projectId, title: thread.title, modelSelection: thread.modelSelection, runtimeMode: thread.runtimeMode, interactionMode: 'default', branch: thread.branch ?? null, worktreePath: thread.worktreePath ?? null, latestTurn: null, createdAt: at, updatedAt: at, session: { threadId: thread.id, status: 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: thread.runtimeMode, activeTurnId: null, lastError: null, updatedAt: at }, latestUserMessageAt: null, hasPendingApprovals: false, hasPendingUserInput: false, hasActionableProposedPlan: false })
   const shellJson = () => ({
@@ -273,6 +282,10 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       })
       return
     }
+    if (request.url === '/.well-known/t3/environment' && request.method === 'GET') {
+      response.end(JSON.stringify({ environmentId: 'env-fake-1', label: 'Fake T3' }))
+      return
+    }
     if (request.url === '/api/auth/websocket-ticket' && request.method === 'POST') {
       response.end(JSON.stringify({ ticket: 'test-ticket', expiresAt: new Date(Date.now() + 60_000).toISOString() }))
       return
@@ -383,6 +396,21 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
           send(socket, { _tag: 'Exit', requestId: rpc.id, exit: { _tag: 'Success', value: null } })
           continue
         }
+        if (rpc.tag === 'previewAutomation.connect' && options.previewAutomation) {
+          const host = rpc.payload as { clientId: string; environmentId: string; supportedOperations?: string[] }
+          const connectionId = `conn-${hosts.length + 1}`
+          hosts.push({ clientId: host.clientId, environmentId: host.environmentId, supportedOperations: host.supportedOperations ?? [], connectionId, connection, requestId: rpc.id })
+          connection.subscriptions.push({ requestId: rpc.id, tag: rpc.tag, threadId: null })
+          send(socket, { _tag: 'Chunk', requestId: rpc.id, values: [{ type: 'connected', connectionId }] })
+          continue
+        }
+        if (rpc.tag === 'previewAutomation.respond') {
+          const answer = rpc.payload as { requestId: string; ok: boolean; result?: unknown; error?: { _tag: string; message: string; detail?: unknown } }
+          automationWaiters.get(answer.requestId)?.({ ok: answer.ok, ...(answer.result !== undefined ? { result: answer.result } : {}), ...(answer.error ? { error: answer.error } : {}) })
+          automationWaiters.delete(answer.requestId)
+          send(socket, { _tag: 'Exit', requestId: rpc.id, exit: { _tag: 'Success', value: null } })
+          continue
+        }
         if (rpc.tag === 'orchestration.subscribeShell' || rpc.tag === 'orchestration.subscribeThread') {
           const subscription: Subscription = { requestId: rpc.id, tag: rpc.tag, threadId: rpc.tag === 'orchestration.subscribeThread' ? String((rpc.payload as { threadId?: unknown }).threadId ?? '') : null }
           connection.subscriptions.push(subscription)
@@ -423,6 +451,17 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       return id
     },
     connections: () => connections.size,
+    hosts: () => hosts.filter((host) => !host.connection.socket.destroyed && connections.has(host.connection)).map(({ clientId, environmentId, supportedOperations }) => ({ clientId, environmentId, supportedOperations })),
+    automation: (threadId, operation, input, requestOptions = {}) => new Promise((resolve, reject) => {
+      const host = hosts.filter((candidate) => !candidate.connection.socket.destroyed && connections.has(candidate.connection)).at(-1)
+      if (!host) { reject(new Error('No browser host is registered')); return }
+      automationCount += 1
+      const requestId = `req-${automationCount}`
+      const timeoutMs = requestOptions.timeoutMs ?? 15_000
+      const timer = setTimeout(() => { automationWaiters.delete(requestId); reject(new Error(`The host did not answer ${operation} within ${timeoutMs} ms`)) }, timeoutMs + 5_000)
+      automationWaiters.set(requestId, (answer) => { clearTimeout(timer); resolve(answer) })
+      send(host.connection.socket, { _tag: 'Chunk', requestId: host.requestId, values: [{ type: 'request', connectionId: host.connectionId, request: { requestId, threadId, ...(requestOptions.tabId ? { tabId: requestOptions.tabId, tabIdExplicit: true } : {}), operation, input, timeoutMs } }] })
+    }),
     close: async () => {
       dropSockets()
       await new Promise<void>((resolve) => server.close(() => resolve()))

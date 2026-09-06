@@ -148,6 +148,7 @@ import { upsertTableView } from '../shared/tables'
 import { CURRENT_META_VERSION, DEFAULT_LOCK_TIMEOUT_MS, GhostStore, type AttachmentMeta, type DeliveryMeta, type DocumentLock, type DocumentMeta, type PendingHunkMeta, type SaveAuthorMeta, type SaveMeta, type SegmentMeta } from './storage'
 import { DebouncedMirror, HashReconciler, WatchCoordinator, watchDirectory, type DirectorySubscription } from './watcher'
 import { T3EngineClient, type EngineReadClient } from './engine/client'
+import { PreviewHost } from './preview/host'
 
 /** The theme problem key under which a failed file write is reported (plan 4.14). */
 const THEME_WRITE_PROBLEM_KEY = 'write'
@@ -299,6 +300,8 @@ export class StrataApplication implements StrataApi {
   readonly #now: () => number
   readonly #watch: boolean
   readonly #engine: EngineReadClient
+  readonly #preview: PreviewHost
+  #previewRestored = false
   #followedThreadsKey = ''
   #unsubscribeEngine: (() => void) | null = null
   readonly #engineDispatching = new Set<string>()
@@ -323,8 +326,15 @@ export class StrataApplication implements StrataApi {
     this.#selectFolder = options.selectFolder ?? (async () => null)
     this.#now = options.now ?? Date.now
     this.#watch = options.watch ?? true
+    // The preview host answers the engine's browser requests and shows pages in the window (docs/plans/open/visual-review, phase 2).
+    this.#preview = new PreviewHost({
+      dataDirectory: this.#store.dataDirectory, now: this.#now,
+      resolveProject: (projectId) => { const project = this.#engine.view().projects.find((candidate) => candidate.id === projectId); return project ? { workspaceRoot: project.workspaceRoot, title: project.title } : null },
+      resolveThread: (threadId) => { for (const project of this.#engine.view().projects) { const thread = project.threads.find((candidate) => candidate.id === threadId); if (thread) return { projectId: project.id, workingFolder: thread.worktreePath ?? project.workspaceRoot } } return null },
+    })
     this.#engine = options.engine ?? new T3EngineClient({
       dataDirectory: this.#store.dataDirectory, now: this.#now,
+      previewHost: { operations: this.#preview.operations, handle: (request) => this.#preview.handle(request), setRegistered: (registered) => this.#preview.setRegistered(registered) },
       // Terminal launchers are scripts Strata writes on Linux (§5.13); macOS gets none.
       terminalShimDirectory: isDarwin() ? null : join(this.#store.dataDirectory, 'bin'),
       ...(options.notifications ? { isFocused: () => options.notifications!.isFocused(), notify: (notification) => options.notifications!.notify(notification) } : {}),
@@ -391,9 +401,12 @@ export class StrataApplication implements StrataApi {
   async initialize(): Promise<this> {
     await this.#store.initialize()
     this.#unsubscribeEngine = this.#engine.subscribe((view) => {
+      // The owner's preview tabs come back once the engine lists their projects.
+      if (!this.#previewRestored && view.projects.length > 0) { this.#previewRestored = true; void this.#preview.restore().catch((error: unknown) => logError('preview', 'Preview tabs could not be restored', error)) }
       this.#publish()
       void this.#reconcileEngineView(view).catch((error: unknown) => logError('engine', 'Engine delivery reconciliation failed', error))
     })
+    this.#preview.subscribe(() => this.#publish())
     await this.#engine.initialize()
     this.#settings = await this.#settingsStore.load()
     await this.#themeStore.ensureDirectory()
@@ -644,6 +657,7 @@ export class StrataApplication implements StrataApi {
     this.#themeSubscription = null
     this.#unsubscribeEngine?.()
     this.#unsubscribeEngine = null
+    await this.#preview.shutdown()
     await this.#engine.shutdown()
     const sessions = [...this.#sessions.values()]
     this.#listeners.clear()
@@ -892,6 +906,50 @@ export class StrataApplication implements StrataApi {
   async readVisualImage(kind: 'evidence' | 'staged', id: string): Promise<{ bytes: Uint8Array; mimeType: string } | null> {
     if (!this.#engine.readVisualImage) return null
     return this.#engine.readVisualImage(kind, id)
+  }
+
+  // ---- Preview windows (docs/plans/open/visual-review, phase 2)
+
+  get preview(): PreviewHost {
+    return this.#preview
+  }
+
+  /** The window the preview host draws pages into; the pages themselves outlive it. */
+  attachPreviewWindow(window: import('electron').BrowserWindow): void {
+    this.#preview.attachWindow(window)
+  }
+
+  async openPreviewTab(input: { projectId: string; url?: string }): Promise<string> {
+    return this.#preview.openOwnerTab(input)
+  }
+
+  async closePreviewTab(tabId: string): Promise<void> {
+    this.#preview.closeTab(tabId)
+  }
+
+  async navigatePreview(tabId: string, navigation: Parameters<StrataApi['navigatePreview']>[1]): Promise<void> {
+    await this.#preview.navigate(tabId, navigation)
+  }
+
+  async resizePreview(tabId: string, viewport: Parameters<StrataApi['resizePreview']>[1]): Promise<void> {
+    this.#preview.resize(tabId, viewport)
+  }
+
+  async resumePreviewTab(tabId: string): Promise<void> {
+    this.#preview.resume(tabId)
+  }
+
+  async reportPreviewBounds(report: Parameters<StrataApi['reportPreviewBounds']>[0]): Promise<void> {
+    this.#preview.reportBounds(report)
+  }
+
+  async reportOverlay(open: boolean): Promise<void> {
+    this.#preview.setOverlay(open)
+  }
+
+  /** Test probe: a real input landing in a tab, the path an owner's click takes. */
+  previewHumanInput(tabId: string, point: { x: number; y: number }): void {
+    this.#preview.humanInput(tabId, point)
   }
 
   async stopConversationTurn(threadId: string): Promise<void> {
@@ -2810,7 +2868,8 @@ export class StrataApplication implements StrataApi {
       activeDocument: stableValue(last.activeDocument, raw.activeDocument),
       explorer: stableValue(last.explorer, raw.explorer),
       settings: stableValue(last.settings, raw.settings),
-      engine: stableValue(last.engine, raw.engine)
+      engine: stableValue(last.engine, raw.engine),
+      preview: stableValue(last.preview, raw.preview),
     }
     this.#lastView = next
     return next
@@ -2832,6 +2891,7 @@ export class StrataApplication implements StrataApi {
     const raw = this.#engine.view()
     const engine: AppView['engine'] = { ...raw, projects: raw.projects.map((project) => ({ ...project, threads: project.threads.map((thread) => ({ ...thread, pendingWork: this.#pendingWork(thread.id) })) })) }
     return {
+      preview: this.#preview.view(),
       tabs: this.#tabs.list().map((tab) => {
         const session = this.#sessions.get(tab.path)!
         const pendingAuthor = session.state.pendingHunks.find((hunk) => hunk.author.agentId)?.author.agentId

@@ -723,7 +723,61 @@ export interface AppView {
   explorer: ExplorerFolderView[]
   settings: AppSettingsView
   engine: EngineView
+  /** The preview windows' pages and the browser host's state (docs/plans/open/visual-review, phase 2). */
+  preview: PreviewStateView
 }
+
+// ---- Preview windows (docs/plans/open/visual-review, phase 2)
+
+export type PreviewViewportView =
+  | { mode: 'fill' }
+  | { mode: 'preset'; preset: string; label: string; width: number; height: number }
+  | { mode: 'freeform'; width: number; height: number }
+
+/** How the owner or an agent asks for a size; the host resolves presets to their sizes. */
+export type PreviewViewportRequest = { mode: 'fill' } | { mode: 'preset'; preset: string } | { mode: 'freeform'; width: number; height: number }
+
+export interface PreviewTabView {
+  id: string
+  projectId: string
+  /** The owner's tab, or a tab an agent opened for its own work. */
+  kind: 'owner' | 'agent'
+  threadId: string | null
+  /** The address the tab was opened at; `url` follows navigation. */
+  openedUrl: string
+  url: string
+  title: string
+  loading: boolean
+  canGoBack: boolean
+  canGoForward: boolean
+  viewport: PreviewViewportView
+  /** The owner took control of an agent tab; new agent actions wait for Resume. */
+  paused: boolean
+  /** An agent action is running or waiting in this tab. */
+  working: boolean
+  /** What the agent is doing in this tab, in plain words, for the status pill. */
+  activity: string | null
+  error: string | null
+  openedAt: number
+}
+
+export interface PreviewStateView {
+  tabs: PreviewTabView[]
+  /** Strata is registered with the engine as its browser host. */
+  registered: boolean
+  /** Threads with a browser request Strata is serving right now. */
+  serving: string[]
+  /** The tab an agent most recently opened for the owner to see, so its window's pill appears. */
+  reveal: { tabId: string; at: number } | null
+}
+
+export interface PreviewBoundsReport {
+  tabId: string | null
+  /** Where the page should sit inside the window, in CSS pixels; null hides it. */
+  bounds: { x: number; y: number; width: number; height: number } | null
+}
+
+export type PreviewNavigation = { url: string } | { action: 'back' | 'forward' | 'reload' | 'stop' }
 
 /**
  * The document state a preview was computed against: snapshot, segment index,
@@ -937,6 +991,17 @@ export interface StrataApi {
   holdVisualComment(input: HoldVisualCommentInput): Promise<string>
   /** Looks right (accept), Still wrong (reopen), discard the draft, or retry a failed send. Accept starts no turn. */
   actVisualComment(id: string, action: VisualCommentAction): Promise<void>
+  /** Opens an owner tab in the project's preview window; returns the tab id. */
+  openPreviewTab(input: { projectId: string; url?: string }): Promise<string>
+  closePreviewTab(tabId: string): Promise<void>
+  navigatePreview(tabId: string, navigation: PreviewNavigation): Promise<void>
+  resizePreview(tabId: string, viewport: PreviewViewportRequest): Promise<void>
+  /** Hands an agent tab back after the owner took control; nothing is replayed. */
+  resumePreviewTab(tabId: string): Promise<void>
+  /** Where the shown page sits in the window, whenever layout changes; null hides it. */
+  reportPreviewBounds(report: PreviewBoundsReport): Promise<void>
+  /** One boolean from the overlay layer: an overlay is open, so the page hides beneath it. */
+  reportOverlay(open: boolean): Promise<void>
   stopConversationTurn(threadId: string): Promise<void>
   answerEngineApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
   answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>

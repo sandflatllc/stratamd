@@ -177,6 +177,13 @@ to an earlier revision stays readable but does not make the comment ready.
 `file` is optional and names a screenshot you took yourself. Only the owner
 accepts or reopens a visual comment; `resolve` on one fails.
 
+When Strata is the engine's browser host, your preview tools (open, navigate,
+click, type, press, scroll, wait for, resize, evaluate, snapshot, screenshot)
+land in a tab of your own in the owner's Strata window, under the project's
+preview. The owner can watch it; a click of theirs inside your tab pauses it
+until they resume, and a request that names no tab goes to the last tab you
+opened. Open a page before acting on it.
+
 ## 8. Chat beside the block
 
 Everything in the block is already in front of the owner. The prose above
