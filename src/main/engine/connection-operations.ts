@@ -2,14 +2,17 @@
 export class ConnectionOperations {
   #pending = new Set<Promise<unknown>>()
   #switching = false
-  get accepting(): boolean { return !this.#switching }
+  #suspended = false
+  get accepting(): boolean { return !this.#switching && !this.#suspended }
   run<T>(operation: () => Promise<T>): Promise<T> {
-    if (this.#switching) return Promise.reject(new Error('The engine connection is changing. Try again when it is connected.'))
+    if (this.#switching || this.#suspended) return Promise.reject(new Error('The engine connection is changing. Try again when it is connected.'))
     const result = operation()
     this.#pending.add(result)
     void result.finally(() => this.#pending.delete(result)).catch(() => undefined)
     return result
   }
+  suspend(): void { this.#suspended = true }
+  resume(): void { this.#suspended = false }
   async switch<T>(operation: () => Promise<T>): Promise<T> {
     if (this.#switching) throw new Error('An engine connection change is already in progress')
     this.#switching = true

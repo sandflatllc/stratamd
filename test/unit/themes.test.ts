@@ -250,3 +250,15 @@ describe('installed fonts', () => {
     expect(await listInstalledFonts(async () => ({ stdout: profiler }), 'darwin')).toEqual(['Baloo 2', 'JetBrains Mono', 'Abel'])
   })
 })
+
+describe('theme directory changes', () => {
+  it('keeps listing available themes when a file disappears after enumeration', async () => {
+    const directory = await temporaryDirectory()
+    const store = new ThemeStore({ configDirectory: directory })
+    await store.ensureDirectory()
+    const ids = store.ids.bind(store)
+    store.ids = async () => [...await ids(), 'removed-by-editor']
+    expect((await store.list()).some(theme => theme.id === 'strata-vivid')).toBe(true)
+    expect((await store.list()).some(theme => theme.id === 'removed-by-editor')).toBe(false)
+  })
+})

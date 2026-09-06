@@ -1,0 +1,57 @@
+{
+  "result": "passed",
+  "platform": "linux",
+  "architecture": "x64",
+  "freshHome": true,
+  "systemNodeOnPath": false,
+  "engineState": "connected",
+  "runtimeVersion": "t3-0.0.38-node-24.20.0-linux-x64-r1",
+  "nodeVersion": "24.20.0",
+  "stagedExecutable": "/home/dillonc/Projects/_agent_research/tmp/strata-packaged-clean-QCmZHA/data/stratamd/engine/runtime/t3-0.0.38-node-24.20.0-linux-x64-r1/node/bin/node",
+  "isolatedBaseDirectory": "/home/dillonc/Projects/_agent_research/tmp/strata-packaged-clean-QCmZHA/data/stratamd/engine/t3",
+  "accounts": [
+    {
+      "driver": "claudeAgent",
+      "installed": false,
+      "usable": false,
+      "state": "unknown"
+    },
+    {
+      "driver": "codex",
+      "installed": true,
+      "usable": false,
+      "state": "unknown"
+    },
+    {
+      "driver": "cursor",
+      "installed": false,
+      "usable": false,
+      "state": "disabled"
+    },
+    {
+      "driver": "grok",
+      "installed": false,
+      "usable": false,
+      "state": "disabled"
+    },
+    {
+      "driver": "opencode",
+      "installed": false,
+      "usable": false,
+      "state": "disabled"
+    }
+  ],
+  "documentOpened": true,
+  "hostedLoginAttempted": false,
+  "managedProviderInstalls": [
+    {
+      "driver": "codex",
+      "binary": "/home/dillonc/Projects/_agent_research/tmp/strata-packaged-clean-QCmZHA/data/stratamd/engine/providers/codex/bin/codex"
+    },
+    {
+      "driver": "claudeAgent",
+      "binary": "/home/dillonc/Projects/_agent_research/tmp/strata-packaged-clean-QCmZHA/data/stratamd/engine/providers/claudeAgent/bin/claude"
+    }
+  ],
+  "ownedEngineStoppedOnQuit": true
+}

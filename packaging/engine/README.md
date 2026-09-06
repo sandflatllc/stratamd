@@ -1,0 +1,13 @@
+# Bundled engine distribution
+
+Strata ships official `t3@0.0.38` and Node 24.20.0 with npm. `runtime-source.json` pins the official Node archive SHA-256 for Linux x64, macOS x64 and macOS arm64. `package-lock.json` pins the production dependency tree. Build each target on its native platform and architecture; Linux arm64 is not supported.
+
+Run `node scripts/build-packaged.mjs` from the repository root. It stages `build/engine`, loads node-pty, fff-node and msgpackr-extract under the dedicated Node, builds Electron, and makes the unpacked folder. It uses repository binaries directly and does not rebuild shared checkout dependencies. A fresh clone must build Strata's own native helper first as AGENTS.md describes.
+
+The packaging hook copies the complete engine after Electron Builder finishes. Electron Builder's ordinary resource filter strips node_modules trees, so the engine must not use that filter. The hook checks every recorded file and symlink. The output has `resources/engine` on Linux and `Contents/Resources/engine` on macOS. `runtime.json`, `integrity.json`, `dependency-inventory.json` and `THIRD_PARTY_NOTICES.txt` travel with the engine, outside ASAR. npm and its dependency licenses are included along with the T3 tree and Node's license.
+
+First launch copies the engine into a private, versioned application-data directory. A folder replacement stages and verifies its new runtime before touching the running engine. Active turns or unfinished deliveries defer the change. Strata retains the lock while stopping and backing up the engine, then checks authenticated readiness and subscriptions after startup. Failed and interrupted transitions retain matching backups. A manual restore first archives current data, then restores the selected engine history and Strata conversation records. Markdown, review history, editor text and newer unsent image bytes stay intact. Worktree files are not rewound. The restored runtime stays selected until a different bundle arrives or the owner explicitly chooses Use bundled engine.
+
+The current verification uses different release manifests around the same official T3 version to exercise upgrade and rollback mechanics. It does not claim validation of a future T3 database migration. Each future release must repeat the package and upgrade checks against its actual server artifact.
+
+Release remains blocked on hosted T3 authorization and Android discovery/turn/reconnect, successful fresh provider sign-ins, macOS x64/arm64 packaging and Keychain usage, and physical-device power/reconnection checks. The Linux build and automated fixtures do not substitute for these proofs. Stock 0.0.38 has no environment-name override or locally queryable proof of relay reachability; the UI reports those limits.

@@ -13,6 +13,7 @@ test.describe('managed engine @managed', () => {
       const page = await scenario.launch()
       await expect(page.getByRole('button', { name: 'Engine status' })).toContainText('Connected', { timeout: 20000 })
       await expect(async () => { expect((await page.evaluate(() => window.strata.getState())).engine.managed?.state).toBe('running') }).toPass({ timeout: 20000 })
+      await expect(page.locator('.toast').filter({ hasText: 'retain-conversation-attachments' })).toHaveCount(0)
       const initial = await page.evaluate(() => window.strata.getState())
       expect(initial.engine.identity).toBeTruthy()
       const path = join(scenario.env.XDG_DATA_HOME!, 'stratamd/engine/runtime.json')

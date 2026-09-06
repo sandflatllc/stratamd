@@ -395,7 +395,7 @@ if (!process.env.VITEST) {
   installOpenFileQueue()
   if (!app.requestSingleInstanceLock()) app.quit()
   else void createStrataApplication({
-    setStartAtLogin: enabled => setStartAtLogin(enabled, process.execPath, assertSupportedPlatform(), openAtLogin => app.setLoginItemSettings({ openAtLogin, path: process.execPath })),
+    setStartAtLogin: async enabled => { await app.whenReady(); await setStartAtLogin(enabled, process.execPath, assertSupportedPlatform(), openAtLogin => app.setLoginItemSettings({ openAtLogin, path: process.execPath })) },
     managedBundle: process.env.STRATAMD_ENGINE_BUNDLE ?? join(process.resourcesPath, 'engine'),
     engineUsageHelper: app.isPackaged ? join(process.resourcesPath, 'resources/engine-helpers/usage.mjs') : join(import.meta.dirname, '../../resources/engine-helpers/usage.mjs'),
     // Badges when the owner is elsewhere, an OS notification when the window is not focused (§5.2).

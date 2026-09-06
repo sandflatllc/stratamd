@@ -1,11 +1,13 @@
+import { createEngineBackup, listEngineBackups, readEngineBackup, restoreEngineBackup, type EngineBackup } from './backups'
+import type { RecoveryView } from '../../shared/engine-recovery'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
-import { appendFile, readFile, rename, stat } from 'node:fs/promises'
+import { appendFile, readFile, rename, stat, rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { dirname, join } from 'node:path'
 import { atomicWriteFile, ensurePrivateDirectory } from '../storage'
 import { processStamp, takeEngineLock, verifiedProcess, type OwnedProcess } from './managed-process'
-import { stageRuntime, type StagedRuntime } from './managed-runtime'
+import { stageRuntime, verifyRuntime, type StagedRuntime } from './managed-runtime'
 import type { ManagedEngineView } from '../../shared/contracts'
 
 interface RuntimeRecord extends OwnedProcess { version: string; nodeVersion: string; runtimeDirectory: string; generation: string; address: string; environmentId: string }
@@ -16,6 +18,9 @@ export interface EngineManagerOptions {
   authenticate(address: string): Promise<boolean>
   reconnect(): Promise<void>
   changed(view: ManagedEngineView): void
+  reserveChange?(): Promise<() => Promise<void>>
+  captureState?(directory: string): Promise<void>
+  restoreState?(directory: string): Promise<void>
   network?(): { lan?: boolean; tailscale?: boolean; tailscalePort?: number }
 }
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
@@ -32,6 +37,9 @@ export class LocalEngineManager {
   #restartTimer: ReturnType<typeof setTimeout> | null = null
   #attempt = 0
   #view: ManagedEngineView
+  #transition: Promise<void> | null = null
+  #changing = false
+  #pendingRuntime: StagedRuntime | null = null
   #logQueue: Promise<void> = Promise.resolve()
   constructor(options: EngineManagerOptions) {
     this.#options = options
@@ -55,22 +63,146 @@ export class LocalEngineManager {
     return this.#starting
   }
   async #start(): Promise<void> {
+    this.#pendingRuntime = null
     this.#publish({ state: 'starting', problem: null })
     this.#release ??= await takeEngineLock(this.#options.directory)
     const baseDirectory = join(this.#options.directory, 't3')
     await ensurePrivateDirectory(baseDirectory)
-    try { this.#record = JSON.parse(await readFile(join(this.#options.directory, 'runtime.json'), 'utf8')) } catch(error) {
+    try { this.#record = JSON.parse(await readFile(join(this.#options.directory, 'runtime.json'), 'utf8')) } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error(`Cannot read engine runtime record at ${this.#options.directory}`)
     }
+    let bundled: StagedRuntime
+    let stagingProblem: string | null = null
+    try { bundled = await stageRuntime(this.#options.bundle, this.#options.directory) } catch (error) {
+      if (!this.#record) throw error
+      bundled = await this.#runtime(this.#record.version)
+      stagingProblem = `The new bundled engine could not be verified. The previous runtime was kept. ${String(error)}`
+    }
+    let runtime = bundled
+    try {
+      const selected = JSON.parse(await readFile(join(this.#options.directory, 'selected-runtime.json'), 'utf8'))
+      if (selected.bundleVersion === bundled.version) runtime = await this.#runtime(selected.version)
+    } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+    let journal: { backupId: string; targetVersion: string } | null = null
+    try { journal = JSON.parse(await readFile(join(this.#options.directory, 'transition.json'), 'utf8')) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
     if (this.#record && await verifiedProcess(this.#record)) {
       if (this.#record.baseDirectory !== baseDirectory || !await this.#options.authenticate(this.#record.address)) throw new Error(`A surviving engine at ${baseDirectory} could not be authenticated. It was left running.`)
       await this.#options.reconnect()
       this.#publish({ state: 'running', version: this.#record.version, nodeVersion: this.#record.nodeVersion })
-      this.#monitor()
-      return
+      if (journal && this.#record.version === journal.targetVersion) { await rm(join(this.#options.directory, 'transition.json')); journal = null }
+    } else if (journal) {
+      const backup = await readEngineBackup(this.#options.directory, journal.backupId)
+      const failedRuntime = this.#record ? await this.#runtime(this.#record.version) : backup.runtime
+      await createEngineBackup(this.#options.directory, failedRuntime, 'failed-update', this.#options.captureState ?? (async () => undefined))
+      await restoreEngineBackup(this.#options.directory, backup, this.#options.restoreState ?? (async () => undefined))
+      await this.#pin(backup.version, bundled.version)
+      runtime = backup.runtime
+      await this.#launch(runtime, baseDirectory)
+      await rm(join(this.#options.directory, 'transition.json'))
+    } else {
+      const initial = this.#record && this.#record.version !== runtime.version ? await this.#runtime(this.#record.version) : runtime
+      await this.#launch(initial, baseDirectory)
     }
-    const runtime = await stageRuntime(this.#options.bundle, this.#options.directory)
-    await this.#launch(runtime, baseDirectory)
+    this.#monitor()
+    if (this.#record?.version !== runtime.version) await this.#runTransition(() => this.#upgrade(runtime))
+    if (stagingProblem) this.#publish({ problem: stagingProblem })
+  }
+  async #runtime(version: string): Promise<StagedRuntime> {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(version)) throw new Error('Invalid engine runtime version')
+    const directory = join(this.#options.directory, 'runtime', version)
+    const manifest = JSON.parse(await readFile(join(directory, 'runtime.json'), 'utf8'))
+    const runtime = { ...manifest, directory } as StagedRuntime
+    await verifyRuntime(runtime); return runtime
+  }
+  async #pin(version: string, bundleVersion: string): Promise<void> {
+    await atomicWriteFile(join(this.#options.directory, 'selected-runtime.json'), JSON.stringify({ version, bundleVersion }))
+  }
+  async recovery(): Promise<RecoveryView> {
+    const manifest = JSON.parse(await readFile(join(this.#options.bundle, 'runtime.json'), 'utf8'))
+    return { bundledVersion: manifest.version, currentVersion: this.#record?.version ?? null, backups: (await listEngineBackups(this.#options.directory)).map(({ id, createdAt, version, kind }) => ({ id, createdAt, version, kind })), message: this.#view.problem }
+  }
+  async #runTransition(operation: () => Promise<void>): Promise<void> {
+    if (this.#transition) throw new Error('An engine transition is already in progress.')
+    const transition = operation()
+    this.#transition = transition
+    try { await transition } finally { if (this.#transition === transition) this.#transition = null }
+  }
+  async update(): Promise<void> {
+    if (this.#starting) throw new Error('An engine transition is already in progress.')
+    await this.#runTransition(async () => {
+      const runtime = await stageRuntime(this.#options.bundle, this.#options.directory)
+      if (runtime.version === this.#record?.version) return
+      await rm(join(this.#options.directory, 'selected-runtime.json'), { force: true })
+      await this.#upgrade(runtime)
+    })
+  }
+  async #upgrade(runtime: StagedRuntime): Promise<void> {
+    if (this.#changing || !this.#record) return
+    const previous = await this.#runtime(this.#record.version)
+    this.#changing = true
+    let release: (() => Promise<void>) | undefined
+    let backup: EngineBackup | undefined
+    try {
+      try { release = await this.#options.reserveChange?.() } catch (error) {
+        this.#pendingRuntime = runtime
+        this.#publish({ problem: `Engine update is waiting. ${String(error)}` }); return
+      }
+      this.#pendingRuntime = null
+      await this.#halt(false)
+      backup = await createEngineBackup(this.#options.directory, previous, 'upgrade', this.#options.captureState ?? (async () => undefined))
+      await atomicWriteFile(join(this.#options.directory, 'transition.json'), JSON.stringify({ backupId: backup.id, targetVersion: runtime.version }))
+      this.#stopping = false
+      await this.#launch(runtime, join(this.#options.directory, 't3'))
+      await rm(join(this.#options.directory, 'transition.json'), { force: true })
+    } catch (error) {
+      await this.#halt(false)
+      if (backup) {
+        await createEngineBackup(this.#options.directory, runtime, 'failed-update', this.#options.captureState ?? (async () => undefined))
+        await atomicWriteFile(join(this.#options.directory, 'transition.json'), JSON.stringify({ backupId: backup.id, targetVersion: previous.version }))
+        await restoreEngineBackup(this.#options.directory, backup, this.#options.restoreState ?? (async () => undefined))
+      }
+      await this.#pin(previous.version, runtime.version)
+      this.#stopping = false
+      await this.#launch(previous, join(this.#options.directory, 't3'))
+      await rm(join(this.#options.directory, 'transition.json'), { force: true })
+      this.#publish({ problem: `The update failed; the previous engine is running. ${String(error)}` })
+    } finally { this.#changing = false; await release?.() }
+  }
+  async restore(backupId: string): Promise<void> {
+    await this.#runTransition(() => this.#restore(backupId))
+  }
+  async #restore(backupId: string): Promise<void> {
+    if (this.#starting || this.#changing || !this.#record) throw new Error('Wait for the current engine transition to finish.')
+    this.#pendingRuntime = null
+    const backup = await readEngineBackup(this.#options.directory, backupId)
+    await verifyRuntime(backup.runtime)
+    let release: (() => Promise<void>) | undefined
+    let archive: EngineBackup | undefined
+    const current = await this.#runtime(this.#record.version)
+    const bundled = JSON.parse(await readFile(join(this.#options.bundle, 'runtime.json'), 'utf8'))
+    this.#changing = true
+    try {
+      release = await this.#options.reserveChange?.()
+      await this.#halt(false)
+      archive = await createEngineBackup(this.#options.directory, current, 'newer-work', this.#options.captureState ?? (async () => undefined))
+      await atomicWriteFile(join(this.#options.directory, 'transition.json'), JSON.stringify({ backupId: backup.id, targetVersion: backup.version }))
+      await restoreEngineBackup(this.#options.directory, backup, this.#options.restoreState ?? (async () => undefined))
+      await this.#pin(backup.version, bundled.version)
+      this.#stopping = false
+      await this.#launch(backup.runtime, join(this.#options.directory, 't3'))
+      await rm(join(this.#options.directory, 'transition.json'), { force: true })
+      this.#publish({ problem: `Restored ${backup.createdAt}. Newer engine work is preserved in ${join(this.#options.directory, 'backups', archive.id)}. Markdown files and unsent text were kept.` })
+    } catch (error) {
+      if (archive) {
+        await this.#halt(false)
+        await atomicWriteFile(join(this.#options.directory, 'transition.json'), JSON.stringify({ backupId: archive.id, targetVersion: current.version }))
+        await restoreEngineBackup(this.#options.directory, archive, this.#options.restoreState ?? (async () => undefined))
+        await this.#pin(current.version, bundled.version)
+        this.#stopping = false; await this.#launch(current, join(this.#options.directory, 't3'))
+        await rm(join(this.#options.directory, 'transition.json'), { force: true })
+      } else if (this.#stopping) { this.#stopping = false; await this.#launch(current, join(this.#options.directory, 't3')) }
+      throw error
+    } finally { this.#changing = false; await release?.() }
   }
   async #launch(runtime: StagedRuntime, baseDirectory: string): Promise<void> {
     const reservation = createServer()
@@ -89,6 +221,12 @@ export class LocalEngineManager {
     child.once('error', error => { spawnError = error })
     const pipe = child.stdio[3] as import('node:stream').Writable
     pipe.on('error', () => undefined)
+    // Record the owned incarnation before bootstrap. A crash before pairing must not leave an unrecorded database writer.
+    if (!child.pid) throw spawnError ?? new Error('The engine process could not be spawned.')
+    let knownEnvironmentId = ''
+    try { knownEnvironmentId = (await readFile(join(baseDirectory, 'userdata/environment-id'), 'utf8')).trim() } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+    this.#record = { pid: child.pid, ...await processStamp(child.pid), executable, baseDirectory, version: runtime.version, nodeVersion: runtime.nodeVersion, runtimeDirectory: runtime.directory, generation: randomUUID(), address: `http://127.0.0.1:${port}`, environmentId: knownEnvironmentId }
+    await atomicWriteFile(join(this.#options.directory, 'runtime.json'), JSON.stringify(this.#record))
     pipe.end(JSON.stringify({ mode: 'desktop', noBrowser: true, port, t3Home: baseDirectory, host, desktopBootstrapToken: token, tailscaleServeEnabled: network.tailscale === true, tailscaleServePort: network.tailscalePort ?? 443 }))
     const log = (bytes: Buffer) => {
       const safe = bytes.toString().replaceAll(token, '[bootstrap omitted]').replace(/([#?]token=)[^\s]+/g, '$1[omitted]')
@@ -132,7 +270,8 @@ export class LocalEngineManager {
   #monitor(): void {
     if (this.#healthTimer) clearInterval(this.#healthTimer)
     this.#healthTimer = setInterval(() => {
-      if (!this.#record || this.#stopping) return
+      if (!this.#record || this.#stopping || this.#changing) return
+      if (this.#pendingRuntime) { void this.#runTransition(() => this.#upgrade(this.#pendingRuntime!)).catch(error => this.#publish({ problem: String(error) })); return }
       void verifiedProcess(this.#record).then(alive => { if (!alive && !this.#stopping) this.#unexpectedExit() })
     }, 5000)
     this.#healthTimer.unref()
@@ -156,17 +295,36 @@ export class LocalEngineManager {
     if (this.#restartTimer) clearTimeout(this.#restartTimer)
     this.#restartTimer = null
     await this.#starting
+    await this.#transition?.catch(() => undefined)
+    await this.#halt(true)
+  }
+  async #halt(release: boolean): Promise<void> {
+    this.#stopping = true
+    if (this.#healthTimer) clearInterval(this.#healthTimer)
+    this.#healthTimer = null
+    if (this.#restartTimer) clearTimeout(this.#restartTimer)
+    this.#restartTimer = null
     if (this.#record && await verifiedProcess(this.#record)) {
       process.kill(this.#record.pid, 'SIGTERM')
       const deadline = Date.now() + 5000
       while (Date.now() < deadline && await verifiedProcess(this.#record)) await pause(50)
-      if (await verifiedProcess(this.#record)) process.kill(-this.#record.pid, 'SIGKILL')
+      if (await verifiedProcess(this.#record)) {
+        process.kill(-this.#record.pid, 'SIGKILL')
+        const killedDeadline = Date.now() + 2000
+        while (Date.now() < killedDeadline && await verifiedProcess(this.#record)) await pause(25)
+        if (await verifiedProcess(this.#record)) throw new Error('The owned engine did not stop. Its data was left in place.')
+      }
     } else if (this.#child?.pid && this.#child.exitCode === null && this.#child.signalCode === null) {
       // A child handle still owned by this parent can be stopped before a runtime record exists.
-      this.#child.kill('SIGTERM')
+      const child = this.#child
+      child.kill('SIGTERM')
+      const deadline = Date.now() + 5000
+      while (Date.now() < deadline && child.exitCode === null && child.signalCode === null) await pause(50)
+      if (child.exitCode === null && child.signalCode === null) { try { process.kill(-child.pid!, 'SIGKILL') } catch { child.kill('SIGKILL') } }
     }
     await this.#logQueue
-    await this.#release?.(); this.#release = null; this.#child = null
+    if (release) { await this.#release?.(); this.#release = null }
+    this.#child = null
     this.#publish({ state: 'stopped' })
   }
 }

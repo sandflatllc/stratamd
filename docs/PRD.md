@@ -210,6 +210,10 @@ Add project opens the same dialog from Projects and New conversation. Choose Loc
 
 Fresh installations start the bundled official T3 server in a private Strata data directory, using its dedicated Node runtime. Documents open while the server starts. Existing external credentials retain external mode. This computer shows managed-engine state, runtime details, failure information and Restart. An explicit switch keeps each connection's commands, conversations, account preferences, document attachments and Lead, drafts and reading state separate. No pending operation crosses engines.
 
+A folder replacement stages and verifies the bundled runtime independently of the application folder. Updates wait for idle conversations and empty send queues. Strata drains writes, retains its ownership lock, stops the verified engine, and backs up its complete data directory with matching Strata conversation records, document links, Lead and referenced payload objects. A transition journal recovers interrupted updates. Failed updates archive changed data and restore the matching previous runtime and backup.
+
+This computer lists dated backups and their engine versions. Restore requires acknowledgment that newer work will be archived, takes that archive first, and restores the matching engine and Strata records. It preserves Markdown, review history, unsent text and newer staged images. Project files and worktrees are not rolled back. The restored runtime stays selected until the bundle changes or Use bundled engine is chosen. Unpacked releases include dedicated Node and npm, stock T3 production dependencies and helper binaries, license notices and an integrity inventory.
+
 For an external connection, the Engine dialog shows Server, Status and Session, followed by Reconnect and Open t3 connection settings. Disconnected engines show their problem and a primary Reconnect action. Pairing is a collapsed Pair again disclosure for a paired engine and an open Pair form when unpaired. Accounts and Close sit in the footer. Escape, the close control and the backdrop dismiss the dialog and return focus.
 
 

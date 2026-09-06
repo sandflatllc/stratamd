@@ -18,6 +18,7 @@ export const IPC = {
   updateEngineThread: 'strata:update-engine-thread',
   setTerminalDefault: 'strata:set-terminal-default',
   readEngineUsage: 'strata:read-engine-usage',
+  engineRecovery: 'strata:engine-recovery',
   computer: 'strata:computer',
   providerSetup: 'strata:provider-setup',
   readEngineSupport: 'strata:readEngineSupport',

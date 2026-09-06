@@ -794,6 +794,7 @@ export interface StrataApi {
   onTerminalEvent?(listener: (push: TerminalPush) => void): () => void
   setModelPreference(instanceId: string, slug: string, preference: { favorite?: boolean; hidden?: boolean; order?: string[] }): Promise<void>
   listEngineRefs(cwd: string, query?: string): Promise<EngineRefs>
+  engineRecovery?(request: import('./engine-recovery').RecoveryRequest): Promise<import('./engine-recovery').RecoveryView>
   computer?(request: import('./computer').ComputerRequest): Promise<import('./computer').ComputerView>
   providerSetup?(request: import('./provider-setup').ProviderSetupRequest): Promise<import('./provider-setup').ProviderSetupView>
   readEngineSupport(): Promise<EngineSupport>

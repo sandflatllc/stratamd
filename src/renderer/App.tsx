@@ -214,8 +214,6 @@ export function App({ createEditor }: AppProps) {
       if (!receivedPush) adopt(next)
       if (next.activeDocument) activitySeen.current.set(next.activeDocument.path, activitySnapshot(next.activeDocument))
       setReady(true)
-      // Staged composer images outlive their drafts only until this report; the main process deletes the rest (§6.0).
-      window.strata.retainConversationAttachments?.(draftAttachmentIds()).catch((error: unknown) => reportError(error instanceof Error ? error.message : 'Could not tidy staged attachments'))
     }).catch((error: unknown) => { reportError(error instanceof Error ? error.message : 'Could not load StrataMD'); setReady(true) })
     const unsubscribe = window.strata.subscribe((next) => {
       if (!mounted) return
@@ -225,6 +223,12 @@ export function App({ createEditor }: AppProps) {
     })
     return () => { mounted = false; unsubscribe() }
   }, [report, reportError])
+
+  useEffect(() => {
+    if (!ready || view.engine.state !== 'connected' || (view.engine.managed && view.engine.managed.state !== 'running')) return
+    // Wait for automatic pairing to finish before sweeping this connection's staged images.
+    void window.strata.retainConversationAttachments?.(draftAttachmentIds()).catch((error: unknown) => reportError(error instanceof Error ? error.message : 'Could not tidy staged attachments'))
+  }, [ready, view.engine.identity, view.engine.state, view.engine.managed?.state, reportError])
 
   useEffect(() => () => {
     if (mirrorTimer.current !== null) window.clearTimeout(mirrorTimer.current)

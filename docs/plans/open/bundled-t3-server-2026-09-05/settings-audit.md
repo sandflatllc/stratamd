@@ -89,7 +89,7 @@ The actual T3 source and the local fork can differ in account behavior. No local
 | Allow agent browser access | Same Browser section. On in the inspected app. The server injects the preview tools and routes each call to the client registered as automation host. [Screenshot](references/t3-integrations.png) | Decided September 5, 2026: stays on. Strata's own browser registers as the automation host and executes T3's native preview tools; that browser is a separate plan in progress. Until it lands, calls fail the same way T3 fails with no desktop attached. |
 | Plan mode and Sidebar legacy switches | General → Legacy features. [Screenshot](references/t3-general-legacy.png) | T3 interface preferences. Do not add them to Strata just for server bundling. |
 | Stream token by token (legacy) | General → Legacy features. [Screenshot](references/t3-general-legacy.png) | Server-controlled compatibility setting. Keep the normal buffered default. Preserve imported values; no prominent new control. Reassess only if Strata's rendering needs an explicit compatibility override. |
-| Update track and Check for Updates | General → About. [Screenshot](references/t3-general-workspaces.png) | T3 desktop update controls. Replace operational ownership with Strata's updater. Do not expose a T3 desktop update action that could replace the wrong application. |
+| Update track and Check for Updates | General → About. [Screenshot](references/t3-general-workspaces.png) | T3 desktop update controls. The owner replaces the unpacked Strata folder; the managed engine handles version staging and rollback. Do not expose a T3 desktop update action that could replace the wrong application. |
 | Diagnostics | General → About → View diagnostics. [Screenshot](references/t3-general-workspaces.png) | Link local, sanitized engine diagnostics from This computer → Engine details. |
 | Continue threads after restarts | Found in newer upstream material, not in the inspected 0.0.37 UI. | Not counted as a verified missing control. Reinspect the packaged release. If supported, define explicit behavior for active threads and expose a matching optional control. Do not promise automatic resumption based only on a newer source field. |
 
@@ -101,7 +101,7 @@ These remaining checks qualify the unvisited branches. The screens and defaults 
 
 ## Upstream setting keys
 
-The server setting each Include control reads and writes, from the contracts in upstream 0.0.38. Keys are on the server settings object unless a path is shown. Two provider-instance keys were not found by name and are marked to confirm.
+The server setting each Include control reads and writes, from the contracts in upstream 0.0.38. Keys are on the server settings object unless a path is shown. Provider-instance and source-control keys were confirmed during implementation.
 
 | Control | Upstream key |
 | --- | --- |
@@ -117,7 +117,7 @@ The server setting each Include control reads and writes, from the contracts in 
 | Provider health interval | `backgroundActivity.overrides.providerHealthRefreshInterval` |
 | Active and idle host power intervals | `backgroundActivity.overrides.hostPowerMonitorActiveInterval`, `hostPowerMonitorIdleInterval` |
 | Pause when locked, host low power, client low power, on battery | `backgroundActivity.overrides.pauseWhenHostLocked`, `pauseWhenHostLowPower`, `pauseWhenClientLowPower`, `pauseWhenOnBattery` |
-| Source control writing style, custom instructions, templates | `sourceControlWritingStyle` (confirm its sub-keys in phase 3) |
+| Source control writing style, custom instructions, templates | `sourceControlWritingStyle.mode`, `customInstructions`, `followChangeRequestTemplates` |
 | Separate writer model | `sourceControlWriterModelSelection` |
 | Allow agent browser access | `enableAgentBrowserAccess` |
 | Stream token by token (legacy, preserved only) | `enableLegacyTokenStreaming` |
@@ -127,8 +127,8 @@ The server setting each Include control reads and writes, from the contracts in 
 | Cursor API endpoint | `providerInstances.<id>.config.apiEndpoint` |
 | OpenCode server URL and password | `providerInstances.<id>.config.serverUrl`, `serverPassword` |
 | Model ordering, hidden models, custom models | Strata's per-instance `modelPreferences.order` and `hidden`; only `providerInstances.<id>.config.customModels` belongs to stock server settings |
-| Accent color | `providerInstances.<id>` — confirm the key name in phase 3 |
-| Environment variables and secrets | `providerInstances.<id>` — confirm the key name and the secret reference shape in phase 3 |
+| Accent color | `providerInstances.<id>.accentColor` |
+| Environment variables and secrets | `providerInstances.<id>.environment` rows with `name`, `value`, `sensitive`, `valueRedacted`; unchanged redacted rows preserve the saved secret |
 | Terminal defaults, parking, Auto (fork-only on the server) | Not written. Strata's own store is the authority. |
 | T3 Connect sign-in, link, publish | Not server settings. The `t3 connect` subcommands and the upstream credential store. |
 
@@ -142,3 +142,7 @@ The inspected stock schema has no continue-after-restart control. Model ordering
 ## Phase 4 implementation evidence
 
 This computer uses the official separate Connect commands with ephemeral authorization output, code entry and cancellation. Persisted status is read from JSON; local link and access state use authenticated upstream HTTP. Stock 0.0.38 does not expose an environment rename or a local relay-health query. The UI reports the OS naming rule and unverified remote reachability instead of claiming Connected. Pairing-link lifetime is fixed upstream; returned expiry, scope selection, endpoint selection and independent link/device revocation are implemented. `managed-connections.test.ts` proves those controls against stock T3, including explicit LAN listener changes. Hosted authorization and the authenticated phone branch remain blocked by missing owner sign-in/device.
+
+## Phase 6 implementation evidence
+
+Release packaging includes Node, npm, the stock production tree, helper binaries, native modules, notices and file integrity checks. Backup selection and explicit newer-work archiving are exercised through This computer against stock T3. See [phase 6 report](phase-6/report.md) for package checks, complete gate results and remaining device/sign-in proofs.

@@ -1,3 +1,4 @@
+import { recoveryRequest } from '../shared/engine-recovery'
 import { computerRequest } from '../shared/computer'
 import { providerSetupRequest } from '../shared/provider-setup'
 import { engineSettingsEditSchema, providerEditSchema } from '../shared/engine-settings'
@@ -172,6 +173,7 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.updateEngineThread]: z.tuple([idSchema, z.object({ pinned: z.boolean().optional(), snoozedUntil: z.iso.datetime({ offset: true }).nullable().optional(), title: z.string().trim().min(1).max(512).optional(), unread: z.boolean().optional() }).strict()]),
   [IPC.setTerminalDefault]: z.tuple([idSchema, idSchema.nullable()]),
   [IPC.readEngineUsage]: z.tuple([usageWindow]),
+  [IPC.engineRecovery]: z.tuple([recoveryRequest]),
   [IPC.computer]: z.tuple([computerRequest]),
   [IPC.providerSetup]: z.tuple([providerSetupRequest]),
   [IPC.readEngineSupport]: z.tuple([]),
@@ -392,6 +394,7 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.updateEngineThread]: (threadId: string, change: Parameters<StrataApi['updateEngineThread']>[1]) => options.api.updateEngineThread(threadId, change),
     [IPC.setTerminalDefault]: (driver: string, selection: string | null) => options.api.setTerminalDefault(driver, selection),
     [IPC.readEngineUsage]: (window: import('../shared/usage').UsageWindow) => options.api.readEngineUsage(window),
+    [IPC.engineRecovery]: (request: import('../shared/engine-recovery').RecoveryRequest) => { if (!options.api.engineRecovery) throw new Error('Recovery is unavailable'); return options.api.engineRecovery(request) },
     [IPC.computer]: (request: import('../shared/computer').ComputerRequest) => { if (!options.api.computer) throw new Error('Computer controls are unavailable'); return options.api.computer(request) },
     [IPC.providerSetup]: (request: import('../shared/provider-setup').ProviderSetupRequest) => { if (!options.api.providerSetup) throw new Error('Provider setup is unavailable'); return options.api.providerSetup(request) },
     [IPC.readEngineSupport]: () => options.api.readEngineSupport(),

@@ -17,7 +17,10 @@ test('This computer manages real pairing links, tray and login choices in an iso
     await expect(dialog.getByLabel('Publish agent activity')).not.toBeChecked()
     await dialog.getByLabel('Start at login', { exact: true }).check()
     const autostart = join(scenario.env.XDG_CONFIG_HOME!, 'autostart/stratamd.desktop')
-    await expect.poll(async () => readFile(autostart, 'utf8')).toContain('Exec=')
+    await expect.poll(async () => readFile(autostart, 'utf8').catch(error => {
+      if (error.code === 'ENOENT') return ''
+      throw error
+    })).toContain('Exec=')
     await dialog.getByLabel('Start at login', { exact: true }).uncheck()
     await expect.poll(async () => readFile(autostart, 'utf8').then(() => true, () => false)).toBe(false)
     await dialog.getByText('Advanced connections', { exact: true }).click()

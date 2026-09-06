@@ -1,6 +1,6 @@
 # Bundle the T3 server in Strata
 
-Status: phases 1 through 4 complete with recorded hosted/device proof blockers and stock capability limits. Phase 5 is deferred. Phase 6 next. Last revised September 6, 2026.
+Status: implementation complete for phases 1 through 4 and phase 6. Phase 5 is deferred. Repository gates, eight-worker stress checks and the Linux package proof passed. Release remains blocked on the recorded hosted/device proofs and stock capability limits; this plan stays open to track them. Last revised September 6, 2026.
 
 This file is the source of truth for the implementing agent. Rules are stated once, in the present tense. The [settings audit](settings-audit.md) is the scope checklist for every engine control, the [inspection record](references/README.md) holds the evidence captures, and the [design captures](../../../design/bundled-server/README.md) show the proposed dialogs inside the real app.
 
@@ -17,7 +17,7 @@ This file is the source of truth for the implementing agent. Rules are stated on
 - Every account control stays in the existing Accounts dialog. Engine controls live in a Settings dialog from the logo menu and in This computer, which replaces the Engine dialog. There is no settings navigation column.
 - Phase 1 proved the Linux package, bootstrap, existing provider discovery, both usage readers, and a stock-server conversation. Hosted authorization, Android and macOS remain release blockers. Continue implementation under the owner's explicit exception for unavailable sign-ins/devices.
 - T3 0.0.38 rejects port zero. Allocate a free loopback port, then verify the pid and address in its runtime record; retry a bind race.
-- T3 Connect login and link are interactive in 0.0.38; only status supports JSON. Host upstream interaction and use JSON status plus live authenticated relay state as the authority.
+- T3 Connect login and link are interactive in 0.0.38; only status supports JSON. Host upstream interaction and use JSON status for stored configuration. Stock 0.0.38 exposes no local relay-health query, so report remote reachability as unverified.
 - Codex usage windows are classified by duration. Claude's SDK usage method is experimental and absence means unavailable usage. Refresh provisional provider status before offering installation.
 - Model order and visibility remain in Strata. Stock T3 only owns custom model IDs; the audit originally misidentified upstream client preferences as server settings.
 - Provider setup uses official pinned npm packages with bundled npm, owns only its child jobs, and refuses concurrent conversations. Accounts with environment overrides are not usage-probed because a hidden override may select a different credential.
@@ -46,7 +46,7 @@ That installed 0.0.37 app is the owner's fork build, not the official release. I
 
 The official npm package `t3` 0.0.38 was downloaded and inspected. It is about 100 MB, of which 71 MB is the bundled web client, so the server's browser UI ships with it. It uses Node's built-in SQLite and requires Node 22.16 or newer. Its native modules are node-pty, fff-node and msgpackr-extract, installed as ordinary dependencies rather than shipped in the tarball. The public T3 Connect identifiers and relay address are baked in, so its connect commands are enabled. It ships resource-monitor helper binaries for linux-x64, darwin-x64, darwin-arm64 and win32-x64. [Upstream package](https://github.com/pingdotgg/t3code/blob/main/apps/server/package.json).
 
-Not tested: a signed-in T3 Connect tunnel, mobile discovery of a Strata-owned environment, an Android turn, a clean machine with no provider tools, macOS, and either usage reader from Strata's own process. Phase 1 proves these.
+Linux packaging, isolated provider installation, existing account discovery, a stock-server conversation and both local usage readers are proven in the phase reports. Hosted T3 authorization/relay health, Android discovery/turn/reconnect, successful fresh provider sign-ins, macOS packages/Keychain and physical sleep/wake remain blocked release proofs. The owner explicitly authorized completing implementation around those unavailable sign-ins and devices.
 
 ## Proposed screens
 
@@ -168,7 +168,7 @@ Phase 2 starts with a written inventory of every such record, in main-process fi
 
 ### T3 Connect
 
-Use the upstream CLI's separate `connect login`, `link`, `status`, `publish`, `unlink`, and `logout` subcommands against Strata's base directory. Never the top-level `connect` onboarding, which offers a background service. Expose progress and status through main-process IPC. Host upstream interactive commands without treating their terminal text as structured state; query `connect status --json` and the authenticated server's live relay state after each action. Support the browser authorization lifecycle including cancellation and callback failure.
+Use the upstream CLI's separate `connect login`, `link`, `status`, `publish`, `unlink`, and `logout` subcommands against Strata's base directory. Never the top-level `connect` onboarding, which offers a background service. Expose progress and status through main-process IPC. Host upstream interactive commands without treating their terminal text as structured state; query `connect status --json` and the authenticated server's link configuration after each action. Stock 0.0.38 has no local relay-health query; reachability remains unverified. Support the browser authorization lifecycle including cancellation and callback failure.
 
 T3 identity tokens and environment-link credentials stay in the upstream credential store for this environment. Use the package's baked-in public client configuration; never invent OAuth credentials or impersonate another application. After linking, apply the change the way upstream requires, including a controlled restart if needed, and check relay readiness before showing Connected. Stock link-state and CLI status describe persisted configuration, not live reachability. Until a supported health proof is available, show "Environment linked. Remote reachability is unverified." Publishing has its own visible opt-in. Sign-out disables remote access and publishing and says whether the T3 account stays signed in on its website.
 
@@ -210,11 +210,11 @@ Without an installer, an update is the user replacing the application folder, so
 1. Compare the bundled engine version with the runtime record.
 2. If they differ, stage the new runtime into its own versioned directory and verify its native modules.
 3. Wait for any active turn to finish, or ask.
-4. Take a dated backup of the database and attachment manifest under `engine/backups/`, recording which engine version wrote it.
-5. Stop the old engine, start the new copy, verify authenticated readiness and subscriptions, and reconnect.
+4. Drain local dispatch, refuse active turns or unfinished queued deliveries, and stop the verified old engine while retaining its ownership lock. Copy the now-consistent T3 base directory and record its files, engine version, engine-scoped Strata stores, document conversation bindings and referenced payload objects under `engine/backups/`. A live filesystem copy is not a consistent database backup.
+5. Start the new copy, verify authenticated readiness and subscriptions, and reconnect. Keep a transition journal so an interrupted replacement can recover the matching runtime and data.
 6. Keep the previous runtime copy and the backup until the new version completes a clean session.
 
-Restore starts the previous copy against its matching backup, after showing the backup time and any newer work at risk. Newer conversations are never discarded silently. Never restart during an agent turn without the user's explicit choice. A newer server with an unknown optional setting keeps working; an incompatible required operation names the affected feature and offers the update.
+Restore starts the previous copy against its matching backup, after showing the backup time and any newer work at risk. Newer conversations are never discarded silently. Restore first archives the current engine data and Strata conversation bindings. It restores the matching older engine stores and bindings, and preserves current Markdown files, editor text, review history and unsent renderer drafts. Updates and restores wait for queued deliveries to finish so restored old sends cannot replay completed post-backup actions. Never restart during an agent turn without the user's explicit choice. A newer server with an unknown optional setting keeps working; an incompatible required operation names the affected feature and offers the update.
 
 ## Migration
 
@@ -227,6 +227,8 @@ Copy into a staging directory. Preserve project and thread ids, timestamps, prov
 Verify that document associations open the same conversations, attachments resolve, drafts survive, and queued sends cannot cross environments. Only then switch the selected connection and mark the migration complete, keeping the previous connection and backup for recovery. Writes after the switch belong to the new environment; diverged histories are never merged automatically. The original T3 installation stays usable with its original data; nothing points a second server process at Strata's data directory.
 
 ## Phases
+
+The evidence column retains the release acceptance checks. Each phase report separates passing results from the sign-in/device proofs the owner explicitly allowed implementation to proceed without.
 
 | Phase | Work | Completion evidence |
 | --- | --- | --- |
@@ -294,9 +296,9 @@ Add unit tests for state transitions, settings patch and secret handling, and th
 
 Before calling any phase complete, run the repository gate in order: `tsc --noEmit`, Vitest, then the Electron build and the full Playwright suite under Xvfb, using the binaries under `node_modules/.bin` directly. Follow the failure-recording rules in AGENTS.md; never mask a failure with retries or longer timeouts. Shell and lifecycle changes also need the eight-worker, twice-repeated run before merge.
 
-## Open for phase 1
+## Remaining release proofs
 
-The packaged native modules on both platforms; a clean-machine provider install and sign-in path; whether T3's hosted service authorizes a Strata-owned environment, with a real phone turn; whether desktop mode from the bootstrap envelope has side effects; both usage readers; and the newer "continue threads after restarts" setting that was not in the audited build.
+Hosted T3 authorization, cloudflared acquisition/link health and actual offline revocation; Android discovery, a turn and reconnection; successful fresh provider sign-ins; macOS x64/arm64 packaging, native login integration and Claude Keychain usage; physical-device power/reconnection and Tailscale HTTPS. A concurrent-busy Codex usage query remains unproven, so production queries only while idle. Linux package/install/usage and automated lifecycle proofs are recorded in the phase reports. Stock 0.0.38 has no supported environment-name override or continue-after-restart control.
 
 ## Changelog
 
@@ -312,3 +314,9 @@ The packaged native modules on both platforms; a clean-machine provider install 
 - **September 6, 2026, phase 3.** Added edited-field settings and provider saves, all audited settings/account controls, official provider setup jobs, host/client policy signals, and Strata-owned usage readers. Model-order audit keys were corrected to client preferences. A real Linux stock-server run returned Codex weekly 91%, Claude session 0% and weekly 9%, each with measurement time; this is observed usage rather than a fixture. T3 ignores host-power observations older than the accepted report. New provider sign-ins and macOS Keychain proof still require owner devices/authorization. Phase 3 gate results are recorded in its report.
 
 - **September 6, 2026, phase 4 findings.** Stock environment naming is OS-derived and has no supported override. Persisted CLI authentication does not prove current hosted authorization, and link configuration does not prove relay reachability. The UI states these limits. Pairing expiry is server-defined. Official unlink clears publishing too, so disabling remote access restores an explicitly enabled publishing choice through the official publish command. Hosted authorization, Android and macOS remain blocked proofs.
+
+- **September 6, 2026, phase 6 consistency decision.** A full filesystem backup must follow graceful engine shutdown, with the ownership lock retained throughout. Backups include engine-scoped Strata records and document conversation bindings with payload objects. Restoration first archives newer data and never rewinds Markdown/editor text. Pending deliveries defer the transition to avoid replaying old sends. Runtime selection after manual rollback remains pinned until a new bundle or an explicit update.
+
+- **September 6, 2026, phase 6 packaging findings.** The ordinary Electron Builder resource filter omitted engine dependencies. A post-package copy and complete inventory check now preserve the independent runtime. Node includes npm for managed provider installs. The packaged fresh-profile check exposed attachment cleanup during automatic pairing; cleanup now waits for a connected managed engine. Process ownership is recorded before bootstrap. Unknown provider readiness retains an explicit Check or install action.
+
+- **September 6, 2026, phase 6 completion.** The resumed thread diagnosed and corrected a login-file polling failure, then passed ten exact-line repeats, TypeScript, 858 unit/integration tests, the build, all 199 Electron tests and all 398 eight-worker repeated checks. The rebuilt Linux package passed both CLI checks and fresh-profile automatic startup, managed Codex/Claude installation without system Node, and owned-engine shutdown. All implementation is retained on `bundled-t3-server`; nothing is merged to master. The [phase 6 report](phase-6/report.md) records evidence and the remaining release blockers.

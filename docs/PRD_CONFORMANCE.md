@@ -151,3 +151,14 @@ Conversation navigation gate, 2026-09-05: verified in an isolated checkout of da
 | Stock pairing expiry, scope selection, link/device revocation, explicit LAN restart | `test/integration/managed-connections.test.ts` |
 | This computer controls, persisted tray preference and isolated login entry | `test/e2e/computer-controls.spec.ts`, `test/unit/t3-connect.test.ts` |
 | Hosted sign-in, relay reachability, Android turn/reconnect, macOS login integration | Blocked release proofs; phase reports record missing sign-in/devices. |
+
+### Bundled distribution and recovery
+
+| Behavior | Evidence |
+| --- | --- |
+| Verified runtime staging, stopped consistent backups, failed/interrupted upgrade recovery and selected rollback runtime | `test/integration/engine-upgrade.test.ts` with the stock runtime |
+| Matching engine records, document links, Lead and payloads; newer Markdown, buffers and staged images preserved | `test/unit/strata-engine-backup.test.ts`; `test/e2e/engine-recovery-bindings.spec.ts`; `test/e2e/engine-recovery.spec.ts` |
+| Drain and suspend writes during maintenance, allow the owned reconnect, resume afterward | `test/unit/connection-maintenance.test.ts` |
+| Unpacked Linux fresh profile, no system Node, private official provider installs and owned-engine Quit | Bundled-server phase 6 packaged proof; `packaging/engine/README.md` documents the artifact and platform limits |
+
+The upgrade fixtures use distinct runtime manifests around the same official server artifact. They verify transition mechanics; each future release must also test its actual upstream schema migration. macOS package/Keychain and hosted Android proofs remain release blockers, not automated passes.

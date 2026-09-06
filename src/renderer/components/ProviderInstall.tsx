@@ -28,6 +28,7 @@ export function ProviderInstall({ account, engine }: { account: AccountView; eng
   return <div className="provider-install" aria-label={`Set up ${account.name}`}>
     {engine.managed && supported ? <>
       {!running && <button type="button" className="quiet-button" disabled={starting} onClick={() => void act(account.installed ? 'login' : 'install')}>{account.installed ? 'Sign in' : 'Install'} {account.name}</button>}
+      {!running && account.installed && !account.usable && <button type="button" className="quiet-button" disabled={starting} onClick={() => void act('install')}>Check or install {account.name}</button>}
       {job?.message && <p role="status">{job.message}</p>}
       {running && <><button type="button" className="quiet-button" onClick={() => void act('cancel')}>Cancel setup</button>{url && <button type="button" className="quiet-button" onClick={() => void window.strata.openExternal?.(url)}>Open provider sign-in</button>}</>}
       {job?.output && <pre className="provider-setup-output">{job.output}</pre>}

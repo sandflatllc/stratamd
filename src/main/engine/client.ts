@@ -153,6 +153,9 @@ export interface EngineReadClient {
   reportActivity?(activity: EngineActivity, managed: boolean): Promise<void>
   prepareLocalSetup?(): Promise<void>
   resumeAfterMaintenance?(): Promise<void>
+  freezeForBackup?(): Promise<void>
+  assertNoPendingSends?(): void
+  reloadStoredState?(): Promise<void>
   connectionRequest?(action: string, payload?: unknown): Promise<unknown>
   readSettings?(): Promise<EngineSettings>
   editSettings?(edit: EngineSettingsEdit): Promise<EngineSettings>
@@ -1039,7 +1042,18 @@ export class T3EngineClient implements EngineReadClient {
     })
   }
 
-  async resumeAfterMaintenance(): Promise<void> { await this.#operations.run(() => this.#retryPendingCommands()) }
+  async freezeForBackup(): Promise<void> { await this.#operations.switch(async () => { this.#operations.suspend() }) }
+  assertNoPendingSends(): void {
+    if (this.#pendingCommands.length || Object.values(this.#conversations.threads).some(thread => thread.prepared?.length || thread.pending.length)) throw new Error('Finish or discard queued conversation sends before updating or restoring the engine.')
+  }
+  async reloadStoredState(): Promise<void> {
+    await this.shutdown()
+    this.#shell = null; this.#threads.clear(); this.#watched.clear(); this.#messageCache.clear(); this.#lastThreads = []
+    this.#shellSequence = 0; this.#configFetchedAt = 0
+    this.#reading = { formatVersion: 1, activeThreadId: null, lastVisited: {}, attention: {} }
+    await this.initialize(false)
+  }
+  async resumeAfterMaintenance(): Promise<void> { this.#operations.resume(); await this.#operations.run(() => this.#retryPendingCommands()) }
 
   async prepareLocalSetup(): Promise<void> {
     await this.#operations.switch(async () => {
@@ -1702,6 +1716,7 @@ export class T3EngineClient implements EngineReadClient {
 
   /** Saved preparations keep their images too; only what neither a draft nor a preparation names is deleted. */
   async retainAttachments(ids: readonly string[]): Promise<void> {
+    if (!this.#operations.accepting) return
     return this.#operations.run(() => this.#retainAttachments(ids))
   }
 

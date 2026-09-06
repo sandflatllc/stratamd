@@ -1,3 +1,4 @@
+import { EngineRecovery } from './EngineRecovery'
 import { ComputerControls } from './ComputerControls'
 import { useRef, useState, type ReactNode } from 'react'
 import type { EngineView, PairEngineRequest } from '../../shared/contracts'
@@ -64,12 +65,13 @@ export function EngineDialog({ engine, onPair, onReconnect, onClose, onOpenAccou
           {engine.credential && <div><dt>Session</dt><dd data-testid="engine-session">{engine.credential.renews ? 'Renews itself' : `Ends ${new Date(engine.credential.expiresAt).toLocaleDateString()}. Pair again with Manage access and it renews itself.`}</dd></div>}
         </dl>
         {engine.managed && <section>
-          <p>{engine.managed.state === 'starting' ? 'Starting the engine…' : `T3 ${engine.managed.version ?? 'bundled'} · Node ${engine.managed.nodeVersion ?? 'bundled'}`}</p>
+          <p>{engine.managed.state === 'starting' ? 'Starting the engine…' : `T3 ${engine.managed.version?.match(/^t3-(.+?)-node-/)?.[1] ?? engine.managed.version ?? 'bundled'} · Node ${engine.managed.nodeVersion ?? 'bundled'}`}</p>
           {engine.managed.problem && <p role="alert">{engine.managed.problem}</p>}
           <p>Documents remain available when the engine is stopped.</p>
           <button type="button" className="quiet-button" onClick={() => { void window.strata.manageEngine?.('restart').catch(error => setError(String(error))) }}>Restart engine</button>
-          <details><summary>Engine details</summary><p>{engine.managed.directory}</p></details>
+          <details><summary>Engine details</summary><p>{engine.managed.directory}</p><p>Runtime {engine.managed.version}</p></details>
         </section>}
+        {engine.managed && window.strata.engineRecovery && <EngineRecovery />}
         {engine.managed && window.strata.computer && <ComputerControls />}
         {engine.problem && engine.state !== 'unpaired' && <p className="engine-problem">{engine.problem}</p>}
         {paired && <div className="engine-dialog-row">
