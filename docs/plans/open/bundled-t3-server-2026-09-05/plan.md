@@ -1,6 +1,6 @@
 # Bundle the T3 server in Strata
 
-Status: phases 1 and 2 complete, with their repository gates passed. Phase 2 also passed the 380-check eight-worker run. Owner/device proofs remain blocked. Phase 3 is next. Last revised September 5, 2026; the [changelog](#changelog) at the end records what changed and why.
+Status: phases 1, 2 and 3 complete with the recorded device/sign-in proof blockers. Phase 4 next; phase 5 remains deferred. Last revised September 6, 2026.
 
 This file is the source of truth for the implementing agent. Rules are stated once, in the present tense. The [settings audit](settings-audit.md) is the scope checklist for every engine control, the [inspection record](references/README.md) holds the evidence captures, and the [design captures](../../../design/bundled-server/README.md) show the proposed dialogs inside the real app.
 
@@ -19,6 +19,8 @@ This file is the source of truth for the implementing agent. Rules are stated on
 - T3 0.0.38 rejects port zero. Allocate a free loopback port, then verify the pid and address in its runtime record; retry a bind race.
 - T3 Connect login and link are interactive in 0.0.38; only status supports JSON. Host upstream interaction and use JSON status plus live authenticated relay state as the authority.
 - Codex usage windows are classified by duration. Claude's SDK usage method is experimental and absence means unavailable usage. Refresh provisional provider status before offering installation.
+- Model order and visibility remain in Strata. Stock T3 only owns custom model IDs; the audit originally misidentified upstream client preferences as server settings.
+- Provider setup uses official pinned npm packages with bundled npm, owns only its child jobs, and refuses concurrent conversations. Accounts with environment overrides are not usage-probed because a hidden override may select a different credential.
 - linux-arm64 is outside the first release: the published package ships no helper binary for it.
 
 ## What the user gets
@@ -305,3 +307,5 @@ The packaged native modules on both platforms; a clean-machine provider install 
 - **September 5, 2026, phase 1 implementation.** Linux stock package and existing pairing client completed a real conversation; native modules and both Linux usage readers passed. Nonzero-port requirement, provisional provider status, duration-based Codex windows, experimental Claude API, and interactive-only Connect authorization are incorporated above. Hosted authorization, Android and macOS proofs are blocked by missing owner sign-in/devices, not represented as passing. The owner explicitly authorized continuing surrounding implementation. See [phase 1 report](phase-1/report.md).
 
 - **September 5, 2026, phase 2.** Implemented the managed runtime, process ownership, automatic connection, bounded recovery, tray lifecycle, and engine-scoped state. Legacy credentials are resolved before binding their original records. Document deliveries, Lead, renderer drafts, and account preferences remain with their engine. The full gate passed (840 unit/integration tests, 190 Electron tests) and the eight-worker repeat passed 380 checks. Repeated cross-worktree load failures reduced ordinary workers from six to four. A stress-exposed reply completion race now preserves the next draft. See [the phase 2 report](phase-2/report.md) and [identity inventory](phase-2/engine-identity.md).
+
+- **September 6, 2026, phase 3.** Added edited-field settings and provider saves, all audited settings/account controls, official provider setup jobs, host/client policy signals, and Strata-owned usage readers. Model-order audit keys were corrected to client preferences. A real Linux stock-server run returned Codex weekly 91%, Claude session 0% and weekly 9%, each with measurement time; this is observed usage rather than a fixture. T3 ignores host-power observations older than the accepted report. New provider sign-ins and macOS Keychain proof still require owner devices/authorization. Phase 3 gate results are recorded in its report.

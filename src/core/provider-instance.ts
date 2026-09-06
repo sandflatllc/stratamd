@@ -10,5 +10,8 @@ export function providerConfigFields(driver: string): Array<{ key: string; label
     ...(['codex', 'claudeAgent'].includes(driver) ? [{ key: 'homePath', label: 'Account home path' }] : []),
     ...(driver === 'codex' ? [{ key: 'shadowHomePath', label: 'Shadow home path' }] : []),
     ...(['codex', 'claudeAgent'].includes(driver) ? [{ key: 'launchArgs', label: 'Launch arguments' }] : []),
+    ...(driver === 'claudeAgent' ? [{ key: 'autoCompactWindow', label: 'Auto-compact after' }] : []),
+    ...(driver === 'cursor' ? [{ key: 'apiEndpoint', label: 'API endpoint' }] : []),
+    ...(driver === 'opencode' ? [{ key: 'serverUrl', label: 'Server URL' }, { key: 'serverPassword', label: 'Server password' }] : []),
   ]
 }

@@ -65,6 +65,10 @@ A stress pass before a merge that touched the shell or the harness: `STRATAMD_E2
 
 ## Known flakes
 
+- 2026-09-06, bundled-server phase 3: `provider-settings-fields.spec.ts:77` used an ambiguous `summary` locator that matched the generated-model disclosure and its nested Other models disclosure. The selector now names the direct disclosure. In the same run `view-sync.spec.ts:5` recurred: `setSource` had left Source open, so the first visibility check could pass before either asynchronous shortcut completed. The test now establishes Visual before testing Source → Visual. Two subsequent repeats reached the next fill before the asynchronous main-process mode echo finished; it now waits for the acknowledged mode and DOM across two animation frames. Those artifacts are in `phase-3/failed-second-repeat/`. These mechanisms were diagnosed; saved artifacts are in `docs/plans/open/bundled-t3-server-2026-09-05/phase-3/failed-full-2/`. Repeat and full-run evidence is in the phase 3 report.
+
+- 2026-09-06, bundled-server phase 3: `frameless-window.spec.ts:10` failed because its exact menu list omitted the new Settings item. The first correction also placed Settings after Accounts, while the actual menu places it before Accounts. Both failures were deterministic assertion drift. Saved artifacts: `docs/plans/open/bundled-t3-server-2026-09-05/phase-3/failed-full-1/` and `failed-menu-repeat/`. The final assertion matches the implemented order; repeat and full-run results are in the phase 3 report.
+
 A test that fails in a full run and then passes ten explicit repeats is recorded here, not cleared. A test listed twice is fixed or rewritten before the next feature. Keep the saved `test-results/` copy for each entry until it is closed.
 
 | Test | Seen | Evidence | Status |

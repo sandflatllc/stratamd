@@ -1,3 +1,5 @@
+import { ProviderSetupJobs } from './engine/provider-setup'
+import { measureLocalUsage } from './engine/local-usage'
 import { LocalEngineManager } from './engine/manager'
 import { connectionIdentity } from './engine/identity'
 import { conversationDelivery, renderConversationDelivery } from '../core/conversation-delivery'
@@ -273,6 +275,7 @@ export interface ApplicationOptions {
   now?: () => number
   watch?: boolean
   managedBundle?: string
+  engineUsageHelper?: string
   engine?: EngineReadClient
   /** Window focus and the OS notification, supplied by Electron (§5.2). */
   notifications?: { isFocused(): boolean; notify(notification: { threadId: string; title: string; body: string }): void }
@@ -305,6 +308,8 @@ export class StrataApplication implements StrataApi {
   readonly #watch: boolean
   readonly #engine: EngineReadClient
   readonly #managedBundle: string | undefined
+  #providerSetupPreparing = false
+  #providerSetup = new ProviderSetupJobs()
   #manager: LocalEngineManager | null = null
   #followedThreadsKey = ''
   #unsubscribeEngine: (() => void) | null = null
@@ -333,6 +338,10 @@ export class StrataApplication implements StrataApi {
     this.#watch = options.watch ?? true
     this.#engine = options.engine ?? new T3EngineClient({
       dataDirectory: this.#store.dataDirectory, now: this.#now,
+      reserveLocalSetup: () => { this.#providerSetupPreparing = true },
+      localSetupBusy: () => this.#providerSetupPreparing || this.#providerSetup.busy,
+      localUsageAvailable: () => this.#manager !== null,
+      measureUsage: (provider, settings, signal) => measureLocalUsage(this.#manager?.runtimeContext() ?? null, options.engineUsageHelper ?? resolve('resources/engine-helpers/usage.mjs'), provider, settings, signal),
       // Terminal launchers are scripts Strata writes on Linux (§5.13); macOS gets none.
       terminalShimDirectory: isDarwin() ? null : join(this.#store.dataDirectory, 'bin'),
       ...(options.notifications ? { isFocused: () => options.notifications!.isFocused(), notify: (notification) => options.notifications!.notify(notification) } : {}),
@@ -664,6 +673,7 @@ export class StrataApplication implements StrataApi {
     this.#themeSubscription = null
     this.#unsubscribeEngine?.()
     this.#unsubscribeEngine = null
+    await this.#providerSetup.cancel()
     await this.#engine.shutdown()
     await this.#manager?.stop()
     const sessions = [...this.#sessions.values()]
@@ -704,6 +714,7 @@ export class StrataApplication implements StrataApi {
   }
 
   async pairEngine(request: PairEngineRequest): Promise<void> {
+    if (this.#providerSetupPreparing || this.#providerSetup.busy) throw new Error('Finish or cancel provider setup before changing engines.')
     const target = resolvePairingTarget(request)
     if (target.server !== this.#engine.view().server && (this.#engineDispatching.size || this.#engine.view().projects.some(project => project.threads.some(thread => thread.status === 'running' || thread.status === 'starting')))) throw new Error('Wait for active work to finish before changing engines.')
     await Promise.all([...this.#sessionTurns.values()])
@@ -726,6 +737,7 @@ export class StrataApplication implements StrataApi {
   }
 
   async manageEngine(action: 'restart' | 'use-managed'): Promise<void> {
+    if (this.#providerSetupPreparing || this.#providerSetup.busy) throw new Error('Finish or cancel provider setup before changing engines.')
     if (!this.#managedBundle) throw new Error('This build has no bundled engine')
     if (this.#engine.view().projects.some(project => project.threads.some(thread => thread.status === 'running' || thread.status === 'starting'))) throw new Error('Wait for active conversations to finish before restarting the engine.')
     if (action === 'use-managed') {
@@ -824,6 +836,46 @@ export class StrataApplication implements StrataApi {
     return this.#engine.readSettings()
   }
 
+  async providerSetup(request: import('../shared/provider-setup').ProviderSetupRequest) {
+    if (request.identity !== (this.#engine.view().identity ?? null)) throw new Error('The selected engine changed. Reopen Accounts.')
+    if (request.action === 'status') return this.#providerSetup.view(request.instanceId)
+    if (request.action === 'cancel') { await this.#providerSetup.cancel(); return this.#providerSetup.view(request.instanceId) }
+    if (request.action === 'input') { this.#providerSetup.input(request.input ?? ''); return this.#providerSetup.view(request.instanceId) }
+    const context = this.#manager?.runtimeContext()
+    if (!context) throw new Error('Provider setup is available only for This computer. Set up an external account on its own computer.')
+    if (this.#engineDispatching.size || this.#engine.view().projects.some(project => project.threads.some(thread => ['starting', 'running'].includes(thread.status)))) throw new Error('Wait for active conversations before changing provider installation or sign-in.')
+    const account = this.#engine.view().accounts.find(value => value.instanceId === request.instanceId)
+    if (!account) throw new Error(`Account ${request.instanceId} is unavailable.`)
+    if (this.#providerSetupPreparing || this.#providerSetup.busy) throw new Error('Finish or cancel provider setup first.')
+    await this.#engine.prepareLocalSetup?.()
+    try {
+    const settings = await this.readEngineSettings()
+    return await this.#providerSetup.start(request.action, context, account, settings, join(this.#store.dataDirectory, 'engine/providers'), async binary => {
+      const base = settings.providerInstances[request.instanceId]!
+      await this.editEngineProvider({ identity: request.identity, instanceId: request.instanceId, base, patch: { config: { binaryPath: binary } } })
+    }, async () => { await this.#engine.refreshAccounts?.() })
+    } finally { this.#providerSetupPreparing = false }
+  }
+
+  async readEngineSupport() {
+    if (!this.#engine.readSupport) return { sourceControl: [], problems: ['This engine does not report source control readiness.'] }
+    return this.#engine.readSupport()
+  }
+
+  async reportEngineActivity(activity: import('../shared/engine-settings').EngineActivity) {
+    await this.#engine.reportActivity?.(activity, this.#manager !== null)
+  }
+
+  async editEngineSettings(edit: Parameters<StrataApi['editEngineSettings']>[0]) {
+    if (!this.#engine.editSettings) throw new Error('This engine does not support editing settings')
+    return this.#engine.editSettings(edit)
+  }
+
+  async editEngineProvider(edit: Parameters<StrataApi['editEngineProvider']>[0]) {
+    if (!this.#engine.editProvider) throw new Error('This engine does not support editing providers')
+    return this.#engine.editProvider(edit)
+  }
+
   async browseEngineFolder(path: string) {
     if (!this.#engine.browseFolder) throw new Error('The engine does not support browseFolder')
     return this.#engine.browseFolder(path)
@@ -839,10 +891,7 @@ export class StrataApplication implements StrataApi {
     return this.#engine.cloneRepository(input)
   }
 
-  async updateEngineProviderInstances(instances: Parameters<StrataApi['updateEngineProviderInstances']>[0]) {
-    if (!this.#engine.updateProviderInstances) throw new Error('The engine does not support updateProviderInstances')
-    return this.#engine.updateProviderInstances(instances)
-  }
+
 
   async setModelPreference(instanceId: string, slug: string, preference: Parameters<StrataApi['setModelPreference']>[2]) {
     if (!this.#engine.setModelPreference) throw new Error('The engine does not support setModelPreference')

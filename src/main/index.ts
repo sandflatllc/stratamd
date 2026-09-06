@@ -1,3 +1,4 @@
+import { installEngineActivity } from './engine/background-activity'
 import { engineTray } from './engine/tray'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
@@ -14,6 +15,7 @@ import { documentPathsFromArgv } from './session'
 import { APP_HOST, installAppProtocol, installLocalImageProtocol, registerPrivilegedSchemes } from './protocols'
 
 export interface MainApplication extends StrataApi {
+  reportEngineActivity?(activity: import('../shared/engine-settings').EngineActivity): Promise<void>
   recheckFocused?(): Promise<void>
   shutdown?(): Promise<void>
   /** Reopen the tabs the previous run left open; returns what came back. */
@@ -161,6 +163,7 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
   }
 
   await app.whenReady()
+  const stopEngineActivity = installEngineActivity(options.api)
   // Zoom is per pane in the renderer (PRD §6.9); the default menu's window
   // zoom roles must not exist. Linux keeps no menu; macOS gets the minimal one.
   Menu.setApplicationMenu(buildApplicationMenu())
@@ -343,6 +346,7 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
         if (choice.response === 0) { quitting = false; return }
       }
       tray?.destroy()
+      stopEngineActivity()
       registeredIpc?.dispose()
       unsubscribeState?.()
       try {
@@ -390,6 +394,7 @@ if (!process.env.VITEST) {
   if (!app.requestSingleInstanceLock()) app.quit()
   else void createStrataApplication({
     managedBundle: process.env.STRATAMD_ENGINE_BUNDLE ?? join(process.resourcesPath, 'engine'),
+    engineUsageHelper: app.isPackaged ? join(process.resourcesPath, 'resources/engine-helpers/usage.mjs') : join(import.meta.dirname, '../../resources/engine-helpers/usage.mjs'),
     // Badges when the owner is elsewhere, an OS notification when the window is not focused (§5.2).
     notifications: {
       isFocused: () => BrowserWindow.getAllWindows().some((window) => window.isFocused()),

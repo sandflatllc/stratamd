@@ -1,3 +1,5 @@
+import { providerSetupRequest } from '../shared/provider-setup'
+import { engineSettingsEditSchema, providerEditSchema } from '../shared/engine-settings'
 import type { ContextMenuParams, IpcMain, IpcMainEvent, IpcMainInvokeEvent, WebContents } from 'electron'
 import { z } from 'zod'
 import type { AppView, SpellingContext, StrataApi, BufferOrigin } from '../shared/contracts'
@@ -8,7 +10,7 @@ import { logRendererReport } from './log'
 import { annotationContextSchema } from './validation'
 import type { WindowController } from './window-controls'
 import { MAX_ATTACHMENTS, MAX_IMAGE_BYTES, MAX_TEXT_BYTES, SUPPORTED_IMAGE_TYPES } from '../core/composer-attachments'
-import { usageWindow, terminalAttachInput, terminalWriteInput, terminalResizeInput, terminalTarget, worktreeRequest, updateProviderInstancesInput, cloneRepositoryInput } from './engine/t3-contract'
+import { usageWindow, terminalAttachInput, terminalWriteInput, terminalResizeInput, terminalTarget, worktreeRequest, cloneRepositoryInput } from './engine/t3-contract'
 import { isStagedAttachmentId } from './engine/staged-attachments'
 
 type StrataIpcApi = Omit<StrataApi, 'subscribe'>
@@ -169,12 +171,15 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.updateEngineThread]: z.tuple([idSchema, z.object({ pinned: z.boolean().optional(), snoozedUntil: z.iso.datetime({ offset: true }).nullable().optional(), title: z.string().trim().min(1).max(512).optional(), unread: z.boolean().optional() }).strict()]),
   [IPC.setTerminalDefault]: z.tuple([idSchema, idSchema.nullable()]),
   [IPC.readEngineUsage]: z.tuple([usageWindow]),
+  [IPC.providerSetup]: z.tuple([providerSetupRequest]),
+  [IPC.readEngineSupport]: z.tuple([]),
   [IPC.readEngineSettings]: z.tuple([]),
+  [IPC.editEngineSettings]: z.tuple([engineSettingsEditSchema]),
+  [IPC.editEngineProvider]: z.tuple([providerEditSchema]),
   [IPC.browseEngineFolder]: z.tuple([z.string().trim().min(1).max(512)]),
   [IPC.lookupEngineRepository]: z.tuple([idSchema]),
   [IPC.cloneEngineRepository]: z.tuple([cloneRepositoryInput]),
-  [IPC.updateEngineProviderInstances]: z.tuple([updateProviderInstancesInput.shape.patch.shape.providerInstances]),
-  [IPC.setModelPreference]: z.tuple([idSchema, idSchema, z.object({ favorite: z.boolean().optional(), hidden: z.boolean().optional() }).strict()]),
+  [IPC.setModelPreference]: z.tuple([idSchema, idSchema, z.object({ favorite: z.boolean().optional(), hidden: z.boolean().optional(), order: z.array(idSchema).max(1024).optional() }).strict()]),
   [IPC.listEngineRefs]: z.tuple([pathSchema, z.string().max(256).optional()]),
   [IPC.attachEngineTerminal]: z.tuple([terminalAttachInput.omit({ restartIfNotRunning: true }).extend({ attachmentId: idSchema }).strict()]),
   [IPC.detachEngineTerminal]: z.tuple([idSchema]),
@@ -385,11 +390,14 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.updateEngineThread]: (threadId: string, change: Parameters<StrataApi['updateEngineThread']>[1]) => options.api.updateEngineThread(threadId, change),
     [IPC.setTerminalDefault]: (driver: string, selection: string | null) => options.api.setTerminalDefault(driver, selection),
     [IPC.readEngineUsage]: (window: import('../shared/usage').UsageWindow) => options.api.readEngineUsage(window),
+    [IPC.providerSetup]: (request: import('../shared/provider-setup').ProviderSetupRequest) => { if (!options.api.providerSetup) throw new Error('Provider setup is unavailable'); return options.api.providerSetup(request) },
+    [IPC.readEngineSupport]: () => options.api.readEngineSupport(),
     [IPC.readEngineSettings]: () => options.api.readEngineSettings(),
+    [IPC.editEngineSettings]: (edit: Parameters<StrataApi['editEngineSettings']>[0]) => options.api.editEngineSettings(edit),
+    [IPC.editEngineProvider]: (edit: Parameters<StrataApi['editEngineProvider']>[0]) => options.api.editEngineProvider(edit),
     [IPC.browseEngineFolder]: (path: string) => options.api.browseEngineFolder(path),
     [IPC.lookupEngineRepository]: (repository: string) => options.api.lookupEngineRepository(repository),
     [IPC.cloneEngineRepository]: (input: Parameters<StrataApi['cloneEngineRepository']>[0]) => options.api.cloneEngineRepository(input),
-    [IPC.updateEngineProviderInstances]: (instances: Parameters<StrataApi['updateEngineProviderInstances']>[0]) => options.api.updateEngineProviderInstances(instances),
     [IPC.setModelPreference]: (instanceId: string, slug: string, preference: Parameters<StrataApi['setModelPreference']>[2]) => options.api.setModelPreference(instanceId, slug, preference),
     [IPC.listEngineRefs]: (cwd: string, query?: string) => options.api.listEngineRefs(cwd, query),
     [IPC.attachEngineTerminal]: (input: Parameters<StrataApi['attachEngineTerminal']>[0]) => options.api.attachEngineTerminal(input),

@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { appendFile, readFile, rename, stat } from 'node:fs/promises'
 import { createServer } from 'node:net'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { atomicWriteFile, ensurePrivateDirectory } from '../storage'
 import { processStamp, takeEngineLock, verifiedProcess, type OwnedProcess } from './managed-process'
 import { stageRuntime, type StagedRuntime } from './managed-runtime'
@@ -37,6 +37,9 @@ export class LocalEngineManager {
     this.#view = { state: 'stopped', version: null, nodeVersion: null, directory: options.directory, problem: null }
   }
   view(): ManagedEngineView { return this.#view }
+  runtimeContext(): import('./local-usage').LocalRuntimeContext | null {
+    return this.#record ? { executable: this.#record.executable, directory: this.#record.runtimeDirectory, baseDirectory: this.#record.baseDirectory } : null
+  }
   #publish(patch: Partial<ManagedEngineView>): void {
     this.#view = { ...this.#view, ...patch }; this.#options.changed(this.#view)
   }
@@ -76,6 +79,7 @@ export class LocalEngineManager {
     const token = randomBytes(32).toString('base64url')
     const executable = join(runtime.directory, runtime.executable)
     const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('T3CODE_')))
+    env.PATH = `${dirname(executable)}:${env.PATH ?? ''}`
     const child = spawn(executable, [join(runtime.directory, runtime.entry), '--base-dir', baseDirectory, '--host', '127.0.0.1', '--port', String(port), '--no-browser', '--bootstrap-fd', '3'], { cwd: baseDirectory, env, detached: true, stdio: ['ignore', 'pipe', 'pipe', 'pipe'] })
     this.#child = child
     let spawnError: Error | null = null

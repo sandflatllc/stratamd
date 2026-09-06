@@ -1,0 +1,9 @@
+
+ RUN  v4.1.11 /home/dillonc/Projects/StrataMD-wt/bundled-t3-server
+
+
+ Test Files  107 passed (107)
+      Tests  848 passed | 1 skipped (849)
+   Start at  00:20:50
+   Duration  11.73s (transform 7.21s, setup 1.96s, import 21.65s, tests 46.57s, environment 18ms)
+

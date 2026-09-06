@@ -132,3 +132,15 @@ Conversation navigation gate, 2026-09-05: verified in an isolated checkout of da
 | Requirement | Evidence | Conditions |
 | --- | --- | --- |
 | Bundled engine ownership and isolation | `test/unit/engine-identity.test.ts`, `test/integration/managed-engine.test.ts`, `test/e2e/managed-engine.spec.ts` | Stock runtime tests require `STRATAMD_ENGINE_BUNDLE`; separate data, automatic pairing, restart and identity are exercised. |
+
+
+### Bundled engine settings and accounts
+
+| Behavior | Evidence |
+| --- | --- |
+| Edited-field patches, conflict refusal, legacy provider materialization, unknown fields and secret references | `test/unit/engine-settings-edit.test.ts`; `test/e2e/engine-settings.spec.ts`; `test/e2e/provider-settings-fields.spec.ts` |
+| Every general/background control, workspace default, generated model and writer options | `test/e2e/engine-settings.spec.ts`; `test/e2e/provider-settings-fields.spec.ts` |
+| Provider-specific fields, model order/custom IDs, favorites and hidden models | `test/e2e/provider-settings-fields.spec.ts`; `test/e2e/provider-setup.spec.ts` |
+| Stock-server persistence after restart, secret redaction and host policy | `test/integration/managed-settings.test.ts` with `STRATAMD_ENGINE_BUNDLE` |
+| Official provider jobs, existing-tool preference and cancellation | `test/unit/provider-setup-jobs.test.ts`; successful new-account sign-in needs the owner's provider authorization |
+| Local usage normalization, identity check, cancellation, cached limits and Auto; external usage unavailable | `test/unit/local-usage.test.ts`; `test/unit/engine-accounts.test.ts`; `test/e2e/cockpit-engine.spec.ts` scenario 10; Linux stock-server reading in the bundled-server phase 3 report. macOS Keychain proof remains blocked by device availability. |

@@ -1,3 +1,4 @@
+import type { EngineSettingsEdit, ProviderEdit, ProviderEnvironment, EngineSupport } from './engine-settings'
 export type AnnotationKind = 'comment' | 'question' | 'suggestion' | 'decision'
 export type AnnotationStatus = 'open' | 'resolved' | 'orphaned'
 export type AnnotationAnchorKind = 'quote' | 'heading' | 'document'
@@ -221,6 +222,7 @@ export interface ModelOptionDescriptor {
   options?: Array<{ id: string; label: string; description?: string | undefined; isDefault?: boolean | undefined }> | undefined
 }
 export interface EngineModelView {
+  order?: number
   favorite?: boolean
   hidden?: boolean
   instanceId: string
@@ -334,6 +336,10 @@ export type AccountStateView = 'ready' | 'stale' | 'limited' | 'no-subscription'
 
 /** One provider instance as Accounts and the picker show it (§5.13). */
 export interface AccountView {
+  installed?: boolean
+  enabled?: boolean
+  accentColor?: string
+  usageAvailable?: boolean
   instanceId: string
   driver: string
   name: string
@@ -745,12 +751,17 @@ export interface StartThreadFromDocumentInput extends StartThreadInput {
 export type PairEngineRequest = { link: string } | { host: string; code: string }
 
 export interface EngineSettings {
+  identity?: string | null
+
   addProjectBaseDirectory?: string | undefined
   newWorktreesStartFromOrigin?: boolean | undefined
   providerInstances: Record<string, ProviderInstanceSettings>
   [key: string]: unknown
 }
 export interface ProviderInstanceSettings {
+  accentColor?: string | undefined
+  environment?: ProviderEnvironment[] | undefined
+
   driver: string
   displayName?: string | undefined
   enabled?: boolean | undefined
@@ -781,10 +792,13 @@ export interface StrataApi {
   resizeEngineTerminal(input: TerminalTarget & { cols: number; rows: number }): Promise<void>
   closeEngineTerminal(input: TerminalTarget): Promise<void>
   onTerminalEvent?(listener: (push: TerminalPush) => void): () => void
-  updateEngineProviderInstances(instances: Record<string, ProviderInstanceSettings>): Promise<void>
-  setModelPreference(instanceId: string, slug: string, preference: { favorite?: boolean; hidden?: boolean }): Promise<void>
+  setModelPreference(instanceId: string, slug: string, preference: { favorite?: boolean; hidden?: boolean; order?: string[] }): Promise<void>
   listEngineRefs(cwd: string, query?: string): Promise<EngineRefs>
+  providerSetup?(request: import('./provider-setup').ProviderSetupRequest): Promise<import('./provider-setup').ProviderSetupView>
+  readEngineSupport(): Promise<EngineSupport>
   readEngineSettings(): Promise<EngineSettings>
+  editEngineSettings(edit: EngineSettingsEdit): Promise<EngineSettings>
+  editEngineProvider(edit: ProviderEdit): Promise<void>
   browseEngineFolder(path: string): Promise<EngineFolderListing>
   lookupEngineRepository(repository: string): Promise<EngineRepository>
   cloneEngineRepository(input: CloneRepositoryInput): Promise<{ cwd: string }>

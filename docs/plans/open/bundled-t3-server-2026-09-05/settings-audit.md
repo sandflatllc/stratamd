@@ -51,7 +51,7 @@ The visible intervals above are values observed in the disposable app, not const
 | Favorite and hide models | Instance → Models. [Screenshot](references/t3-provider-models.png) | Existing favorites/visibility behavior. | Preserve Strata's current authority; do not reset it when adding engine settings. |
 | Model ordering and custom models | Instance → Models. [Screenshot](references/t3-provider-models.png) | No equivalent complete ordering/custom-model management in the inspected form/model. | Add supported order controls and custom model ID entry. Use current engine model metadata for names and options. |
 | Account parking, Auto selection, terminal defaults | Existing Strata Accounts UI. [Screenshot](references/strata-accounts.png) | Present and owned by Strata's account store. | Preserve. They are not missing settings to reimplement. The local T3 fork has some related fields, so avoid competing write authorities. |
-| Subscription usage meters (Session, Weekly, reset time, plan label) | Not a T3 setting. The captured values come from a fork-only server field; the official package does not send it. [Screenshot](references/strata-accounts.png) | Present in Accounts, with the last reading persisted per instance. | Measure in Strata's main process for Claude and Codex, per the plan's usage measurement section. Existing readings carry over on the switch. |
+| Subscription usage meters (Session, Weekly, reset time, plan label) | Not a T3 setting. The captured values come from a fork-only server field; the official package does not send it. [Screenshot](references/strata-accounts.png) | Present in Accounts, with the last reading persisted per instance. | Measure in Strata's main process for Claude and Codex, per the plan's usage measurement section. Each engine retains its own readings. No unmatched account inherits them. |
 
 Grok was also opened. Its Configuration tab showed the common name, accent color, environment-variable controls, and a binary path, with an Early Access label. It needs the same conditional provider form, not another setup page. [Actual Grok configuration](references/t3-provider-grok.png).
 
@@ -126,8 +126,15 @@ The server setting each Include control reads and writes, from the contracts in 
 | Claude Auto-compact after | `providerInstances.<id>.config.autoCompactWindow` |
 | Cursor API endpoint | `providerInstances.<id>.config.apiEndpoint` |
 | OpenCode server URL and password | `providerInstances.<id>.config.serverUrl`, `serverPassword` |
-| Model ordering, hidden models, custom models | `providerInstances.<id>.config.modelOrder`, `hiddenModels`, `customModels` |
+| Model ordering, hidden models, custom models | Strata's per-instance `modelPreferences.order` and `hidden`; only `providerInstances.<id>.config.customModels` belongs to stock server settings |
 | Accent color | `providerInstances.<id>` — confirm the key name in phase 3 |
 | Environment variables and secrets | `providerInstances.<id>` — confirm the key name and the secret reference shape in phase 3 |
 | Terminal defaults, parking, Auto (fork-only on the server) | Not written. Strata's own store is the authority. |
 | T3 Connect sign-in, link, publish | Not server settings. The `t3 connect` subcommands and the upstream credential store. |
+
+
+## Phase 3 implementation evidence
+
+General controls and all eight background tuning controls are exercised in `test/e2e/engine-settings.spec.ts`. Provider fields, secret operations, ordering, custom IDs and the Claude-only generated-text repair are covered by `test/e2e/provider-settings-fields.spec.ts`; existing account creation, favorites and visibility remain covered by `provider-setup.spec.ts`. `test/integration/managed-settings.test.ts` validates stock-server restart persistence, masked secret preservation, directory validation and real host/client policy RPCs. Provider installation uses the official pinned packages proven in phase 1, with release-bundled npm supplied in phase 6. Successful new sign-ins still require the owner. See [phase 3 report](phase-3/report.md).
+
+The inspected stock schema has no continue-after-restart control. Model ordering and hiding are upstream client preferences, not server config keys. These remain in Strata's account store. Root provider-health cadence is resolved by T3 from its background profile. Host reports carry their actual observation times; an older report cannot override a newer one.

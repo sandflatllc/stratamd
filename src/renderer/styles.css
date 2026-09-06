@@ -2000,3 +2000,13 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .workspace-controls > button { flex-shrink: 0; }
 
 .usage-chart canvas { width: 100% !important; height: 100% !important; }
+
+.engine-settings-dialog .setup-advanced > :not(summary) { margin-top: 16px; }
+.settings-model { display: grid; gap: 12px; }
+.settings-model summary { display: flex; flex-wrap: wrap; gap: 8px; cursor: pointer; }
+.settings-model summary small { color: var(--dim); }
+.provider-environment > fieldset { padding: 12px; border: 1px solid var(--line); border-radius: 8px; margin: 12px 0; }
+.setup-field input[type="color"] { width: 64px; height: 40px; padding: 4px; }
+
+.provider-setup-output { max-height: 180px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.provider-install { max-width: 100%; }

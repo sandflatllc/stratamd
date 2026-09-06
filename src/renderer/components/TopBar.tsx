@@ -46,6 +46,7 @@ interface TopBarProps {
   onOpenUsage?(): void
   onToggleTerminal?(): void
   onOpenAccounts?(): void
+  onOpenSettings?(): void
 }
 
 type MenuKind = 'app' | 'documents'
@@ -86,7 +87,7 @@ function MenuPill({ kind, label, count, activeName, open, onToggle }: { kind: Me
   </button>
 }
 
-export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onOpenFile, onSend, onStartThread, zoomed, onResetZoom, onOpenTheme, conversationTabs = [], onOpenConversationTab, onCloseConversation, engine, onOpenEngine, onOpenAccounts, onToggleTerminal, onOpenUsage }: TopBarProps) {
+export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onOpenFile, onSend, onStartThread, zoomed, onResetZoom, onOpenTheme, conversationTabs = [], onOpenConversationTab, onCloseConversation, engine, onOpenEngine, onOpenAccounts, onOpenSettings, onToggleTerminal, onOpenUsage }: TopBarProps) {
   const conversationTab = conversationTabs.find((tab) => tab.active)
   const tabStrip = useRef<HTMLDivElement>(null)
   const navigation = useRef<HTMLElement>(null)
@@ -213,6 +214,7 @@ export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, 
         </button>
         {openMenu === 'app' && <div ref={menuRoot} id="topbar-menu-app" className="tab-menu-list app-menu-list" role="menu" aria-label="StrataMD" onKeyDown={menuKeys}>
           <button type="button" role="menuitem" className="tab-menu-open open-file-button" onClick={() => menuAction(onOpenFile)}>Open file <kbd>{primaryModifierLabel()}+O</kbd></button>
+          {onOpenSettings && <button type="button" role="menuitem" className="tab-menu-open" onClick={() => menuAction(onOpenSettings)}>Settings</button>}
           {engine && engine.state !== 'unpaired' && onOpenAccounts && <button type="button" role="menuitem" className="tab-menu-open accounts-button" aria-label="Accounts" onClick={() => menuAction(onOpenAccounts)}>Accounts{accountsAttention && <span className="account-warning">Needs attention</span>}</button>}
           {onOpenUsage && <button type="button" role="menuitem" className="tab-menu-open" onClick={() => menuAction(onOpenUsage)}><ChartColumnIcon />Usage</button>}
           {onToggleTerminal && <button type="button" role="menuitem" className="tab-menu-open" onClick={() => menuAction(onToggleTerminal)}><TerminalIcon />Terminal <kbd>{primaryModifierLabel()}+`</kbd></button>}
