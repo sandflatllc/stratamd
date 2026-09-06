@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom'
 import { readDraft } from '../conversationDrafts'
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import type { ConversationInput, DraftKind, EngineThreadView, HeadingReference } from '../../shared/contracts'
+import type { ConversationInput, DraftKind, EngineThreadView, HeadingReference, VisualCommentView } from '../../shared/contracts'
 import type { EditorSelection } from '../../editor/types'
 import { conversationDelivery, renderConversationDelivery, resolveMessageAnchor, isOwnerComment } from '../../core/conversation-delivery'
 import { conversationMatches, readConversationReading, writeConversationReading } from '../conversationReading'
@@ -9,7 +9,7 @@ import type { ConversationMarker } from '../conversationNavigation'
 import { AnnotationComposer } from './AnnotationComposer'
 import type { PassageTarget } from './ConversationMessage'
 
-export function useConversationWorkspace(thread: EngineThreadView | undefined, onStart: (id: string, input: ConversationInput) => Promise<void>, panel: RefObject<HTMLElement | null>) {
+export function useConversationWorkspace(thread: EngineThreadView | undefined, onStart: (id: string, input: ConversationInput) => Promise<void>, panel: RefObject<HTMLElement | null>, visual: { comments: VisualCommentView[]; onOpen(id: string): void } = { comments: [], onOpen: () => undefined }) {
   const [selection, setSelection] = useState<{ message: string; range: EditorSelection; id?: string } | null>(null)
   const [discussion, setDiscussion] = useState<string | null>(null)
   const returnPosition = useRef<{ message: string; offset: number } | null>(null)
@@ -91,12 +91,18 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   const latestResponse = thread?.messages.findLast(message => message.role === 'assistant')
   const openItems = (thread?.items ?? []).filter(item => !isOwnerComment(item) && item.status !== 'done')
   const kindLabel = (kind: string) => kind.charAt(0).toUpperCase() + kind.slice(1)
+  // Visual comments ready for review count with the agent's items; the rest of them list behind the same control (docs/plans/open/visual-review).
+  const visualReady = visual.comments.filter(comment => comment.status === 'ready')
+  const fromAgent = openItems.length + visualReady.length
+  const itemsLabel = fromAgent > 0 ? (fromAgent === 1 ? '1 item from the agent' : `${fromAgent} items from the agent`) : visual.comments.length === 1 ? '1 visual comment' : `${visual.comments.length} visual comments`
   const tools = <div className="conversation-tools">
-    {openItems.length > 0 && <div className="conversation-items-tool">
-      <button type="button" aria-expanded={menu === 'items'} onClick={() => setMenu(menu === 'items' ? null : 'items')}>{openItems.length === 1 ? '1 item from the agent' : `${openItems.length} items from the agent`}</button>
+    {(openItems.length > 0 || visual.comments.length > 0) && <div className="conversation-items-tool">
+      <button type="button" aria-expanded={menu === 'items'} onClick={() => setMenu(menu === 'items' ? null : 'items')}>{itemsLabel}</button>
       {menu === 'items' && <div className="conversation-navigation" role="region" aria-label="Items from the agent">
-        <p>The agent is waiting on these. Choose one to read its passage or answer it.</p>
+        {openItems.length > 0 && <p>The agent is waiting on these. Choose one to read its passage or answer it.</p>}
         {openItems.map(item => <button type="button" key={item.id} onClick={() => { open(item.id); setMenu(null) }}><strong>{kindLabel(item.kind)}</strong> {item.text || item.quote}{item.status === 'drafted' && <em> Reply drafted</em>}</button>)}
+        {visual.comments.length > 0 && <p>Visual comments in this conversation.</p>}
+        {visual.comments.map(comment => <button type="button" key={comment.id} className="conversation-visual-item" data-status={comment.status} onClick={() => { visual.onOpen(comment.id); setMenu(null) }}><strong>Visual</strong> {comment.title}<em> {comment.statusLabel}</em></button>)}
       </div>}
     </div>}
     <div className="conversation-find" role="search">

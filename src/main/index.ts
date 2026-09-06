@@ -14,7 +14,7 @@ import { logError, logWarn } from './log'
 import { isAllowedExternalUrl, openExternalUrl, registerStrataIpc, spellingContext, type RegisteredIpc } from './ipc'
 import { IPC } from '../preload/channels'
 import { documentPathsFromArgv } from './session'
-import { APP_HOST, installAppProtocol, installLocalImageProtocol, registerPrivilegedSchemes } from './protocols'
+import { APP_HOST, installAppProtocol, installLocalImageProtocol, installVisualImageProtocol, registerPrivilegedSchemes } from './protocols'
 
 export interface MainApplication extends StrataApi {
   reportEngineActivity?(activity: import('../shared/engine-settings').EngineActivity): Promise<void>
@@ -24,6 +24,12 @@ export interface MainApplication extends StrataApi {
   restoreOpenDocuments?(): Promise<string[]>
   /** Open documents whose buffer differs from the file; the close prompt asks about these. */
   dirtyDocumentPaths?(): string[]
+  /** Bytes for a visual evidence id or a staged composer image, for the strata-visual protocol. */
+  readVisualImage?(kind: 'evidence' | 'staged', id: string): Promise<{ bytes: Uint8Array; mimeType: string } | null>
+  /** The preview host draws pages into this window (docs/plans/open/visual-review, phase 2). */
+  attachPreviewWindow?(window: BrowserWindow): void
+  /** Test probe: a real input into a preview tab, the path an owner's click takes. */
+  previewHumanInput?(tabId: string, point: { x: number; y: number }): void
 }
 
 export type DirtyCloseChoice = 'save' | 'discard' | 'cancel'
@@ -176,6 +182,7 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
       return imageRoots(view)
     }
   })
+  installVisualImageProtocol({ read: async (kind, id) => options.api.readVisualImage ? options.api.readVisualImage(kind, id) : null })
 
   const createWindow = async (): Promise<BrowserWindow> => {
     const initialState = await options.api.getState()
@@ -205,6 +212,7 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
     })
 
     hardenWindow(window)
+    options.api.attachPreviewWindow?.(window)
     window.webContents.on('console-message', (message) => {
       // Renderer console errors finally land somewhere (plan §6). Report
       // producers never console.error, so this cannot duplicate §7 reports.

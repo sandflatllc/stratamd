@@ -201,6 +201,8 @@ export interface EngineMessageView {
   /** Immutable markdown blocks, namespaced by the stable message id. */
   blocks?: Array<{ id: string; from: number; to: number; text: string }>
   prose?: string
+  /** Visual comments this completed reply answered, from its strata block; the conversation shows a chip for each. */
+  visualReplies?: Array<{ id: string; revision?: number; ready: boolean }>
 }
 
 export interface EngineActivityView {
@@ -251,6 +253,8 @@ export interface ConversationInput {
   options?: ModelOption[]
   /** At most 8 with Strata's generated context file (§6.0); images reference bytes the main process staged. */
   attachments?: ConversationAttachment[]
+  /** Held visual comments to send: each freezes one revision and carries its marked screenshots. */
+  visual?: string[]
 }
 
 /** A file the composer sends with a turn: text travels inline, an image by the id the main process staged it under. */
@@ -323,7 +327,173 @@ export interface EngineProjectView {
   workspaceRoot: string
   defaultModelSelection?: { instanceId: string; model: string; options?: ModelOption[] } | null
   threads: EngineThreadView[]
+  /** Visual comments owned by this project: private drafts and sent revisions over an image or a captured page. */
+  visualComments?: VisualCommentView[]
 }
+
+// ---- Visual comments (docs/plans/open/visual-review)
+
+export type VisualStatus = 'held' | 'sending' | 'failed' | 'sent' | 'ready' | 'done'
+
+export interface VisualRectView { x: number; y: number; width: number; height: number }
+export interface VisualPointView { x: number; y: number }
+
+/** What the agent needs to find a marked thing again; carried with the mark, shown in no control. */
+export interface VisualMarkIdentityView {
+  role?: string | null
+  name?: string | null
+  text?: string | null
+  testIds?: string[]
+  selector?: string | null
+  html?: string | null
+  style?: Record<string, string>
+  sources?: Array<{ file: string; line: number; column: number; role?: 'definition' | 'usage' | 'candidate' }>
+  viewportRect?: VisualRectView
+  pageRect?: VisualRectView
+}
+
+/** One marked thing as the owner sees it: a plain name, where it sits on the capture, and whether Strata can find it right now. */
+export interface VisualMarkView {
+  id: string
+  kind: 'element' | 'region'
+  label: string
+  captureId: string
+  rect: VisualRectView
+  found: boolean | null
+  identity?: VisualMarkIdentityView
+}
+
+export interface VisualStrokeView {
+  id: string
+  tool: 'draw' | 'arrow'
+  captureId: string
+  points: VisualPointView[]
+}
+
+/** A requested change on one mark; `label` is the owner's plain words, the property and value are for the record. */
+export interface VisualAdjustmentView {
+  markId: string
+  property: string
+  value: string
+  label: string
+}
+
+export interface VisualCaptureView {
+  id: string
+  url: string
+  width: number
+  height: number
+  scroll?: VisualPointView
+  /** Capture pixels per page pixel; absent means one. */
+  scale?: number
+  /** The page with the owner's adjustments applied: the requested appearance, a reference beside the marked captures. */
+  requested?: boolean
+}
+
+/** What Annotate on a page captured: the frame in the evidence store and the page it came from. */
+export interface VisualPageCapture {
+  tabId: string
+  capture: VisualCaptureView
+  page: { url: string; title: string; viewport: { width: number; height: number }; preset: string | null; deviceScale: number; document: number }
+}
+
+/** What a page says is at a point or in a box; the identity rides along for the record and never for a control. */
+export interface VisualPageProposal {
+  kind: 'element' | 'region'
+  label: string
+  /** In page pixels. */
+  rect: VisualRectView
+  found: boolean | null
+  identity?: VisualMarkIdentityView
+}
+
+/** Show me: the live tab showed the marked state again, or the saved evidence is the fallback. */
+export type VisualShowResult = { shown: true; tabId: string; outlined: string[] } | { shown: false; reason: string; url: string | null }
+
+export interface VisualDestinationView { threadId: string; threadTitle: string }
+
+export interface VisualReplyView {
+  messageId: string
+  text: string
+  ready: boolean
+  file?: string
+  at: number
+}
+
+export interface VisualComparisonView {
+  thenUrl: string
+  nowUrl: string | null
+  note: string | null
+  takenAt: number
+}
+
+export interface VisualRevisionView {
+  number: number
+  text: string
+  marks: VisualMarkView[]
+  strokes: VisualStrokeView[]
+  adjustments: VisualAdjustmentView[]
+  destination: VisualDestinationView
+  captures: string[]
+  deliveryId: string
+  sentAt: number
+  state: 'sending' | 'sent' | 'failed'
+  error?: string
+  replies: VisualReplyView[]
+  accepted: boolean
+  comparison?: VisualComparisonView
+}
+
+export interface VisualDraftView {
+  text: string
+  marks: VisualMarkView[]
+  strokes: VisualStrokeView[]
+  adjustments: VisualAdjustmentView[]
+  destination: VisualDestinationView
+  updatedAt: number
+}
+
+export type VisualAnchorView =
+  | { kind: 'image'; name: string }
+  | { kind: 'page'; url: string; title: string; instance: string; preset: string | null; viewport: { width: number; height: number } }
+
+export interface VisualCommentView {
+  id: string
+  projectId: string
+  status: VisualStatus
+  /** The status in plain words: held, sending, send failed, sent, ready for review, done. */
+  statusLabel: string
+  /** The page or image and the size, in plain words. */
+  place: string
+  anchor: VisualAnchorView
+  title: string
+  summary: string
+  thumbnail: string | null
+  captures: VisualCaptureView[]
+  draft?: VisualDraftView
+  revisions: VisualRevisionView[]
+  createdAt: number
+  updatedAt: number
+}
+
+/** What the session hands the main process on Hold: the draft and the marked captures it rendered. */
+export interface HoldVisualCommentInput {
+  id?: string
+  projectId: string
+  threadId: string
+  /** A staged composer image to open the comment over; its bytes move into the evidence store. */
+  source?: { staged: string; name: string; width: number; height: number }
+  /** A page capture to open the comment over: the frames Annotate stored and the page they came from. */
+  page?: { tabId: string; captures: Array<{ id: string; width: number; height: number; scroll: VisualPointView; scale: number; requested?: boolean }>; url: string; title: string; viewport: { width: number; height: number }; preset: string | null; deviceScale: number }
+  text: string
+  marks: VisualMarkView[]
+  strokes: VisualStrokeView[]
+  adjustments: VisualAdjustmentView[]
+  /** The captures with marks drawn on, as PNG bytes, keyed by capture id; a source image is keyed by its staged id. */
+  marked: Array<{ captureId: string; bytes: Uint8Array }>
+}
+
+export type VisualCommentAction = 'accept' | 'reopen' | 'discard' | 'retry' | 'compare'
 
 /** A usage window the provider reports or Strata last measured (§5.13). */
 export interface UsageWindowView {
@@ -606,7 +776,63 @@ export interface AppView {
   explorer: ExplorerFolderView[]
   settings: AppSettingsView
   engine: EngineView
+  /** The preview windows' pages and the browser host's state (docs/plans/open/visual-review, phase 2). */
+  preview: PreviewStateView
 }
+
+// ---- Preview windows (docs/plans/open/visual-review, phase 2)
+
+export type PreviewViewportView =
+  | { mode: 'fill' }
+  | { mode: 'preset'; preset: string; label: string; width: number; height: number }
+  | { mode: 'freeform'; width: number; height: number }
+
+/** How the owner or an agent asks for a size; the host resolves presets to their sizes. */
+export type PreviewViewportRequest = { mode: 'fill' } | { mode: 'preset'; preset: string } | { mode: 'freeform'; width: number; height: number }
+
+export interface PreviewTabView {
+  id: string
+  projectId: string
+  /** The owner's tab, or a tab an agent opened for its own work. */
+  kind: 'owner' | 'agent'
+  threadId: string | null
+  /** The address the tab was opened at; `url` follows navigation. */
+  openedUrl: string
+  url: string
+  title: string
+  loading: boolean
+  canGoBack: boolean
+  canGoForward: boolean
+  viewport: PreviewViewportView
+  /** The owner took control of an agent tab; new agent actions wait for Resume. */
+  paused: boolean
+  /** An agent action is running or waiting in this tab. */
+  working: boolean
+  /** What the agent is doing in this tab, in plain words, for the status pill. */
+  activity: string | null
+  error: string | null
+  openedAt: number
+  /** Counts up whenever a new document replaces the page, so a session over a capture knows the live page changed. */
+  document: number
+}
+
+export interface PreviewStateView {
+  tabs: PreviewTabView[]
+  /** Strata is registered with the engine as its browser host. */
+  registered: boolean
+  /** Threads with a browser request Strata is serving right now. */
+  serving: string[]
+  /** The tab an agent most recently opened for the owner to see, so its window's pill appears. */
+  reveal: { tabId: string; at: number } | null
+}
+
+export interface PreviewBoundsReport {
+  tabId: string | null
+  /** Where the page should sit inside the window, in CSS pixels; null hides it. */
+  bounds: { x: number; y: number; width: number; height: number } | null
+}
+
+export type PreviewNavigation = { url: string } | { action: 'back' | 'forward' | 'reload' | 'stop' }
 
 /**
  * The document state a preview was computed against: snapshot, segment index,
@@ -827,6 +1053,29 @@ export interface StrataApi {
   discardItemReply(threadId: string, itemId: string): Promise<void>
   /** Hides an inferred item; remembered per message (§5.12). */
   dismissItem(threadId: string, itemId: string): Promise<void>
+  /** Holds a visual comment privately: creates it over a staged image or updates its draft, and keeps the marked captures as evidence. */
+  holdVisualComment(input: HoldVisualCommentInput): Promise<string>
+  /** Looks right (accept), Still wrong (reopen), discard the draft, or retry a failed send. Accept starts no turn. */
+  actVisualComment(id: string, action: VisualCommentAction): Promise<void>
+  /** Opens an owner tab in the project's preview window; returns the tab id. */
+  openPreviewTab(input: { projectId: string; url?: string }): Promise<string>
+  closePreviewTab(tabId: string): Promise<void>
+  navigatePreview(tabId: string, navigation: PreviewNavigation): Promise<void>
+  resizePreview(tabId: string, viewport: PreviewViewportRequest): Promise<void>
+  /** Hands an agent tab back after the owner took control; nothing is replayed. */
+  resumePreviewTab(tabId: string): Promise<void>
+  /** Where the shown page sits in the window, whenever layout changes; null hides it. */
+  reportPreviewBounds(report: PreviewBoundsReport): Promise<void>
+  /** One boolean from the overlay layer: an overlay is open, so the page hides beneath it. */
+  reportOverlay(open: boolean): Promise<void>
+  /** Annotate on a page (phase 3): capture the frame into the evidence store, ask the page what is somewhere, scroll it, and show a comment's marks again. */
+  capturePreviewFrame(tabId: string): Promise<VisualPageCapture>
+  describePreview(tabId: string, target: { point: VisualPointView } | { rect: VisualRectView }): Promise<VisualPageProposal | null>
+  scrollPreview(tabId: string, move: { by: VisualPointView } | { to: VisualPointView }): Promise<VisualPointView>
+  showVisualComment(id: string): Promise<VisualShowResult>
+  /** Adjustments (phase 4): apply the whole set of Strata's overrides to the live page and capture the result; remove only those overrides. */
+  adjustPreview(tabId: string, targets: Array<{ markId: string; identity: VisualMarkIdentityView; declarations: Record<string, string> }>): Promise<VisualPageCapture & { applied: string[] }>
+  clearPreviewOverrides(tabId: string): Promise<void>
   stopConversationTurn(threadId: string): Promise<void>
   answerEngineApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
   answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>

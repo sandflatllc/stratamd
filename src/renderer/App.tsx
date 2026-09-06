@@ -4,7 +4,16 @@ import { TerminalDrawer } from './components/TerminalDrawer'
 import { useWindowState } from './useWindowState'
 import type { WindowAction } from '../shared/contracts'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
-import type { ItemView, AnnotationContext, AnnotationKind, AnnotationView, AppView, AttachmentView, BufferOrigin, CreateDraftRequest, DocumentTabView, DocumentView, HunkView, NavigationTab, PaneId, PanelSize, PaneZoom, PanelSizes, QuickSendRequest, RedoResult, ReviewTab, SendPreviewRequest, TableViewState, ThemePanelGeometry, UndoResult, WalkthroughAction } from '../shared/contracts'
+import type { ItemView, AnnotationContext, AnnotationKind, AnnotationView, AppView, AttachmentView, BufferOrigin, CreateDraftRequest, DocumentTabView, DocumentView, HoldVisualCommentInput, VisualAdjustmentView, VisualCaptureView, VisualMarkView, VisualPageCapture, VisualPointView, VisualRectView, HunkView, NavigationTab, PaneId, PanelSize, PaneZoom, PanelSizes, PreviewNavigation, PreviewViewportRequest, QuickSendRequest, RedoResult, ReviewTab, SendPreviewRequest, TableViewState, ThemePanelGeometry, UndoResult, VisualDestinationView, WalkthroughAction } from '../shared/contracts'
+import { VisualSession, type VisualProposal } from './components/VisualSession'
+import { toCaptureRect, toPagePoint, toPageRect } from '../core/visual-comments'
+import { PreviewWindow } from './components/PreviewWindow'
+import { PreviewRail } from './components/PreviewRail'
+import { previewPillName } from '../shared/preview'
+import { VisualCommentPanel, type VisualCardActions } from './components/VisualCommentCard'
+import { visualImageUrl } from '../shared/visual-urls'
+import { loadImage } from './visualImage'
+import type { DraftAttachment } from './conversationDrafts'
 import type { EditorHeading } from '../editor/headings'
 import type { RendererEditorFactory, RendererEditorHandle } from './editorAdapter'
 import { AmbientBackground, AmbientContext, AmbientDecor } from './components/AmbientDecor'
@@ -64,9 +73,14 @@ export function App({ createEditor }: AppProps) {
   const [savedWorkspace] = useState(readWorkspace)
   useEffect(consumeDocumentLaunch, [])
   const [conversationCentered, setConversationCentered] = useState(savedWorkspace.conversationCentered)
+  /** Preview windows (docs/plans/open/visual-review, phase 2): one per project, a third kind of center content. */
+  const [previews, setPreviews] = useState<string[]>(savedWorkspace.previews)
+  const [previewCentered, setPreviewCentered] = useState<string | null>(savedWorkspace.previewCentered)
+  const [activePreviewTabs, setActivePreviewTabs] = useState<Record<string, string>>({})
   const [documentPicker, setDocumentPicker] = useState<NewConversationTarget | null>(readNewConversationTarget)
   useEffect(() => { writeNewConversationTarget(documentPicker) }, [documentPicker])
-  const centerConversationId = conversationCentered ? (documentPicker ? '__new__' : view.engine.activeThreadId) : null
+  const previewShown = previewCentered !== null && previews.includes(previewCentered) ? previewCentered : null
+  const centerConversationId = conversationCentered && !previewShown ? (documentPicker ? '__new__' : view.engine.activeThreadId) : null
   /** Conversation tabs stay listed while a document shows and survive restarts. */
   const [conversationTabs, setConversationTabs] = useState<string[]>(savedWorkspace.conversationTabs)
   useEffect(() => {
@@ -77,9 +91,18 @@ export function App({ createEditor }: AppProps) {
       setConversationTabs((current) => current.includes(id) ? current : [...current, id])
       return
     }
-    writeWorkspace({ conversationCentered, conversationTabs })
-  }, [ready, view.engine.activeThreadId, conversationCentered, conversationTabs, documentPicker])
+    writeWorkspace({ conversationCentered, conversationTabs, previews, previewCentered: previewShown })
+  }, [ready, view.engine.activeThreadId, conversationCentered, conversationTabs, documentPicker, previews, previewShown])
   const [confirmResolve, setConfirmResolve] = useState(false)
+  /** The annotation session (docs/plans/open/visual-review): over a staged composer image, or over a held comment's draft. */
+  // Annotate on a page (docs/plans/open/visual-review, phase 3): the frames captured from a live tab and the page they came from.
+  const [annotating, setAnnotating] = useState<{ tabId: string; projectId: string; captures: VisualCaptureView[]; page: VisualPageCapture['page'] } | null>(null)
+  const [visualFallback, setVisualFallback] = useState<{ id: string; reason: string; url: string | null } | null>(null)
+  const [visualSession, setVisualSession] = useState<{ kind: 'staged'; id: string; name: string; width: number; height: number; projectId: string; destination: VisualDestinationView } | { kind: 'comment'; id: string } | null>(null)
+  /** A visual comment's card opened from the conversation, with its history and actions. */
+  const [visualOpen, setVisualOpen] = useState<string | null>(null)
+  /** Staged images whose bytes moved into a held visual comment; the composer drops them without a discard. */
+  const [consumedStaged, setConsumedStaged] = useState<string[]>([])
   /** The engine dialog: pairing, server, version, connection state (§5.1). */
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [engineDialog, setEngineDialog] = useState(() => sessionStorage.getItem('stratamd.reopen-engine-dialog') === '1')
@@ -187,7 +210,7 @@ export function App({ createEditor }: AppProps) {
     let previousDocument: string | null | undefined
     const adopt = (next: AppView) => {
       const path = next.activeDocument?.path ?? null
-      if (previousDocument !== undefined && path && path !== previousDocument) setConversationCentered(false)
+      if (previousDocument !== undefined && path && path !== previousDocument) { setConversationCentered(false); setPreviewCentered(null) }
       previousDocument = path
       setView(next)
       if (shouldAdoptPushed(next.settings.panelSizes, committedPanels.current)) {
@@ -324,7 +347,7 @@ export function App({ createEditor }: AppProps) {
 
   // One left width for every tab (decided 2026-09-04); the handle between it and the editor edits it.
   const thread = document ? currentAnnotation(document, selectedAnnotation) : null
-  const rightRailVisible = Boolean(document) && !conversationCentered
+  const rightRailVisible = previewShown !== null || (Boolean(document) && !conversationCentered)
   const rightRailWidth = rightRailVisible && !rightRailCollapsed ? panelSizes.rightRailWidth : 0
   const leftWidth = leftWindowWidth({ ...panelSizes, rightRailWidth }, windowWidth)
   const leftMin = PANEL_LIMITS.explorerWidth[0]
@@ -362,6 +385,7 @@ export function App({ createEditor }: AppProps) {
     const currentProject = projectId ?? (conversationCentered ? documentPicker?.projectId : document ? projectForPath(view.engine, document.path)?.id : undefined) ?? view.engine.projects.find((project) => project.threads.some((thread) => thread.id === view.engine.activeThreadId))?.id ?? view.engine.projects[0]?.id
     setDocumentPicker({ path: null, ...(currentProject ? { projectId: currentProject } : {}) })
     setConversationCentered(true)
+    setPreviewCentered(null)
   }
   useEffect(() => {
     const start = (event: KeyboardEvent) => {
@@ -395,15 +419,192 @@ export function App({ createEditor }: AppProps) {
     onUserInput: (threadId: string, requestId: string, answers: Record<string, unknown>) => void perform(() => window.strata.answerEngineUserInput(threadId, requestId, answers)),
     onQueueReply: (threadId: string, item: ItemView, text: string) => void perform(() => window.strata.queueItemReply(threadId, item.id, text)),
     onDismissItem: (threadId: string, item: ItemView) => void perform(() => window.strata.dismissItem(threadId, item.id)),
-    // A changed Markdown file opens as a document; the center leaves the conversation for it (§6.9).
-    onOpenDocument: (path: string) => { setConversationCentered(false); void perform(() => window.strata.openDocument(path)) },
+    // A changed Markdown file opens as a document; the center leaves the conversation or preview for it (§6.9).
+    onOpenDocument: (path: string) => { setConversationCentered(false); setPreviewCentered(null); void perform(() => window.strata.openDocument(path)) },
   }
   const activeEngineThread = view.engine.projects.flatMap((project) => project.threads).find((candidate) => candidate.id === view.engine.activeThreadId) ?? null
+  const activeThreadProject = view.engine.projects.find((project) => project.threads.some((candidate) => candidate.id === view.engine.activeThreadId)) ?? null
+  const allVisual = view.engine.projects.flatMap((project) => project.visualComments ?? [])
+  const visualById = (id: string) => allVisual.find((comment) => comment.id === id) ?? null
+  /** Adjustments on the live page: the whole set at once, then the requested appearance comes back as a frame. */
+  const adjustOn = (tabId: string) => async (adjustments: VisualAdjustmentView[], marks: VisualMarkView[]): Promise<VisualCaptureView | null> => {
+    if (adjustments.length === 0) { await window.strata.clearPreviewOverrides(tabId); return null }
+    const targets = new Map<string, { markId: string; identity: NonNullable<VisualMarkView['identity']>; declarations: Record<string, string> }>()
+    for (const adjustment of adjustments) {
+      const mark = marks.find((candidate) => candidate.id === adjustment.markId)
+      if (!mark?.identity) continue
+      const target = targets.get(mark.id) ?? { markId: mark.id, identity: mark.identity, declarations: {} }
+      target.declarations[adjustment.property] = adjustment.value
+      targets.set(mark.id, target)
+    }
+    const result = await window.strata.adjustPreview(tabId, [...targets.values()])
+    return result.capture
+  }
+  /** Mark on a page: the click or box goes to the live page in its own pixels and the answer comes back in capture pixels. */
+  const describeOn = (tabId: string, capture: VisualCaptureView) => async (target: { point: VisualPointView } | { rect: VisualRectView }): Promise<VisualProposal | null> => {
+    const scale = capture.scale ?? 1
+    const proposal = await window.strata.describePreview(tabId, 'point' in target ? { point: toPagePoint(target.point, scale) } : { rect: toPageRect(target.rect, scale) })
+    return proposal ? { kind: proposal.kind, label: proposal.label, rect: toCaptureRect(proposal.rect, scale), found: proposal.found, ...(proposal.identity ? { identity: proposal.identity } : {}) } : null
+  }
+  /** A pasted or picked image opens the session over its staged bytes; the destination is the active conversation now. */
+  const markUpImage = (attachment: DraftAttachment) => {
+    if (attachment.kind !== 'image') return
+    if (!activeEngineThread || !activeThreadProject) { report('Open a conversation before marking up an image.'); return }
+    const destination = { threadId: activeEngineThread.id, threadTitle: activeEngineThread.title }
+    const projectId = activeThreadProject.id
+    void perform(async () => {
+      const image = await loadImage(visualImageUrl('staged', attachment.id))
+      setVisualSession({ kind: 'staged', id: attachment.id, name: attachment.name, width: image.naturalWidth, height: image.naturalHeight, projectId, destination })
+    })
+  }
+  const holdVisual = async (input: HoldVisualCommentInput) => {
+    const id = await window.strata.holdVisualComment(input)
+    if (input.source) setConsumedStaged((current) => [...current, input.source!.staged])
+    return id
+  }
+  /** Send now: one turn carrying only this comment, to the destination the session recorded. */
+  const sendVisual = async (id: string, threadId: string) => {
+    const thread = view.engine.projects.flatMap((project) => project.threads).find((candidate) => candidate.id === threadId)
+    if (!thread) throw new Error('The conversation this comment goes to is no longer listed')
+    await window.strata.startConversationTurn(thread.id, { text: '', model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, ...(thread.options ? { options: thread.options } : {}), visual: [id] })
+  }
+  const visualActions: VisualCardActions = {
+    onOpen: (comment) => { if (comment.draft) { setVisualOpen(null); setVisualSession({ kind: 'comment', id: comment.id }) } else setVisualOpen(comment.id) },
+    onAccept: (comment) => void perform(() => window.strata.actVisualComment(comment.id, 'accept'), 'Accepted. Nothing was sent.'),
+    onReopen: (comment) => void perform(async () => { await window.strata.actVisualComment(comment.id, 'reopen'); setVisualOpen(null); setVisualSession({ kind: 'comment', id: comment.id }) }),
+    onRetry: (comment) => void perform(() => window.strata.actVisualComment(comment.id, 'retry'), 'Sending again.'),
+    onDiscard: (comment) => void perform(() => window.strata.actVisualComment(comment.id, 'discard'), 'Visual comment discarded.'),
+    onCompare: (comment) => { setVisualFallback(null); setVisualOpen(comment.id) },
+    // Show me: the original tab when it still shows the page, else the saved evidence with a way to open the page.
+    onShowMe: (comment) => void perform(async () => {
+      const result = await window.strata.showVisualComment(comment.id)
+      if (result.shown) {
+        const tab = previewTabs.find((candidate) => candidate.id === result.tabId)
+        if (tab) { showPreview(tab.projectId); setActivePreviewTabs((current) => ({ ...current, [tab.projectId]: tab.id })) }
+        setVisualOpen(null)
+        const total = (comment.draft ?? comment.revisions.at(-1))?.marks.filter((mark) => mark.kind === 'element').length ?? 0
+        report(total === 0 ? 'Showing the page at the size and scroll of the comment.' : result.outlined.length === total ? 'Showing the page as it was marked; the marked things are outlined.' : result.outlined.length === 0 ? 'Showing the page at the size and scroll of the comment. The marked things were not found; a selected row, an open dialog, or unsaved form does not come back.' : `Showing the page as it was marked; ${result.outlined.length} of ${total} marked things outlined.`)
+      } else {
+        setVisualFallback({ id: comment.id, reason: result.reason, url: result.url })
+        setVisualOpen(comment.id)
+      }
+    }),
+  }
+  const visualSessionNode = (() => {
+    if (!visualSession) return null
+    if (visualSession.kind === 'staged') {
+      const capture = { id: visualSession.id, url: visualImageUrl('staged', visualSession.id), width: visualSession.width, height: visualSession.height }
+      return <VisualSession key={visualSession.id} capture={capture} source={{ staged: visualSession.id, name: visualSession.name }} projectId={visualSession.projectId} destination={visualSession.destination} place={`Pasted image · ${visualSession.width} × ${visualSession.height}`} onHold={holdVisual} onSend={(id) => sendVisual(id, visualSession.destination.threadId)} onClose={() => setVisualSession(null)} onError={reportError} />
+    }
+    const comment = visualById(visualSession.id)
+    const capture = comment?.captures[0]
+    if (!comment?.draft || !capture) return null
+    const destination = comment.draft.destination
+    // A held page comment reopens over its captures; the live tab answers Mark again while it still shows that page.
+    const liveTab = comment.anchor.kind === 'page' ? view.preview.tabs.find((tab) => tab.id === (comment.anchor as { instance: string }).instance && tab.url.replace(/#.*$/, '') === (comment.anchor as { url: string }).url.replace(/#.*$/, '')) ?? null : null
+    const clean = comment.captures.filter((frame) => !frame.requested)
+    return <VisualSession key={comment.id} capture={capture} captures={clean.length ? clean : comment.captures} commentId={comment.id} projectId={comment.projectId} destination={destination} place={comment.place} initial={{ text: comment.draft.text, marks: comment.draft.marks, strokes: comment.draft.strokes, adjustments: comment.draft.adjustments }} describe={liveTab ? describeOn(liveTab.id, clean.at(-1) ?? capture) : undefined} onAdjust={liveTab ? adjustOn(liveTab.id) : undefined} adjustStatus={liveTab ? 'shown live' : 'not shown: the page is not open'} onHold={holdVisual} onSend={(id) => sendVisual(id, destination.threadId)} onClose={() => { setVisualSession(null); if (liveTab) void window.strata.clearPreviewOverrides(liveTab.id).catch(() => undefined) }} onError={reportError} />
+  })()
+  const visualPanelNode = visualOpen && visualById(visualOpen) ? <VisualCommentPanel comment={visualById(visualOpen)!} actions={visualActions} notice={visualFallback?.id === visualOpen ? visualFallback.reason : null} onOpenPage={visualFallback?.id === visualOpen && visualFallback.url ? () => { const url = visualFallback.url!; const projectId = visualById(visualOpen)!.projectId; setVisualOpen(null); setVisualFallback(null); showPreview(projectId); void perform(async () => { const id = await window.strata.openPreviewTab({ projectId, url }); setActivePreviewTabs((current) => ({ ...current, [projectId]: id })) }) } : undefined} onClose={() => { setVisualOpen(null); setVisualFallback(null) }} /> : null
+  // ---- Preview windows (docs/plans/open/visual-review, phase 2)
+  const previewTabs = view.preview.tabs
+  const previewProjectIds = [...new Set([...previews, ...previewTabs.map((tab) => tab.projectId)])].filter((id) => view.engine.projects.some((project) => project.id === id))
+  const showPreview = (projectId: string) => {
+    setPreviews((current) => current.includes(projectId) ? current : [...current, projectId])
+    setPreviewCentered(projectId)
+    setDocumentPicker(null)
+  }
+  const openPreview = (projectId: string) => {
+    showPreview(projectId)
+    if (!previewTabs.some((tab) => tab.projectId === projectId)) void perform(async () => { const id = await window.strata.openPreviewTab({ projectId }); setActivePreviewTabs((current) => ({ ...current, [projectId]: id })) })
+  }
+  const closePreview = (projectId: string) => {
+    setPreviews((current) => current.filter((id) => id !== projectId))
+    if (previewCentered === projectId) setPreviewCentered(null)
+  }
+  // An agent's open reveals its window: the pill appears and the tab strip lists the tab; the owner's center stays where it was.
+  const revealAt = useRef(0)
+  useEffect(() => {
+    const reveal = view.preview.reveal
+    if (!reveal || reveal.at === revealAt.current) return
+    revealAt.current = reveal.at
+    const tab = previewTabs.find((candidate) => candidate.id === reveal.tabId)
+    if (tab) setPreviews((current) => current.includes(tab.projectId) ? current : [...current, tab.projectId])
+  }, [view.preview.reveal])
+  // The overlay layer reports one boolean: while any overlay is open the page hides beneath it.
+  const overlayReported = useRef<boolean | null>(null)
+  useEffect(() => {
+    const selector = '[role="dialog"], [aria-modal="true"], .modal-backdrop, .visual-session, .theme-panel, [role="menu"], :popover-open, .drop-overlay'
+    let frame = 0
+    const check = () => {
+      frame = 0
+      const open = globalThis.document.querySelector(selector) !== null
+      if (overlayReported.current === open) return
+      overlayReported.current = open
+      void window.strata.reportOverlay(open).catch(() => undefined)
+    }
+    const schedule = () => { if (frame === 0) frame = window.requestAnimationFrame(check) }
+    const observer = new MutationObserver(schedule)
+    observer.observe(globalThis.document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open', 'popover', 'hidden', 'role', 'class'] })
+    check()
+    return () => { observer.disconnect(); if (frame) window.cancelAnimationFrame(frame) }
+  }, [])
+  const previewPills = previewProjectIds.map((projectId) => {
+    const project = view.engine.projects.find((candidate) => candidate.id === projectId)!
+    const tabs = previewTabs.filter((tab) => tab.projectId === projectId)
+    const active = tabs.find((tab) => tab.id === activePreviewTabs[projectId]) ?? tabs.find((tab) => tab.kind === 'owner') ?? tabs[0] ?? null
+    return { id: projectId, name: previewPillName(project.title, active ? { url: active.url, title: active.title } : null), active: previewShown === projectId, held: (project.visualComments ?? []).some((comment) => comment.status === 'held') }
+  })
+  const topBarPreviews = { previewPills, onOpenPreviewPill: showPreview, onClosePreviewPill: closePreview, browserShared: view.preview.registered, onOpenPreview: () => { const projectId = activeThreadProject?.id ?? view.engine.projects[0]?.id; if (projectId) openPreview(projectId); else report('Add a project before opening a preview.') } }
+  // Annotate on a page: the frame is captured into the evidence store, the live view hides, and the session opens over the stage.
+  const annotateDestination = (projectId: string): VisualDestinationView | null => {
+    const project = view.engine.projects.find((candidate) => candidate.id === projectId)
+    const thread = project?.threads.find((candidate) => candidate.id === view.engine.activeThreadId) ?? project?.threads[0]
+    return thread ? { threadId: thread.id, threadTitle: thread.title } : null
+  }
+  const startAnnotate = (tabId: string, projectId: string) => void perform(async () => {
+    const result = await window.strata.capturePreviewFrame(tabId)
+    setAnnotating({ tabId, projectId, captures: [result.capture], page: result.page })
+  })
+  const annotateOverlay = (() => {
+    if (!annotating || annotating.projectId !== previewShown) return null
+    const destination = annotateDestination(annotating.projectId)
+    if (!destination) return null
+    const capture = annotating.captures.at(-1)!
+    const liveTab = previewTabs.find((tab) => tab.id === annotating.tabId) ?? null
+    const pageInput: NonNullable<HoldVisualCommentInput['page']> = { tabId: annotating.tabId, captures: annotating.captures.map((frame) => ({ id: frame.id, width: frame.width, height: frame.height, scroll: frame.scroll ?? { x: 0, y: 0 }, scale: frame.scale ?? 1 })), url: annotating.page.url, title: annotating.page.title, viewport: annotating.page.viewport, preset: annotating.page.preset, deviceScale: annotating.page.deviceScale }
+    const changed = !liveTab || liveTab.document !== annotating.page.document || liveTab.url.replace(/#.*$/, '') !== annotating.page.url.replace(/#.*$/, '')
+    return <VisualSession key={annotating.tabId} capture={capture} captures={annotating.captures} page={pageInput} projectId={annotating.projectId} destination={destination}
+      place={`${annotating.page.title || 'Page'} · ${annotating.page.preset ? annotating.page.preset.toLowerCase() : 'window size'}`}
+      describe={changed ? undefined : describeOn(annotating.tabId, capture)}
+      onScroll={changed ? undefined : async (delta) => { await window.strata.scrollPreview(annotating.tabId, { by: delta }); const next = await window.strata.capturePreviewFrame(annotating.tabId); setAnnotating((current) => current && current.tabId === annotating.tabId ? { ...current, captures: [...current.captures, next.capture] } : current) }}
+      notice={changed ? 'The live page changed while you were marking. Your note and the captured frame are kept; new marks are regions.' : null}
+      onAdjust={changed ? undefined : adjustOn(annotating.tabId)} adjustStatus={changed ? 'not shown: the page changed' : 'shown live'}
+      onHold={holdVisual} onSend={(id) => sendVisual(id, destination.threadId)} onClose={() => { const tabId = annotating.tabId; setAnnotating(null); void window.strata.clearPreviewOverrides(tabId).catch(() => undefined) }} onError={reportError} />
+  })()
+  const previewNode = previewShown ? (() => {
+    const project = view.engine.projects.find((candidate) => candidate.id === previewShown)!
+    const tabs = previewTabs.filter((tab) => tab.projectId === previewShown)
+    const activeTabId = (tabs.find((tab) => tab.id === activePreviewTabs[previewShown]) ?? tabs.find((tab) => tab.kind === 'owner') ?? tabs[0])?.id ?? null
+    const annotate = { active: annotating !== null && annotating.projectId === previewShown, disabled: annotateDestination(previewShown) === null, onToggle: () => { if (annotating) setAnnotating(null); else if (activeTabId) startAnnotate(activeTabId, previewShown) }, overlay: annotateOverlay }
+    return <main className="island editor-island preview-island" data-pane="editor" style={{ '--zoom': zoom.editor } as CSSProperties}><AmbientDecor variant="editor" /><PreviewWindow projectId={previewShown} projectTitle={project.title} tabs={tabs} activeTabId={activeTabId} engine={view.engine} annotate={annotate}
+      onSelectTab={(id) => setActivePreviewTabs((current) => ({ ...current, [previewShown]: id }))}
+      onNewTab={() => void perform(async () => { const id = await window.strata.openPreviewTab({ projectId: previewShown }); setActivePreviewTabs((current) => ({ ...current, [previewShown]: id })) })}
+      onCloseTab={(id) => void perform(() => window.strata.closePreviewTab(id))}
+      onNavigate={(id, navigation: PreviewNavigation) => void perform(() => window.strata.navigatePreview(id, navigation))}
+      onResize={(id, viewport: PreviewViewportRequest) => void perform(() => window.strata.resizePreview(id, viewport))}
+      onResume={(id) => void perform(() => window.strata.resumePreviewTab(id), 'The agent may continue. Nothing it was doing is replayed.')} /></main>
+  })() : null
+  const previewRailNode = previewShown ? <div data-pane="rightRail" style={{ width: panelSizes.rightRailWidth, flex: 'none', minWidth: 0, '--zoom': zoom.rightRail } as CSSProperties}><Boundary region="rightRail"><PreviewRail projectId={previewShown} engine={view.engine} tabs={previewTabs.filter((tab) => tab.projectId === previewShown)} serving={view.preview.serving} visualComments={view.engine.projects.find((candidate) => candidate.id === previewShown)?.visualComments ?? []} visualActions={visualActions} upperReviewHeight={panelSizes.upperReviewHeight} onHeight={(value, commit) => updatePanel('upperReviewHeight', value, commit)} onOpenConversation={(id) => { showCenterConversation(id); void perform(() => window.strata.openConversation(id)) }} onStop={(id) => void perform(() => window.strata.stopConversationTurn(id), 'Stop requested.')} /></Boundary></div> : null
+  /** A held comment opens back into the session; anything sent opens its card. */
+  const openVisual = (id: string) => { const comment = visualById(id); if (comment?.draft) { setVisualOpen(null); setVisualSession({ kind: 'comment', id }) } else setVisualOpen(id) }
+  const runVisual = { visualComments: activeThreadProject?.visualComments ?? [], onOpenVisual: openVisual, onShowVisual: (id: string) => { const comment = visualById(id); if (comment) visualActions.onShowMe?.(comment) }, onMarkUpImage: markUpImage, consumedAttachmentIds: consumedStaged }
   /** Shows a thread in the center and keeps its tab listed until closed. */
   const showCenterConversation = (threadId: string) => {
     setDocumentPicker(null)
     setConversationTabs((current) => current.includes(threadId) ? current : [...current, threadId])
     setConversationCentered(true)
+    setPreviewCentered(null)
   }
   const closeConversationTab = (threadId: string) => {
     if (threadId === "__new__") { setDocumentPicker(null); setConversationCentered(false); return }
@@ -429,7 +630,7 @@ export function App({ createEditor }: AppProps) {
   const conversationTabViews = conversationTabs.flatMap((id) => { const thread = engineThreads.find((candidate) => candidate.id === id); return thread ? [{ id, name: thread.title, attention: thread.attention, active: centerConversationId === id }] : [] })
   if (documentPicker) conversationTabViews.push({ id: '__new__', name: 'New thread', attention: 0, active: centerConversationId === '__new__' })
   const topBarConversations = { conversationTabs: conversationTabViews, onOpenConversationTab: (id: string) => void perform(async () => { if (id === '__new__') { if (documentPicker?.path) await window.strata.openDocument(documentPicker.path); setConversationCentered(true); return }; await window.strata.openConversation(id); showCenterConversation(id) }), onCloseConversation: closeConversationTab }
-  const projectsNode = <ProjectsPanel engine={view.engine} onReconnect={reconnectEngine} onOpenThread={openEngineThread} onBeginRename={cancelEngineNavigation} onNewThread={beginNewConversation} onAddProject={(input) => void perform(() => window.strata.createEngineProject(input), 'Project added.')} onAction={(id, action) => void perform(() => window.strata.actOnEngineThread(id, action))} onUpdate={(id, change) => void perform(() => window.strata.updateEngineThread(id, change))} onOpenEngine={() => setEngineDialog(true)} onOpenAccounts={openAccounts} attachedThreadIds={new Set(document?.attachments.map((attachment) => attachment.agent.id) ?? [])} />
+  const projectsNode = <ProjectsPanel engine={view.engine} onReconnect={reconnectEngine} onOpenThread={openEngineThread} onBeginRename={cancelEngineNavigation} onNewThread={beginNewConversation} onOpenPreview={openPreview} onAddProject={(input) => void perform(() => window.strata.createEngineProject(input), 'Project added.')} onAction={(id, action) => void perform(() => window.strata.actOnEngineThread(id, action))} onUpdate={(id, change) => void perform(() => window.strata.updateEngineThread(id, change))} onOpenEngine={() => setEngineDialog(true)} onOpenAccounts={openAccounts} attachedThreadIds={new Set(document?.attachments.map((attachment) => attachment.agent.id) ?? [])} />
   const conversationItems = document?.items ?? []
   const itemActions = document ? {
     items: conversationItems,
@@ -443,9 +644,9 @@ export function App({ createEditor }: AppProps) {
       if (hunk && action === 'revert') revert(hunk)
     },
   } : {}
-  const sideConversation = <Conversation visible={!conversationCentered && document?.reading.navigationTab === 'conversation'} engine={view.engine} passage={thread && document ? threadNode(document, thread) : undefined} placement="side" {...runConversation} {...itemActions} onMove={() => { if (view.engine.activeThreadId) showCenterConversation(view.engine.activeThreadId) }} />
+  const sideConversation = <Conversation visible={!conversationCentered && document?.reading.navigationTab === 'conversation'} engine={view.engine} passage={thread && document ? threadNode(document, thread) : undefined} placement="side" {...runConversation} {...runVisual} {...itemActions} onMove={() => { if (view.engine.activeThreadId) showCenterConversation(view.engine.activeThreadId) }} />
   // The center conversation is the editor pane for zoom: Ctrl+wheel and Ctrl+= over it scale the editor factor, as they do over a document (§6.9).
-  const centerConversation = <main className="island editor-island conversation-island" data-pane="editor" style={{ '--zoom': zoom.editor } as CSSProperties}><AmbientDecor variant="editor" />{documentPicker && (documentPicker.path === null || pickerDocument) ? <NewConversation key={`${documentPicker.path ?? "new"}:${documentPicker.projectId ?? "current"}`} engine={view.engine} {...(documentPicker.projectId ? { projectId: documentPicker.projectId } : {})} document={pickerDocument} {...(documentPicker.comment ? { comment: documentPicker.comment } : {})} onProjectChange={(projectId) => setDocumentPicker((current) => current && current.projectId !== projectId ? { ...current, projectId } : current)} onBeforeSend={async () => { if (pickerDocument) await flushBuffer() }} onStarted={showCenterConversation} /> : <Conversation engine={view.engine} placement="center" documentMeasure={panelSizes.documentMeasure} onDocumentMeasure={(value, commit) => updatePanel('documentMeasure', value, commit)} {...runConversation} {...itemActions} {...(document ? { onMove: () => { setConversationCentered(false); selectNavigationTab('conversation') } } : {})} />}</main>
+  const centerConversation = <main className="island editor-island conversation-island" data-pane="editor" style={{ '--zoom': zoom.editor } as CSSProperties}><AmbientDecor variant="editor" />{documentPicker && (documentPicker.path === null || pickerDocument) ? <NewConversation key={`${documentPicker.path ?? "new"}:${documentPicker.projectId ?? "current"}`} engine={view.engine} {...(documentPicker.projectId ? { projectId: documentPicker.projectId } : {})} document={pickerDocument} {...(documentPicker.comment ? { comment: documentPicker.comment } : {})} onProjectChange={(projectId) => setDocumentPicker((current) => current && current.projectId !== projectId ? { ...current, projectId } : current)} onBeforeSend={async () => { if (pickerDocument) await flushBuffer() }} onStarted={showCenterConversation} /> : <Conversation engine={view.engine} placement="center" documentMeasure={panelSizes.documentMeasure} onDocumentMeasure={(value, commit) => updatePanel('documentMeasure', value, commit)} {...runConversation} {...runVisual} {...itemActions} {...(document ? { onMove: () => { setConversationCentered(false); selectNavigationTab('conversation') } } : {})} />}</main>
 
   const flushBuffer = useCallback(async () => {
     if (mirrorTimer.current !== null) window.clearTimeout(mirrorTimer.current)
@@ -759,13 +960,15 @@ export function App({ createEditor }: AppProps) {
   if (!ready) return <div className="boot-screen"><StrataIcon /><span>Opening StrataMD…</span></div>
   if (!document) return (
     <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell empty-shell" data-new-conversation={Boolean(documentPicker && conversationCentered)} style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={enterFiles} onDragOver={overFiles} onDragLeave={leaveFiles} onDrop={dropFiles}>
-      <AmbientBackground /><TopBar windowState={windowState} onWindowAction={onWindowAction} tabs={view.tabs} canSend={false} hasAgents={false} pending={0} pendingUnsaved={false} onOpenTab={(path) => { setConversationCentered(false); void perform(() => window.strata.openDocument(path)) }} onCloseTab={setClosingTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onOpenFile={openFile} onSend={() => undefined} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} engine={view.engine} onOpenEngine={() => setEngineDialog(true)} onOpenSettings={openSettings} onOpenAccounts={openAccounts} onToggleTerminal={() => setTerminalOpen(open => !open)} onOpenUsage={openUsage} {...topBarConversations} />
+      <AmbientBackground /><TopBar windowState={windowState} onWindowAction={onWindowAction} tabs={view.tabs} canSend={false} hasAgents={false} pending={0} pendingUnsaved={false} onOpenTab={(path) => { setConversationCentered(false); setPreviewCentered(null); void perform(() => window.strata.openDocument(path)) }} onCloseTab={setClosingTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onOpenFile={openFile} onSend={() => undefined} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} engine={view.engine} onOpenEngine={() => setEngineDialog(true)} onOpenSettings={openSettings} onOpenAccounts={openAccounts} onToggleTerminal={() => setTerminalOpen(open => !open)} onOpenUsage={openUsage} {...topBarConversations} {...topBarPreviews} />
       <div className="workspace">
-        <div data-pane="explorer" style={{ width: panelSizes.explorerWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected="projects" documentOpen={false} projects={projectsNode} conversation={null} contents={null} projectsCount={attentionTotal} onSelect={selectLeftTab} /></Boundary></div>
-        <Resizer axis="vertical" label="Resize left window" value={panelSizes.explorerWidth} min={PANEL_LIMITS.explorerWidth[0]} max={sideWindowCeiling(PANEL_LIMITS.explorerWidth[0], windowWidth, rightRailWidth)} onChange={(value) => updatePanel('explorerWidth', value, false)} onCommit={(value) => updatePanel('explorerWidth', value, true)} />
-        <div className="center-column"><main className="island editor-island empty-editor-island" data-pane="editor" style={{ '--zoom': zoom.editor } as CSSProperties}>
+        <div data-pane="explorer" style={{ width: leftWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected="projects" documentOpen={false} projects={projectsNode} conversation={null} contents={null} projectsCount={attentionTotal} onSelect={selectLeftTab} /></Boundary></div>
+        <Resizer axis="vertical" label="Resize left window" value={leftWidth} min={leftMin} max={leftMax} onChange={(value) => resizeLeft(value, false)} onCommit={(value) => resizeLeft(value, true)} />
+        <div className="center-column">{previewNode ? <Boundary region="editor">{previewNode}</Boundary> : <main className="island editor-island empty-editor-island" data-pane="editor" style={{ '--zoom': zoom.editor } as CSSProperties}>
           <Boundary region="editor">{conversationCentered ? centerConversation : <div className="empty-welcome"><StrataIcon /><h1>Open a markdown file</h1><p>Open a file from disk, or drop one here.</p><button type="button" className="keep-button large" onClick={openFile}>Open file</button></div>}</Boundary>
-        </main>{terminalNode}</div>
+        </main>}{terminalNode}</div>
+        {previewShown && <Resizer axis="vertical" label="Resize right rail" expanded={!rightRailCollapsed} onToggle={() => setRightRailCollapsed((collapsed) => !collapsed)} value={panelSizes.rightRailWidth} min={PANEL_LIMITS.rightRailWidth[0]} max={rightMax} invert onChange={(value) => updatePanel('rightRailWidth', value, false)} onCommit={(value) => updatePanel('rightRailWidth', value, true)} />}
+        {previewShown && !rightRailCollapsed && previewRailNode}
       </div>
       {dragging && <div className="drop-overlay">Drop markdown files to open</div>}
       {settingsDialogNode}
@@ -774,6 +977,8 @@ export function App({ createEditor }: AppProps) {
       {usageDialogNode}
       {themePanel}
       {fileDialogs}
+      {visualPanelNode}
+      {visualSessionNode}
       <Toast toast={toast} onDone={dismissToast} />
     </div></AmbientContext.Provider>
   )
@@ -788,13 +993,13 @@ export function App({ createEditor }: AppProps) {
   return (
     <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell" data-new-conversation={Boolean(documentPicker && conversationCentered)} style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={enterFiles} onDragOver={overFiles} onDragLeave={leaveFiles} onDrop={dropFiles}>
       <AmbientBackground />
-      <TopBar windowState={windowState} onWindowAction={onWindowAction} tabs={view.tabs} canSend={document.canSend || document.recipients.some((recipient) => !recipient.attached)} hasAgents={document.recipients.length > 0} pending={pendingCount(document)} pendingUnsaved={hasUnsavedCounted(document)} onOpenTab={(path) => { setConversationCentered(false); void perform(() => window.strata.openDocument(path)) }} onCloseTab={closeTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onOpenFile={openFile} onSend={() => void perform(openComposer)} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} engine={view.engine} onOpenEngine={() => setEngineDialog(true)} onOpenSettings={openSettings} onOpenAccounts={openAccounts} onToggleTerminal={() => setTerminalOpen(open => !open)} onOpenUsage={openUsage} onStartThread={() => void perform(openComposer)} {...topBarConversations} />
+      <TopBar windowState={windowState} onWindowAction={onWindowAction} tabs={view.tabs} canSend={document.canSend || document.recipients.some((recipient) => !recipient.attached)} hasAgents={document.recipients.length > 0} pending={pendingCount(document)} pendingUnsaved={hasUnsavedCounted(document)} onOpenTab={(path) => { setConversationCentered(false); setPreviewCentered(null); void perform(() => window.strata.openDocument(path)) }} onCloseTab={closeTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onOpenFile={openFile} onSend={() => void perform(openComposer)} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} engine={view.engine} onOpenEngine={() => setEngineDialog(true)} onOpenSettings={openSettings} onOpenAccounts={openAccounts} onToggleTerminal={() => setTerminalOpen(open => !open)} onOpenUsage={openUsage} onStartThread={() => void perform(openComposer)} {...topBarConversations} {...topBarPreviews} />
       <div className="workspace">
-        <div data-pane="explorer" style={{ width: leftWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected={conversationCentered ? 'projects' : document.reading.navigationTab} documentOpen={!conversationCentered} projects={projectsNode} conversation={sideConversation} contents={conversationCentered ? null : <Contents headings={headings} drafts={document.drafts} activeId={activeHeadingId} walkthrough={document.reading.walkthrough} content={document.content} onJump={(id) => setJumpHeading({ id, token: Date.now() })} onWalkthrough={updateWalkthrough} />} projectsCount={attentionTotal} conversationCount={activeEngineThread?.attention ?? 0} onSelect={selectLeftTab} /></Boundary></div>
+        <div data-pane="explorer" style={{ width: leftWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail selected={conversationCentered || previewShown ? 'projects' : document.reading.navigationTab} documentOpen={!conversationCentered && !previewShown} projects={projectsNode} conversation={sideConversation} contents={conversationCentered ? null : <Contents headings={headings} drafts={document.drafts} activeId={activeHeadingId} walkthrough={document.reading.walkthrough} content={document.content} onJump={(id) => setJumpHeading({ id, token: Date.now() })} onWalkthrough={updateWalkthrough} />} projectsCount={attentionTotal} conversationCount={activeEngineThread?.attention ?? 0} onSelect={selectLeftTab} /></Boundary></div>
         <Resizer axis="vertical" label="Resize left window" value={leftWidth} min={leftMin} max={leftMax} onChange={(value) => resizeLeft(value, false)} onCommit={(value) => resizeLeft(value, true)} />
-        <div className="center-column"><Boundary region="editor">{conversationCentered ? centerConversation : <EditorPane editorRef={editorHandle} document={document} walkthrough={document.reading.walkthrough} headings={headings} onWalkthrough={updateWalkthrough} onJumpHeading={(id) => setJumpHeading({ id, token: Date.now() })} documentMeasure={panelSizes.documentMeasure} zoom={zoom.editor} composerSize={panelSizes.annotationComposer} createEditor={createEditor} onDocumentMeasure={(value, commit) => updatePanel('documentMeasure', value, commit)} onComposerSize={(size, commit) => updatePanelSize('annotationComposer', size, commit)} onBufferChange={bufferChanged} onToggleSource={(source) => void perform(() => window.strata.setSourceMode(document.path, source))} onSave={save} onUndo={undoApplication} onRedo={redoApplication} onKeepHunk={(id) => void perform(() => window.strata.keepHunk(document.path, id), 'Kept.')} onRevertHunk={revert} onTableView={(state: TableViewState) => void perform(() => window.strata.updateTableView(document.path, state))} onAddAnnotation={addAnnotation} onAddDecision={addPassageDecision} onHoldDraft={holdDraft} onQuickSend={quickSend} onStartThread={startThreadWithComment} activeConversationId={view.engine.activeThreadId} onAdjustAnnotation={(id, quote, from, to) => void perform(() => window.strata.requoteAnnotation(document.path, id, { quote, from, to }), 'Annotation moved to the new quote. Agents receive it on the next Send.')} onAccept={(id) => void perform(() => window.strata.acceptSuggestion(document.path, id), 'Suggestion accepted as your change.')} onReject={(id) => void perform(() => window.strata.rejectSuggestion(document.path, id), 'Suggestion rejected.')} selectedAnnotation={selectedAnnotation} onSelectAnnotation={(annotation) => { threadOpener.current = null; showThread(annotation) }} jumpHunkId={jumpHunkId} jumpAnnotationId={jumpAnnotationId} jumpHeading={jumpHeading} onHeadings={(next, activeId, durationMs) => { setHeadingState({ path: document.path, headings: next, activeId }); globalThis.document.documentElement.dataset.headingIndexMs = durationMs.toFixed(3) }} />}</Boundary>{terminalNode}</div>
+        <div className="center-column"><Boundary region="editor">{previewNode ?? (conversationCentered ? centerConversation : <EditorPane editorRef={editorHandle} document={document} walkthrough={document.reading.walkthrough} headings={headings} onWalkthrough={updateWalkthrough} onJumpHeading={(id) => setJumpHeading({ id, token: Date.now() })} documentMeasure={panelSizes.documentMeasure} zoom={zoom.editor} composerSize={panelSizes.annotationComposer} createEditor={createEditor} onDocumentMeasure={(value, commit) => updatePanel('documentMeasure', value, commit)} onComposerSize={(size, commit) => updatePanelSize('annotationComposer', size, commit)} onBufferChange={bufferChanged} onToggleSource={(source) => void perform(() => window.strata.setSourceMode(document.path, source))} onSave={save} onUndo={undoApplication} onRedo={redoApplication} onKeepHunk={(id) => void perform(() => window.strata.keepHunk(document.path, id), 'Kept.')} onRevertHunk={revert} onTableView={(state: TableViewState) => void perform(() => window.strata.updateTableView(document.path, state))} onAddAnnotation={addAnnotation} onAddDecision={addPassageDecision} onHoldDraft={holdDraft} onQuickSend={quickSend} onStartThread={startThreadWithComment} activeConversationId={view.engine.activeThreadId} onAdjustAnnotation={(id, quote, from, to) => void perform(() => window.strata.requoteAnnotation(document.path, id, { quote, from, to }), 'Annotation moved to the new quote. Agents receive it on the next Send.')} onAccept={(id) => void perform(() => window.strata.acceptSuggestion(document.path, id), 'Suggestion accepted as your change.')} onReject={(id) => void perform(() => window.strata.rejectSuggestion(document.path, id), 'Suggestion rejected.')} selectedAnnotation={selectedAnnotation} onSelectAnnotation={(annotation) => { threadOpener.current = null; showThread(annotation) }} jumpHunkId={jumpHunkId} jumpAnnotationId={jumpAnnotationId} jumpHeading={jumpHeading} onHeadings={(next, activeId, durationMs) => { setHeadingState({ path: document.path, headings: next, activeId }); globalThis.document.documentElement.dataset.headingIndexMs = durationMs.toFixed(3) }} />)}</Boundary>{terminalNode}</div>
         {rightRailVisible && <Resizer axis="vertical" label="Resize right rail" expanded={!rightRailCollapsed} onToggle={() => setRightRailCollapsed((collapsed) => !collapsed)} value={panelSizes.rightRailWidth} min={PANEL_LIMITS.rightRailWidth[0]} max={rightMax} invert onChange={(value) => updatePanel('rightRailWidth', value, false)} onCommit={(value) => updatePanel('rightRailWidth', value, true)} />}
-        {rightRailVisible && !rightRailCollapsed && <div data-pane="rightRail" style={{ width: panelSizes.rightRailWidth, flex: 'none', minWidth: 0, '--zoom': zoom.rightRail } as CSSProperties}><Boundary region="rightRail"><RightRail document={document} headings={headings} onAddDecision={addRailDecision} selectedTab={document.reading.reviewTab} upperReviewHeight={panelSizes.upperReviewHeight} onSelectTab={selectReviewTab} onHeight={(value, commit) => updatePanel('upperReviewHeight', value, commit)} onMarkReviewed={() => void perform(() => window.strata.markReviewed(document.path), 'All changes marked reviewed. Suggestions still need Accept or Reject.')} onJumpHunk={(hunk) => { setJumpHunkId(null); window.requestAnimationFrame(() => setJumpHunkId(hunk.id)) }} onKeepHunk={(id) => void perform(() => window.strata.keepHunk(document.path, id), 'Kept.')} onRevertHunk={revert} onAcceptAllSuggestions={(agentId) => void perform(async () => { const result = await window.strata.acceptAllSuggestions(document.path, agentId); report(`${result.accepted.length} suggestion${result.accepted.length === 1 ? '' : 's'} accepted${result.skipped.length > 0 ? `; ${result.skipped.length} overlapping skipped` : ''}.`) })} onRejectAllSuggestions={(agentId) => void perform(async () => { const rejected = await window.strata.rejectAllSuggestions(document.path, agentId); report(`${rejected.length} suggestion${rejected.length === 1 ? '' : 's'} rejected.`) })} onAcceptSuggestion={(id) => void perform(() => window.strata.acceptSuggestion(document.path, id), 'Suggestion accepted as your change.')} onRejectSuggestion={(id) => void perform(() => window.strata.rejectSuggestion(document.path, id), 'Suggestion rejected.')} onRevertAll={setRevertAll} onKeepAll={(group) => void perform(async () => { for (const hunk of group.hunks) await window.strata.keepHunk(document.path, hunk.id) }, `${group.hunks.length} changes by ${group.name} kept.`)} onJumpAnnotation={(annotation) => { rememberThreadOpener(); if (annotation.status === 'orphaned' || annotation.anchor === 'document') { setJumpAnnotationId(null); showThread(annotation); return } setJumpAnnotationId(null); window.requestAnimationFrame(() => { setJumpAnnotationId(annotation.id); showThread(annotation) }) }} onClearResolved={() => void perform(() => window.strata.clearResolvedAnnotations(document.path), 'Resolved annotations cleared.')} onStop={(id) => void perform(() => window.strata.stopConversationTurn(id), 'Turn stopped.')} onOpenConversation={(id) => { showCenterConversation(id); void perform(() => window.strata.openConversation(id)) }} onSetLead={(agentId) => void perform(() => window.strata.setLead(document.path, agentId))} onDetach={(attachment) => { if (attachment.queuedSendCount > 0) setDetaching(attachment); else detach(attachment) }} onSaveRound={(index) => window.strata.saveRound(document.path, index)} /></Boundary></div>}
+        {rightRailVisible && !rightRailCollapsed && (previewRailNode ?? <div data-pane="rightRail" style={{ width: panelSizes.rightRailWidth, flex: 'none', minWidth: 0, '--zoom': zoom.rightRail } as CSSProperties}><Boundary region="rightRail"><RightRail document={document} headings={headings} onAddDecision={addRailDecision} selectedTab={document.reading.reviewTab} upperReviewHeight={panelSizes.upperReviewHeight} onSelectTab={selectReviewTab} onHeight={(value, commit) => updatePanel('upperReviewHeight', value, commit)} onMarkReviewed={() => void perform(() => window.strata.markReviewed(document.path), 'All changes marked reviewed. Suggestions still need Accept or Reject.')} onJumpHunk={(hunk) => { setJumpHunkId(null); window.requestAnimationFrame(() => setJumpHunkId(hunk.id)) }} onKeepHunk={(id) => void perform(() => window.strata.keepHunk(document.path, id), 'Kept.')} onRevertHunk={revert} onAcceptAllSuggestions={(agentId) => void perform(async () => { const result = await window.strata.acceptAllSuggestions(document.path, agentId); report(`${result.accepted.length} suggestion${result.accepted.length === 1 ? '' : 's'} accepted${result.skipped.length > 0 ? `; ${result.skipped.length} overlapping skipped` : ''}.`) })} onRejectAllSuggestions={(agentId) => void perform(async () => { const rejected = await window.strata.rejectAllSuggestions(document.path, agentId); report(`${rejected.length} suggestion${rejected.length === 1 ? '' : 's'} rejected.`) })} onAcceptSuggestion={(id) => void perform(() => window.strata.acceptSuggestion(document.path, id), 'Suggestion accepted as your change.')} onRejectSuggestion={(id) => void perform(() => window.strata.rejectSuggestion(document.path, id), 'Suggestion rejected.')} onRevertAll={setRevertAll} onKeepAll={(group) => void perform(async () => { for (const hunk of group.hunks) await window.strata.keepHunk(document.path, hunk.id) }, `${group.hunks.length} changes by ${group.name} kept.`)} onJumpAnnotation={(annotation) => { rememberThreadOpener(); if (annotation.status === 'orphaned' || annotation.anchor === 'document') { setJumpAnnotationId(null); showThread(annotation); return } setJumpAnnotationId(null); window.requestAnimationFrame(() => { setJumpAnnotationId(annotation.id); showThread(annotation) }) }} onClearResolved={() => void perform(() => window.strata.clearResolvedAnnotations(document.path), 'Resolved annotations cleared.')} onStop={(id) => void perform(() => window.strata.stopConversationTurn(id), 'Turn stopped.')} onOpenConversation={(id) => { showCenterConversation(id); void perform(() => window.strata.openConversation(id)) }} onSetLead={(agentId) => void perform(() => window.strata.setLead(document.path, agentId))} onDetach={(attachment) => { if (attachment.queuedSendCount > 0) setDetaching(attachment); else detach(attachment) }} onSaveRound={(index) => window.strata.saveRound(document.path, index)} visualComments={projectForPath(view.engine, document.path)?.visualComments ?? []} visualActions={visualActions} serving={view.preview.serving} /></Boundary></div>)}
       </div>
       {confirmResolve && document && thread && (
         // Above every island: inside the left window the editor would paint over it.
@@ -821,6 +1026,8 @@ export function App({ createEditor }: AppProps) {
       {usageDialogNode}
       {themePanel}
       {fileDialogs}
+      {visualPanelNode}
+      {visualSessionNode}
       <Toast toast={toast} onDone={dismissToast} />
       {dragging && <div className="drop-overlay">Drop markdown files to open</div>}
     </div></AmbientContext.Provider>

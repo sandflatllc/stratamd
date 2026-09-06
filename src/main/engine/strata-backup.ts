@@ -15,8 +15,10 @@ export async function captureStrataEngine(store: GhostStore, identity: string, d
   for (const name of ENGINE_STORE_FILES.filter(name => name !== 'engine-credential.json')) {
     try { await copyFile(join(directory, name), join(target, name)) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
   }
-  try { await copyRuntimeDirectory(join(directory, 'composer-attachments'), join(target, 'composer-attachments')) } catch (error) {
-    try { await readdir(join(directory, 'composer-attachments')); throw error } catch (missing) { if ((missing as NodeJS.ErrnoException).code !== 'ENOENT') throw missing }
+  for (const folder of ['composer-attachments', 'visual-evidence']) {
+    try { await copyRuntimeDirectory(join(directory, folder), join(target, folder)) } catch (error) {
+      try { await readdir(join(directory, folder)); throw error } catch (missing) { if ((missing as NodeJS.ErrnoException).code !== 'ENOENT') throw missing }
+    }
   }
   const snapshot: Snapshot = { identity, documents: {} }
   for (const meta of await store.listDocuments()) {
@@ -35,9 +37,11 @@ export async function restoreStrataEngine(store: GhostStore, source: string, app
     await rm(join(directory, name), { force: true })
     try { await copyFile(join(target, name), join(directory, name)) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
   }
-  // Staged image ids are immutable. Merge saved images so newer unsent drafts retain their bytes.
-  try { await cp(join(target, 'composer-attachments'), join(directory, 'composer-attachments'), { recursive: true, force: false, errorOnExist: false, verbatimSymlinks: true }) } catch (error) {
-    try { await readdir(join(target, 'composer-attachments')); throw error } catch (missing) { if ((missing as NodeJS.ErrnoException).code !== 'ENOENT') throw missing }
+  // Staged image and evidence ids are immutable. Merge saved files so newer unsent drafts retain their bytes.
+  for (const folder of ['composer-attachments', 'visual-evidence']) {
+    try { await cp(join(target, folder), join(directory, folder), { recursive: true, force: false, errorOnExist: false, verbatimSymlinks: true }) } catch (error) {
+      try { await readdir(join(target, folder)); throw error } catch (missing) { if ((missing as NodeJS.ErrnoException).code !== 'ENOENT') throw missing }
+    }
   }
   for (const hash of await readdir(join(target, 'objects'))) if (await store.putObject(await readFile(join(target, 'objects', hash))) !== hash) throw new Error(`Backup payload verification failed: ${hash}`)
   const archiveIdentity = `${snapshot.identity}:archive:${Date.now()}`

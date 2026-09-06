@@ -24,6 +24,16 @@ import type {
 import type { CSSProperties } from 'react'
 import { sameJson } from '../shared/view-sync'
 import { AMBIENT_STYLES, BUILT_IN_THEME_ID, BUILT_IN_THEME_NAME, contrastingText, DEFAULT_THEME_VALUES, mixHex, THEME_KEYS, type AmbientStyle } from '../shared/theme-keys'
+import { familyLabel, modelFamily } from '../shared/modelSelection'
+
+/** The agent's plain name for a thread: its model family (Claude, GPT), never a file or a slug. */
+export function threadAgentName(engine: Pick<EngineView, 'projects' | 'accounts' | 'models'>, threadId: string): string {
+  const thread = engine.projects.flatMap((project) => project.threads).find((candidate) => candidate.id === threadId)
+  if (!thread) return 'Agent'
+  const driver = engine.accounts.find((account) => account.instanceId === thread.providerInstanceId)?.driver ?? engine.models?.find((model) => model.instanceId === thread.providerInstanceId)?.driver
+  const family = modelFamily(driver, thread.model)
+  return family === 'unknown' ? 'Agent' : familyLabel(family)
+}
 
 export type NumericPanelKey = Exclude<keyof PanelSizes, 'themePanel' | 'annotationComposer' | 'sendComposer'>
 
@@ -116,6 +126,7 @@ export function projectForPath(engine: Pick<EngineView, 'projects'>, path: strin
 }
 
 export const EMPTY_VIEW: AppView = {
+  preview: { tabs: [], registered: false, serving: [], reveal: null },
   tabs: [],
   activeDocument: null,
   explorer: [],
@@ -382,13 +393,15 @@ export function activeAnnotations(document: DocumentView): AnnotationView[] {
   return document.annotations.filter((annotation) => annotation.status !== 'resolved')
 }
 
-export type AnnotationFilter = 'all' | 'decisions' | 'questions' | 'comments' | 'suggestions' | 'resolved'
+export type AnnotationFilter = 'all' | 'visual' | 'decisions' | 'questions' | 'comments' | 'suggestions' | 'resolved'
 
 export function filteredAnnotations(document: DocumentView, filter: AnnotationFilter): AnnotationView[] {
   if (filter === 'resolved') return document.annotations.filter((annotation) => annotation.status === 'resolved')
+  // Visual comments are project records, not annotations; the rail lists them beside these rows.
+  if (filter === 'visual') return []
   const open = document.annotations.filter((annotation) => annotation.status !== 'resolved')
   if (filter === 'all') return open
-  const kinds: Record<Exclude<AnnotationFilter, 'all' | 'resolved'>, AnnotationView['kind']> = {
+  const kinds: Record<Exclude<AnnotationFilter, 'all' | 'resolved' | 'visual'>, AnnotationView['kind']> = {
     decisions: 'decision',
     questions: 'question',
     comments: 'comment',

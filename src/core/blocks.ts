@@ -19,7 +19,8 @@ const entry = z.discriminatedUnion('verb', [
   z.object({ verb: z.literal('decision'), ...anchored, text: z.string().min(1), options: z.array(z.string().min(1)).min(2) }).strict(),
   z.object({ verb: z.literal('suggest'), ...anchored, replacement: z.string() }).strict(),
   z.object({ verb: z.literal('edit'), ...anchored, match: z.string(), replace: z.string() }).strict(),
-  z.object({ verb: z.literal('reply'), anchor: z.object({ item: z.string().min(1) }).strict(), text: z.string().min(1) }).strict(),
+  // A reply to a visual comment names the revision it answers; `ready` asks the owner to review and `file` names a screenshot the agent captured.
+  z.object({ verb: z.literal('reply'), anchor: z.object({ item: z.string().min(1) }).strict(), text: z.string().min(1), revision: z.number().int().positive().optional(), ready: z.boolean().optional(), file: z.string().min(1).optional() }).strict(),
   z.object({ verb: z.enum(['resolve', 'accept', 'reject']), ...anchored }).strict(),
   z.object({ verb: z.literal('save'), document: z.string().min(1) }).strict(),
   z.object({ verb: z.literal('lead'), document: z.string().min(1), action: z.enum(['claim', 'release']) }).strict(),
@@ -73,7 +74,7 @@ function parseStrataBlockUncached(message: string): { prose: string; results: St
     prose: message.slice(0, match.index).trimEnd(),
     results: parsed.map((value, index) => {
       const decoded = entry.safeParse(value)
-      return decoded.success ? { index, entry: decoded.data } : { index, error: decoded.error.issues.map((issue) => issue.message).join('; '), ...(value && typeof value === 'object' && value.anchor && typeof value.anchor === 'object' && ('message' in value.anchor || (typeof value.anchor.item === 'string' && /^(c_|m_)/.test(value.anchor.item))) ? { conversationTarget: true } : {}) }
+      return decoded.success ? { index, entry: decoded.data } : { index, error: decoded.error.issues.map((issue) => issue.message).join('; '), ...(value && typeof value === 'object' && value.anchor && typeof value.anchor === 'object' && ('message' in value.anchor || (typeof value.anchor.item === 'string' && /^(c_|m_|v_)/.test(value.anchor.item))) ? { conversationTarget: true } : {}) }
     }),
   }
 }

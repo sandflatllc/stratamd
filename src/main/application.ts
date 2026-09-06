@@ -41,6 +41,9 @@ import type {
   WalkthroughAction,
   HeadingReference,
   LocalMarkdownPreview,
+  VisualPageCapture,
+  VisualPageProposal,
+  VisualShowResult,
   LocalImageResolution,
   PairEngineRequest,
   QuickSendRequest,
@@ -157,6 +160,32 @@ import { upsertTableView } from '../shared/tables'
 import { CURRENT_META_VERSION, DEFAULT_LOCK_TIMEOUT_MS, GhostStore, type AttachmentMeta, type DeliveryMeta, type DocumentLock, type DocumentMeta, type PendingHunkMeta, type SaveAuthorMeta, type SaveMeta, type SegmentMeta } from './storage'
 import { DebouncedMirror, HashReconciler, WatchCoordinator, watchDirectory, type DirectorySubscription } from './watcher'
 import { T3EngineClient, type EngineReadClient } from './engine/client'
+import { PreviewHost } from './preview/host'
+import { locateScript, scrollScript as pageScrollScript } from './preview/inspect'
+import { CLEAR_OVERRIDES_SCRIPT } from './preview/overrides'
+import { nativeImage } from 'electron'
+import { visualSendRefusal, type VisualCommentRecord, type VisualRevision } from '../core/visual-comments'
+import { visualImageUrl } from '../shared/visual-urls'
+
+/** A window of a PNG in page pixels, cut at the capture's own scale and clamped to it. */
+function cropPng(bytes: Uint8Array, window: { x: number; y: number; width: number; height: number }, scale: number, size: { width: number; height: number }): { bytes: Uint8Array; width: number; height: number } | null {
+  const x = Math.max(0, Math.min(size.width - 1, Math.round(window.x * scale)))
+  const y = Math.max(0, Math.min(size.height - 1, Math.round(window.y * scale)))
+  const width = Math.max(1, Math.min(size.width - x, Math.round(window.width * scale)))
+  const height = Math.max(1, Math.min(size.height - y, Math.round(window.height * scale)))
+  const image = nativeImage.createFromBuffer(Buffer.from(bytes))
+  if (image.isEmpty()) return null
+  const cropped = image.crop({ x, y, width, height })
+  if (cropped.isEmpty()) return null
+  const cropSize = cropped.getSize()
+  return { bytes: new Uint8Array(cropped.toPNG()), width: cropSize.width, height: cropSize.height }
+}
+
+/** The same page, ignoring the fragment: a hash change is not navigation away. */
+function samePage(current: string, original: string): boolean {
+  const strip = (value: string) => value.replace(/#.*$/, '')
+  return strip(current) === strip(original)
+}
 
 /** The theme problem key under which a failed file write is reported (plan 4.14). */
 const THEME_WRITE_PROBLEM_KEY = 'write'
@@ -320,6 +349,8 @@ export class StrataApplication implements StrataApi {
   #providerSetupPreparing = false
   #providerSetup = new ProviderSetupJobs()
   #manager: LocalEngineManager | null = null
+  readonly #preview: PreviewHost
+  #previewRestored = false
   #followedThreadsKey = ''
   #unsubscribeEngine: (() => void) | null = null
   readonly #engineDispatching = new Set<string>()
@@ -346,12 +377,19 @@ export class StrataApplication implements StrataApi {
     this.#selectFolder = options.selectFolder ?? (async () => null)
     this.#now = options.now ?? Date.now
     this.#watch = options.watch ?? true
+    // The preview host answers the engine's browser requests and shows pages in the window (docs/plans/open/visual-review, phase 2).
+    this.#preview = new PreviewHost({
+      dataDirectory: this.#store.dataDirectory, now: this.#now,
+      resolveProject: (projectId) => { const project = this.#engine.view().projects.find((candidate) => candidate.id === projectId); return project ? { workspaceRoot: project.workspaceRoot, title: project.title } : null },
+      resolveThread: (threadId) => { for (const project of this.#engine.view().projects) { const thread = project.threads.find((candidate) => candidate.id === threadId); if (thread) return { projectId: project.id, workingFolder: thread.worktreePath ?? project.workspaceRoot } } return null },
+    })
     this.#engine = options.engine ?? new T3EngineClient({
       dataDirectory: this.#store.dataDirectory, now: this.#now,
       reserveLocalSetup: () => { this.#providerSetupPreparing = true },
       localSetupBusy: () => this.#providerSetupPreparing || this.#providerSetup.busy,
       localUsageAvailable: () => this.#manager !== null,
       measureUsage: (provider, settings, signal) => measureLocalUsage(this.#manager?.runtimeContext() ?? null, options.engineUsageHelper ?? resolve('resources/engine-helpers/usage.mjs'), provider, settings, signal),
+      previewHost: { operations: this.#preview.operations, handle: (request) => this.#preview.handle(request), setRegistered: (registered) => this.#preview.setRegistered(registered), recheckVisual: (comment) => this.#recheckVisual(comment), compareVisual: (comment, revision) => this.#compareVisual(comment, revision) },
       // Terminal launchers are scripts Strata writes on Linux (§5.13); macOS gets none.
       terminalShimDirectory: isDarwin() ? null : join(this.#store.dataDirectory, 'bin'),
       ...(options.notifications ? { isFocused: () => options.notifications!.isFocused(), notify: (notification) => options.notifications!.notify(notification) } : {}),
@@ -418,9 +456,12 @@ export class StrataApplication implements StrataApi {
   async initialize(): Promise<this> {
     await this.#store.initialize()
     this.#unsubscribeEngine = this.#engine.subscribe((view) => {
+      // The owner's preview tabs come back once the engine lists their projects.
+      if (!this.#previewRestored && view.projects.length > 0) { this.#previewRestored = true; void this.#preview.restore().catch((error: unknown) => logError('preview', 'Preview tabs could not be restored', error)) }
       this.#publish()
       void this.#reconcileEngineView(view).catch((error: unknown) => logError('engine', 'Engine delivery reconciliation failed', error))
     })
+    this.#preview.subscribe(() => this.#publish())
     this.#settings = await this.#settingsStore.load()
     if (this.#settings.engine.startAtLogin) await this.#setStartAtLogin(true).catch(error => logError('startup', 'Start at login could not be updated for this application folder', error))
     if (this.#managedBundle) {
@@ -691,6 +732,7 @@ export class StrataApplication implements StrataApi {
     await this.#providerSetup.cancel()
     this.#providerSetupPreparing = true
     await this.#manager?.stop()
+    await this.#preview.shutdown()
     await this.#engine.shutdown()
     const sessions = [...this.#sessions.values()]
     this.#listeners.clear()
@@ -1122,6 +1164,181 @@ export class StrataApplication implements StrataApi {
     await this.#engine.dismissItem(threadId, itemId)
   }
 
+  async holdVisualComment(input: Parameters<StrataApi['holdVisualComment']>[0]): Promise<string> {
+    if (!this.#engine.holdVisualComment) throw new Error('This engine cannot hold visual comments')
+    return this.#engine.holdVisualComment(input)
+  }
+
+  async actVisualComment(id: string, action: Parameters<StrataApi['actVisualComment']>[1]): Promise<void> {
+    if (!this.#engine.actVisualComment) throw new Error('This engine cannot update visual comments')
+    await this.#engine.actVisualComment(id, action)
+  }
+
+  /** Bytes behind a strata-visual URL: a piece of evidence or a staged composer image. */
+  async readVisualImage(kind: 'evidence' | 'staged', id: string): Promise<{ bytes: Uint8Array; mimeType: string } | null> {
+    if (!this.#engine.readVisualImage) return null
+    return this.#engine.readVisualImage(kind, id)
+  }
+
+  // ---- Preview windows (docs/plans/open/visual-review, phase 2)
+
+  get preview(): PreviewHost {
+    return this.#preview
+  }
+
+  /** The window the preview host draws pages into; the pages themselves outlive it. */
+  attachPreviewWindow(window: import('electron').BrowserWindow): void {
+    this.#preview.attachWindow(window)
+  }
+
+  async openPreviewTab(input: { projectId: string; url?: string }): Promise<string> {
+    return this.#preview.openOwnerTab(input)
+  }
+
+  async closePreviewTab(tabId: string): Promise<void> {
+    this.#preview.closeTab(tabId)
+  }
+
+  async navigatePreview(tabId: string, navigation: Parameters<StrataApi['navigatePreview']>[1]): Promise<void> {
+    await this.#preview.navigate(tabId, navigation)
+  }
+
+  async resizePreview(tabId: string, viewport: Parameters<StrataApi['resizePreview']>[1]): Promise<void> {
+    this.#preview.resize(tabId, viewport)
+  }
+
+  async resumePreviewTab(tabId: string): Promise<void> {
+    this.#preview.resume(tabId)
+  }
+
+  async reportPreviewBounds(report: Parameters<StrataApi['reportPreviewBounds']>[0]): Promise<void> {
+    this.#preview.reportBounds(report)
+  }
+
+  async reportOverlay(open: boolean): Promise<void> {
+    this.#preview.setOverlay(open)
+  }
+
+  /** Test probe: a real input landing in a tab, the path an owner's click takes. */
+  previewHumanInput(tabId: string, point: { x: number; y: number }): void {
+    this.#preview.humanInput(tabId, point)
+  }
+
+  // ---- Marking up a running page (docs/plans/open/visual-review, phase 3)
+
+  /** Annotate: the current frame goes into the evidence store and comes back with the page it was taken from. */
+  async capturePreviewFrame(tabId: string): Promise<VisualPageCapture> {
+    if (!this.#engine.storeVisualCapture) throw new Error('This engine cannot keep captures')
+    const frame = await this.#preview.captureFrame(tabId)
+    if (frame.width === 0 || frame.height === 0) throw new Error('The page gave no picture to mark up. Try again once it has drawn.')
+    const id = await this.#engine.storeVisualCapture({ bytes: frame.bytes, width: frame.width, height: frame.height })
+    return { tabId, capture: { id, url: visualImageUrl('evidence', id), width: frame.width, height: frame.height, scroll: frame.scroll, scale: frame.scale }, page: frame.page }
+  }
+
+  /** What the live page says is at a point or in a box, in page pixels; the identity rides along for the record. */
+  async describePreview(tabId: string, target: { point: { x: number; y: number } } | { rect: { x: number; y: number; width: number; height: number } }): Promise<VisualPageProposal | null> {
+    const described = await this.#preview.describe(tabId, target)
+    if (!described) return null
+    const identity = described.identity
+    return { kind: described.kind, label: described.label, rect: described.rect, found: described.kind === 'element', ...(identity ? { identity: { role: identity.role, name: identity.name, text: identity.text, testIds: identity.testIds, selector: identity.selector, html: identity.html, style: identity.style, sources: identity.sources, viewportRect: identity.viewportRect, pageRect: identity.pageRect } } : {}) }
+  }
+
+  async scrollPreview(tabId: string, move: { by: { x: number; y: number } } | { to: { x: number; y: number } }): Promise<{ x: number; y: number }> {
+    return this.#preview.scroll(tabId, move)
+  }
+
+  /** Show me: the original tab when it still shows the page, restored to the size and scroll of the comment, with found things outlined. */
+  async showVisualComment(id: string): Promise<VisualShowResult> {
+    const comment = this.#engine.visualComment?.(id) ?? null
+    if (!comment) throw new Error('That visual comment is gone')
+    if (comment.anchor.kind !== 'page') return { shown: false, reason: 'This comment is on a pasted image, not a page.', url: null }
+    const anchor = comment.anchor
+    const tab = this.#preview.tab(anchor.instance)
+    if (!tab) return { shown: false, reason: 'That page is no longer open.', url: anchor.url }
+    if (samePage(tab.url, anchor.url) === false) return { shown: false, reason: 'That tab shows a different page now.', url: anchor.url }
+    const current = comment.draft ?? comment.revisions.at(-1)
+    const marks = (current?.marks ?? []).flatMap((mark) => mark.kind === 'element' && mark.identity ? [{ id: mark.id, identity: { selector: mark.identity.selector ?? null, testIds: mark.identity.testIds ?? [], role: mark.identity.role ?? null, name: mark.identity.name ?? null } }] : [])
+    const firstCapture = comment.captures.find((capture) => capture.id === current?.marks[0]?.captureId) ?? comment.captures[0]
+    const outlined = await this.#preview.show(tab.id, { viewport: anchor.viewport, scroll: firstCapture?.scroll ?? null, marks })
+    return { shown: true, tabId: tab.id, outlined }
+  }
+
+  // ---- Comparisons and adjustments (docs/plans/open/visual-review, phase 4)
+
+  /** Adjustments: Strata's whole set of overrides goes onto the live page at once, and the result is captured as the requested appearance. */
+  async adjustPreview(tabId: string, targets: Parameters<StrataApi['adjustPreview']>[1]): Promise<VisualPageCapture & { applied: string[] }> {
+    const applied = await this.#preview.applyOverrides(tabId, targets.map((target) => ({ markId: target.markId, identity: { selector: target.identity.selector ?? null, testIds: target.identity.testIds ?? [], role: target.identity.role ?? null, name: target.identity.name ?? null }, declarations: target.declarations })))
+    const capture = await this.capturePreviewFrame(tabId)
+    return { ...capture, capture: { ...capture.capture, requested: true }, applied }
+  }
+
+  async clearPreviewOverrides(tabId: string): Promise<void> {
+    await this.#preview.clearOverrides(tabId)
+  }
+
+  /**
+   * Then / now: the original crop of the marked target beside Strata's own capture of the same target now, at the same
+   * size and scroll, with no override applied. The live tab serves when it still shows the page at that size; otherwise
+   * the page opens out of sight at the original size. When the target is not found, the views differ and the note says so.
+   */
+  async #compareVisual(comment: VisualCommentRecord, revision: VisualRevision): Promise<{ then: { bytes: Uint8Array; width: number; height: number }; now: { bytes: Uint8Array; width: number; height: number } | null; note: string | null } | null> {
+    if (comment.anchor.kind !== 'page' || !this.#engine.readVisualImage) return null
+    const anchor = comment.anchor
+    const mark = revision.marks.find((candidate) => candidate.kind === 'element' && candidate.identity) ?? revision.marks[0]
+    if (!mark) return null
+    const capture = comment.captures.find((candidate) => candidate.id === mark.captureId)
+    const original = capture ? await this.#engine.readVisualImage('evidence', capture.id) : null
+    if (!capture || !original) return null
+    const scale = capture.scale ?? 1
+    // The same window in both pictures: the mark with room around it, in page pixels, so movement stays visible.
+    const margin = 48
+    const window = { x: Math.max(0, mark.rect.x / scale - margin), y: Math.max(0, mark.rect.y / scale - margin), width: mark.rect.width / scale + margin * 2, height: mark.rect.height / scale + margin * 2 }
+    const then = cropPng(original.bytes, window, scale, { width: capture.width, height: capture.height })
+    if (!then) return null
+    const identity = mark.kind === 'element' && mark.identity ? { selector: mark.identity.selector ?? null, testIds: mark.identity.testIds ?? [], role: mark.identity.role ?? null, name: mark.identity.name ?? null } : null
+    const takeNow = async (contents: import('electron').WebContents): Promise<{ now: { bytes: Uint8Array; width: number; height: number } | null; note: string | null }> => {
+      await contents.executeJavaScript(CLEAR_OVERRIDES_SCRIPT, true).catch(() => undefined)
+      if (capture.scroll) await contents.executeJavaScript(pageScrollScript({ to: capture.scroll }), true).catch(() => undefined)
+      if (identity) {
+        const match = await contents.executeJavaScript(locateScript(identity), true).catch(() => null) as { matches: number } | null
+        if (!match || match.matches !== 1) return { now: null, note: `The views differ: ${mark.label} was not found on the page now.` }
+      }
+      const frame = await this.#preview.frameOf(contents)
+      const now = cropPng(frame.bytes, window, frame.scale, { width: frame.width, height: frame.height })
+      return now ? { now, note: null } : { now: null, note: 'The views differ: the page could not be captured now.' }
+    }
+    const tab = this.#preview.tab(anchor.instance)
+    let outcome: { now: { bytes: Uint8Array; width: number; height: number } | null; note: string | null }
+    const liveSize = tab && samePage(tab.url, anchor.url) ? await this.#preview.viewportOf(tab.id).catch(() => null) : null
+    if (tab && liveSize && liveSize.width === anchor.viewport.width && liveSize.height === anchor.viewport.height) {
+      outcome = await takeNow(this.#preview.contentsOf(tab.id))
+    } else {
+      const project = this.#engine.view().projects.find((candidate) => candidate.id === comment.projectId)
+      const workingFolder = anchor.workingFolder ?? project?.workspaceRoot
+      if (!workingFolder) return { then, now: null, note: 'The views differ: the page could not be opened.' }
+      outcome = await this.#preview.withScratchView({ workingFolder, url: anchor.url, viewport: anchor.viewport }, takeNow).catch((error: unknown) => ({ now: null, note: `The views differ: the page could not be opened (${error instanceof Error ? error.message : String(error)}).` }))
+    }
+    return { then, ...outcome }
+  }
+
+  /** The re-check before Send: the page must be the one the marks were made on, and every marked thing must still be there. */
+  async #recheckVisual(comment: VisualCommentRecord): Promise<{ refusal: string | null; found: Record<string, boolean> }> {
+    if (comment.anchor.kind !== 'page' || !comment.draft) return { refusal: null, found: {} }
+    const tab = this.#preview.tab(comment.anchor.instance)
+    // A closed tab leaves nothing to check; the saved evidence is what travels.
+    if (!tab) return { refusal: null, found: {} }
+    if (!samePage(tab.url, comment.anchor.url)) return { refusal: visualSendRefusal({ pageReplaced: true, missing: [] }), found: {} }
+    const found: Record<string, boolean> = {}
+    const missing: string[] = []
+    for (const mark of comment.draft.marks) {
+      if (mark.kind !== 'element' || !mark.identity) continue
+      const match = await this.#preview.locate(tab.id, { selector: mark.identity.selector ?? null, testIds: mark.identity.testIds ?? [], role: mark.identity.role ?? null, name: mark.identity.name ?? null }).catch(() => null)
+      found[mark.id] = match !== null && match.matches === 1
+      if (!match || match.matches === 0) missing.push(mark.label)
+    }
+    return { refusal: visualSendRefusal({ pageReplaced: false, missing }), found }
+  }
+
   async stopConversationTurn(threadId: string): Promise<void> {
     await this.#engine.interrupt(threadId)
   }
@@ -1227,7 +1444,7 @@ export class StrataApplication implements StrataApi {
       if ('anchor' in entry) {
         if ('message' in entry.anchor) continue
         if ('document' in entry.anchor && entry.anchor.document !== session.path) continue
-        if ('item' in entry.anchor && (entry.anchor.item.startsWith('c_') || entry.anchor.item.startsWith('m_') || [...this.#sessions.values()].some(other => other !== session && other.annotations.annotations[(entry.anchor as { item: string }).item]))) continue
+        if ('item' in entry.anchor && (entry.anchor.item.startsWith('c_') || entry.anchor.item.startsWith('m_') || entry.anchor.item.startsWith('v_') || [...this.#sessions.values()].some(other => other !== session && other.annotations.annotations[(entry.anchor as { item: string }).item]))) continue
       }
       if ('document' in entry && entry.document !== session.path) continue
       try {
@@ -3081,7 +3298,8 @@ export class StrataApplication implements StrataApi {
       activeDocument: stableValue(last.activeDocument, raw.activeDocument),
       explorer: stableValue(last.explorer, raw.explorer),
       settings: stableValue(last.settings, raw.settings),
-      engine: stableValue(last.engine, raw.engine)
+      engine: stableValue(last.engine, raw.engine),
+      preview: stableValue(last.preview, raw.preview),
     }
     this.#lastView = next
     return next
@@ -3105,6 +3323,7 @@ export class StrataApplication implements StrataApi {
     const raw: AppView['engine'] = managed ? { ...base, managed, state: managed.state === 'starting' ? 'connecting' : managed.state === 'failed' || managed.state === 'stopped' ? 'disconnected' : base.state } : base
     const engine: AppView['engine'] = { ...raw, projects: raw.projects.map((project) => ({ ...project, threads: project.threads.map((thread) => ({ ...thread, pendingWork: this.#pendingWork(thread.id) })) })) }
     return {
+      preview: this.#preview.view(),
       tabs: this.#tabs.list().map((tab) => {
         const session = this.#sessions.get(tab.path)!
         const pendingAuthor = session.state.pendingHunks.find((hunk) => hunk.author.agentId)?.author.agentId

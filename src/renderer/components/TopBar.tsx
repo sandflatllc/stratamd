@@ -1,4 +1,4 @@
-import { TerminalIcon, ChartColumnIcon } from '../icons/lucide'
+import { TerminalIcon, ChartColumnIcon, GlobeIcon } from '../icons/lucide'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import type { DocumentTabView, EngineView, WindowState, WindowAction } from '../../shared/contracts'
 import { AGENT_COLORS, textColorFor } from '../model'
@@ -47,6 +47,14 @@ interface TopBarProps {
   onToggleTerminal?(): void
   onOpenAccounts?(): void
   onOpenSettings?(): void
+  /** Preview windows (docs/plans/open/visual-review, phase 2): one pill per open window, named by project and page. */
+  previewPills?: Array<{ id: string; name: string; active: boolean; held: boolean }>
+  onOpenPreviewPill?(id: string): void
+  onClosePreviewPill?(id: string): void
+  /** Opens a preview window for the active project from the logo menu. */
+  onOpenPreview?(): void
+  /** Strata is registered with the engine as its browser host; shown beside the engine status. */
+  browserShared?: boolean
 }
 
 type MenuKind = 'app' | 'documents'
@@ -87,17 +95,19 @@ function MenuPill({ kind, label, count, activeName, open, onToggle }: { kind: Me
   </button>
 }
 
-export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onOpenFile, onSend, onStartThread, zoomed, onResetZoom, onOpenTheme, conversationTabs = [], onOpenConversationTab, onCloseConversation, engine, onOpenEngine, onOpenAccounts, onOpenSettings, onToggleTerminal, onOpenUsage }: TopBarProps) {
-  const conversationTab = conversationTabs.find((tab) => tab.active)
+export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onOpenFile, onSend, onStartThread, zoomed, onResetZoom, onOpenTheme, conversationTabs = [], onOpenConversationTab, onCloseConversation, engine, onOpenEngine, onOpenAccounts, onOpenSettings, onToggleTerminal, onOpenUsage, previewPills = [], onOpenPreviewPill, onClosePreviewPill, onOpenPreview, browserShared = false }: TopBarProps) {
+  const previewActive = previewPills.some((pill) => pill.active)
+  const conversationTab = previewActive ? undefined : conversationTabs.find((tab) => tab.active)
   const tabStrip = useRef<HTMLDivElement>(null)
   const navigation = useRef<HTMLElement>(null)
   const menuRoot = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState<PathContextMenuState | null>(null)
   const [openMenu, setOpenMenu] = useState<MenuKind | null>(null)
   const [pins, setPins] = useState<TopBarPins>(() => readPins())
-  const strip = arrangeStrip(tabs, conversationTabs, pins, conversationTab !== undefined)
-  const activePath = conversationTab ? `conversation:${conversationTab.id}` : tabs.find((tab) => tab.active)?.path
+  const strip = arrangeStrip(tabs, conversationTabs, pins, conversationTab !== undefined || previewActive)
+  const activePath = previewActive ? `preview:${previewPills.find((pill) => pill.active)!.id}` : conversationTab ? `conversation:${conversationTab.id}` : tabs.find((tab) => tab.active)?.path
   const activeDocument = tabs.find((tab) => tab.active)
+  const activeShownElsewhere = conversationTab !== undefined || previewActive
   const openContextMenu = (event: ReactMouseEvent, path: string) => {
     event.preventDefault()
     event.stopPropagation()
@@ -149,7 +159,7 @@ export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, 
   const pinLabel = (pinned: boolean, name: string) => `${pinned ? 'Unpin' : 'Pin'} ${name}`
 
   const documentPill = (tab: DocumentTabView) => {
-    const active = !conversationTab && tab.active
+    const active = !conversationTab && !previewActive && tab.active
     return <button
       type="button"
       role="tab"
@@ -190,7 +200,7 @@ export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, 
   const documentsMenu = <div ref={menuRoot} id="topbar-menu-documents" className="tab-menu-list" role="menu" aria-label="Open docs" onKeyDown={menuKeys}>
     {strip.documents.menu.length === 0 && <p className="tab-menu-empty">No documents open.</p>}
     {strip.documents.menu.map((tab) => {
-      const active = !conversationTab && tab.active
+      const active = !conversationTab && !previewActive && tab.active
       const pinned = isPinned(pins, 'document', tab.path)
       return <div className={`tab-menu-row ${active ? 'tab-menu-row-active' : ''}`} key={tab.path} data-pinned={pinned || undefined}>
         <button type="button" role="menuitem" className="tab-menu-open" aria-current={active || undefined} title={tab.path} onClick={() => { setOpenMenu(null); onOpenTab(tab.path) }} onContextMenu={(event) => openContextMenu(event, tab.path)}>
@@ -218,13 +228,14 @@ export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, 
           {engine && engine.state !== 'unpaired' && onOpenAccounts && <button type="button" role="menuitem" className="tab-menu-open accounts-button" aria-label="Accounts" onClick={() => menuAction(onOpenAccounts)}>Accounts{accountsAttention && <span className="account-warning">Needs attention</span>}</button>}
           {onOpenUsage && <button type="button" role="menuitem" className="tab-menu-open" onClick={() => menuAction(onOpenUsage)}><ChartColumnIcon />Usage</button>}
           {onToggleTerminal && <button type="button" role="menuitem" className="tab-menu-open" onClick={() => menuAction(onToggleTerminal)}><TerminalIcon />Terminal <kbd>{primaryModifierLabel()}+`</kbd></button>}
+          {onOpenPreview && engine && engine.state === 'connected' && <button type="button" role="menuitem" className="tab-menu-open open-preview-button" onClick={() => menuAction(onOpenPreview)}><GlobeIcon />Open preview</button>}
           <button type="button" role="menuitem" className="tab-menu-open theme-button" onClick={() => menuAction(onOpenTheme)}>Theme</button>
           {zoomed && <button type="button" role="menuitem" className="tab-menu-open reset-zoom" onClick={() => menuAction(onResetZoom)}>Reset zoom</button>}
         </div>}
       </span>
       <div className="tab-navigation">
         <span className="tab-menu-anchor">
-          <MenuPill kind="documents" label="Docs" count={tabs.length} activeName={activeDocument && !conversationTab && !strip.documents.pills.includes(activeDocument) ? activeDocument.name : null} open={openMenu === 'documents'} onToggle={() => setOpenMenu((current) => current === 'documents' ? null : 'documents')} />
+          <MenuPill kind="documents" label="Docs" count={tabs.length} activeName={activeDocument && !activeShownElsewhere && !strip.documents.pills.includes(activeDocument) ? activeDocument.name : null} open={openMenu === 'documents'} onToggle={() => setOpenMenu((current) => current === 'documents' ? null : 'documents')} />
           {openMenu === 'documents' && documentsMenu}
         </span>
         <div
@@ -238,6 +249,12 @@ export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, 
         >
           {strip.documents.pills.map(documentPill)}
           {strip.conversations.pills.map(conversationPill)}
+          {previewPills.map((pill) => <button type="button" role="tab" aria-selected={pill.active} className={`tab preview-pill ${pill.active ? 'tab-active' : ''}`} title={pill.name} key={pill.id} onClick={() => onOpenPreviewPill?.(pill.id)} onMouseDown={(event) => { if (event.button === 1) event.preventDefault() }} onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); onClosePreviewPill?.(pill.id) } }}>
+            <GlobeIcon />
+            <span className="tab-name">{pill.name}</span>
+            {pill.held && <span className="tab-dirty-dot" aria-label="Held visual comments" title="Held visual comments" />}
+            <CloseControl name={pill.name} onClose={() => onClosePreviewPill?.(pill.id)} />
+          </button>)}
         </div>
       </div>
       <div className="window-drag-space" aria-hidden="true" />
@@ -248,6 +265,7 @@ export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, 
           <span className="engine-status-label">{engine.state === 'unpaired' ? 'Pair engine' : engineStateLabel(engine)}</span>
         </button>
       )}
+      {browserShared && <span className="browser-shared" title="Strata is registered with the engine as a browser host; agents can open their own tabs here">Browser shared</span>}
       <span className="pending-status" data-unsaved={pendingUnsaved} title="Next change · F7. Previous change · Shift+F7. All shortcuts · F1">{pending} pending</span>
       {hasAgents || !onStartThread
         ? <button type="button" className="send-button" title={sendTitle} data-enabled={canSend} onClick={onSend} disabled={!canSend}>Send ↗</button>

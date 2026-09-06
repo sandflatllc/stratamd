@@ -1,4 +1,5 @@
 import type { DraftKind, EngineMessageView } from '../shared/contracts'
+import { VISUAL_BRIEF_INSTRUCTIONS, type VisualBrief } from './visual-comments'
 
 export interface MessageAnchor {
   message: string
@@ -36,6 +37,8 @@ export interface ConversationDelivery {
   replies: Array<{ itemId: string; text: string }>
   blocks: Array<{ message: string; block: string; from: number; to: number; text: string }>
   outcomes: ConversationOutcome[]
+  /** Visual comments this delivery carries, one frozen revision each; their marked screenshots ride as image attachments. */
+  visual?: VisualBrief[]
 }
 export function messageAnchor(message: EngineMessageView, from: number, to: number): MessageAnchor {
   const source = message.prose ?? message.text
@@ -60,10 +63,12 @@ export function renderConversationDelivery(input: ConversationDelivery): string 
   const sections: Array<[string, unknown[]]> = [
     ['New annotations', input.annotations.map(({ id, kind, anchor, selection, text }) => ({ id, kind, anchor, selection, text }))],
     ['Replies', input.replies], ['Message blocks', input.blocks], ['Strata block outcomes', input.outcomes],
+    ['Visual comments', input.visual ?? []],
   ]
-  return `# Conversation context\n\nDelivery: ${input.deliveryId}\nThread: ${input.threadId}\n\nAnswer owner passage feedback in your normal response in the main conversation. Comments stay saved for navigation and do not need threaded replies or resolution.\n` + sections.filter(([, rows]) => rows.length).map(([title, rows]) => `\n## ${title}\n\n\`\`\`json\n${JSON.stringify(rows, null, 2)}\n\`\`\`\n`).join('')
+  const visualNote = input.visual?.length ? `\n${VISUAL_BRIEF_INSTRUCTIONS}\n` : ''
+  return `# Conversation context\n\nDelivery: ${input.deliveryId}\nThread: ${input.threadId}\n\nAnswer owner passage feedback in your normal response in the main conversation. Comments stay saved for navigation and do not need threaded replies or resolution.\n${visualNote}` + sections.filter(([, rows]) => rows.length).map(([title, rows]) => `\n## ${title}\n\n\`\`\`json\n${JSON.stringify(rows, null, 2)}\n\`\`\`\n`).join('')
 }
-export function conversationDelivery(threadId: string, deliveryId: string, annotations: MessageComment[], replies: Record<string, { text: string }>, messages: EngineMessageView[], outcomes: ConversationOutcome[]): ConversationDelivery {
+export function conversationDelivery(threadId: string, deliveryId: string, annotations: MessageComment[], replies: Record<string, { text: string }>, messages: EngineMessageView[], outcomes: ConversationOutcome[], visual: VisualBrief[] = []): ConversationDelivery {
   const blocks = new Map<string, ConversationDelivery['blocks'][number]>()
   for (const comment of annotations) {
     const message = messages.find(message => message.id === comment.anchor.message)
@@ -71,5 +76,5 @@ export function conversationDelivery(threadId: string, deliveryId: string, annot
     if (!range || !message) throw new Error(`Target unavailable for comment ${comment.id}`)
     for (const block of message.blocks ?? []) if (block.to > range.from && block.from < range.to) blocks.set(`${message.id}:${block.id}`, { message: message.id, block: block.id, from: block.from, to: block.to, text: block.text })
   }
-  return { deliveryId, threadId, annotations, replies: Object.entries(replies).map(([itemId, reply]) => ({ itemId, text: reply.text })), blocks: [...blocks.values()], outcomes }
+  return { deliveryId, threadId, annotations, replies: Object.entries(replies).map(([itemId, reply]) => ({ itemId, text: reply.text })), blocks: [...blocks.values()], outcomes, ...(visual.length ? { visual } : {}) }
 }

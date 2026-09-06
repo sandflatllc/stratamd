@@ -3,20 +3,25 @@ import { engineStorage } from './engineStorage'
 export interface WorkspaceState {
   conversationCentered: boolean
   conversationTabs: string[]
+  /** Projects whose preview window is open, one pill each (docs/plans/open/visual-review, phase 2). */
+  previews: string[]
+  /** The project whose preview holds the center, when one does. */
+  previewCentered: string | null
 }
 
 export const WORKSPACE_KEY = 'stratamd.workspace.v1'
 
 export function readWorkspace(): WorkspaceState {
-  let state: WorkspaceState = { conversationCentered: true, conversationTabs: [] }
+  let state: WorkspaceState = { conversationCentered: true, conversationTabs: [], previews: [], previewCentered: null }
   try {
-    const value = JSON.parse(engineStorage.getItem(WORKSPACE_KEY) ?? 'null') as WorkspaceState | null
+    const value = JSON.parse(engineStorage.getItem(WORKSPACE_KEY) ?? 'null') as Partial<WorkspaceState> | null
     if (value && typeof value.conversationCentered === 'boolean' && Array.isArray(value.conversationTabs) && value.conversationTabs.every((id) => typeof id === 'string')) {
-      state = { conversationCentered: value.conversationCentered, conversationTabs: [...new Set(value.conversationTabs)] }
+      const previews = Array.isArray(value.previews) ? [...new Set(value.previews.filter((id): id is string => typeof id === 'string'))] : []
+      state = { conversationCentered: value.conversationCentered, conversationTabs: [...new Set(value.conversationTabs)], previews, previewCentered: typeof value.previewCentered === 'string' && previews.includes(value.previewCentered) ? value.previewCentered : null }
     }
   } catch { /* Missing or invalid state uses the conversation-first default. */ }
   // Explicit file launches take the center; ordinary launches restore placement.
-  if (new URL(window.location.href).searchParams.has('openDocument')) state.conversationCentered = false
+  if (new URL(window.location.href).searchParams.has('openDocument')) { state.conversationCentered = false; state.previewCentered = null }
   return state
 }
 

@@ -19,7 +19,7 @@ export interface ConversationState {
   /** Queued replies keyed by item id, each carrying what the item asked so the delivery can quote it. */
   replies: Record<string, QueuedReply>
   /** Replies delivered but not yet acknowledged by the engine's message-sent event. */
-  pending: Array<{ deliveryId: string; itemIds: string[]; replies: Record<string, QueuedReply>; commentIds?: string[]; outcomeKeys?: string[] }>
+  pending: Array<{ deliveryId: string; itemIds: string[]; replies: Record<string, QueuedReply>; commentIds?: string[]; outcomeKeys?: string[]; visual?: Array<{ id: string; revision: number }> }>
   /** Commands and attachments saved before the first upload; image bytes stay in the staged store until uploaded. */
   prepared?: Array<{ messageId: string; command: unknown; attachments: PreparedAttachment[] }>
   /** Items whose reply the engine acknowledged. */
@@ -41,6 +41,8 @@ export interface UploadedAttachment { type: 'file' | 'image'; id: string; name: 
 export type PreparedAttachment = (
   | { kind: 'text'; name: string; text: string }
   | { kind: 'image'; id: string; name: string; mimeType: string; sizeBytes: number }
+  /** A marked screenshot read from the visual evidence store by id; copied for upload, never consumed. */
+  | { kind: 'evidence'; id: string; name: string; mimeType: string; sizeBytes: number }
 ) & { uploaded?: UploadedAttachment }
 
 /**
@@ -52,9 +54,9 @@ export function normalizePreparedAttachment(value: unknown): PreparedAttachment 
   const uploaded = isRecord(value.uploaded) && typeof value.uploaded.id === 'string' && typeof value.uploaded.name === 'string' && typeof value.uploaded.mimeType === 'string' && typeof value.uploaded.sizeBytes === 'number'
     ? { uploaded: { type: value.uploaded.type === 'image' ? 'image' as const : 'file' as const, id: value.uploaded.id, name: value.uploaded.name, mimeType: value.uploaded.mimeType, sizeBytes: value.uploaded.sizeBytes } }
     : {}
-  if (value.kind === 'image') {
+  if (value.kind === 'image' || value.kind === 'evidence') {
     if (typeof value.id !== 'string' || typeof value.mimeType !== 'string' || typeof value.sizeBytes !== 'number') return null
-    return { kind: 'image', id: value.id, name: value.name, mimeType: value.mimeType, sizeBytes: value.sizeBytes, ...uploaded }
+    return { kind: value.kind, id: value.id, name: value.name, mimeType: value.mimeType, sizeBytes: value.sizeBytes, ...uploaded }
   }
   if ((value.kind === 'text' || value.kind === undefined) && typeof value.text === 'string') return { kind: 'text', name: value.name, text: value.text, ...uploaded }
   return null
@@ -70,6 +72,7 @@ export function emptyConversationState(): ConversationState {
 }
 
 const strings = (value: unknown): string[] => Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+const visualRefs = (value: unknown): Array<{ id: string; revision: number }> => Array.isArray(value) ? value.flatMap((item) => isRecord(item) && typeof item.id === 'string' && typeof item.revision === 'number' ? [{ id: item.id, revision: item.revision }] : []) : []
 
 function queuedReply(value: unknown): QueuedReply | null {
   if (!isRecord(value) || typeof value.text !== 'string') return null
@@ -100,7 +103,7 @@ export function normalizeConversationsStore(value: unknown): ConversationsStore 
       outcomes: Array.isArray(raw.outcomes) ? raw.outcomes.flatMap(entry => { const parsed = outcomeSchema.safeParse(entry); return parsed.success ? [parsed.data as import('../../core/conversation-delivery').ConversationOutcome] : [] }) : [],
       receipts: strings(raw.receipts),
       replies: replies(raw.replies),
-      pending: Array.isArray(raw.pending) ? raw.pending.flatMap((entry) => isRecord(entry) && typeof entry.deliveryId === 'string' ? [{ deliveryId: entry.deliveryId, itemIds: strings(entry.itemIds), replies: replies(entry.replies), commentIds: strings(entry.commentIds), outcomeKeys: strings(entry.outcomeKeys) }] : []) : [],
+      pending: Array.isArray(raw.pending) ? raw.pending.flatMap((entry) => isRecord(entry) && typeof entry.deliveryId === 'string' ? [{ deliveryId: entry.deliveryId, itemIds: strings(entry.itemIds), replies: replies(entry.replies), commentIds: strings(entry.commentIds), outcomeKeys: strings(entry.outcomeKeys), visual: visualRefs(entry.visual) }] : []) : [],
       prepared: Array.isArray(raw.prepared) ? raw.prepared.flatMap((entry) => {
         if (!isRecord(entry) || typeof entry.messageId !== 'string' || !isRecord(entry.command) || !Array.isArray(entry.attachments)) return []
         const attachments = entry.attachments.map(normalizePreparedAttachment)

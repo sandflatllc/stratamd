@@ -15,9 +15,11 @@ test('the logo retains account attention and exposes all moved actions', async (
     const page = await value.launch()
     await expect(page.getByRole('button', { name: 'StrataMD menu' })).toHaveAttribute('title', /Accounts needs attention/)
     await expect(page.locator('.app-menu-trigger .attention-dot')).toBeVisible()
+    // Open preview joins the menu once the engine is connected; wait for that so the list is the same on every run.
+    await expect(page.getByRole('button', { name: 'Engine status' })).toHaveText(/Connected/)
     await openAppMenu(page)
     const menu = page.getByRole('menu', { name: 'StrataMD', exact: true })
-    await expect(menu.getByRole('menuitem')).toHaveText([/Open file/, 'Settings', /Accounts.*Needs attention/, 'Usage', /Terminal/, 'Theme', 'Reset zoom'])
+    await expect(menu.getByRole('menuitem')).toHaveText([/Open file/, 'Settings', /Accounts.*Needs attention/, 'Usage', /Terminal/, 'Open preview', 'Theme', 'Reset zoom'])
     const capture = process.env.STRATAMD_FRAMELESS_CAPTURES
     if (capture) {
       const directory = join(projectRoot, capture)

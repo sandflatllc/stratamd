@@ -14,6 +14,7 @@ import type { WindowController } from './window-controls'
 import { MAX_ATTACHMENTS, MAX_IMAGE_BYTES, MAX_TEXT_BYTES, SUPPORTED_IMAGE_TYPES } from '../core/composer-attachments'
 import { usageWindow, terminalAttachInput, terminalWriteInput, terminalResizeInput, terminalTarget, worktreeRequest, cloneRepositoryInput } from './engine/t3-contract'
 import { isStagedAttachmentId } from './engine/staged-attachments'
+import { isVisualCommentId } from '../core/visual-comments'
 
 type StrataIpcApi = Omit<StrataApi, 'subscribe'>
 
@@ -21,6 +22,36 @@ const pathSchema = z.string().min(1).max(16_384)
 const idSchema = z.string().min(1).max(512)
 const textSchema = z.string().max(64 * 1_024)
 const stagedAttachmentIdSchema = z.string().refine(isStagedAttachmentId, 'Not a staged attachment id')
+const visualCommentIdSchema = z.string().max(64).refine(isVisualCommentId, 'Not a visual comment id')
+const previewTabIdSchema = z.string().regex(/^tab_[0-9a-f-]{36}$/u)
+const visualPointSchema = z.object({ x: z.number().finite(), y: z.number().finite() }).strict()
+const visualRectSchema = z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite().nonnegative(), height: z.number().finite().nonnegative() }).strict()
+const visualIdentitySchema = z.object({
+  role: z.string().max(64).nullable().optional(), name: z.string().max(512).nullable().optional(), text: z.string().max(512).nullable().optional(),
+  testIds: z.array(z.string().max(256)).max(16).optional(), selector: z.string().max(2_048).nullable().optional(), html: z.string().max(512).nullable().optional(),
+  style: z.record(z.string().max(64), z.string().max(256)).optional(),
+  sources: z.array(z.object({ file: z.string().max(1_024), line: z.number().int().nonnegative(), column: z.number().int().nonnegative(), role: z.enum(['definition', 'usage', 'candidate']).optional() }).strict()).max(16).optional(),
+  viewportRect: visualRectSchema.optional(), pageRect: visualRectSchema.optional(),
+}).strict()
+const visualMarkSchema = z.object({ id: idSchema, kind: z.enum(['element', 'region']), label: z.string().max(512), captureId: idSchema, rect: visualRectSchema, found: z.boolean().nullable(), identity: visualIdentitySchema.optional() }).strict()
+const visualStrokeSchema = z.object({ id: idSchema, tool: z.enum(['draw', 'arrow']), captureId: idSchema, points: z.array(visualPointSchema).max(20_000) }).strict()
+const visualAdjustmentSchema = z.object({ markId: idSchema, property: z.string().max(128), value: z.string().max(512), label: z.string().max(512) }).strict()
+const holdVisualCommentSchema = z.object({
+  id: visualCommentIdSchema.optional(),
+  projectId: idSchema,
+  threadId: idSchema,
+  source: z.object({ staged: stagedAttachmentIdSchema, name: idSchema, width: z.number().int().positive().max(32_768), height: z.number().int().positive().max(32_768) }).strict().optional(),
+  page: z.object({
+    tabId: previewTabIdSchema,
+    captures: z.array(z.object({ id: z.string().regex(/^e_/u).max(64), width: z.number().int().positive().max(32_768), height: z.number().int().positive().max(32_768), scroll: visualPointSchema, scale: z.number().positive().max(16), requested: z.boolean().optional() }).strict()).min(1).max(32),
+    url: z.string().max(2_048), title: z.string().max(1_024), viewport: z.object({ width: z.number().int().positive().max(16_384), height: z.number().int().positive().max(16_384) }).strict(), preset: z.string().max(64).nullable(), deviceScale: z.number().positive().max(16),
+  }).strict().optional(),
+  text: z.string().max(20_000),
+  marks: z.array(visualMarkSchema).max(200),
+  strokes: z.array(visualStrokeSchema).max(500),
+  adjustments: z.array(visualAdjustmentSchema).max(200),
+  marked: z.array(z.object({ captureId: idSchema, bytes: z.instanceof(Uint8Array).refine((bytes) => bytes.byteLength >= 1 && bytes.byteLength <= MAX_IMAGE_BYTES * 4, 'Image size out of range') }).strict()).max(32),
+}).strict()
 const modelOptionsSchema = z.array(z.object({ id: idSchema, value: z.union([idSchema, z.boolean()]) }).strict()).max(64)
 const conversationTurnSchema = z.object({
   workspace: worktreeRequest.optional(),
@@ -35,6 +66,7 @@ const conversationTurnSchema = z.object({
   effort: idSchema.nullable(),
   options: modelOptionsSchema.optional(),
   access: z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access']),
+  visual: z.array(visualCommentIdSchema).max(64).optional(),
   attachments: z.array(z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('text'), name: idSchema, text: z.string().max(MAX_TEXT_BYTES) }).strict(),
     // Image bytes never cross this channel; the renderer staged them and names the id (§6.0).
@@ -196,6 +228,22 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.queueItemReply]: z.tuple([idSchema, idSchema, z.string().max(20_000)]),
   [IPC.discardItemReply]: z.tuple([idSchema, idSchema]),
   [IPC.dismissItem]: z.tuple([idSchema, idSchema]),
+  [IPC.holdVisualComment]: z.tuple([holdVisualCommentSchema]),
+  [IPC.actVisualComment]: z.tuple([visualCommentIdSchema, z.enum(['accept', 'reopen', 'discard', 'retry', 'compare'])]),
+  [IPC.openPreviewTab]: z.tuple([z.object({ projectId: idSchema, url: z.string().max(2_048).optional() }).strict()]),
+  [IPC.closePreviewTab]: z.tuple([previewTabIdSchema]),
+  [IPC.navigatePreview]: z.tuple([previewTabIdSchema, z.union([z.object({ url: z.string().max(2_048) }).strict(), z.object({ action: z.enum(['back', 'forward', 'reload', 'stop']) }).strict()])]),
+  [IPC.resizePreview]: z.tuple([previewTabIdSchema, z.discriminatedUnion('mode', [z.object({ mode: z.literal('fill') }).strict(), z.object({ mode: z.literal('preset'), preset: z.string().max(64) }).strict(), z.object({ mode: z.literal('freeform'), width: z.number().int().positive().max(8_192), height: z.number().int().positive().max(8_192) }).strict()])]),
+  [IPC.resumePreviewTab]: z.tuple([previewTabIdSchema]),
+  [IPC.reportPreviewBounds]: z.tuple([z.object({ tabId: previewTabIdSchema.nullable(), bounds: z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite().nonnegative(), height: z.number().finite().nonnegative() }).strict().nullable() }).strict()]),
+  [IPC.reportOverlay]: z.tuple([z.boolean()]),
+  [IPC.previewProbe]: z.tuple([previewTabIdSchema, z.object({ x: z.number().finite(), y: z.number().finite() }).strict()]),
+  [IPC.capturePreviewFrame]: z.tuple([previewTabIdSchema]),
+  [IPC.describePreview]: z.tuple([previewTabIdSchema, z.union([z.object({ point: visualPointSchema }).strict(), z.object({ rect: visualRectSchema }).strict()])]),
+  [IPC.scrollPreview]: z.tuple([previewTabIdSchema, z.union([z.object({ by: visualPointSchema }).strict(), z.object({ to: visualPointSchema }).strict()])]),
+  [IPC.showVisualComment]: z.tuple([visualCommentIdSchema]),
+  [IPC.adjustPreview]: z.tuple([previewTabIdSchema, z.array(z.object({ markId: idSchema, identity: visualIdentitySchema, declarations: z.record(z.string().regex(/^[a-z-]{1,64}$/u), z.string().max(256)) }).strict()).max(64)]),
+  [IPC.clearPreviewOverrides]: z.tuple([previewTabIdSchema]),
   [IPC.startConversationTurn]: z.tuple([idSchema, conversationTurnSchema]),
   [IPC.stageConversationAttachment]: z.tuple([stageAttachmentSchema]),
   [IPC.discardConversationAttachment]: z.tuple([stagedAttachmentIdSchema]),
@@ -417,6 +465,23 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.queueItemReply]: (threadId: string, itemId: string, text: string) => options.api.queueItemReply(threadId, itemId, text),
     [IPC.discardItemReply]: (threadId: string, itemId: string) => options.api.discardItemReply(threadId, itemId),
     [IPC.dismissItem]: (threadId: string, itemId: string) => options.api.dismissItem(threadId, itemId),
+    [IPC.holdVisualComment]: (input: Parameters<StrataApi['holdVisualComment']>[0]) => options.api.holdVisualComment(input),
+    [IPC.actVisualComment]: (id: string, action: Parameters<StrataApi['actVisualComment']>[1]) => options.api.actVisualComment(id, action),
+    [IPC.openPreviewTab]: (input: Parameters<StrataApi['openPreviewTab']>[0]) => options.api.openPreviewTab(input),
+    [IPC.closePreviewTab]: (tabId: string) => options.api.closePreviewTab(tabId),
+    [IPC.navigatePreview]: (tabId: string, navigation: Parameters<StrataApi['navigatePreview']>[1]) => options.api.navigatePreview(tabId, navigation),
+    [IPC.resizePreview]: (tabId: string, viewport: Parameters<StrataApi['resizePreview']>[1]) => options.api.resizePreview(tabId, viewport),
+    [IPC.resumePreviewTab]: (tabId: string) => options.api.resumePreviewTab(tabId),
+    [IPC.reportPreviewBounds]: (report: Parameters<StrataApi['reportPreviewBounds']>[0]) => options.api.reportPreviewBounds(report),
+    [IPC.reportOverlay]: (open: boolean) => options.api.reportOverlay(open),
+    // The probe answers only when the harness asked for it; otherwise the channel refuses.
+    [IPC.previewProbe]: (tabId: string, point: { x: number; y: number }) => { if (process.env.STRATAMD_PREVIEW_PROBE !== '1') throw new Error('The preview probe is off'); const probe = (options.api as { previewHumanInput?(tabId: string, point: { x: number; y: number }): void }).previewHumanInput; if (!probe) throw new Error('No preview host'); probe.call(options.api, tabId, point) },
+    [IPC.capturePreviewFrame]: (tabId: string) => options.api.capturePreviewFrame(tabId),
+    [IPC.describePreview]: (tabId: string, target: Parameters<StrataApi['describePreview']>[1]) => options.api.describePreview(tabId, target),
+    [IPC.scrollPreview]: (tabId: string, move: Parameters<StrataApi['scrollPreview']>[1]) => options.api.scrollPreview(tabId, move),
+    [IPC.showVisualComment]: (id: string) => options.api.showVisualComment(id),
+    [IPC.adjustPreview]: (tabId: string, targets: Parameters<StrataApi['adjustPreview']>[1]) => options.api.adjustPreview(tabId, targets),
+    [IPC.clearPreviewOverrides]: (tabId: string) => options.api.clearPreviewOverrides(tabId),
     [IPC.startConversationTurn]: (threadId: string, input: Parameters<StrataApi['startConversationTurn']>[1]) => options.api.startConversationTurn(threadId, input),
     [IPC.stageConversationAttachment]: (input: Parameters<StrataApi['stageConversationAttachment']>[0]) => options.api.stageConversationAttachment(input),
     [IPC.discardConversationAttachment]: (id: string) => options.api.discardConversationAttachment(id),

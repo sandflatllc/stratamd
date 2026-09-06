@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>StrataMD · Visual review</title>
+<style>
+@font-face { font-family: Baloo; src: url('../../../node_modules/@fontsource/baloo-2/files/baloo-2-latin-500-normal.woff2') format('woff2'); font-weight: 500; }
+@font-face { font-family: Baloo; src: url('../../../node_modules/@fontsource/baloo-2/files/baloo-2-latin-600-normal.woff2') format('woff2'); font-weight: 600; }
+@font-face { font-family: Baloo; src: url('../../../node_modules/@fontsource/baloo-2/files/baloo-2-latin-700-normal.woff2') format('woff2'); font-weight: 700; }
+@font-face { font-family: Mono; src: url('../../../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2') format('woff2'); font-weight: 500; }
+:root {
+  --window:#07080c; --panel:#111219; --inset:#1a1c25; --field:#0c0d12; --line:#272a36; --line2:#343849;
+  --text:#f2f3f7; --body:#d3d6df; --dim:#9a9fae; --muted:#7f8494;
+  --pink:#ff5fae; --violet:#b48cff; --teal:#5fe0d0; --green:#4fd58a; --amber:#f0b35b; --blue:#7aa7ff;
+  color-scheme: dark; font-family: Baloo, sans-serif; font-weight: 500; color: var(--body); background: var(--window);
+}
+* { box-sizing: border-box; }
+body { margin: 0; width: 1600px; height: 1000px; overflow: hidden; position: relative;
+  background: radial-gradient(900px 500px at 15% 95%, #1b1330 0%, transparent 60%), radial-gradient(700px 500px at 85% 10%, #10182a 0%, transparent 60%), var(--window); }
+.icon { width: 15px; height: 15px; flex: none; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pill { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--inset); color: var(--text); font-size: 13px; font-weight: 700; }
+.pill .n { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #3b3f8a; color: #dfe2ff; font-size: 11px; }
+.pill.active { background: #1b1c2a; border-color: #4a4e6a; }
+.pill.active .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); }
+/* top bar */
+.top { position: absolute; left: 0; right: 0; top: 0; height: 52px; display: flex; align-items: center; gap: 12px; padding: 0 16px; }
+.logo { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px 5px 6px; border-radius: 999px; background: #f4f4f8; color: #14151c; font-weight: 700; font-size: 15px; }
+.logo .mark { width: 26px; height: 26px; border-radius: 8px; background: linear-gradient(135deg, #ff5fae, #b48cff); }
+.top .right { margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: 12.5px; font-weight: 700; }
+.top .right .conn { color: var(--green); } .top .right .pending { color: var(--amber); }
+.top .start { padding: 8px 16px; border-radius: 999px; background: linear-gradient(90deg,#ff5fae,#b48cff); color: #16101c; font-weight: 700; font-size: 13.5px; }
+.top .win { color: var(--dim); letter-spacing: 10px; font-size: 14px; }
+/* shell */
+.shell { position: absolute; left: 22px; right: 22px; top: 62px; bottom: 18px; display: grid; grid-template-columns: 300px 1fr 372px; gap: 18px; }
+.island { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); box-shadow: 0 10px 30px rgba(0,0,0,.45); overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+.tabs { display: flex; gap: 22px; padding: 14px 22px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; font-weight: 700; color: var(--body); }
+.tabs div { padding-bottom: 12px; position: relative; display: inline-flex; gap: 6px; align-items: center; }
+.tabs .on { color: var(--pink); }
+.tabs .on::after { content: ""; position: absolute; left: -6px; right: -6px; bottom: -1px; height: 3px; border-radius: 3px; background: linear-gradient(90deg,#ff5fae,#b48cff); }
+.tabs .n { display: inline-grid; place-items: center; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: #3b3f8a; color: #dfe2ff; font-size: 10.5px; }
+/* left: conversation */
+.thread-head { padding: 14px 18px 10px; font-size: 12.5px; color: var(--dim); display: flex; align-items: center; gap: 6px; }
+.thread-head b { color: var(--text); font-size: 14px; }
+.msgs { flex: 1; padding: 6px 16px; overflow: hidden; display: flex; flex-direction: column; gap: 12px; font-size: 13.5px; line-height: 1.4; }
+.you { padding: 10px 12px; border: 1px solid #3a3466; border-radius: 12px; background: #1d1a33; }
+.you small, .agent small { display: block; font-size: 10.5px; color: var(--dim); font-weight: 700; margin-bottom: 3px; text-transform: uppercase; letter-spacing: .04em; }
+.worked { color: var(--teal); font-weight: 700; font-size: 13px; }
+.agent { padding: 2px 4px; }
+.agent .files { margin-top: 6px; font-size: 12px; color: var(--teal); font-weight: 700; }
+.composer { margin: 10px 14px 14px; border: 1px solid var(--line2); border-radius: 14px; background: #0f1017; padding: 12px; }
+.staged { display: flex; gap: 10px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--inset); margin-bottom: 10px; }
+.staged .thumb { width: 54px; height: 40px; border-radius: 6px; background: linear-gradient(135deg,#22243a,#2d3050); position: relative; overflow: hidden; flex: none; }
+.staged .thumb::after { content: ""; position: absolute; left: 8px; top: 10px; width: 34px; height: 12px; border: 2px solid var(--violet); border-radius: 3px; }
+.staged .t { font-size: 12px; line-height: 1.3; }
+.staged .t b { color: var(--text); display: block; }
+.staged .t span { color: var(--dim); }
+.staged .x { margin-left: auto; color: var(--dim); font-size: 16px; }
+.composer .ph { color: var(--body); font-size: 13.5px; padding: 2px 2px 14px; }
+.composer .row { display: flex; align-items: center; gap: 12px; font-size: 11.5px; white-space: nowrap; color: var(--teal); font-weight: 700; }
+.composer .send { margin-left: auto; width: 32px; height: 32px; border-radius: 50%; background: #5b4aa8; display: grid; place-items: center; color: #fff; }
+.composer .recip { display: inline-flex; gap: 6px; align-items: center; padding: 3px 9px; border-radius: 999px; background: #2a2145; color: #d9c8ff; font-size: 11.5px; }
+/* center: preview */
+.tabstrip { display: flex; align-items: flex-end; gap: 4px; padding: 10px 12px 0; border-bottom: 1px solid var(--line); background: #0d0e14; }
+.tabstrip .tab { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border: 1px solid var(--line); border-bottom: 0; border-radius: 10px 10px 0 0; background: var(--inset); color: var(--dim); font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+.tabstrip .tab.on { background: var(--panel); color: var(--text); border-color: var(--line2); position: relative; top: 1px; }
+.tabstrip .tab .fav { width: 12px; height: 12px; border-radius: 3px; background: #5b4aa8; }
+.tabstrip .tab .held { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); }
+.tabstrip .tab .x { color: var(--muted); margin-left: 2px; }
+.tabstrip .add { padding: 6px 10px 8px; color: var(--dim); font-size: 16px; }
+.tabstrip .tab.agent { border-style: dashed; border-color: #2c5a55; color: var(--teal); background: #0f1a1a; }
+.tabstrip .tab.agent .icon { width: 13px; height: 13px; }
+.live { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 3px rgba(95,224,208,.22); }
+.chip.agent { border-color: #2c5a55; color: var(--teal); background: #0f1a1a; }
+.chip.agent b { color: var(--text); font-weight: 700; }
+.act { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line2); font-size: 11.5px; font-weight: 700; color: var(--text); }
+.act.t { color: var(--teal); border-color: #2c5a55; }
+.chrome { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.chrome .nav { display: flex; gap: 4px; color: var(--dim); }
+.chrome .nav span { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px; }
+.chrome .url { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--field); font-family: Mono; font-size: 12.5px; color: var(--body); }
+.chrome .url .host { color: var(--dim); }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--inset); font-size: 12px; font-weight: 700; color: var(--text); white-space: nowrap; }
+.chip .k { color: var(--dim); font-weight: 600; }
+.chip.on { border-color: var(--pink); color: var(--pink); background: #2a1626; }
+.stage { position: relative; flex: 1; background: #0a0b10; overflow: hidden; }
+.frame { position: absolute; inset: 0; }
+.page { position: absolute; inset: 0; background: #f6f7fb; color: #1d2130; overflow: hidden; font-family: Baloo, sans-serif; box-shadow: 0 0 0 1px #2a2d38; }
+/* fake app (Mesa-ish) */
+.app { display: grid; grid-template-columns: 176px 1fr; height: 100%; }
+.app nav { background: #ffffff; border-right: 1px solid #e6e8f0; padding: 18px 14px; }
+.app nav .brand { font-weight: 700; font-size: 16px; color: #2b2f4a; margin-bottom: 20px; display: flex; gap: 8px; align-items: center; }
+.app nav .brand i { width: 22px; height: 22px; border-radius: 6px; background: #5b4aa8; display: inline-block; }
+.app nav div.item { padding: 8px 10px; border-radius: 8px; font-size: 14px; color: #4d5270; margin-bottom: 4px; }
+.app nav div.item.on { background: #eeebff; color: #4c3fa0; font-weight: 700; }
+.app main { padding: 20px 24px; }
+.app .head { display: flex; align-items: center; margin-bottom: 14px; }
+.app .head h1 { margin: 0; font-size: 22px; font-weight: 700; color: #22263c; }
+.app .head .btn { margin-left: auto; padding: 8px 14px; border-radius: 8px; background: #5b4aa8; color: #fff; font-weight: 700; font-size: 13px; }
+.app .filters { display: flex; gap: 8px; margin-bottom: 14px; }
+.app .filters span { padding: 5px 10px; border-radius: 999px; background: #fff; border: 1px solid #dfe2ec; font-size: 12px; color: #4d5270; }
+.app table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e3e6ef; border-radius: 8px; overflow: hidden; font-size: 13.5px; }
+.app th { text-align: left; padding: 10px 12px; font-size: 12px; color: #6b7090; background: #f2f3f8; border-bottom: 1px solid #e3e6ef; font-weight: 700; }
+.app td { padding: 11px 12px; border-bottom: 1px solid #eef0f5; color: #2b2f4a; }
+.app td.num { text-align: right; font-family: Mono; font-size: 12.5px; }
+.app td .tag { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.app .ok { background: #e3f7ea; color: #1f7a45; } .app .late { background: #fde8e8; color: #b03535; }
+.app .empty { margin-top: 18px; text-align: center; color: #8a8fa8; font-size: 13px; }
+/* annotation overlay, inside the page */
+.ov { position: absolute; inset: 0; pointer-events: none; }
+.palette { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); display: flex; gap: 2px; padding: 4px; border-radius: 10px; background: rgba(17,18,25,.96); border: 1px solid var(--line2); box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+.palette div { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 7px; font-size: 12.5px; font-weight: 700; color: var(--body); }
+.palette div kbd { font-family: Mono; font-size: 10px; color: var(--dim); }
+.palette div.on { background: #2a1626; color: var(--pink); }
+.sel { position: absolute; border: 2px solid var(--violet); border-radius: 3px; background: rgba(180,140,255,.08); }
+.sel .lab { position: absolute; left: -2px; top: -24px; padding: 2px 8px; border-radius: 6px; background: var(--violet); color: #14101f; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.region { position: absolute; border: 2px dashed var(--pink); border-radius: 4px; background: rgba(255,95,174,.08); }
+.region .lab { position: absolute; right: -2px; top: -24px; }
+.region.below .lab { top: auto; bottom: -24px; padding: 2px 8px; border-radius: 6px; background: var(--pink); color: #1c0d16; font-size: 11px; font-weight: 700; white-space: nowrap; }
+svg.ink { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.note { position: absolute; width: 400px; padding: 12px 12px 10px; border-radius: 14px; background: rgba(17,18,25,.97); border: 1px solid var(--line2); box-shadow: 0 14px 36px rgba(0,0,0,.6); color: var(--body); font-size: 13.5px; line-height: 1.4; pointer-events: auto; }
+.note .txt { color: var(--text); }
+.note .targets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.note .targets span { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; border: 1px solid var(--line2); background: var(--inset); }
+.note .targets .v { color: var(--violet); } .note .targets .p { color: var(--pink); }
+.note .targets span code { font-family: inherit; font-weight: 600; color: var(--green); font-size: 10.5px; }
+.note .styles { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; }
+.note .styles .h { display: flex; align-items: center; color: var(--dim); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+.note .styles .h span { margin-left: auto; color: var(--teal); text-transform: none; letter-spacing: 0; font-size: 11.5px; }
+.note .styles div.r { display: grid; grid-template-columns: 96px 1fr; gap: 8px; align-items: center; font-size: 12.5px; color: var(--body); padding: 3px 0; }
+.note .step { display: inline-flex; align-items: center; gap: 8px; }
+.note .step i { font-style: normal; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; border: 1px solid var(--line2); color: var(--text); font-weight: 700; font-size: 13px; }
+.note .step b { color: var(--teal); font-weight: 700; min-width: 100px; text-align: center; }
+.note .styles div.r s { color: var(--muted); }
+.note .styles div.r b { color: var(--teal); font-weight: 500; }
+.note .foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.note .foot .ctx { font-size: 11px; color: var(--dim); line-height: 1.3; }
+.note .foot .b { margin-left: auto; white-space: nowrap; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line2); font-size: 12px; font-weight: 700; color: var(--text); }
+.note .foot .b.primary { background: linear-gradient(90deg,#ff5fae,#b48cff); color: #16101c; border-color: transparent; margin-left: 0; }
+/* right rail */
+.rail-head { display: flex; align-items: center; padding: 14px 18px 8px; }
+.rail-head b { font-size: 15px; color: var(--text); }
+.rail-head small { margin-left: auto; color: var(--dim); font-size: 12px; font-weight: 700; }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 18px 12px; }
+.filters span { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); font-size: 11.5px; font-weight: 700; color: var(--body); }
+.filters span.on { border-color: var(--pink); color: var(--pink); background: #2a1626; }
+.cards { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+.card { position: relative; padding: 10px 12px 10px 16px; border: 1px solid var(--line); border-radius: 12px; background: #0f1017; font-size: 12.5px; line-height: 1.35; }
+.card::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: var(--violet); }
+.card.sent::before { background: var(--teal); } .card.verify::before { background: var(--green); }
+.card .kind { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--violet); margin-bottom: 5px; }
+.card.sent .kind { color: var(--teal); } .card.verify .kind { color: var(--green); }
+.card .kind .st { margin-left: auto; padding: 1px 7px; border-radius: 999px; background: var(--inset); color: var(--dim); letter-spacing: 0; }
+.card .where { font-size: 11.5px; color: var(--dim); margin-bottom: 4px; font-weight: 700; }
+.card .body { display: flex; gap: 10px; }
+.card .thumb { width: 64px; height: 44px; flex: none; border-radius: 6px; background: linear-gradient(135deg,#23253b,#2d3050); position: relative; }
+.card .thumb::after { content: ""; position: absolute; left: 8px; top: 12px; width: 40px; height: 12px; border: 2px solid var(--violet); border-radius: 3px; }
+.card.sent .thumb::after { border-color: var(--pink); width: 18px; height: 18px; left: 34px; top: 8px; border-radius: 50%; }
+.card .text { color: var(--text); }
+.card .meta { margin-top: 6px; font-size: 11.5px; color: var(--violet); font-weight: 700; }
+.card .reply { margin-top: 8px; padding: 7px 9px; border-radius: 8px; background: var(--inset); font-size: 12px; }
+.card .reply small { display: block; color: var(--dim); font-weight: 700; font-size: 10.5px; margin-bottom: 2px; }
+.card .acts { display: flex; gap: 6px; margin-top: 8px; }
+.card .acts span { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line2); font-size: 11.5px; font-weight: 700; color: var(--text); }
+.card .acts span.g { color: var(--green); border-color: #2c5a41; } .card .acts span.r { color: var(--pink); border-color: #5a2c46; }
+.pair { display: flex; gap: 8px; margin-top: 6px; }
+.pair div { flex: 1; height: 54px; border-radius: 6px; background: linear-gradient(135deg,#23253b,#2d3050); position: relative; font-size: 10px; color: var(--dim); font-weight: 700; padding: 4px 6px; }
+.pair div::after { content: ""; position: absolute; right: 8px; bottom: 8px; width: 22px; height: 12px; border-radius: 3px; background: #4f4a8a; }
+.pair div.now::after { right: 8px; bottom: 8px; background: #3fa46f; }
+.attached { margin-top: 16px; }
+.attached .rowa { display: flex; align-items: center; gap: 10px; padding: 12px 18px; font-size: 13px; }
+.attached .who { width: 26px; height: 26px; border-radius: 50%; background: #3b6ea8; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #fff; }
+.attached .rowa b { color: var(--text); }
+.attached .rowa .lead { margin-left: 6px; padding: 2px 8px; border-radius: 999px; background: #2a2145; color: #d9c8ff; font-size: 11px; font-weight: 700; }
+.attached .rowa .run { color: var(--green); font-size: 11.5px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="logo"><span class="mark"></span>StrataMD ▾</div>
+  <span class="pill">Docs <span class="n">1</span> ▾</span>
+  <span class="pill">Conversations <span class="n">1</span> ▾</span>
+  <span class="pill active"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>Mesa · Clients <span class="dot"></span> <span style="color:var(--dim)">×</span></span>
+  <div class="right"><span class="conn">● Connected</span><span style="color:var(--teal)">Browser shared</span><span class="pending">2 held</span><span class="start">Start thread</span><span class="win">– ▢ ×</span></div>
+</div>
+
+<div class="shell">
+  <!-- left window -->
+  <section class="island">
+    <div class="tabs"><div>Projects</div><div class="on">Conversation</div></div>
+    <div class="thread-head">Mesa &nbsp;/&nbsp; <b>Clients table review</b></div>
+    <div class="msgs">
+      <div class="you"><small>You · message</small>Two comments on the clients table. Fix the sheet first.</div>
+      <div class="worked">Worked for 41s ›</div>
+      <div class="agent">Moved the close button back inside the screen edge and re-ran the checks.<div class="files">1 file changed · checks pass</div><div style="display:flex;gap:6px;margin-top:8px"><span class="act t">Show me</span><span class="act">Then / now</span></div></div>
+      <div class="you"><small>You · message</small>Now check the invoices totals on the phone size.</div>
+      <div class="worked">Working · 0:42 · browsing Invoices in its own tab</div>
+    </div>
+    <div class="composer">
+      <div class="staged"><div class="thumb"></div><div class="t"><b>Table header + New client button</b><span>1 arrow · 2 adjustments</span></div><span class="x">×</span></div>
+      <div class="ph">Do the header one next</div>
+      <div class="row"><span class="recip">● Claude · Lead</span><span>Opus 5 ▾</span><span>Medium ▾</span><span class="send">↑</span></div>
+    </div>
+  </section>
+
+  <!-- center: preview -->
+  <section class="island">
+    <div class="tabstrip">
+      <span class="tab on"><span class="fav"></span>Clients <span class="held"></span><span class="x">×</span></span>
+      <span class="tab"><span class="fav"></span>Client details</span>
+      <span class="tab agent"><svg class="icon" viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg>Claude · Invoices <span class="live"></span></span>
+      <span class="add">+</span>
+    </div>
+    <div class="chrome">
+      <div class="nav"><span>‹</span><span>›</span><span>↻</span></div>
+      <div class="url"><span class="host">localhost:5173</span>/office/clients</div>
+      <span class="chip agent"><span class="live"></span><b>Claude</b> is checking Invoices · Watch</span>
+      <span class="chip">Fit window ▾</span>
+      <span class="chip on"><svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Annotating <kbd style="font-family:Mono;font-size:10px;color:var(--dim)">Esc</kbd></span>
+    </div>
+    <div class="stage">
+      <div class="frame"><div class="page">
+        <div class="app">
+          <nav><div class="brand"><i></i>Mesa Office</div><div class="item">Dashboard</div><div class="item on">Clients</div><div class="item">Invoices</div><div class="item">Schedule</div><div class="item">Settings</div></nav>
+          <main>
+            <div class="head"><h1>Clients</h1><span class="btn">New client</span></div>
+            <div class="filters"><span>All</span><span>Active</span><span>Overdue</span><span>Archived</span></div>
+            <table>
+              <thead><tr><th>Name</th><th>Owner</th><th>Last visit</th><th>Balance</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td>Harbor Dental</td><td>Priya</td><td>Aug 28</td><td class="num">$1,240.00</td><td><span class="tag ok">Current</span></td></tr>
+                <tr><td>Northside Vet</td><td>Marcus</td><td>Aug 30</td><td class="num">$0.00</td><td><span class="tag ok">Current</span></td></tr>
+                <tr><td>Alder & Finch</td><td>Priya</td><td>Jul 19</td><td class="num">$3,860.50</td><td><span class="tag late">Overdue</span></td></tr>
+                <tr><td>Sunline Physio</td><td>Jo</td><td>Sep 2</td><td class="num">$410.00</td><td><span class="tag ok">Current</span></td></tr>
+                <tr><td>Kettle Bakery</td><td>Marcus</td><td>Aug 11</td><td class="num">$92.00</td><td><span class="tag ok">Current</span></td></tr>
+              </tbody>
+            </table>
+            <div class="empty">Showing 5 of 5 clients</div>
+          </main>
+        </div>
+        <!-- overlay -->
+        <div class="ov">
+          <div class="palette"><div>Mark <kbd>M</kbd></div><div>Draw <kbd>D</kbd></div><div class="on">Arrow <kbd>A</kbd></div><div>Erase <kbd>E</kbd></div></div>
+          <div class="sel" id="sel"><span class="lab">Table header ✓</span></div>
+          <div class="region" id="region"><span class="lab">New client button ✓</span></div>
+          <svg class="ink" id="ink"></svg>
+          <div class="note" id="note">
+            <div class="txt">Header labels don't line up with the cells under them, and New client belongs in the header row, not floating above it.</div>
+            <div class="targets">
+              <span class="v">Table header <code>✓ found</code></span>
+              <span class="p">New client button <code>✓ found</code></span>
+              <span class="p">arrow</span>
+            </div>
+            <div class="styles">
+              <div class="h">Adjustments <span>shown live</span></div>
+              <div class="r"><span>Space inside</span><span class="step"><i>–</i><b>a little more</b><i>+</i></span></div>
+              <div class="r"><span>Text size</span><span class="step"><i>–</i><b>slightly larger</b><i>+</i></span></div>
+            </div>
+            <div class="foot"><span class="ctx">Clients page · window size · to <b style="color:var(--text)">Clients table review</b></span><span class="b">Hold</span><span class="b primary">Send now</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- right window -->
+  <div style="display:flex;flex-direction:column;gap:16px;min-height:0">
+  <section class="island" style="flex:1">
+    <div class="tabs"><div>Changes <span class="n">1</span></div><div class="on">Items <span class="n">3</span></div></div>
+    <div class="rail-head"><b>Items</b><small>1 of 3 done</small></div>
+    <div class="filters"><span>All</span><span class="on">Visual</span><span>Decisions</span><span>Questions</span><span>Comments</span></div>
+    <div class="cards">
+      <div class="card">
+        <div class="kind">Visual · comment <span class="st">held</span></div>
+        <div class="where">Clients page · window size</div>
+        <div class="body"><div class="thumb"></div><div class="text">Header labels don't line up with the cells under them…</div></div>
+        <div class="meta">2 things marked, both found ✓ · 2 adjustments</div>
+      </div>
+      <div class="card sent">
+        <div class="kind">Visual · comment <span class="st">ready for review</span></div>
+        <div class="where">Client details · phone</div>
+        <div class="body"><div class="thumb"></div><div class="text">The close button hangs off the right edge on the phone.</div></div>
+        <div class="reply"><small>Claude</small>Moved the close button back inside the screen edge.</div>
+        <div class="pair"><div>then</div><div class="now">now</div></div>
+        <div class="acts"><span class="g">Looks right</span><span class="r">Still wrong</span><span>Show me</span></div>
+      </div>
+      <div class="card verify" style="opacity:.75">
+        <div class="kind">Visual · comment <span class="st">done</span></div>
+        <div class="where">Invoices page · phone</div>
+        <div class="body"><div class="thumb"></div><div class="text">Totals column is cut off on the phone.</div></div>
+        <div class="meta" style="color:var(--green)">Accepted 2 min ago</div>
+      </div>
+    </div>
+  </section>
+  <section class="island attached" style="flex:none">
+    <div class="rail-head"><b>Attached</b><small>1 thread</small></div>
+    <div class="rowa"><span class="who">C</span><div style="margin-right:auto"><b>Clients table review</b><br><span class="run">● browsing Invoices · 0:42</span></div><span class="lead" style="background:#0f1a1a;color:var(--teal);border:1px solid #2c5a55;display:inline-flex;gap:5px;align-items:center"><svg class="icon" viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg>browser</span><span class="lead">Lead</span></div>
+  </section>
+  </div>
+</div>
+<script>
+document.fonts.ready.then(() => requestAnimationFrame(() => {
+  const page = document.querySelector('.page').getBoundingClientRect();
+  const rel = (el, pad = 0) => { const r = el.getBoundingClientRect(); return { x: r.left - page.left - pad, y: r.top - page.top - pad, w: r.width + pad * 2, h: r.height + pad * 2 }; };
+  const place = (node, b) => { node.style.left = b.x + 'px'; node.style.top = b.y + 'px'; node.style.width = b.w + 'px'; node.style.height = b.h + 'px'; };
+  const head = rel(document.querySelector('.app thead'), 1);
+  const btn = rel(document.querySelector('.app .btn'), 8);
+  place(document.getElementById('sel'), head);
+  place(document.getElementById('region'), btn);
+  if (btn.y < 30) document.getElementById('region').classList.add('below');
+  const sx = btn.x + btn.w * 0.35, sy = btn.y + btn.h + 4;
+  const ex = head.x + head.w * 0.68, ey = head.y - 4;
+  const cx = sx - 60, cy = ey - 10;
+  const ang = Math.atan2(ey - cy, ex - cx), L = 16;
+  const a1 = `${ex - L * Math.cos(ang - 0.5)} ${ey - L * Math.sin(ang - 0.5)}`;
+  const a2 = `${ex - L * Math.cos(ang + 0.5)} ${ey - L * Math.sin(ang + 0.5)}`;
+  document.getElementById('ink').innerHTML = `<path d="M ${sx} ${sy} Q ${cx} ${cy} ${ex} ${ey}" stroke="#ff5fae" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M ${a1} L ${ex} ${ey} L ${a2}" stroke="#ff5fae" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+  const note = document.getElementById('note');
+  note.style.left = (head.x + head.w * 0.18) + 'px';
+  note.style.top = (head.y + head.h + 36) + 'px';
+  document.body.dataset.ready = '1';
+}));
+</script>
+</body>
+</html>

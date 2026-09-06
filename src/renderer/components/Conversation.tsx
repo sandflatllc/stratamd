@@ -1,7 +1,8 @@
 import { ConversationMessage } from './ConversationMessage'
 import { useConversationWorkspace } from './ConversationWorkspace'
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import type { EngineActivityView, EngineThreadView, EngineView, ItemView } from '../../shared/contracts'
+import type { EngineActivityView, EngineThreadView, EngineView, ItemView, VisualCommentView } from '../../shared/contracts'
+import type { DraftAttachment } from '../conversationDrafts'
 import { changedFilesLabel, formatDelta, summarizeChangedFiles, type ChangedFileInput, type ChangedFileView } from '../../core/changed-files'
 import { deriveTurnFold, deriveWorkEntries, groupWorkRows, turnRows, type WorkEntry, type WorkGroupRow } from '../../core/work-log'
 import { ConversationComposer } from './ConversationComposer'
@@ -124,6 +125,13 @@ interface ConversationProps {
   onActItem?(item: ItemView, action: 'accept' | 'reject' | 'keep' | 'revert', option?: string): void
   /** Opens a changed Markdown file in the center (§6.9); other changed files list without an action. */
   onOpenDocument?(path: string): void
+  /** The project's visual comments (docs/plans/open/visual-review); held ones addressed to this thread ride its composer. */
+  visualComments?: VisualCommentView[]
+  onOpenVisual?(id: string): void
+  /** Show me under an agent reply that references a page comment (phase 3). */
+  onShowVisual?(id: string): void
+  onMarkUpImage?(attachment: DraftAttachment): void
+  consumedAttachmentIds?: readonly string[]
 }
 
 /** Where the conversation will land: an arrow toward it and a three-column window with that column filled. */
@@ -183,7 +191,7 @@ function TurnChecklist({ items, onReply, onOpen, onAct, onDismiss }: { items: re
   </section>
 }
 
-export function Conversation({ visible = true, onDocumentContext, documentMeasure = 860, onDocumentMeasure, engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput, items = [], onReplyItem, onQueueReply, onDismissItem, onOpenItem, onActItem, onOpenDocument }: ConversationProps) {
+export function Conversation({ visible = true, onDocumentContext, documentMeasure = 860, onDocumentMeasure, engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput, items = [], onReplyItem, onQueueReply, onDismissItem, onOpenItem, onActItem, onOpenDocument, visualComments = [], onOpenVisual, onShowVisual, onMarkUpImage, consumedAttachmentIds }: ConversationProps) {
   const selected = activeThread(engine)
   const [expandedWork, setExpandedWork] = useState<Record<string, boolean>>({})
   /** The owner's own turn disclosures. A navigation reveal is separate: it comes from the target and ends when the owner closes that turn. */
@@ -195,7 +203,10 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
 
   const panelRef = useRef<HTMLElement>(null)
   const history = useRef<ConversationHistory>(null)
-  const workspace = useConversationWorkspace(thread, onStart, panelRef)
+  const threadVisual = useMemo(() => thread ? visualComments.filter((comment) => (comment.draft?.destination.threadId ?? comment.revisions.at(-1)?.destination.threadId) === thread.id) : [], [thread?.id, visualComments])
+  const heldVisual = useMemo(() => threadVisual.filter((comment) => comment.status === 'held' && comment.draft), [threadVisual])
+  const visualById = useMemo(() => new Map(visualComments.map((comment) => [comment.id, comment])), [visualComments])
+  const workspace = useConversationWorkspace(thread, onStart, panelRef, { comments: threadVisual, onOpen: (id) => onOpenVisual?.(id) })
   /** Whether the reader sits at the bottom, and where the latest agent answer begins relative to the viewport. */
   const [reading, setReading] = useState<{ atBottom: boolean; latest: 'above' | 'visible' | 'below' | null }>({ atBottom: true, latest: null })
   const latestId = workspace.latestResponse
@@ -335,6 +346,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
               <small>{message.role === 'assistant' ? 'Agent' : message.role === 'user' ? 'You' : 'System'}{message.role === 'user' && <span className="conversation-chip">{message.attachmentCount > 0 ? `${message.attachmentCount} attached` : 'Message'}</span>}{message.role === 'assistant' && <button type="button" className="conversation-copy" aria-label="Copy assistant message" onClick={() => void navigator.clipboard.writeText(prose)}>Copy</button>}</small>
               <div className={longUserMessage && !messageExpanded ? 'conversation-user-collapsed' : undefined} data-annotatable={message.role === 'assistant' && !message.streaming || undefined} data-block-ids={blocks.map((block) => block.id).join(' ')}>{message.role === 'assistant' && !message.streaming ? <ConversationMessage message={message} comments={(thread.comments ?? []).filter(comment => comment.anchor.message === message.id)} pinned={workspace.selection?.message === message.id || workspace.discussion?.anchor.message === message.id} target={workspace.target} root={selected.root} folds={workspace.folds(message.id)} onFold={(heading, folded) => workspace.foldHeading(message.id, heading, folded)} onSelection={range => workspace.select(message.id, range)} onOpen={workspace.open} /> : <MessageMarkdown text={prose} />}</div>
               {longUserMessage && <button type="button" className="conversation-message-toggle" aria-expanded={messageExpanded} onClick={() => setExpandedMessages((value) => ({ ...value, [message.id]: !messageExpanded }))}>{messageExpanded ? 'Show less' : 'Show more'}</button>}
+              {message.role === 'assistant' && !message.streaming && (() => { const replies = message.visualReplies ?? []; return replies.length ? <div className="conversation-visual-replies">{replies.map((reply) => { const comment = visualById.get(reply.id); const latest = comment?.revisions.at(-1); return <span className="conversation-visual-reply-row" key={`${reply.id}:${reply.revision ?? ''}`}><button type="button" className="conversation-visual-reply" data-ready={reply.ready || undefined} onClick={() => onOpenVisual?.(reply.id)}><span>Visual comment</span>{comment ? ` · ${comment.title}` : ''}<em>{comment && comment.status === 'ready' ? 'ready for review' : reply.ready ? 'marked ready' : 'answered'}</em></button>{comment?.anchor.kind === 'page' && onShowVisual && <button type="button" className="conversation-visual-action" onClick={() => onShowVisual(reply.id)}>Show me</button>}{latest?.comparison && onOpenVisual && <button type="button" className="conversation-visual-action" onClick={() => onOpenVisual(reply.id)}>Then / now</button>}</span> })}</div> : null })()}
               {message.id === lastAssistant && changedFiles.length > 0 && <ChangedFilesCard files={changedFiles} root={selected.root} {...(onOpenDocument ? { onOpen: onOpenDocument } : {})} />}
             </article></Fragment>
           })}
@@ -352,6 +364,6 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
     {visible && !reading.atBottom && <button type="button" className="conversation-newest" aria-label="Newest" title="Jump to the newest message" onClick={() => history.current?.scrollToBottom()}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4.5 6 8.5l4-4" /></svg></button>}
     </div>
     {visible && workspace.overlay}
-    <ConversationComposer deliveryId={workspace.previewId} key={`composer:${thread.id}`} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} context={<div className="conversation-context">{placement === 'side' && onDocumentContext && <button type="button" onClick={onDocumentContext}>Document context</button>}{workspace.tray}</div>} queuedCount={workspace.selectedCount} reservedAttachments={workspace.selectedCount > 0 || (thread.outcomes?.length ?? 0) > 0 ? 1 : 0} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} running={running} onStop={() => onStop(thread.id)} onSend={async input => { await onStart(thread.id, { ...input, ...workspace.outgoing }); workspace.sent() }} />
+    <ConversationComposer deliveryId={workspace.previewId} key={`composer:${thread.id}`} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} context={<div className="conversation-context">{placement === 'side' && onDocumentContext && <button type="button" onClick={onDocumentContext}>Document context</button>}{workspace.tray}</div>} queuedCount={workspace.selectedCount} reservedAttachments={workspace.selectedCount > 0 || (thread.outcomes?.length ?? 0) > 0 ? 1 : 0} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} running={running} onStop={() => onStop(thread.id)} onSend={async input => { await onStart(thread.id, { ...input, ...workspace.outgoing }); workspace.sent() }} visualComments={heldVisual} {...(onOpenVisual ? { onOpenVisual: (comment: VisualCommentView) => onOpenVisual(comment.id) } : {})} {...(onMarkUpImage ? { onMarkUpImage } : {})} {...(consumedAttachmentIds ? { consumedAttachmentIds } : {})} />
   </section>
 }

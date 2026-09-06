@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import { useClock } from '../useClock'
-import type { AgentIdentity, AnnotationView, AttachmentView, DocumentView, HunkView, ReviewTab, RoundHunkView } from '../../shared/contracts'
+import type { AgentIdentity, AnnotationView, AttachmentView, DocumentView, HunkView, ReviewTab, RoundHunkView, VisualCommentView } from '../../shared/contracts'
+import { VisualCommentCard, type VisualCardActions } from './VisualCommentCard'
 import {
   absoluteTime,
   filteredAnnotations,
@@ -59,6 +60,11 @@ interface RightRailProps {
   onSetLead(agentId: string | null): void
   onDetach(attachment: AttachmentView): void
   onSaveRound(index: number): Promise<{ hunks: RoundHunkView[] }>
+  /** The document's project's visual comments (docs/plans/open/visual-review), listed under Items with their own filter. */
+  visualComments?: VisualCommentView[]
+  visualActions?: VisualCardActions
+  /** Threads whose browser requests Strata is serving right now; their rows carry a badge. */
+  serving?: string[]
 }
 
 function colorOf(author: AgentIdentity | 'user' | null): string {
@@ -331,8 +337,12 @@ function ItemsPanel(props: RightRailProps & { pinChanges: boolean; onPinChanges(
   useEffect(() => { setFilter('all'); setCreating(false) }, [props.document.path])
   const annotations = filteredAnnotations(props.document, filter)
   const counts = annotationCounts(props.document)
+  const visual = props.visualComments ?? []
+  const visualShown = filter === 'all' ? visual.filter((comment) => comment.status !== 'done') : filter === 'visual' ? visual : filter === 'resolved' ? visual.filter((comment) => comment.status === 'done') : []
+  const itemsDone = (props.document.items ?? []).filter((item) => item.status === 'done').length + visual.filter((comment) => comment.status === 'done').length
+  const itemsTotal = (props.document.items ?? []).length + visual.length
   const filters: Array<[AnnotationFilter, string]> = [
-    ['all', 'All'], ['decisions', 'Decisions'], ['questions', 'Questions'],
+    ['all', 'All'], ...(visual.length ? [['visual', 'Visual'] as [AnnotationFilter, string]] : []), ['decisions', 'Decisions'], ['questions', 'Questions'],
     ['comments', 'Comments'], ['suggestions', 'Suggestions'], ['resolved', 'Resolved'],
   ]
   const addDecision = () => {
@@ -350,7 +360,7 @@ function ItemsPanel(props: RightRailProps & { pinChanges: boolean; onPinChanges(
     <section className="rail-panel annotations-panel" aria-labelledby="items-heading">
       <div className="panel-heading">
         <h2 id="items-heading">Items</h2>
-        <span className="panel-counts">{(props.document.items ?? []).filter((item) => item.status === 'done').length} of {(props.document.items ?? []).length} done{counts.removedText > 0 ? ` · ${counts.removedText} on removed text` : ''}</span>
+        <span className="panel-counts">{itemsDone} of {itemsTotal} done{counts.removedText > 0 ? ` · ${counts.removedText} on removed text` : ''}</span>
         <button type="button" className={`text-action pin-toggle ${props.pinChanges ? 'positive' : ''}`} aria-pressed={props.pinChanges} onClick={props.onPinChanges}>Pin changes</button>
       </div>
       <div className="panel-scroll">
@@ -371,15 +381,16 @@ function ItemsPanel(props: RightRailProps & { pinChanges: boolean; onPinChanges(
             <div><button type="button" className="text-action" onClick={() => setChoices((current) => [...current, ''])}>Add choice</button><button type="submit" className="keep-button">Add decision</button></div>
           </form>
         )}
+        {visualShown.map((comment) => <VisualCommentCard key={comment.id} comment={comment} actions={props.visualActions ?? {}} />)}
         {annotations.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} onOpen={() => props.onJumpAnnotation(annotation)} />)}
-        {annotations.length === 0 && <div className="empty-subtle">{filter === 'all' ? 'Select text to comment' : 'Nothing in this filter.'}</div>}
+        {annotations.length === 0 && visualShown.length === 0 && <div className="empty-subtle">{filter === 'all' ? 'Select text to comment' : 'Nothing in this filter.'}</div>}
         {hasResolvedAnnotations(props.document) && <button type="button" className="clear-resolved" onClick={props.onClearResolved}>Clear resolved</button>}
       </div>
     </section>
   )
 }
 
-function AttachmentsPanel({ document, now, onStop, onOpenConversation, onSetLead, onDetach }: Pick<RightRailProps, 'document' | 'onStop' | 'onOpenConversation' | 'onSetLead' | 'onDetach'> & { now: number }) {
+function AttachmentsPanel({ document, now, serving = [], onStop, onOpenConversation, onSetLead, onDetach }: Pick<RightRailProps, 'document' | 'onStop' | 'onOpenConversation' | 'onSetLead' | 'onDetach' | 'serving'> & { now: number }) {
   return (
     <section className="island rail-panel agents-panel" aria-labelledby="attached-heading">
       <AmbientDecor variant="agents" />
@@ -402,6 +413,7 @@ function AttachmentsPanel({ document, now, onStop, onOpenConversation, onSetLead
               <span><i className={`state-dot state-${attachment.state}`} />{attachmentStatusLine(attachment)}</span>
             </span>
             <span className="agent-actions">
+              {serving.includes(attachment.agent.id) && <span className="agent-browser-badge" title="Strata is serving this thread's browser requests">browser</span>}
               <button
                 type="button"
                 className={`agent-icon crown${leads ? ' holds-lead' : ''}`}
@@ -447,7 +459,7 @@ export function RightRail(props: RightRailProps) {
         <AmbientDecor variant={props.selectedTab === 'changes' ? 'changes' : 'annotations'} />
         <RailTabs label="Document review" idPrefix="review" selected={props.selectedTab} onSelect={props.onSelectTab} tabs={[
           { id: 'changes', label: 'Changes', count: pendingCount(props.document) },
-          { id: 'annotations', label: 'Items', count: (props.document.items ?? []).filter((item) => item.status !== 'done').length },
+          { id: 'annotations', label: 'Items', count: (props.document.items ?? []).filter((item) => item.status !== 'done').length + (props.visualComments ?? []).filter((comment) => comment.status !== 'done').length },
         ]} />
         <section role="tabpanel" id="review-panel-changes" aria-labelledby="review-tab-changes" hidden={props.selectedTab !== 'changes'}>
           <ChangesPanel {...props} now={now} />
@@ -464,7 +476,7 @@ export function RightRail(props: RightRailProps) {
         </section>
       </section>
       <Resizer axis="horizontal" label="Resize review window" value={props.upperReviewHeight} min={180} max={954} onChange={(value) => props.onHeight(value, false)} onCommit={(value) => props.onHeight(value, true)} />
-      <AttachmentsPanel document={props.document} now={now} onStop={props.onStop} onOpenConversation={props.onOpenConversation} onSetLead={props.onSetLead} onDetach={props.onDetach} />
+      <AttachmentsPanel document={props.document} now={now} serving={props.serving ?? []} onStop={props.onStop} onOpenConversation={props.onOpenConversation} onSetLead={props.onSetLead} onDetach={props.onDetach} />
       <div className="save-state-footer">{saveStateSentence(props.document.dirty, props.document.lastSavedAt, now)}</div>
     </aside>
   )
