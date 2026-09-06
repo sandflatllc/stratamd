@@ -382,13 +382,15 @@ export function activeAnnotations(document: DocumentView): AnnotationView[] {
   return document.annotations.filter((annotation) => annotation.status !== 'resolved')
 }
 
-export type AnnotationFilter = 'all' | 'decisions' | 'questions' | 'comments' | 'suggestions' | 'resolved'
+export type AnnotationFilter = 'all' | 'visual' | 'decisions' | 'questions' | 'comments' | 'suggestions' | 'resolved'
 
 export function filteredAnnotations(document: DocumentView, filter: AnnotationFilter): AnnotationView[] {
   if (filter === 'resolved') return document.annotations.filter((annotation) => annotation.status === 'resolved')
+  // Visual comments are project records, not annotations; the rail lists them beside these rows.
+  if (filter === 'visual') return []
   const open = document.annotations.filter((annotation) => annotation.status !== 'resolved')
   if (filter === 'all') return open
-  const kinds: Record<Exclude<AnnotationFilter, 'all' | 'resolved'>, AnnotationView['kind']> = {
+  const kinds: Record<Exclude<AnnotationFilter, 'all' | 'resolved' | 'visual'>, AnnotationView['kind']> = {
     decisions: 'decision',
     questions: 'question',
     comments: 'comment',

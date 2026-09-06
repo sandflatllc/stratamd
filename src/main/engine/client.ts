@@ -54,10 +54,20 @@ import { assertSupportedPlatform } from '../../platform/runtime'
 import { mapMarkdownBlocks, parseStrataBlock } from '../../core/blocks'
 import { postedMessageItems } from '../../core/items'
 import { inferredMessageItems } from '../../core/inference'
+import { pngSize, VisualEvidenceStore } from './visual-evidence'
+import { emptyVisualCommentsStore, readVisualCommentsStore, referencedEvidence, writeVisualCommentsStore, type VisualCommentsStore } from './visual-comments'
+import { isVisualCommentId, revisionForReply, sendCapacity, visualAttachmentName, visualBrief, visualCommentView, visualRepliesIn, visualSendSummary, type VisualCommentRecord, type VisualRevision } from '../../core/visual-comments'
+import { visualImageUrl } from '../../shared/visual-urls'
+import type { HoldVisualCommentInput, VisualCommentAction, VisualCommentView } from '../../shared/contracts'
 
 /** A staged image the owner removed or a sweep deleted before its upload; the preparation cannot proceed. */
 class MissingStagedAttachmentError extends Error {
   constructor(name: string) { super(`Attachment ${name} is no longer staged. Attach it again and send.`) }
+}
+
+/** A marked screenshot the evidence store no longer holds; the frozen revision cannot be sent. */
+class MissingEvidenceError extends Error {
+  constructor(name: string) { super(`The screenshot ${name} is no longer available. Open the visual comment and mark it again.`) }
 }
 
 interface EngineCredential {
@@ -152,6 +162,11 @@ export interface EngineReadClient {
   discardAttachment?(id: string): Promise<void>
   /** Deletes staged images no draft or saved preparation references. */
   retainAttachments?(ids: readonly string[]): Promise<void>
+  /** Holds a visual comment privately over a staged image or updates its draft (docs/plans/open/visual-review). */
+  holdVisualComment?(input: HoldVisualCommentInput): Promise<string>
+  actVisualComment?(id: string, action: VisualCommentAction): Promise<void>
+  /** Bytes for the strata-visual protocol: a piece of evidence or a staged composer image. */
+  readVisualImage?(kind: 'evidence' | 'staged', id: string): Promise<{ bytes: Uint8Array; mimeType: string } | null>
 }
 
 const EMPTY_ENGINE: EngineView = {
@@ -239,6 +254,9 @@ export class T3EngineClient implements EngineReadClient {
   readonly #accountsPath: string
   readonly #conversationsPath: string
   readonly #staged: StagedAttachmentStore
+  readonly #evidence: VisualEvidenceStore
+  readonly #visualPath: string
+  #visual: VisualCommentsStore = emptyVisualCommentsStore()
   #conversations: ConversationsStore = { formatVersion: 1, threads: {} }
   readonly #WebSocket: typeof WebSocket
   readonly #configRefreshMs: number
@@ -277,7 +295,7 @@ export class T3EngineClient implements EngineReadClient {
   #renewalTimer: ReturnType<typeof setTimeout> | null = null
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null
   #reconnectAttempt = 0
-  #messageCache = new Map<string, { text: string; prose: string; blocks: ReturnType<typeof mapMarkdownBlocks>["blocks"] }>()
+  #messageCache = new Map<string, { text: string; prose: string; blocks: ReturnType<typeof mapMarkdownBlocks>["blocks"]; visualReplies: Array<{ id: string; revision?: number; ready: boolean }> }>()
   #publishTimer: ReturnType<typeof setTimeout> | null = null
   #configTimer: ReturnType<typeof setTimeout> | null = null
   #connecting: Promise<void> | null = null
@@ -298,6 +316,8 @@ export class T3EngineClient implements EngineReadClient {
     this.#accountsPath = join(options.dataDirectory, 'engine-accounts.json')
     this.#conversationsPath = join(options.dataDirectory, 'engine-conversations.json')
     this.#staged = new StagedAttachmentStore(join(options.dataDirectory, 'composer-attachments'), this.#now)
+    this.#evidence = new VisualEvidenceStore(join(options.dataDirectory, 'visual-evidence'), this.#now)
+    this.#visualPath = join(options.dataDirectory, 'engine-visual-comments.json')
     this.#WebSocket = options.webSocket ?? WebSocket
     this.#configRefreshMs = options.configRefreshMs ?? 30_000
     this.#shimDirectory = options.terminalShimDirectory ?? null
@@ -310,6 +330,9 @@ export class T3EngineClient implements EngineReadClient {
     this.#pendingCommands = await this.#readCommands()
     this.#accounts = await readAccountsStore(this.#accountsPath)
     this.#conversations = await readConversationsStore(this.#conversationsPath)
+    this.#visual = await readVisualCommentsStore(this.#visualPath)
+    // Evidence outlives its comment only until this sweep; sent comments keep theirs while they exist.
+    await this.#evidence.sweep(referencedEvidence(this.#visual)).catch((error: unknown) => logError('engine', 'Visual evidence could not be tidied', error))
     if (!this.#credential) return
     this.#running = true
     await this.reconnect()
@@ -343,6 +366,7 @@ export class T3EngineClient implements EngineReadClient {
       title: project.title,
       workspaceRoot: project.workspaceRoot,
       defaultModelSelection: project.defaultModelSelection ? { ...project.defaultModelSelection, options: publicOptions(project.defaultModelSelection.options) } : null,
+      visualComments: this.#visualCommentsFor(project.id),
       threads: (this.#shell?.threads ?? []).filter((thread) => thread.projectId === project.id).map((thread) => {
         const detailThread = this.#threads.get(thread.id)?.detail?.thread
         const messages = detailThread?.id === thread.id ? detailThread.messages.map((message) => ({
@@ -354,7 +378,7 @@ export class T3EngineClient implements EngineReadClient {
           createdAt: message.createdAt,
           updatedAt: message.updatedAt,
           attachmentCount: message.attachments?.length ?? 0,
-          ...(!message.streaming && message.role === 'assistant' ? (() => { let cached = this.#messageCache.get(message.id); if (!cached || cached.text !== message.text) { const prose = parseStrataBlock(message.text)?.prose ?? message.text; cached = { text: message.text, prose, blocks: mapMarkdownBlocks(`message:${message.id}`, prose).blocks }; this.#messageCache.set(message.id, cached) } return { prose: cached.prose, blocks: cached.blocks } })() : {}),
+          ...(!message.streaming && message.role === 'assistant' ? (() => { let cached = this.#messageCache.get(message.id); if (!cached || cached.text !== message.text) { const parsed = parseStrataBlock(message.text); const prose = parsed?.prose ?? message.text; cached = { text: message.text, prose, blocks: mapMarkdownBlocks(`message:${message.id}`, prose).blocks, visualReplies: visualRepliesIn(parsed) }; this.#messageCache.set(message.id, cached) } return { prose: cached.prose, blocks: cached.blocks, ...(cached.visualReplies.length ? { visualReplies: cached.visualReplies } : {}) } })() : {}),
         })) : []
         const activities = detailThread?.id === thread.id ? detailThread.activities.map((activity) => ({
           id: activity.id,
@@ -582,7 +606,7 @@ export class T3EngineClient implements EngineReadClient {
     const thread = this.#shell?.threads.find((candidate) => candidate.id === threadId)
     if (!thread) throw new Error(`Thread was not found: ${threadId}`)
     const existing = this.#conversations.threads[threadId]?.prepared?.find((entry) => entry.messageId === input.messageId)
-    if (existing) { await this.#resumePrepared(threadId, existing.messageId); return }
+    if (existing) { await this.#resumeDelivery(threadId, existing.messageId); return }
     const instanceId = input.instanceId ?? thread.modelSelection.instanceId
     const accounts = this.#accountViews()
     const driverFor = (id: string) => accounts.find(account => account.instanceId === id)?.driver ?? this.#models.find(model => model.instanceId === id)?.driver
@@ -612,14 +636,62 @@ export class T3EngineClient implements EngineReadClient {
     const messages = this.view().projects.flatMap(project => project.threads).find(thread => thread.id === threadId)?.messages ?? []
     const messageId = input.messageId ?? randomUUID()
     const userAttachments = input.attachments ?? []
-    const text = input.text.trim() || (queued ? `Replies to ${Object.keys(queued).length} item${Object.keys(queued).length === 1 ? '' : 's'}.` : comments.length ? `Comments on ${comments.length} passages.` : userAttachments.length ? attachmentSummary(userAttachments) : outcomes.length ? 'Conversation outcomes.' : '')
+    // Visual comments (docs/plans/open/visual-review): each held draft freezes one revision; the marked capture for every
+    // capture a mark or stroke sits on travels as an image, identical bytes once, and the brief rides in the context file.
+    const visualIds = [...new Set(input.visual ?? [])]
+    if (visualIds.length && input.context) throw new Error('A document delivery cannot carry visual comments')
+    const visualDrafts = visualIds.map((id) => {
+      const comment = this.#visual.comments[id]
+      if (!comment) throw new Error(`Visual comment ${id} was not found`)
+      if (!comment.draft) throw new Error(`Visual comment ${id} has nothing new to send`)
+      if (comment.projectId !== thread.projectId) throw new Error(`Visual comment ${id} belongs to another project`)
+      return comment
+    })
+    const evidenceNames = new Map<string, string>()
+    const visualAttachments: PreparedAttachment[] = []
+    const frozen: Array<{ comment: VisualCommentRecord; revision: VisualRevision; names: Map<string, string> }> = []
+    for (const comment of visualDrafts) {
+      const draft = comment.draft!
+      const referenced = [...new Set([...draft.marks.map((mark) => mark.captureId), ...draft.strokes.map((stroke) => stroke.captureId)])]
+      const captureIds = referenced.length ? referenced : comment.captures.slice(0, 1).map((capture) => capture.id)
+      const number = comment.revisions.length + 1
+      const names = new Map<string, string>()
+      for (const [index, captureId] of captureIds.entries()) {
+        const capture = comment.captures.find((candidate) => candidate.id === captureId)
+        if (!capture) throw new Error(`Visual comment ${comment.id} lost a capture. Open it and mark again.`)
+        const evidenceId = capture.markedId ?? capture.id
+        let name = evidenceNames.get(evidenceId)
+        if (!name) {
+          const meta = await this.#evidence.meta(evidenceId)
+          if (!meta) throw new MissingEvidenceError(visualAttachmentName(comment.id, number, index))
+          name = visualAttachmentName(comment.id, number, index)
+          evidenceNames.set(evidenceId, name)
+          visualAttachments.push({ kind: 'evidence', id: evidenceId, name, mimeType: meta.mimeType, sizeBytes: meta.sizeBytes })
+        }
+        names.set(captureId, name)
+      }
+      const revision: VisualRevision = {
+        number, text: draft.text, marks: draft.marks.map((mark) => ({ ...mark })), strokes: draft.strokes.map((stroke) => ({ ...stroke, points: [...stroke.points] })), adjustments: draft.adjustments.map((adjustment) => ({ ...adjustment })),
+        destination: { threadId, engine: comment.engine }, captures: captureIds, evidence: captureIds.map((captureId) => evidenceNames.get(comment.captures.find((capture) => capture.id === captureId)!.markedId ?? captureId) ? (comment.captures.find((capture) => capture.id === captureId)!.markedId ?? captureId) : captureId),
+        deliveryId: messageId, sentAt: this.#now(), state: 'sending', replies: [],
+      }
+      frozen.push({ comment, revision, names })
+    }
+    const text = input.text.trim() || (frozen.length ? visualSendSummary(frozen.map(({ revision }) => revision)) : queued ? `Replies to ${Object.keys(queued).length} item${Object.keys(queued).length === 1 ? '' : 's'}.` : comments.length ? `Comments on ${comments.length} passages.` : userAttachments.length ? attachmentSummary(userAttachments) : outcomes.length ? 'Conversation outcomes.' : '')
     if (!text) throw new Error('Write a message or queue a reply, or attach a file before sending')
-    const contextFile: PreparedAttachment | undefined = (queued || comments.length || outcomes.length) ? { kind: 'text', name: `conversation-${messageId}.md`, text: renderConversationDelivery(input.context ?? conversationDelivery(threadId, messageId, comments, queued ?? {}, messages, outcomes)) } : undefined
+    const contextNeeded = Boolean(queued || comments.length || outcomes.length || frozen.length)
     // T3 refuses a turn with more than eight attachments. The context file keeps its place; the owner's files must make room (§6.0).
-    if (userAttachments.length + (contextFile ? 1 : 0) > MAX_ATTACHMENTS) throw new Error(attachmentLimitMessage(contextFile ? 1 : 0))
+    // A selection over capacity stays intact and is refused by name; nothing is trimmed or split across turns.
+    if (frozen.length) {
+      const capacity = sendCapacity({ files: userAttachments.length, visualImages: visualAttachments.length, visualComments: frozen.length, contextFile: contextNeeded })
+      if (capacity.refusal) throw new Error(capacity.refusal)
+    } else if (userAttachments.length + (contextNeeded ? 1 : 0) > MAX_ATTACHMENTS) throw new Error(attachmentLimitMessage(contextNeeded ? 1 : 0))
     for (const attachment of userAttachments) if (attachment.kind === 'image' && !(await this.#staged.exists(attachment.id))) throw new Error(`Attachment ${attachment.name} is no longer staged. Attach it again.`)
+    const briefs = frozen.map(({ comment, revision, names }) => visualBrief(comment, revision, names))
+    const contextFile: PreparedAttachment | undefined = contextNeeded ? { kind: 'text', name: `conversation-${messageId}.md`, text: renderConversationDelivery(input.context ?? conversationDelivery(threadId, messageId, comments, queued ?? {}, messages, outcomes, briefs)) } : undefined
     const attachmentInputs: PreparedAttachment[] = [
       ...userAttachments.map((attachment): PreparedAttachment => attachment.kind === 'image' ? { kind: 'image', id: attachment.id, name: attachment.name, mimeType: attachment.mimeType, sizeBytes: attachment.sizeBytes } : { kind: 'text', name: attachment.name, text: attachment.text }),
+      ...visualAttachments,
       ...(contextFile ? [contextFile] : []),
     ]
     const workspace = input.workspace ?? state?.workspace
@@ -636,12 +708,144 @@ export class T3EngineClient implements EngineReadClient {
       ...current,
       replies: Object.fromEntries(Object.entries(current.replies).filter(([id, reply]) => !queued?.[id] || queued[id]!.text !== reply.text)),
       comments: (current.comments ?? []).map(comment => comments.some(selected => selected.id === comment.id) ? { ...comment, state: 'pending' } : comment),
-      pending: [...current.pending, { deliveryId: messageId, itemIds: Object.keys(queued ?? {}), replies: queued ?? {}, commentIds: comments.map(comment => comment.id), outcomeKeys: outcomes.map(outcome => `${outcome.message}:${outcome.index}`) }],
+      pending: [...current.pending, { deliveryId: messageId, itemIds: Object.keys(queued ?? {}), replies: queued ?? {}, commentIds: comments.map(comment => comment.id), outcomeKeys: outcomes.map(outcome => `${outcome.message}:${outcome.index}`), ...(frozen.length ? { visual: frozen.map(({ comment, revision }) => ({ id: comment.id, revision: revision.number })) } : {}) }],
       prepared: [...(current.prepared ?? []), { messageId, command, attachments: attachmentInputs }],
+    }
+    if (frozen.length) {
+      for (const { comment, revision } of frozen) { comment.revisions.push(revision); comment.draft = null; comment.updatedAt = this.#now() }
+      await writeVisualCommentsStore(this.#visualPath, this.#visual)
     }
     await writeConversationsStore(this.#conversationsPath, this.#conversations)
     this.#publish()
-    await this.#resumePrepared(threadId, messageId)
+    await this.#resumeDelivery(threadId, messageId)
+  }
+
+  /** Resumes a saved preparation and keeps the visual revisions it carries honest: sending while it runs, failed and retryable when it does not. */
+  async #resumeDelivery(threadId: string, messageId: string): Promise<void> {
+    await this.#markVisual(messageId, 'sending')
+    try { await this.#resumePrepared(threadId, messageId) }
+    catch (error) { await this.#markVisual(messageId, 'failed', error); throw error }
+  }
+
+  async #markVisual(deliveryId: string, state: 'sending' | 'failed' | 'sent', error?: unknown): Promise<void> {
+    let changed = false
+    for (const comment of Object.values(this.#visual.comments)) {
+      for (const revision of comment.revisions) {
+        if (revision.deliveryId !== deliveryId || revision.state === state || revision.state === 'sent') continue
+        revision.state = state
+        if (state === 'failed') revision.error = error instanceof Error ? error.message : error === undefined ? 'The send did not go through.' : String(error)
+        else delete revision.error
+        comment.updatedAt = this.#now()
+        changed = true
+      }
+    }
+    if (!changed) return
+    await writeVisualCommentsStore(this.#visualPath, this.#visual)
+    this.#publish()
+  }
+
+  #visualCommentsFor(projectId: string): VisualCommentView[] {
+    const titles = new Map((this.#shell?.threads ?? []).map((thread) => [thread.id, thread.title]))
+    return Object.values(this.#visual.comments)
+      .filter((comment) => comment.projectId === projectId)
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .map((comment) => visualCommentView(comment, { captureUrl: (id) => visualImageUrl('evidence', id), threadTitle: (id) => titles.get(id) ?? 'a closed thread' }))
+  }
+
+  async holdVisualComment(input: HoldVisualCommentInput): Promise<string> {
+    const now = this.#now()
+    const thread = this.#shell?.threads.find((candidate) => candidate.id === input.threadId)
+    if (!thread) throw new Error(`Thread was not found: ${input.threadId}`)
+    if (thread.projectId !== input.projectId) throw new Error(`Thread ${input.threadId} is not in project ${input.projectId}`)
+    let comment = input.id ? this.#visual.comments[input.id] : undefined
+    if (input.id && !comment) throw new Error(`Visual comment ${input.id} was not found`)
+    const captureIds = new Map<string, string>()
+    if (input.source) {
+      if (comment) throw new Error('A visual comment keeps its image. Start a new one for a new image.')
+      const staged = await this.#staged.read(input.source.staged)
+      if (!staged) throw new Error(`Attachment ${input.source.name} is no longer staged. Attach it again.`)
+      const evidence = await this.#evidence.put({ bytes: staged.bytes, width: input.source.width, height: input.source.height, mimeType: staged.meta.mimeType })
+      comment = { id: `v_${randomUUID()}`, projectId: input.projectId, engine: null, anchor: { kind: 'image', name: input.source.name }, captures: [{ id: evidence.id, width: input.source.width, height: input.source.height, takenAt: now }], draft: null, revisions: [], createdAt: now, updatedAt: now }
+      captureIds.set(input.source.staged, evidence.id)
+      this.#visual.comments[comment.id] = comment
+      // On Hold the image moves into the evidence store; the staged copy leaves so no delivery can consume it.
+      await this.#staged.discard(input.source.staged)
+    }
+    if (!comment) throw new Error('A visual comment needs an image. Paste or capture one first.')
+    const remap = (id: string) => captureIds.get(id) ?? id
+    for (const mark of input.marks) if (!comment.captures.some((capture) => capture.id === remap(mark.captureId))) throw new Error(`The mark ${mark.label} points at a capture this comment does not have`)
+    for (const stroke of input.strokes) if (!comment.captures.some((capture) => capture.id === remap(stroke.captureId))) throw new Error('A drawing points at a capture this comment does not have')
+    for (const entry of input.marked) {
+      const capture = comment.captures.find((candidate) => candidate.id === remap(entry.captureId))
+      if (!capture) continue
+      const size = pngSize(entry.bytes) ?? { width: capture.width, height: capture.height }
+      const stored = await this.#evidence.put({ bytes: entry.bytes, width: size.width, height: size.height, mimeType: 'image/png' })
+      const previous = capture.markedId
+      capture.markedId = stored.id
+      // A marked version a sent revision carried stays; only an unsent one is replaced.
+      if (previous && !comment.revisions.some((revision) => revision.evidence.includes(previous))) await this.#evidence.discard(previous)
+    }
+    const previous = comment.draft
+    const latest = comment.revisions.at(-1)
+    const identityOf = (id: string) => previous?.marks.find((mark) => mark.id === id)?.identity ?? latest?.marks.find((mark) => mark.id === id)?.identity
+    comment.draft = {
+      text: input.text,
+      marks: input.marks.map((mark) => { const identity = identityOf(mark.id); return { id: mark.id, kind: mark.kind, label: mark.label, captureId: remap(mark.captureId), rect: mark.rect, found: mark.found, ...(identity ? { identity } : {}) } }),
+      strokes: input.strokes.map((stroke) => ({ id: stroke.id, tool: stroke.tool, captureId: remap(stroke.captureId), points: stroke.points.map((point) => ({ x: point.x, y: point.y })) })),
+      adjustments: input.adjustments.map((adjustment) => ({ markId: adjustment.markId, property: adjustment.property, value: adjustment.value, label: adjustment.label })),
+      // The active conversation when the session opened is the destination; switching conversations while writing does not move it.
+      destination: previous?.destination ?? { threadId: input.threadId, engine: comment.engine },
+      updatedAt: now,
+    }
+    comment.updatedAt = now
+    await writeVisualCommentsStore(this.#visualPath, this.#visual)
+    this.#publish()
+    return comment.id
+  }
+
+  async actVisualComment(id: string, action: VisualCommentAction): Promise<void> {
+    const comment = this.#visual.comments[id]
+    if (!comment) throw new Error(`Visual comment ${id} was not found`)
+    const latest = comment.revisions.at(-1)
+    const now = this.#now()
+    if (action === 'accept') {
+      // Looks right accepts the latest revision locally and starts no turn.
+      if (!latest || latest.state !== 'sent') throw new Error('Nothing has been sent to accept yet')
+      latest.accepted = true
+      comment.draft = null
+    } else if (action === 'reopen') {
+      // Still wrong opens the next private note over the same marks; Send transmits it as the next revision.
+      if (!latest) throw new Error('Nothing has been sent to reopen')
+      comment.draft = { text: '', marks: latest.marks.map((mark) => ({ ...mark })), strokes: latest.strokes.map((stroke) => ({ ...stroke, points: [...stroke.points] })), adjustments: latest.adjustments.map((adjustment) => ({ ...adjustment })), destination: { ...latest.destination }, updatedAt: now }
+    } else if (action === 'discard') {
+      if (comment.revisions.length === 0) {
+        delete this.#visual.comments[id]
+        await writeVisualCommentsStore(this.#visualPath, this.#visual)
+        await this.#evidence.sweep(referencedEvidence(this.#visual)).catch((error: unknown) => logError('engine', 'Visual evidence could not be tidied', error))
+        this.#publish()
+        return
+      }
+      comment.draft = null
+    } else {
+      const failed = [...comment.revisions].reverse().find((revision) => revision.state === 'failed')
+      if (!failed) throw new Error('Nothing failed to send')
+      const prepared = this.#conversations.threads[failed.destination.threadId]?.prepared?.find((entry) => entry.messageId === failed.deliveryId)
+      if (!prepared) throw new Error('The frozen send is gone. Open the comment and send it again.')
+      await this.#resumeDelivery(failed.destination.threadId, failed.deliveryId)
+      return
+    }
+    comment.updatedAt = now
+    await writeVisualCommentsStore(this.#visualPath, this.#visual)
+    this.#publish()
+  }
+
+  async readVisualImage(kind: 'evidence' | 'staged', id: string): Promise<{ bytes: Uint8Array; mimeType: string } | null> {
+    if (kind === 'evidence') {
+      const evidence = await this.#evidence.read(id)
+      return evidence ? { bytes: evidence.bytes, mimeType: evidence.meta.mimeType } : null
+    }
+    const staged = await this.#staged.read(id)
+    return staged ? { bytes: staged.bytes, mimeType: staged.meta.mimeType } : null
   }
 
   async #resumePrepared(threadId: string, messageId: string): Promise<void> {
@@ -651,7 +855,7 @@ export class T3EngineClient implements EngineReadClient {
       if (attachment.uploaded) continue
       try { attachment.uploaded = await this.#uploadAttachment(attachment) }
       catch (error) {
-        if (error instanceof MissingStagedAttachmentError) await this.#abandonPrepared(threadId, messageId)
+        if (error instanceof MissingStagedAttachmentError || error instanceof MissingEvidenceError) await this.#abandonPrepared(threadId, messageId)
         throw error
       }
       await writeConversationsStore(this.#conversationsPath, this.#conversations)
@@ -1295,8 +1499,13 @@ export class T3EngineClient implements EngineReadClient {
     })
   }
 
-  /** Markdown goes up as a `file`; a staged image as an `image` with its own type, and its staged bytes leave once T3 holds them. */
+  /** Markdown goes up as a `file`; a staged image as an `image` with its own type, and its staged bytes leave once T3 holds them. Evidence is copied, never consumed. */
   async #uploadAttachment(attachment: PreparedAttachment): Promise<UploadedAttachment> {
+    if (attachment.kind === 'evidence') {
+      const evidence = await this.#evidence.read(attachment.id)
+      if (!evidence) throw new MissingEvidenceError(attachment.name)
+      return this.#uploadBytes({ type: 'image', name: attachment.name, mimeType: evidence.meta.mimeType, bytes: evidence.bytes })
+    }
     if (attachment.kind === 'image') {
       const staged = await this.#staged.read(attachment.id)
       if (!staged) throw new MissingStagedAttachmentError(attachment.name)
@@ -1360,7 +1569,7 @@ export class T3EngineClient implements EngineReadClient {
       state.pending = state.pending.filter((entry) => !stranded.includes(entry))
       await writeConversationsStore(this.#conversationsPath, this.#conversations)
       for (const prepared of [...(state.prepared ?? [])]) {
-        try { await this.#resumePrepared(threadId, prepared.messageId); resumed.add(prepared.messageId) }
+        try { await this.#resumeDelivery(threadId, prepared.messageId); resumed.add(prepared.messageId) }
         catch (error) { logError('engine', `Delivery ${prepared.messageId} remains available for retry`, error) }
       }
     }
@@ -1375,11 +1584,19 @@ export class T3EngineClient implements EngineReadClient {
     if (commandsChanged) this.#pendingCommands = next
     // Replies in flight become answered once the engine lists the message that carried them (§5.4).
     let repliesChanged = false
+    let visualChanged = false
     for (const [threadId, entry] of this.#threads) {
       const listed = new Set(entry.detail?.thread.messages.map((message) => message.id) ?? [])
       const state = this.#conversations.threads[threadId]
       if (!state || (!state.pending.some((pending) => listed.has(pending.deliveryId)) && !state.prepared?.some((prepared) => listed.has(prepared.messageId)))) continue
       const acknowledged = state.pending.filter((pending) => listed.has(pending.deliveryId))
+      // A visual revision is sent once its delivery is acknowledged; from here the agent's reply decides its state.
+      for (const pending of acknowledged) for (const reference of pending.visual ?? []) {
+        const comment = this.#visual.comments[reference.id]
+        const revision = comment?.revisions.find((candidate) => candidate.number === reference.revision)
+        if (!comment || !revision || revision.state === 'sent') continue
+        revision.state = 'sent'; delete revision.error; comment.updatedAt = this.#now(); visualChanged = true
+      }
       this.#conversations.threads[threadId] = {
         ...state,
         pending: state.pending.filter((pending) => !listed.has(pending.deliveryId)),
@@ -1390,10 +1607,11 @@ export class T3EngineClient implements EngineReadClient {
       }
       repliesChanged = true
     }
-    if (repliesChanged) this.#publishSoon()
+    if (repliesChanged || visualChanged) this.#publishSoon()
     // The in-memory state is already current; the files catch up.
     if (commandsChanged) await this.#writeCommands()
     if (repliesChanged) await writeConversationsStore(this.#conversationsPath, this.#conversations)
+    if (visualChanged) await writeVisualCommentsStore(this.#visualPath, this.#visual)
   }
 
   #reconcilingComments = false
@@ -1401,6 +1619,7 @@ export class T3EngineClient implements EngineReadClient {
     if (this.#reconcilingComments) return
     this.#reconcilingComments = true
     let changed = false
+    let visualChanged = false
     try {
       for (const thread of this.view().projects.flatMap(project => project.threads)) {
         const state = this.#conversations.threads[thread.id] ?? emptyConversationState()
@@ -1415,6 +1634,26 @@ export class T3EngineClient implements EngineReadClient {
             }
             if (!entry || !('anchor' in entry)) continue
             const anchor = entry.anchor
+            if ('item' in anchor && isVisualCommentId(anchor.item)) {
+              // A reply names the revision it answers; ready asks the owner to review, and only on the latest revision does that change the card.
+              const key = `${message.id}:${result.index}`
+              if (state.receipts.includes(key)) continue
+              let reason: string | undefined
+              const target = this.#visual.comments[anchor.item]
+              try {
+                if (!target) throw new Error(`Visual comment ${anchor.item} was not found`)
+                if (entry.verb !== 'reply') throw new Error(`Only the owner can ${entry.verb} a visual comment`)
+                const revision = revisionForReply(target, entry.revision)
+                if (!revision) throw new Error(`Visual comment ${anchor.item} has no revision ${entry.revision}`)
+                revision.replies.push({ messageId: message.id, text: entry.text, ready: entry.ready === true, ...(entry.file ? { file: entry.file } : {}), at: this.#now() })
+                target.updatedAt = this.#now()
+                visualChanged = true
+              } catch (error) { reason = error instanceof Error ? error.message : String(error) }
+              state.receipts.push(key)
+              state.outcomes.push({ message: message.id, index: result.index, status: reason ? 'failed' : 'applied', ...(reason ? { reason } : { itemId: anchor.item }) })
+              changed = true
+              continue
+            }
             const comment = 'item' in anchor ? state.comments.find(comment => comment.id === anchor.item) : undefined
             if (!('message' in anchor) && !comment && !('item' in anchor && /^(c_|m_)/.test(anchor.item))) continue
             const key = `${message.id}:${result.index}`
@@ -1445,6 +1684,7 @@ export class T3EngineClient implements EngineReadClient {
         this.#conversations.threads[thread.id] = state
       }
       if (changed) await writeConversationsStore(this.#conversationsPath, this.#conversations)
+      if (visualChanged) await writeVisualCommentsStore(this.#visualPath, this.#visual)
     } finally { this.#reconcilingComments = false }
     if (changed) this.#publish()
   }

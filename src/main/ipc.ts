@@ -10,6 +10,7 @@ import type { WindowController } from './window-controls'
 import { MAX_ATTACHMENTS, MAX_IMAGE_BYTES, MAX_TEXT_BYTES, SUPPORTED_IMAGE_TYPES } from '../core/composer-attachments'
 import { usageWindow, terminalAttachInput, terminalWriteInput, terminalResizeInput, terminalTarget, worktreeRequest, updateProviderInstancesInput, cloneRepositoryInput } from './engine/t3-contract'
 import { isStagedAttachmentId } from './engine/staged-attachments'
+import { isVisualCommentId } from '../core/visual-comments'
 
 type StrataIpcApi = Omit<StrataApi, 'subscribe'>
 
@@ -17,6 +18,23 @@ const pathSchema = z.string().min(1).max(16_384)
 const idSchema = z.string().min(1).max(512)
 const textSchema = z.string().max(64 * 1_024)
 const stagedAttachmentIdSchema = z.string().refine(isStagedAttachmentId, 'Not a staged attachment id')
+const visualCommentIdSchema = z.string().max(64).refine(isVisualCommentId, 'Not a visual comment id')
+const visualPointSchema = z.object({ x: z.number().finite(), y: z.number().finite() }).strict()
+const visualRectSchema = z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite().nonnegative(), height: z.number().finite().nonnegative() }).strict()
+const visualMarkSchema = z.object({ id: idSchema, kind: z.enum(['element', 'region']), label: z.string().max(512), captureId: idSchema, rect: visualRectSchema, found: z.boolean().nullable() }).strict()
+const visualStrokeSchema = z.object({ id: idSchema, tool: z.enum(['draw', 'arrow']), captureId: idSchema, points: z.array(visualPointSchema).max(20_000) }).strict()
+const visualAdjustmentSchema = z.object({ markId: idSchema, property: z.string().max(128), value: z.string().max(512), label: z.string().max(512) }).strict()
+const holdVisualCommentSchema = z.object({
+  id: visualCommentIdSchema.optional(),
+  projectId: idSchema,
+  threadId: idSchema,
+  source: z.object({ staged: stagedAttachmentIdSchema, name: idSchema, width: z.number().int().positive().max(32_768), height: z.number().int().positive().max(32_768) }).strict().optional(),
+  text: z.string().max(20_000),
+  marks: z.array(visualMarkSchema).max(200),
+  strokes: z.array(visualStrokeSchema).max(500),
+  adjustments: z.array(visualAdjustmentSchema).max(200),
+  marked: z.array(z.object({ captureId: idSchema, bytes: z.instanceof(Uint8Array).refine((bytes) => bytes.byteLength >= 1 && bytes.byteLength <= MAX_IMAGE_BYTES * 4, 'Image size out of range') }).strict()).max(32),
+}).strict()
 const modelOptionsSchema = z.array(z.object({ id: idSchema, value: z.union([idSchema, z.boolean()]) }).strict()).max(64)
 const conversationTurnSchema = z.object({
   workspace: worktreeRequest.optional(),
@@ -31,6 +49,7 @@ const conversationTurnSchema = z.object({
   effort: idSchema.nullable(),
   options: modelOptionsSchema.optional(),
   access: z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access']),
+  visual: z.array(visualCommentIdSchema).max(64).optional(),
   attachments: z.array(z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('text'), name: idSchema, text: z.string().max(MAX_TEXT_BYTES) }).strict(),
     // Image bytes never cross this channel; the renderer staged them and names the id (§6.0).
@@ -186,6 +205,8 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.queueItemReply]: z.tuple([idSchema, idSchema, z.string().max(20_000)]),
   [IPC.discardItemReply]: z.tuple([idSchema, idSchema]),
   [IPC.dismissItem]: z.tuple([idSchema, idSchema]),
+  [IPC.holdVisualComment]: z.tuple([holdVisualCommentSchema]),
+  [IPC.actVisualComment]: z.tuple([visualCommentIdSchema, z.enum(['accept', 'reopen', 'discard', 'retry'])]),
   [IPC.startConversationTurn]: z.tuple([idSchema, conversationTurnSchema]),
   [IPC.stageConversationAttachment]: z.tuple([stageAttachmentSchema]),
   [IPC.discardConversationAttachment]: z.tuple([stagedAttachmentIdSchema]),
@@ -401,6 +422,8 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.queueItemReply]: (threadId: string, itemId: string, text: string) => options.api.queueItemReply(threadId, itemId, text),
     [IPC.discardItemReply]: (threadId: string, itemId: string) => options.api.discardItemReply(threadId, itemId),
     [IPC.dismissItem]: (threadId: string, itemId: string) => options.api.dismissItem(threadId, itemId),
+    [IPC.holdVisualComment]: (input: Parameters<StrataApi['holdVisualComment']>[0]) => options.api.holdVisualComment(input),
+    [IPC.actVisualComment]: (id: string, action: Parameters<StrataApi['actVisualComment']>[1]) => options.api.actVisualComment(id, action),
     [IPC.startConversationTurn]: (threadId: string, input: Parameters<StrataApi['startConversationTurn']>[1]) => options.api.startConversationTurn(threadId, input),
     [IPC.stageConversationAttachment]: (input: Parameters<StrataApi['stageConversationAttachment']>[0]) => options.api.stageConversationAttachment(input),
     [IPC.discardConversationAttachment]: (id: string) => options.api.discardConversationAttachment(id),

@@ -62,6 +62,8 @@ function fakeApi(): StrataApi {
     queueItemReply: vi.fn(async () => undefined),
     discardItemReply: vi.fn(async () => undefined),
     dismissItem: vi.fn(async () => undefined),
+    holdVisualComment: vi.fn(async () => 'v_test'),
+    actVisualComment: vi.fn(async () => undefined),
     setTerminalDefault: vi.fn(async () => undefined),
     refreshAccounts: vi.fn(async () => undefined),
     startThreadFromDocument: vi.fn(async () => 'thread-new'),

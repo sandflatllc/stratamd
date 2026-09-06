@@ -1,6 +1,6 @@
 # StrataMD product requirements
 
-Status: draft v28 · 2026-09-05 · personal Linux and macOS tool
+Status: draft v29 · 2026-09-05 · personal Linux and macOS tool
 
 ## 1. Summary
 
@@ -24,7 +24,7 @@ StrataMD runs on the owner's Linux workstation or a Mac on macOS 13 or newer. It
 - Not an IDE. There is no terminal or native code editor; code changes are read-only diffs.
 - Not a general chat client for arbitrary engines. The paired T3 server is the only engine.
 - No Strata-hosted account, cloud storage, or telemetry.
-- No laptop or phone browser client for Strata, document features on the phone, preview hosting, or Outcrop integration in v1.
+- No laptop or phone browser client for Strata, or document features on the phone. Visual review (§6.17) absorbs Outcrop; Outcrop itself is retired.
 - No Windows support, installer, or auto-updater. The Mac build is an unsigned zip.
 - No attempt to preserve every Markdown dialect visually. Unsupported constructs remain raw, byte-preserved blocks.
 
@@ -345,6 +345,19 @@ Each must hold before the product is done. `docs/PRD_CONFORMANCE.md` names the t
 - **Lazy constructs.** Mermaid, Chart.js, and reference-preview code are absent from the ordinary open/typing path unless their construct occurs. A first diagram render completes in under one second against the review fixture; a local Markdown preview opens in under 100 ms.
 - **Network denial.** The renderer content security policy remains unchanged, and network-denial tests observe no Mermaid, chart, image, or preview request.
 
+### 6.17 Visual review
+
+Marking up a screenshot, a photo, or a running page and sending the marks to an agent is a core Strata workflow (decided 2026-09-05; working plan `docs/plans/open/visual-review/`). The user of this feature lives one layer above the code: no visual-review control or label names a file, selector, component, or CSS property. Everything the agent needs to act travels with the comment and appears in no control.
+
+- **Visual comments** are owned by a project, in their own record beside the conversation store, with an engine identity field reserved beside every thread reference and the destination thread recorded per revision. Their id prefix `v_` is accepted by the reply reconciler alongside `c_` and `m_`. Status derives from the record: **held** while a private draft exists, then from the latest revision: **sending**, **send failed**, **sent**, **ready for review** once a reply naming that revision says ready, and **done** once the owner accepts it.
+- **A visual comment is a private draft** with an image anchor until Send. The active conversation when the session opens is the destination; it is shown on the card and switching conversations while writing does not move it. One comment is one independently acceptable request with as many marks as it needs.
+- **The annotation session** is Strata's own interface over an image. A pasted composer image opens it at once; a staged image opens it from its thumbnail. A palette offers Mark, Draw, Arrow, and Erase. Mark is one gesture: click a thing or drag a box; on an image every mark is a region with a plain name. Marks show as chips the owner can remove. The card holds the note, the chips, a context line naming the image or page, the size, and the destination thread, then Hold and Send now. Escape holds what is there and closes.
+- **Hold** moves a staged composer image into the visual evidence store with its marks and the marked version of the capture; the staged upload store no longer holds it. Drafts survive restart. A discarded draft releases images nothing else references; sent comments keep theirs while the comment exists, including after done.
+- **Send** freezes text, marks, adjustments, destination, and evidence as a revision, the way document deliveries are prepared before upload and reused on retry. The marked capture for every capture a mark or stroke sits on travels as an image attachment; identical bytes travel once. Marks and context ride as a `Visual comments` section of the conversation context file. A turn allows eight attachments; Send counts the images it carries plus the context file and any ordinary composer attachments, one comment may take several slots, and a selection over capacity is refused by name and never trimmed or split into several turns. The composer shows a capacity line whenever it holds files or visual comments. Held comments addressed to the thread ride the composer's Send as staged cards; Send now from the session sends one comment as its own turn.
+- **Replies** reference the revision. The structured `reply` verb gains `revision`, `ready`, and an optional `file` for an agent that captured its own screenshot. A ready reply on the latest revision makes the comment ready for review; a reply to an older revision stays readable and changes nothing. Only the owner resolves a visual comment: **Looks right** accepts the latest revision locally without starting a turn; **Still wrong** opens the next private note over the same marks, and the next Send carries it as a new revision.
+- **Where they show.** With a document in the center the Items rail lists visual comments beside its rows with a **Visual** filter; a card carries the status word, the page or image and size, the marked thumbnail, the note, a summary of marks, the latest agent reply, and the actions the status allows. With a conversation in the center, held comments show as staged cards in the composer, and the full list sits behind the conversation header's items control. An agent reply that references a visual comment shows a chip beneath it that opens the card.
+- **A failed Send** leaves a retryable card; retry sends the frozen revision, never a newer draft.
+
 ## 7. Agent contract
 
 This is the complete one-page contract for agents working through T3 threads. It ships verbatim as `stratamd --agent-help`. The bundled skill at `skills/stratamd/SKILL.md` explains the workflow and provides action examples validated against the contract. Its companion `COMPONENTS.md` provides parser-validated rendering examples. The optional `skills/plan-for-review/` skill and `skills/GLOBAL_INSTRUCTIONS.md` rendering notice are distributed separately; setup does not install them or modify global instructions.
@@ -379,6 +392,8 @@ Conversation passage feedback arrives as `conversation-<deliveryId>.md`, headed 
 ```
 
 A message suggestion is feedback for a later answer; message prose stays immutable. Only the owner answers decisions. You may resolve your own non-decision message items. Conversation outcomes arrive on the next owner Send; they do not start a turn themselves.
+
+Visual comments are the owner's marked screenshots. They arrive in the same context file under a Visual comments section: one entry per comment with its id (v_…), revision number, note, marks with plain names and pixel rects, drawings, and the attachment name of each marked screenshot, which travels as an image attachment. Do the change, then reply with {"verb":"reply","anchor":{"item":"v_…"},"revision":N,"text":"…","ready":true}. Ready asks the owner to review; a reply to an earlier revision is kept but does not. Add "file" with an absolute screenshot path when you captured your own. Only the owner accepts or reopens a visual comment.
 
 Use Strata components in completed prose when they organize the answer: a Callout for context, a Verdict for a judgment, and ordinary headings, lists, tables, or Mermaid for structure. Keep components out of the final action block. Put only JSON actions there; use an empty array when there are no actions.
 

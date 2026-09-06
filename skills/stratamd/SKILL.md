@@ -156,7 +156,28 @@ message block with the ids supplied:
 You may resolve your own non-decision message items. Conversation outcomes
 arrive on the owner's next Send; they start no turn themselves.
 
-## 7. Chat beside the block
+## 7. Visual comments
+
+The owner can mark up a screenshot or a captured page and send it to you.
+Each one arrives in the same `conversation-<deliveryId>.md` under a
+`Visual comments` section: its id (`v_…`), the revision number, the note,
+marks with plain names and pixel rects in the named screenshot, drawings,
+and the attachment name of each marked screenshot, which is attached to
+the turn as an image. Read the image beside the entry: the rects and names
+point at what the owner marked.
+
+Do the change, then answer by revision in your final block:
+
+```strata
+[{"verb":"reply","anchor":{"item":"v_example"},"revision":1,"text":"Moved the button into the header row.","ready":true,"file":"/absolute/path/after.png"}]
+```
+
+`ready` asks the owner to review; without it the reply is a note. A reply
+to an earlier revision stays readable but does not make the comment ready.
+`file` is optional and names a screenshot you took yourself. Only the owner
+accepts or reopens a visual comment; `resolve` on one fails.
+
+## 8. Chat beside the block
 
 Everything in the block is already in front of the owner. The prose above
 it carries only what the block does not: one line per action at most, no

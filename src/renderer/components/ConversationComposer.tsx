@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import type { ConversationInput, EngineView, EngineThreadView } from '../../shared/contracts'
+import type { ConversationInput, EngineView, EngineThreadView, VisualCommentView } from '../../shared/contracts'
+import { sendCapacity } from '../../core/visual-comments'
+import { VisualCommentCard } from './VisualCommentCard'
 import { continuationScope, modelDesignation, permitsSelection } from '../../shared/modelSelection'
 import { ProviderGlyph } from './ProviderGlyph'
 import { FolderIcon, FolderGit2Icon, GitBranchIcon } from '../icons/lucide'
@@ -50,9 +52,16 @@ export interface ConversationComposerProps {
   running?: boolean
   onStop?(): void
   onSend(input: ConversationInput): Promise<void>
+  /** Held visual comments addressed to this thread; each rides the next Send as a staged card (docs/plans/open/visual-review). */
+  visualComments?: VisualCommentView[]
+  onOpenVisual?(comment: VisualCommentView): void
+  /** Opens the annotation session over a staged image; a pasted image opens it at once. */
+  onMarkUpImage?(attachment: DraftAttachment): void
+  /** Staged images whose bytes moved into a held visual comment; they leave the list without a discard. */
+  consumedAttachmentIds?: readonly string[]
 }
 
-export function ConversationComposer({ deliveryId, engine, thread, projectId, draftKey, initial, centered = false, queuedCount = 0, reservedAttachments = 0, context, canSendContext = false, workspaceControls, workspace, branch, running = false, onStop, onSend }: ConversationComposerProps) {
+export function ConversationComposer({ deliveryId, engine, thread, projectId, draftKey, initial, centered = false, queuedCount = 0, reservedAttachments = 0, context, canSendContext = false, workspaceControls, workspace, branch, running = false, onStop, onSend, visualComments = [], onOpenVisual, onMarkUpImage, consumedAttachmentIds = [] }: ConversationComposerProps) {
   const [draft] = useState(() => readDraft(draftKey))
   const [text, setText] = useState(draft.text)
   const [attachments, setAttachmentsState] = useState<DraftAttachment[]>(draft.attachments ?? [])
@@ -62,6 +71,13 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
   /** Local storage refused the last draft write; the draft lives in memory until a later write succeeds. */
   const [unsaved, setUnsaved] = useState(false)
   const [storedSelection, setSelection] = useState(draft.selection ?? initial)
+  /** Held visual comments the owner set aside for this Send; they stay held. */
+  const [excludedVisual, setExcludedVisual] = useState<string[]>([])
+  const includedVisual = visualComments.filter((comment) => !excludedVisual.includes(comment.id))
+  // Each included comment carries one marked screenshot per capture its marks or strokes sit on; the same capture travels once.
+  const visualCaptures = new Set(includedVisual.flatMap((comment) => { const referenced = [...new Set([...(comment.draft?.marks ?? []).map((mark) => mark.captureId), ...(comment.draft?.strokes ?? []).map((stroke) => stroke.captureId)])]; return referenced.length ? referenced : comment.captures.slice(0, 1).map((capture) => capture.id) }))
+  const contextFile = reservedAttachments === 1 || includedVisual.length > 0
+  const capacity = sendCapacity({ files: attachments.length, visualImages: visualCaptures.size, visualComments: includedVisual.length, contextFile })
   const [menu, setMenu] = useState<'models' | 'options' | 'access' | null>(null)
   const [busy, setBusy] = useState(false)
   const sending = useRef(false)
@@ -91,8 +107,9 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
   /** Pasted and picked files share one path: accept, stage images with the main process, keep text inline, then save the draft. */
   const stageFiles = async (files: File[], pasted: boolean) => {
     if (canSendContext) { setError('The first turn from a document carries the document; attach files on the next turn.'); return }
-    const { accepted, refusal } = acceptFiles(latestAttachments.current.length, files, reservedAttachments, { pasted })
+    const { accepted, refusal } = acceptFiles(latestAttachments.current.length + visualCaptures.size, files, contextFile ? 1 : 0, { pasted })
     if (refusal) setError(refusal)
+    let opened = false
     for (const entry of accepted) {
       try {
         let next: DraftAttachment
@@ -102,6 +119,8 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
         } else next = { kind: 'text', name: entry.name, text: await entry.file.text() }
         const list = [...latestAttachments.current, next]
         setAttachments(list); persist(text, selection, list)
+        // A pasted screenshot opens the annotation session at once (docs/plans/open/visual-review); a picked file stays an attachment until Mark up.
+        if (pasted && next.kind === 'image' && onMarkUpImage && !opened) { opened = true; onMarkUpImage(next) }
       } catch (failure) { setError(`Could not attach ${entry.name}: ${failure instanceof Error ? failure.message : String(failure)}`) }
     }
   }
@@ -112,6 +131,13 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     if (removed?.kind === 'image') window.strata.discardConversationAttachment(removed.id).catch(() => { /* The startup sweep deletes what a failed discard left behind. */ })
   }
   useEffect(() => { if (centered) input.current?.focus() }, [])
+  // A staged image that became a visual comment has no bytes left to discard; it leaves the draft quietly.
+  useEffect(() => {
+    if (!consumedAttachmentIds.length) return
+    const list = latestAttachments.current.filter((attachment) => attachment.kind !== 'image' || !consumedAttachmentIds.includes(attachment.id))
+    if (list.length === latestAttachments.current.length) return
+    setAttachments(list); persist(text, selection, list)
+  }, [consumedAttachmentIds])
   useEffect(() => {
     if (!storedSelection.model && initial.model) setSelection(initial)
   }, [initial.model])
@@ -146,15 +172,16 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     window.addEventListener('scroll', place, true)
     return () => { observer.disconnect(); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); if (element.matches(':popover-open')) element.hidePopover() }
   }, [menu])
+  const canSend = Boolean(text.trim() || attachments.length || queuedCount || canSendContext || includedVisual.length) && !capacity.refusal
   const send = async () => {
-    if (sending.current || !valid || (!text.trim() && !attachments.length && !queuedCount && !canSendContext)) return
+    if (sending.current || !valid || !canSend) return
     sending.current = true; setBusy(true); setError(''); setMenu(null)
     try {
       const messageId = readDraft(draftKey).messageId ?? deliveryId ?? crypto.randomUUID()
       writeDraft(draftKey, { ...readDraft(draftKey), messageId })
       // The thumbnail stays behind; the main process holds the bytes under the id.
       const outgoing = attachments.map(({ thumbnail: _thumbnail, ...attachment }) => attachment)
-      await onSend({ ...selection, messageId, commandId: `strata-${messageId}`, text: text.trim(), ...(outgoing.length ? { attachments: outgoing } : {}) })
+      await onSend({ ...selection, messageId, commandId: `strata-${messageId}`, text: text.trim(), ...(outgoing.length ? { attachments: outgoing } : {}), ...(includedVisual.length ? { visual: includedVisual.map((comment) => comment.id) } : {}) })
       // The preparation owns the staged images now; clearing the list must not discard them.
       clearDraft(draftKey); setText(''); setAttachments([]); setUnsaved(false)
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'The message could not be sent. Try again.') }
@@ -166,7 +193,14 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
   }}>
     <div className="chat-composer-box">
       {context && <div className="chat-context">{context}</div>}
-      {attachments.length > 0 && <div className="conversation-attachments">{attachments.map((attachment, index) => <div key={attachment.kind === 'image' ? attachment.id : `${attachment.name}:${index}`} className="conversation-attachment-preview" data-kind={attachment.kind}>{attachment.kind === 'image' && <img src={attachment.thumbnail ?? ''} alt="" />}<strong title={attachment.name}>{attachment.name}</strong><button type="button" aria-label={`Remove ${attachment.name}`} disabled={busy} onClick={() => removeAttachment(index)}>×</button></div>)}</div>}
+      {visualComments.length > 0 && <div className="conversation-visual-staged" aria-label="Visual comments in this send">{visualComments.map((comment) => {
+        const included = !excludedVisual.includes(comment.id)
+        return <div key={comment.id} className="conversation-visual-card" data-included={included}>
+          <VisualCommentCard comment={comment} compact actions={{ ...(onOpenVisual ? { onOpen: onOpenVisual } : {}) }} />
+          <button type="button" aria-label={included ? `Set aside ${comment.title}` : `Include ${comment.title}`} title={included ? 'Set aside for this send; it stays held' : 'Include in this send'} disabled={busy} onClick={() => setExcludedVisual((current) => included ? [...current, comment.id] : current.filter((id) => id !== comment.id))}>{included ? '×' : '+'}</button>
+        </div>
+      })}</div>}
+      {attachments.length > 0 && <div className="conversation-attachments">{attachments.map((attachment, index) => <div key={attachment.kind === 'image' ? attachment.id : `${attachment.name}:${index}`} className="conversation-attachment-preview" data-kind={attachment.kind}>{attachment.kind === 'image' && (onMarkUpImage ? <button type="button" className="conversation-attachment-markup" aria-label={`Mark up ${attachment.name}`} title="Mark up this image" disabled={busy} onClick={() => onMarkUpImage(attachment)}><img src={attachment.thumbnail ?? ''} alt="" /></button> : <img src={attachment.thumbnail ?? ''} alt="" />)}<strong title={attachment.name}>{attachment.name}</strong><button type="button" aria-label={`Remove ${attachment.name}`} disabled={busy} onClick={() => removeAttachment(index)}>×</button></div>)}</div>}
       <textarea ref={input} aria-label="Message conversation" placeholder="Ask for changes, send follow-ups, or attach a file" value={text} disabled={busy} onChange={(event) => { setText(event.target.value); persist(event.target.value, selection, latestAttachments.current) }} onKeyDown={(event) => {
         if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); void send() }
       }} onPaste={(event) => {
@@ -198,12 +232,13 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
           if (files.length) void stageFiles(files, false)
         }} /><button type="button" aria-label="Attach file" disabled={busy || canSendContext} onClick={() => fileInput.current?.click()}>＋</button>{running && !busy && onStop
           ? <button className="chat-send chat-stop" type="button" aria-label="Stop" title="Stop the agent" onClick={onStop}><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7" rx="1.5" /></svg></button>
-          : <button className="chat-send" type="submit" aria-label="Send" disabled={busy || !valid || (!text.trim() && !attachments.length && !queuedCount && !canSendContext)}>{busy ? '…' : '↑'}</button>}</div>
+          : <button className="chat-send" type="submit" aria-label="Send" disabled={busy || !valid || !canSend}>{busy ? '…' : '↑'}</button>}</div>
       </div>
     </div>
     {workspaceControls}
     {!workspaceControls && (workspace || branch) && <div className="chat-workspace"><span title={workspace}>{thread?.worktreePath ? <FolderGit2Icon /> : <FolderIcon />}{thread?.worktreePath ? 'Worktree' : 'Current checkout'}{workspace && <small>{thread?.worktreePath ?? workspace}</small>}</span>{branch && <span><GitBranchIcon />{branch}</span>}</div>}
     {queuedCount > 0 && <small>{queuedCount} answers queued</small>}
+    {(attachments.length > 0 || includedVisual.length > 0) && <small className="conversation-capacity" role="status" data-over={capacity.refusal ? '' : undefined}>{capacity.refusal ?? capacity.line}</small>}
     {account?.usable === false && <p role="alert">{account.name} cannot take a turn: {account.reason ?? account.state}. Choose another account.</p>}
     {unsaved && <p className="conversation-draft-unsaved" role="status">This draft could not be saved and will not survive reload.</p>}
     {error && <p className="send-error" role="alert">{error}</p>}

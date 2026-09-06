@@ -9,7 +9,7 @@ import { logError, logWarn } from './log'
 import { isAllowedExternalUrl, openExternalUrl, registerStrataIpc, spellingContext, type RegisteredIpc } from './ipc'
 import { IPC } from '../preload/channels'
 import { documentPathsFromArgv } from './session'
-import { APP_HOST, installAppProtocol, installLocalImageProtocol, registerPrivilegedSchemes } from './protocols'
+import { APP_HOST, installAppProtocol, installLocalImageProtocol, installVisualImageProtocol, registerPrivilegedSchemes } from './protocols'
 
 export interface MainApplication extends StrataApi {
   recheckFocused?(): Promise<void>
@@ -18,6 +18,8 @@ export interface MainApplication extends StrataApi {
   restoreOpenDocuments?(): Promise<string[]>
   /** Open documents whose buffer differs from the file; the close prompt asks about these. */
   dirtyDocumentPaths?(): string[]
+  /** Bytes for a visual evidence id or a staged composer image, for the strata-visual protocol. */
+  readVisualImage?(kind: 'evidence' | 'staged', id: string): Promise<{ bytes: Uint8Array; mimeType: string } | null>
 }
 
 export type DirtyCloseChoice = 'save' | 'discard' | 'cancel'
@@ -167,6 +169,7 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
       return imageRoots(view)
     }
   })
+  installVisualImageProtocol({ read: async (kind, id) => options.api.readVisualImage ? options.api.readVisualImage(kind, id) : null })
 
   const createWindow = async (): Promise<BrowserWindow> => {
     const initialState = await options.api.getState()

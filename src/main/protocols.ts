@@ -8,6 +8,7 @@ export const APP_SCHEME = 'app'
 export const APP_HOST = 'stratamd'
 export const LOCAL_IMAGE_SCHEME = 'strata-image'
 export const LOCAL_IMAGE_HOST = 'local'
+export const VISUAL_IMAGE_SCHEME = 'strata-visual'
 
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self' app:",
@@ -16,7 +17,7 @@ const CONTENT_SECURITY_POLICY = [
   "font-src 'self' app:",
   "form-action 'none'",
   "frame-ancestors 'none'",
-  "img-src 'self' app: strata-image: data:",
+  "img-src 'self' app: strata-image: strata-visual: data:",
   "media-src 'none'",
   "object-src 'none'",
   "script-src 'self' 'wasm-unsafe-eval'",
@@ -42,6 +43,17 @@ export function registerPrivilegedSchemes(): void {
         secure: true,
         supportFetchAPI: false,
         corsEnabled: false,
+        stream: true
+      }
+    },
+    {
+      scheme: VISUAL_IMAGE_SCHEME,
+      privileges: {
+        standard: true,
+        secure: true,
+        supportFetchAPI: false,
+        // The session draws these images onto a canvas to bake the marks in; without CORS the canvas would be tainted and could not export.
+        corsEnabled: true,
         stream: true
       }
     }
@@ -99,6 +111,37 @@ export interface LocalImageProtocolOptions {
 
 export function installLocalImageProtocol(options: LocalImageProtocolOptions): void {
   protocol.handle(LOCAL_IMAGE_SCHEME, async (request) => serveLocalImage(request, options))
+}
+
+export interface VisualImageProtocolOptions {
+  /** Bytes for a piece of visual evidence or a staged composer image, or null when it is gone. */
+  read(kind: 'evidence' | 'staged', id: string): Promise<{ bytes: Uint8Array; mimeType: string } | null>
+}
+
+/** Visual evidence and staged composer images (docs/plans/open/visual-review): served by id from the data directory, never by path. */
+export function installVisualImageProtocol(options: VisualImageProtocolOptions): void {
+  protocol.handle(VISUAL_IMAGE_SCHEME, async (request) => {
+    const url = new URL(request.url)
+    if (request.method !== 'GET' || (url.host !== 'evidence' && url.host !== 'staged')) return forbidden()
+    const id = decodeURIComponent(url.pathname.slice(1))
+    if (!/^[ae]_[0-9a-f-]{36}$/u.test(id)) return forbidden()
+    try {
+      const image = await options.read(url.host, id)
+      if (!image) return notFound()
+      return new Response(Buffer.from(image.bytes), {
+        status: 200,
+        headers: {
+          'Access-Control-Allow-Origin': `${APP_SCHEME}://${APP_HOST}`,
+          'Cache-Control': 'no-store',
+          'Content-Security-Policy': "sandbox; default-src 'none'",
+          'Content-Type': image.mimeType,
+          'X-Content-Type-Options': 'nosniff'
+        }
+      })
+    } catch {
+      return forbidden()
+    }
+  })
 }
 
 export function localImageUrl(path: string): string {

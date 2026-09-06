@@ -36,6 +36,8 @@ export const IPC = {
   queueItemReply: 'strata:queue-item-reply',
   discardItemReply: 'strata:discard-item-reply',
   dismissItem: 'strata:dismiss-item',
+  holdVisualComment: 'strata:hold-visual-comment',
+  actVisualComment: 'strata:act-visual-comment',
   startConversationTurn: 'strata:start-conversation-turn',
   stageConversationAttachment: 'strata:stage-conversation-attachment',
   discardConversationAttachment: 'strata:discard-conversation-attachment',

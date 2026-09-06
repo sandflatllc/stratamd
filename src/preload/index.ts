@@ -107,6 +107,8 @@ const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyn
   queueItemReply: (threadId, itemId, text) => invoke<void>(IPC.queueItemReply, threadId, itemId, text),
   discardItemReply: (threadId, itemId) => invoke<void>(IPC.discardItemReply, threadId, itemId),
   dismissItem: (threadId, itemId) => invoke<void>(IPC.dismissItem, threadId, itemId),
+  holdVisualComment: (input) => invoke<string>(IPC.holdVisualComment, input),
+  actVisualComment: (id, action) => invoke<void>(IPC.actVisualComment, id, action),
   startConversationTurn: (threadId, input) => invoke<void>(IPC.startConversationTurn, threadId, input),
   stageConversationAttachment: (input) => invoke<{ id: string; sizeBytes: number }>(IPC.stageConversationAttachment, input),
   discardConversationAttachment: (id) => invoke<void>(IPC.discardConversationAttachment, id),

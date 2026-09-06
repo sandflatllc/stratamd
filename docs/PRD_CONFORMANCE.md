@@ -1,6 +1,6 @@
 # PRD conformance ledger
 
-`docs/PRD.md`, draft v28 dated 2026-09-05, is the source of truth. This ledger maps the cockpit amendment and retains the full AGENTS.md gate as the release condition. Reading tools live in PRD §6.14, conversation reading and passage comments in §6.15, and the performance and security budgets in §6.16; their evidence is listed under the §6.9 left-window row and the conversation tables below.
+`docs/PRD.md`, draft v29 dated 2026-09-05, is the source of truth. This ledger maps the cockpit amendment and retains the full AGENTS.md gate as the release condition. Reading tools live in PRD §6.14, conversation reading and passage comments in §6.15, and the performance and security budgets in §6.16; their evidence is listed under the §6.9 left-window row and the conversation tables below.
 
 Verification keys:
 
@@ -42,6 +42,16 @@ Verification keys:
 The first review used only fake-data captures and was invalidated when the owner opened the installed package: the newest finished turn was expanded, 145 summary icons overflowed the side pane, every command was labeled `Ran bash`, and the turn's work was detached from the prose it followed. The plan returned to open until those defects were corrected.
 
 The reviewing agent then rebuilt and opened `dist/linux-unpacked/stratamd-app` with the owner's restored tabs and live T3 thread, captured Projects and Conversation at the owner's desktop size, and exercised the owner-supplied three work-call states in that package. The 145 calls now form 18 timestamp-ordered disclosures between their corresponding prose. Every finished disclosure starts collapsed, uses one action summary and one icon, and expands first to compact call rows and then to indented raw detail. Shell wrappers are removed, so rows name the actual program (`Ran stratamd`, `Ran git`) instead of `Ran bash`. Projects retains the reference hierarchy and density: search, compact heading, project folders, one-line status/title/time rows, and lifecycle shelves. The installed launcher resolves to this rebuilt package. Result: pass after packaged-app correction.
+
+## Visual review (§6.17)
+
+Working plan: `docs/plans/open/visual-review/STRATA_ABSORPTION_PLAN.md`, with its review checklist per phase.
+
+| Phase | Requirement | Verification |
+|---|---|---|
+| 1 | Status derivation, plain-word place, summary, and title, the delivery budget line and refusal, the brief in the context file, and a view that carries no identity. | `U` `test/unit/visual-comments.test.ts` |
+| 1 | Hold moves a staged image into the evidence store and survives a restart; Send freezes a revision, carries the marked screenshot and the brief, and is acknowledged; a reply by revision with ready, a resolve refused as owner-only, Looks right without a turn, Still wrong as the next revision, a late reply to an earlier revision changing nothing; a selection over capacity refused by name; a failed Send retried with the frozen revision; discarding releases evidence. | `U` `test/unit/engine-visual-comments.test.ts`; `U` `test/unit/blocks.test.ts` (reply fields), `test/unit/cli.test.ts` (§7 and the skill examples) |
+| 1 | With no document open and a conversation centered, a pasted image opens the session with Mark, Draw, Arrow, Erase and a card naming the destination thread; Hold then relaunch keeps the comment, image, and marks with the staged store empty; the capacity line beside three staged files; Send now, a ready reply moving the Items card, Looks right without a turn, Still wrong sending a new revision, a late reply leaving the card unchanged; a failed Send left retryable. | `E` `test/e2e/visual-comments.spec.ts` |
 
 ## §6.12 scenarios
 

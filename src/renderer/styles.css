@@ -2000,3 +2000,101 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .workspace-controls > button { flex-shrink: 0; }
 
 .usage-chart canvas { width: 100% !important; height: 100% !important; }
+
+/* Visual review (docs/plans/open/visual-review): the annotation session, its card, and visual comment rows. New surfaces only; existing panels keep their styles. */
+.visual-session { position: fixed; inset: 0; z-index: 90; background: color-mix(in srgb, var(--surfaces-window) 90%, transparent); color: var(--text); }
+.visual-palette { position: absolute; top: 14px; left: 50%; z-index: 2; display: flex; gap: 2px; align-items: center; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); box-shadow: 0 8px 24px var(--shadow); transform: translateX(-50%); }
+.visual-palette button { display: inline-flex; gap: 6px; align-items: center; padding: 6px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--dim); font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.visual-palette button kbd { font-family: var(--font-code); font-size: 10px; color: var(--muted); }
+.visual-palette button[aria-pressed="true"] { background: color-mix(in srgb, var(--controls-primary-highlight) 16%, transparent); color: var(--controls-primary-highlight); }
+.visual-palette-hint { padding: 0 10px; color: var(--muted); font-size: 12px; }
+.visual-stage { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; padding: 64px 448px 24px 24px; }
+.visual-surface { position: relative; box-shadow: 0 20px 60px var(--shadow); user-select: none; touch-action: none; background: var(--card); }
+.visual-session[data-tool="mark"] .visual-surface, .visual-session[data-tool="draw"] .visual-surface, .visual-session[data-tool="arrow"] .visual-surface { cursor: crosshair; }
+.visual-session[data-tool="erase"] .visual-surface { cursor: cell; }
+.visual-surface img { display: block; }
+.visual-ink { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.visual-stroke path { fill: none; stroke: var(--controls-danger); stroke-width: 4px; stroke-linecap: round; stroke-linejoin: round; }
+.visual-mark rect { fill: color-mix(in srgb, var(--controls-primary) 10%, transparent); stroke: var(--controls-primary); stroke-width: 2px; }
+.visual-mark[data-kind="region"] rect { fill: color-mix(in srgb, var(--controls-danger) 8%, transparent); stroke: var(--controls-danger); stroke-dasharray: 8 6; }
+.visual-mark[data-selected] rect { stroke-width: 3px; }
+.visual-drag { fill: color-mix(in srgb, var(--controls-danger) 8%, transparent); stroke: var(--controls-danger); stroke-dasharray: 6 4; stroke-width: 2px; }
+.visual-mark-label { position: absolute; transform: translateY(calc(-100% - 2px)); padding: 2px 8px; border-radius: 6px; background: var(--controls-primary); color: var(--controls-primary-text); font-size: 11.5px; font-weight: 700; white-space: nowrap; pointer-events: none; }
+.visual-mark-label[data-kind="region"] { background: var(--controls-danger); color: var(--controls-danger-text); }
+.visual-card { position: absolute; right: 24px; bottom: 24px; z-index: 2; display: grid; gap: 10px; width: min(400px, calc(100% - 48px)); padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); box-shadow: 0 14px 36px var(--shadow); font-size: 13.5px; line-height: 1.4; }
+.visual-card textarea { width: 100%; min-height: 64px; max-height: 40vh; field-sizing: content; resize: none; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surfaces-field); color: var(--text); font: inherit; outline: none; }
+.visual-card textarea:focus { border-color: var(--controls-focus); }
+.visual-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.visual-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--card-2); color: var(--controls-primary-highlight); font-size: 11px; font-weight: 700; }
+.visual-chip[data-kind="region"] { color: var(--controls-danger); }
+.visual-chip[data-kind="stroke"] { color: var(--dim); }
+.visual-chip[data-selected] { border-color: var(--controls-primary); }
+.visual-chip b { color: var(--controls-positive); font-weight: 600; font-size: 10.5px; }
+.visual-chip button { padding: 0 2px; border: 0; background: transparent; color: var(--muted); font: inherit; cursor: pointer; }
+.visual-card footer { display: flex; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+.visual-context { flex: 1; color: var(--dim); font-size: 11px; line-height: 1.3; }
+.visual-context b { color: var(--text); }
+.visual-notice { margin: 0; padding: 6px 9px; border-radius: 8px; background: color-mix(in srgb, var(--controls-warning) 16%, transparent); color: var(--text); font-size: 12px; }
+.visual-adjustments { display: grid; gap: 4px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; }
+.visual-adjustments > header { display: flex; align-items: center; color: var(--dim); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.visual-adjustments > header span { margin-left: auto; color: var(--controls-positive); text-transform: none; letter-spacing: 0; font-size: 11.5px; }
+.visual-adjustment { display: grid; grid-template-columns: 96px 1fr; gap: 8px; align-items: center; padding: 3px 0; }
+.visual-stepper { display: inline-flex; align-items: center; gap: 8px; }
+.visual-stepper button { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--text); font: inherit; font-weight: 700; cursor: pointer; }
+.visual-stepper b { min-width: 100px; text-align: center; color: var(--controls-positive); font-weight: 700; }
+.visual-swatches { display: inline-flex; gap: 6px; }
+.visual-swatches button { width: 22px; height: 22px; padding: 0; border: 2px solid var(--line); border-radius: 6px; cursor: pointer; }
+.visual-swatches button[aria-pressed="true"] { border-color: var(--text); }
+.visual-adjustment-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.visual-adjustment-actions button { padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--text); font: inherit; font-size: 11.5px; cursor: pointer; }
+.visual-card-row { position: relative; margin: 0 0 10px; padding: 10px 12px 10px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--dim); font-size: calc(12.5px * var(--zoom, 1)); line-height: 1.35; }
+.visual-card-row::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: var(--controls-primary); }
+.visual-card-row[data-status="ready"]::before, .visual-card-row[data-status="done"]::before { background: var(--controls-positive); }
+.visual-card-row[data-status="failed"]::before { background: var(--controls-danger); }
+.visual-card-row[data-status="done"] { opacity: .75; }
+.visual-card-row[data-compact] { margin: 0; }
+.visual-card-row > header { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; color: var(--controls-primary-highlight); font-size: calc(10.5px * var(--zoom, 1)); font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.visual-card-row[data-status="ready"] > header, .visual-card-row[data-status="done"] > header { color: var(--controls-positive); }
+.visual-status { margin-left: auto; padding: 1px 7px; border-radius: 999px; background: var(--card-2); color: var(--dim); letter-spacing: 0; text-transform: none; }
+.visual-where { margin-bottom: 4px; color: var(--dim); font-size: calc(11.5px * var(--zoom, 1)); font-weight: 700; }
+.visual-body { display: flex; gap: 10px; }
+.visual-thumb { flex: none; width: 64px; height: 44px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--card-2); overflow: hidden; cursor: pointer; }
+.visual-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.visual-text { color: var(--text); overflow-wrap: anywhere; }
+.visual-text em { color: var(--muted); }
+.visual-meta { margin-top: 6px; color: var(--controls-primary-highlight); font-size: calc(11.5px * var(--zoom, 1)); font-weight: 700; }
+.visual-reply { margin-top: 8px; padding: 7px 9px; border-radius: 8px; background: var(--card-2); color: var(--text); font-size: calc(12px * var(--zoom, 1)); }
+.visual-reply small { display: block; margin-bottom: 2px; color: var(--dim); font-size: calc(10.5px * var(--zoom, 1)); font-weight: 700; }
+.visual-error { margin: 6px 0 0; color: var(--controls-danger); }
+.visual-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.visual-actions button { padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--text); font: inherit; font-size: calc(11.5px * var(--zoom, 1)); font-weight: 700; cursor: pointer; }
+.visual-actions button:hover { border-color: var(--controls-primary); }
+.visual-action-positive { color: var(--controls-positive) !important; border-color: color-mix(in srgb, var(--controls-positive) 50%, transparent) !important; }
+.visual-action-danger { color: var(--controls-danger) !important; border-color: color-mix(in srgb, var(--controls-danger) 50%, transparent) !important; }
+.visual-action-quiet { color: var(--muted) !important; }
+.visual-accepted { color: var(--controls-positive); font-weight: 700; }
+.visual-pair { display: flex; gap: 8px; margin-top: 6px; }
+.visual-pair > div { position: relative; flex: 1; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: var(--card-2); }
+.visual-pair > div > small { position: absolute; top: 4px; left: 6px; padding: 0 5px; border-radius: 4px; background: var(--card); color: var(--dim); font-size: calc(10px * var(--zoom, 1)); font-weight: 700; }
+.visual-pair img { display: block; width: 100%; height: auto; }
+.visual-pair-note { margin: 6px 0 0; color: var(--dim); font-size: calc(11.5px * var(--zoom, 1)); }
+.visual-panel { position: fixed; right: 24px; bottom: 24px; z-index: 85; width: min(440px, calc(100% - 48px)); max-height: 72vh; overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); box-shadow: 0 14px 36px var(--shadow); }
+.visual-panel > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.visual-history { margin: 10px 0 0; padding: 0 0 0 16px; color: var(--dim); font-size: 12.5px; }
+.visual-history li { margin: 6px 0; }
+.visual-history p { margin: 3px 0; color: var(--text); }
+.visual-history-reply { padding: 5px 8px; border-radius: 6px; background: var(--card-2); }
+.visual-history-reply small { display: block; color: var(--dim); font-weight: 700; }
+.conversation-visual-staged { display: grid; gap: 6px; margin-bottom: 10px; }
+.conversation-visual-card { position: relative; }
+.conversation-visual-card[data-included="false"] { opacity: .55; }
+.conversation-visual-card > button { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font: inherit; font-size: calc(16px * var(--zoom, 1)); line-height: 1; cursor: pointer; }
+.conversation-visual-card .visual-status { margin-right: 22px; }
+.conversation-capacity { display: block; margin: 4px 12px 0; color: var(--muted); }
+.conversation-capacity[data-over] { color: var(--controls-danger); }
+.conversation-visual-replies { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.conversation-visual-reply { display: inline-flex; gap: 6px; align-items: center; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--text); font: inherit; font-size: calc(12px * var(--zoom, 1)); cursor: pointer; }
+.conversation-visual-reply em { color: var(--controls-positive); font-style: normal; }
+.conversation-visual-item em { margin-left: 6px; color: var(--controls-positive); font-style: normal; }
+.conversation-attachment-markup { width: 30px; height: 30px; padding: 0; border: 0; border-radius: 5px; background: var(--card-2); overflow: hidden; cursor: pointer; }
+.conversation-attachment-markup img { display: block; width: 30px; height: 30px; object-fit: cover; }

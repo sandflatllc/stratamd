@@ -200,6 +200,8 @@ export interface EngineMessageView {
   /** Immutable markdown blocks, namespaced by the stable message id. */
   blocks?: Array<{ id: string; from: number; to: number; text: string }>
   prose?: string
+  /** Visual comments this completed reply answered, from its strata block; the conversation shows a chip for each. */
+  visualReplies?: Array<{ id: string; revision?: number; ready: boolean }>
 }
 
 export interface EngineActivityView {
@@ -249,6 +251,8 @@ export interface ConversationInput {
   options?: ModelOption[]
   /** At most 8 with Strata's generated context file (§6.0); images reference bytes the main process staged. */
   attachments?: ConversationAttachment[]
+  /** Held visual comments to send: each freezes one revision and carries its marked screenshots. */
+  visual?: string[]
 }
 
 /** A file the composer sends with a turn: text travels inline, an image by the id the main process staged it under. */
@@ -321,7 +325,132 @@ export interface EngineProjectView {
   workspaceRoot: string
   defaultModelSelection?: { instanceId: string; model: string; options?: ModelOption[] } | null
   threads: EngineThreadView[]
+  /** Visual comments owned by this project: private drafts and sent revisions over an image or a captured page. */
+  visualComments?: VisualCommentView[]
 }
+
+// ---- Visual comments (docs/plans/open/visual-review)
+
+export type VisualStatus = 'held' | 'sending' | 'failed' | 'sent' | 'ready' | 'done'
+
+export interface VisualRectView { x: number; y: number; width: number; height: number }
+export interface VisualPointView { x: number; y: number }
+
+/** One marked thing as the owner sees it: a plain name, where it sits on the capture, and whether Strata can find it right now. */
+export interface VisualMarkView {
+  id: string
+  kind: 'element' | 'region'
+  label: string
+  captureId: string
+  rect: VisualRectView
+  found: boolean | null
+}
+
+export interface VisualStrokeView {
+  id: string
+  tool: 'draw' | 'arrow'
+  captureId: string
+  points: VisualPointView[]
+}
+
+/** A requested change on one mark; `label` is the owner's plain words, the property and value are for the record. */
+export interface VisualAdjustmentView {
+  markId: string
+  property: string
+  value: string
+  label: string
+}
+
+export interface VisualCaptureView {
+  id: string
+  url: string
+  width: number
+  height: number
+  scroll?: VisualPointView
+}
+
+export interface VisualDestinationView { threadId: string; threadTitle: string }
+
+export interface VisualReplyView {
+  messageId: string
+  text: string
+  ready: boolean
+  file?: string
+  at: number
+}
+
+export interface VisualComparisonView {
+  thenUrl: string
+  nowUrl: string | null
+  note: string | null
+  takenAt: number
+}
+
+export interface VisualRevisionView {
+  number: number
+  text: string
+  marks: VisualMarkView[]
+  strokes: VisualStrokeView[]
+  adjustments: VisualAdjustmentView[]
+  destination: VisualDestinationView
+  captures: string[]
+  deliveryId: string
+  sentAt: number
+  state: 'sending' | 'sent' | 'failed'
+  error?: string
+  replies: VisualReplyView[]
+  accepted: boolean
+  comparison?: VisualComparisonView
+}
+
+export interface VisualDraftView {
+  text: string
+  marks: VisualMarkView[]
+  strokes: VisualStrokeView[]
+  adjustments: VisualAdjustmentView[]
+  destination: VisualDestinationView
+  updatedAt: number
+}
+
+export type VisualAnchorView =
+  | { kind: 'image'; name: string }
+  | { kind: 'page'; url: string; title: string; instance: string; preset: string | null; viewport: { width: number; height: number } }
+
+export interface VisualCommentView {
+  id: string
+  projectId: string
+  status: VisualStatus
+  /** The status in plain words: held, sending, send failed, sent, ready for review, done. */
+  statusLabel: string
+  /** The page or image and the size, in plain words. */
+  place: string
+  anchor: VisualAnchorView
+  title: string
+  summary: string
+  thumbnail: string | null
+  captures: VisualCaptureView[]
+  draft?: VisualDraftView
+  revisions: VisualRevisionView[]
+  createdAt: number
+  updatedAt: number
+}
+
+/** What the session hands the main process on Hold: the draft and the marked captures it rendered. */
+export interface HoldVisualCommentInput {
+  id?: string
+  projectId: string
+  threadId: string
+  /** A staged composer image to open the comment over; its bytes move into the evidence store. */
+  source?: { staged: string; name: string; width: number; height: number }
+  text: string
+  marks: VisualMarkView[]
+  strokes: VisualStrokeView[]
+  adjustments: VisualAdjustmentView[]
+  /** The captures with marks drawn on, as PNG bytes, keyed by capture id; a source image is keyed by its staged id. */
+  marked: Array<{ captureId: string; bytes: Uint8Array }>
+}
+
+export type VisualCommentAction = 'accept' | 'reopen' | 'discard' | 'retry'
 
 /** A usage window the provider reports or Strata last measured (§5.13). */
 export interface UsageWindowView {
@@ -804,6 +933,10 @@ export interface StrataApi {
   discardItemReply(threadId: string, itemId: string): Promise<void>
   /** Hides an inferred item; remembered per message (§5.12). */
   dismissItem(threadId: string, itemId: string): Promise<void>
+  /** Holds a visual comment privately: creates it over a staged image or updates its draft, and keeps the marked captures as evidence. */
+  holdVisualComment(input: HoldVisualCommentInput): Promise<string>
+  /** Looks right (accept), Still wrong (reopen), discard the draft, or retry a failed send. Accept starts no turn. */
+  actVisualComment(id: string, action: VisualCommentAction): Promise<void>
   stopConversationTurn(threadId: string): Promise<void>
   answerEngineApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
   answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>

@@ -14,8 +14,13 @@ test.describe('view sync', () => {
       await scenario.atomicWrite(scenario.file, '# Sync\n\nFirst paragraph edited.\n\nSecond paragraph reworked.\n')
       await expect(page.getByText('Second paragraph reworked.').first()).toBeVisible()
 
-      // Toggle source and back, waiting for each mode, then edit again to
-      // force further full-document publishes.
+      // setSource left the editor in source mode and Save left focus on the
+      // toolbar, so each press below reaches the window shortcut, which toggles
+      // from the confirmed mode. Return to visual first, then toggle to source
+      // and back, waiting for each mode; then edit again to force further
+      // full-document publishes.
+      await page.keyboard.press(primaryKey('/'))
+      await expect(page.getByRole('textbox', { name: /document editor/i })).toBeVisible()
       await page.keyboard.press(primaryKey('/'))
       await expect(page.getByRole('textbox', { name: /source editor/i })).toBeVisible()
       await page.keyboard.press(primaryKey('/'))

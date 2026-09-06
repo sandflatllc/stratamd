@@ -878,6 +878,22 @@ export class StrataApplication implements StrataApi {
     await this.#engine.dismissItem(threadId, itemId)
   }
 
+  async holdVisualComment(input: Parameters<StrataApi['holdVisualComment']>[0]): Promise<string> {
+    if (!this.#engine.holdVisualComment) throw new Error('This engine cannot hold visual comments')
+    return this.#engine.holdVisualComment(input)
+  }
+
+  async actVisualComment(id: string, action: Parameters<StrataApi['actVisualComment']>[1]): Promise<void> {
+    if (!this.#engine.actVisualComment) throw new Error('This engine cannot update visual comments')
+    await this.#engine.actVisualComment(id, action)
+  }
+
+  /** Bytes behind a strata-visual URL: a piece of evidence or a staged composer image. */
+  async readVisualImage(kind: 'evidence' | 'staged', id: string): Promise<{ bytes: Uint8Array; mimeType: string } | null> {
+    if (!this.#engine.readVisualImage) return null
+    return this.#engine.readVisualImage(kind, id)
+  }
+
   async stopConversationTurn(threadId: string): Promise<void> {
     await this.#engine.interrupt(threadId)
   }
@@ -965,7 +981,7 @@ export class StrataApplication implements StrataApi {
       if ('anchor' in entry) {
         if ('message' in entry.anchor) continue
         if ('document' in entry.anchor && entry.anchor.document !== session.path) continue
-        if ('item' in entry.anchor && (entry.anchor.item.startsWith('c_') || entry.anchor.item.startsWith('m_') || [...this.#sessions.values()].some(other => other !== session && other.annotations.annotations[(entry.anchor as { item: string }).item]))) continue
+        if ('item' in entry.anchor && (entry.anchor.item.startsWith('c_') || entry.anchor.item.startsWith('m_') || entry.anchor.item.startsWith('v_') || [...this.#sessions.values()].some(other => other !== session && other.annotations.annotations[(entry.anchor as { item: string }).item]))) continue
       }
       if ('document' in entry && entry.document !== session.path) continue
       try {
