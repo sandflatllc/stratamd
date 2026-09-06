@@ -68,7 +68,7 @@ export function VisualCommentCard({ comment, actions = {}, compact = false, chil
 }
 
 /** The full card with its revision history, opened from the conversation's items menu or a reply chip. */
-export function VisualCommentPanel({ comment, actions, onClose }: { comment: VisualCommentView; actions: VisualCardActions; onClose(): void }) {
+export function VisualCommentPanel({ comment, actions, notice, onOpenPage, onClose }: { comment: VisualCommentView; actions: VisualCardActions; notice?: string | null; onOpenPage?: (() => void) | undefined; onClose(): void }) {
   const now = useClock()
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
@@ -82,6 +82,7 @@ export function VisualCommentPanel({ comment, actions, onClose }: { comment: Vis
   return (
     <section className="visual-panel" role="dialog" aria-label="Visual comment">
       <header><strong>Visual comment</strong><button type="button" className="popover-close" aria-label="Close visual comment" onClick={onClose}>×</button></header>
+      {notice && <p className="visual-notice" role="status">{notice}{onOpenPage && <> <button type="button" className="visual-notice-action" onClick={onOpenPage}>Open the page</button></>}</p>}
       <VisualCommentCard comment={comment} actions={actions} />
       {comment.revisions.length > 0 && <ol className="visual-history" aria-label="Sends">
         {[...comment.revisions].reverse().map((revision) => <li key={revision.number}>

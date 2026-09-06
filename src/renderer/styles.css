@@ -2035,6 +2035,16 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .visual-context { flex: 1; color: var(--dim); font-size: 11px; line-height: 1.3; }
 .visual-context b { color: var(--text); }
 .visual-notice { margin: 0; padding: 6px 9px; border-radius: 8px; background: color-mix(in srgb, var(--controls-warning) 16%, transparent); color: var(--text); font-size: 12px; }
+.visual-notice-action { margin-left: 6px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--controls-primary-highlight); font: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer; }
+/* Annotate on a page: the session sits over the preview stage, where the live view was, and the page keeps running beneath.
+   The picture takes the stage and the card sits under it, so no part of the page is ever hidden behind the card. */
+.preview-stage .visual-session { position: absolute; inset: 0; z-index: 5; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.preview-stage .visual-session .visual-palette { position: static; justify-self: center; margin: 10px 12px 0; transform: none; flex-wrap: wrap; justify-content: center; }
+.preview-stage .visual-session .visual-stage { position: relative; inset: auto; padding: 12px 16px; }
+.preview-stage .visual-session .visual-card { position: static; width: auto; max-height: 45%; overflow: auto; margin: 0 12px 12px; }
+.visual-stage[data-scrolling] { cursor: progress; }
+.visual-chip[data-elsewhere] { opacity: 0.7; }
+.visual-chip[data-elsewhere]::before { content: "↕ "; }
 .visual-adjustments { display: grid; gap: 4px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; }
 .visual-adjustments > header { display: flex; align-items: center; color: var(--dim); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .visual-adjustments > header span { margin-left: auto; color: var(--controls-positive); text-transform: none; letter-spacing: 0; font-size: 11.5px; }

@@ -32,6 +32,9 @@ import type {
   WalkthroughAction,
   HeadingReference,
   LocalMarkdownPreview,
+  VisualPageCapture,
+  VisualPageProposal,
+  VisualShowResult,
   LocalImageResolution,
   PairEngineRequest,
   QuickSendRequest,
@@ -149,6 +152,14 @@ import { CURRENT_META_VERSION, DEFAULT_LOCK_TIMEOUT_MS, GhostStore, type Attachm
 import { DebouncedMirror, HashReconciler, WatchCoordinator, watchDirectory, type DirectorySubscription } from './watcher'
 import { T3EngineClient, type EngineReadClient } from './engine/client'
 import { PreviewHost } from './preview/host'
+import { visualSendRefusal, type VisualCommentRecord } from '../core/visual-comments'
+import { visualImageUrl } from '../shared/visual-urls'
+
+/** The same page, ignoring the fragment: a hash change is not navigation away. */
+function samePage(current: string, original: string): boolean {
+  const strip = (value: string) => value.replace(/#.*$/, '')
+  return strip(current) === strip(original)
+}
 
 /** The theme problem key under which a failed file write is reported (plan 4.14). */
 const THEME_WRITE_PROBLEM_KEY = 'write'
@@ -334,7 +345,7 @@ export class StrataApplication implements StrataApi {
     })
     this.#engine = options.engine ?? new T3EngineClient({
       dataDirectory: this.#store.dataDirectory, now: this.#now,
-      previewHost: { operations: this.#preview.operations, handle: (request) => this.#preview.handle(request), setRegistered: (registered) => this.#preview.setRegistered(registered) },
+      previewHost: { operations: this.#preview.operations, handle: (request) => this.#preview.handle(request), setRegistered: (registered) => this.#preview.setRegistered(registered), recheckVisual: (comment) => this.#recheckVisual(comment) },
       // Terminal launchers are scripts Strata writes on Linux (§5.13); macOS gets none.
       terminalShimDirectory: isDarwin() ? null : join(this.#store.dataDirectory, 'bin'),
       ...(options.notifications ? { isFocused: () => options.notifications!.isFocused(), notify: (notification) => options.notifications!.notify(notification) } : {}),
@@ -950,6 +961,63 @@ export class StrataApplication implements StrataApi {
   /** Test probe: a real input landing in a tab, the path an owner's click takes. */
   previewHumanInput(tabId: string, point: { x: number; y: number }): void {
     this.#preview.humanInput(tabId, point)
+  }
+
+  // ---- Marking up a running page (docs/plans/open/visual-review, phase 3)
+
+  /** Annotate: the current frame goes into the evidence store and comes back with the page it was taken from. */
+  async capturePreviewFrame(tabId: string): Promise<VisualPageCapture> {
+    if (!this.#engine.storeVisualCapture) throw new Error('This engine cannot keep captures')
+    const frame = await this.#preview.captureFrame(tabId)
+    if (frame.width === 0 || frame.height === 0) throw new Error('The page gave no picture to mark up. Try again once it has drawn.')
+    const id = await this.#engine.storeVisualCapture({ bytes: frame.bytes, width: frame.width, height: frame.height })
+    return { tabId, capture: { id, url: visualImageUrl('evidence', id), width: frame.width, height: frame.height, scroll: frame.scroll, scale: frame.scale }, page: frame.page }
+  }
+
+  /** What the live page says is at a point or in a box, in page pixels; the identity rides along for the record. */
+  async describePreview(tabId: string, target: { point: { x: number; y: number } } | { rect: { x: number; y: number; width: number; height: number } }): Promise<VisualPageProposal | null> {
+    const described = await this.#preview.describe(tabId, target)
+    if (!described) return null
+    const identity = described.identity
+    return { kind: described.kind, label: described.label, rect: described.rect, found: described.kind === 'element', ...(identity ? { identity: { role: identity.role, name: identity.name, text: identity.text, testIds: identity.testIds, selector: identity.selector, html: identity.html, style: identity.style, sources: identity.sources, viewportRect: identity.viewportRect, pageRect: identity.pageRect } } : {}) }
+  }
+
+  async scrollPreview(tabId: string, move: { by: { x: number; y: number } } | { to: { x: number; y: number } }): Promise<{ x: number; y: number }> {
+    return this.#preview.scroll(tabId, move)
+  }
+
+  /** Show me: the original tab when it still shows the page, restored to the size and scroll of the comment, with found things outlined. */
+  async showVisualComment(id: string): Promise<VisualShowResult> {
+    const comment = this.#engine.visualComment?.(id) ?? null
+    if (!comment) throw new Error('That visual comment is gone')
+    if (comment.anchor.kind !== 'page') return { shown: false, reason: 'This comment is on a pasted image, not a page.', url: null }
+    const anchor = comment.anchor
+    const tab = this.#preview.tab(anchor.instance)
+    if (!tab) return { shown: false, reason: 'That page is no longer open.', url: anchor.url }
+    if (samePage(tab.url, anchor.url) === false) return { shown: false, reason: 'That tab shows a different page now.', url: anchor.url }
+    const current = comment.draft ?? comment.revisions.at(-1)
+    const marks = (current?.marks ?? []).flatMap((mark) => mark.kind === 'element' && mark.identity ? [{ id: mark.id, identity: { selector: mark.identity.selector ?? null, testIds: mark.identity.testIds ?? [], role: mark.identity.role ?? null, name: mark.identity.name ?? null } }] : [])
+    const firstCapture = comment.captures.find((capture) => capture.id === current?.marks[0]?.captureId) ?? comment.captures[0]
+    const outlined = await this.#preview.show(tab.id, { viewport: anchor.viewport, scroll: firstCapture?.scroll ?? null, marks })
+    return { shown: true, tabId: tab.id, outlined }
+  }
+
+  /** The re-check before Send: the page must be the one the marks were made on, and every marked thing must still be there. */
+  async #recheckVisual(comment: VisualCommentRecord): Promise<{ refusal: string | null; found: Record<string, boolean> }> {
+    if (comment.anchor.kind !== 'page' || !comment.draft) return { refusal: null, found: {} }
+    const tab = this.#preview.tab(comment.anchor.instance)
+    // A closed tab leaves nothing to check; the saved evidence is what travels.
+    if (!tab) return { refusal: null, found: {} }
+    if (!samePage(tab.url, comment.anchor.url)) return { refusal: visualSendRefusal({ pageReplaced: true, missing: [] }), found: {} }
+    const found: Record<string, boolean> = {}
+    const missing: string[] = []
+    for (const mark of comment.draft.marks) {
+      if (mark.kind !== 'element' || !mark.identity) continue
+      const match = await this.#preview.locate(tab.id, { selector: mark.identity.selector ?? null, testIds: mark.identity.testIds ?? [], role: mark.identity.role ?? null, name: mark.identity.name ?? null }).catch(() => null)
+      found[mark.id] = match !== null && match.matches === 1
+      if (!match || match.matches === 0) missing.push(mark.label)
+    }
+    return { refusal: visualSendRefusal({ pageReplaced: false, missing }), found }
   }
 
   async stopConversationTurn(threadId: string): Promise<void> {

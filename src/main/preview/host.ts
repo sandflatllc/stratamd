@@ -3,13 +3,14 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { BrowserWindow, WebContentsView, session, type Rectangle, type Session, type WebContents } from 'electron'
 import type { PreviewBoundsReport, PreviewNavigation, PreviewStateView, PreviewTabView, PreviewViewportRequest, PreviewViewportView } from '../../shared/contracts'
-import { pageName, resolvePreviewAddress, resolveViewport, viewportSetting } from '../../shared/preview'
+import { KNOWN_PRESETS, pageName, resolvePreviewAddress, resolveViewport, viewportSetting } from '../../shared/preview'
 import { atomicWriteFile, PRIVATE_FILE_MODE } from '../storage'
 import { logError, logWarn } from '../log'
 import { guestPermissionDecision, guestWindowDisposition } from './guest-policy'
 import { screenshotPlan } from './capture-budget'
 import { PreviewFailure, PreviewTabModel, partitionFor, type PersistedPreviewTab, type PreviewTabRecord } from './tabs'
 import { FOCUSED_EDITABLE_SCRIPT, findScript, focusScript, keyEvent, parseLocator, scrollScript, snapshotScript, waitConditionScript, type ParsedLocator } from './scripts'
+import { CLEAR_STRATA_SCRIPT, describeScript, locateScript, outlineScript, scrollScript as pageScrollScript, type PageDescription, type PageIdentity, type PageMatch, type PageRect } from './inspect'
 
 /**
  * The preview host (docs/plans/open/visual-review, phase 2): main-process
@@ -56,9 +57,15 @@ interface TabRuntime {
   synthetic: number
   /** The device emulation last applied, so a fresh view is never asked to change what it has not drawn. */
   emulation: string
+  /** The size the page was last shown at; a hidden page keeps it, so leaving the preview never reflows the page. */
+  size: { width: number; height: number } | null
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000
+/** How long Show me outlines a found thing; a capture clears it sooner. */
+const OUTLINE_MS = 2_500
+/** A device size the comment was made at, found again by its label and size. */
+const PRESET_BY_LABEL = (label: string, size: { width: number; height: number }): string | null => KNOWN_PRESETS.find((preset) => preset.label === label && preset.width === size.width && preset.height === size.height)?.id ?? null
 const MAX_RESULT_BYTES = 1_000_000
 const SNAPSHOT_LIMITS = { text: 20_000, elements: 200, nodes: 400 }
 
@@ -173,6 +180,7 @@ export class PreviewHost {
       const viewport = this.#model.get(id)?.viewport ?? { mode: 'fill' as const }
       if (show) {
         runtime.view.setBounds(this.#bounds!)
+        runtime.size = { width: this.#bounds!.width, height: this.#bounds!.height }
         // The shown page sits on top of everything; the others go back behind the shell.
         window.contentView.addChildView(runtime.view)
         runtime.view.setVisible(true)
@@ -180,8 +188,10 @@ export class PreviewHost {
       } else {
         window.contentView.addChildView(runtime.view, 0)
         runtime.view.setVisible(true)
-        // A background page with a narrowed viewport is drawn at that size, so a capture of it is exact.
-        const bounds = viewport.mode === 'fill' ? this.#bounds ?? { x: 0, y: 0, width: 1024, height: 768 } : { x: 0, y: 0, width: viewport.width, height: viewport.height }
+        // A background page keeps the size it was last shown at, or the hole's size, so hiding it never reflows it;
+        // one with a narrowed viewport is drawn at that size, so a capture of it is exact.
+        const hidden = this.#bounds ? { width: this.#bounds.width, height: this.#bounds.height } : runtime.size ?? { width: 1024, height: 768 }
+        const bounds = viewport.mode === 'fill' ? { x: 0, y: 0, ...hidden } : { x: 0, y: 0, width: viewport.width, height: viewport.height }
         runtime.view.setBounds(bounds)
         this.#emulate(runtime, viewport, bounds)
       }
@@ -227,9 +237,9 @@ export class PreviewHost {
     const tab: PreviewTabRecord = {
       id, projectId: input.projectId, workingFolder: input.workingFolder, partition, kind: input.kind, threadId: input.threadId,
       openedUrl: input.url, url: input.url, title: '', loading: false, canGoBack: false, canGoForward: false,
-      viewport: input.viewport ?? { mode: 'fill' }, paused: false, working: false, activity: null, error: null, openedAt: input.openedAt ?? this.#now(),
+      viewport: input.viewport ?? { mode: 'fill' }, paused: false, working: false, activity: null, error: null, openedAt: input.openedAt ?? this.#now(), document: 0,
     }
-    const runtime: TabRuntime = { view, queue: Promise.resolve(), epoch: 0, console: [], actions: [], synthetic: 0, emulation: '' }
+    const runtime: TabRuntime = { view, queue: Promise.resolve(), epoch: 0, console: [], actions: [], synthetic: 0, emulation: '', size: null }
     this.#model.add(tab)
     this.#runtimes.set(id, runtime)
     this.#wire(id, view.webContents, runtime)
@@ -245,7 +255,7 @@ export class PreviewHost {
     const navigation = () => ({ url: contents.getURL(), canGoBack: contents.navigationHistory.canGoBack(), canGoForward: contents.navigationHistory.canGoForward() })
     contents.on('did-start-loading', () => update({ loading: true, error: null }))
     contents.on('did-stop-loading', () => update({ loading: false, ...navigation() }))
-    contents.on('did-navigate', () => update({ ...navigation(), title: contents.getTitle() }))
+    contents.on('did-navigate', () => update({ ...navigation(), title: contents.getTitle(), document: (this.#model.get(id)?.document ?? 0) + 1 }))
     // The first document a view draws takes the narrowed viewport it was opened with.
     contents.on('dom-ready', () => this.#layout())
     contents.on('did-navigate-in-page', () => update(navigation()))
@@ -469,8 +479,58 @@ export class PreviewHost {
     return await this.#contents(id).executeJavaScript(script, true) as T
   }
 
+  // ---- Marking up a running page (phase 3): one-shot queries driven from Strata's own interface
+
   tab(id: string): PreviewTabRecord | null {
-    return this.#model.get(id)
+    return this.#model.get(id) ?? null
+  }
+
+  /** The frame Annotate opens on: anything Strata drew in the page is cleared first, so the capture is the page alone. */
+  async captureFrame(id: string): Promise<{ bytes: Uint8Array; width: number; height: number; cssWidth: number; cssHeight: number; scroll: { x: number; y: number }; scale: number; page: { url: string; title: string; viewport: { width: number; height: number }; preset: string | null; deviceScale: number; document: number } }> {
+    const tab = this.#model.get(id)
+    if (!tab) throw new Error('That tab is closed')
+    await this.query(id, CLEAR_STRATA_SCRIPT).catch(() => undefined)
+    const measured = await this.viewportOf(id)
+    const frame = await this.capture(id)
+    return {
+      bytes: frame.bytes, width: frame.width, height: frame.height, cssWidth: frame.cssWidth, cssHeight: frame.cssHeight, scroll: frame.scroll, scale: frame.deviceScale,
+      page: { url: tab.url, title: tab.title, viewport: { width: measured.width, height: measured.height }, preset: tab.viewport.mode === 'preset' ? tab.viewport.label : null, deviceScale: measured.deviceScale, document: tab.document },
+    }
+  }
+
+  /** What is at a point or in a box of the page, in page pixels. */
+  async describe(id: string, target: { point: { x: number; y: number } } | { rect: PageRect }): Promise<PageDescription | null> {
+    return await this.query<PageDescription | null>(id, describeScript(target))
+  }
+
+  /** Whether a marked thing is found right now: exactly one visible match. */
+  async locate(id: string, identity: Pick<PageIdentity, 'selector' | 'testIds' | 'role' | 'name'>): Promise<PageMatch | null> {
+    const match = await this.query<{ matches: number; rect: PageRect | null; scroll: { x: number; y: number } } | null>(id, locateScript(identity))
+    return match && match.rect && match.matches === 1 ? { rect: match.rect, scroll: match.scroll, matches: 1 } : match ? { rect: match.rect ?? { x: 0, y: 0, width: 0, height: 0 }, scroll: match.scroll, matches: match.matches } : null
+  }
+
+  async scroll(id: string, move: { by: { x: number; y: number } } | { to: { x: number; y: number } }): Promise<{ x: number; y: number }> {
+    return await this.query<{ x: number; y: number }>(id, pageScrollScript(move))
+  }
+
+  /** Show me: the size and scroll the comment was made at, then an outline on each thing still found with confidence. */
+  async show(id: string, state: { viewport: { width: number; height: number; preset: string | null }; scroll: { x: number; y: number } | null; marks: Array<{ id: string; identity: Pick<PageIdentity, 'selector' | 'testIds' | 'role' | 'name'> }> }): Promise<string[]> {
+    const tab = this.#model.get(id)
+    if (!tab) throw new Error('That tab is closed')
+    const current = tab.viewport.mode === 'fill' ? null : { width: tab.viewport.width, height: tab.viewport.height }
+    if (!current || current.width !== state.viewport.width || current.height !== state.viewport.height) {
+      const preset = state.viewport.preset ? PRESET_BY_LABEL(state.viewport.preset, state.viewport) : null
+      this.resize(id, preset ? { mode: 'preset', preset } : { mode: 'freeform', width: state.viewport.width, height: state.viewport.height })
+    }
+    this.#reveal = { tabId: id, at: this.#now() }
+    this.#publish()
+    if (state.scroll) await this.scroll(id, { to: state.scroll }).catch(() => undefined)
+    const outlined: string[] = []
+    for (const mark of state.marks) {
+      const rect = await this.query<PageRect | null>(id, outlineScript(mark.identity, OUTLINE_MS)).catch(() => null)
+      if (rect) outlined.push(mark.id)
+    }
+    return outlined
   }
 
   #contents(id: string): WebContents {

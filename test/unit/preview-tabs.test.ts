@@ -4,7 +4,7 @@ import { keyEvent, parseLocator } from '../../src/main/preview/scripts'
 import { pageName, previewPillName, resolvePreviewAddress, resolveViewport, splitAddress, viewportCaption, viewportLabel, viewportSetting } from '../../src/shared/preview'
 
 function tab(id: string, kind: 'owner' | 'agent', threadId: string | null, openedAt: number): PreviewTabRecord {
-  return { id, projectId: 'p1', workingFolder: '/work', partition: partitionFor('/work'), kind, threadId, openedUrl: 'http://localhost:5173/', url: 'http://localhost:5173/', title: 'Clients', loading: false, canGoBack: false, canGoForward: false, viewport: { mode: 'fill' }, paused: false, working: false, activity: null, error: null, openedAt }
+  return { id, projectId: 'p1', workingFolder: '/work', partition: partitionFor('/work'), kind, threadId, openedUrl: 'http://localhost:5173/', url: 'http://localhost:5173/', title: 'Clients', loading: false, canGoBack: false, canGoForward: false, viewport: { mode: 'fill' }, paused: false, working: false, activity: null, error: null, openedAt, document: 0 }
 }
 
 describe('preview tab routing (docs/plans/open/visual-review, phase 2)', () => {

@@ -32,7 +32,7 @@ describe('visual comment status (docs/plans/open/visual-review, phase 1)', () =>
   it('names the place, the summary, and the title in plain words', () => {
     expect(visualPlace({ kind: 'image', name: 'shot.png' }, [{ width: 800, height: 600 }])).toBe('Pasted image · 800 × 600')
     expect(visualPlace({ kind: 'page', url: 'http://localhost:5173/clients', title: 'Clients', instance: 'tab-1', workingFolder: null, viewport: { width: 1200, height: 800, preset: null }, deviceScale: 1 }, [])).toBe('Clients · window size')
-    expect(visualPlace({ kind: 'page', url: 'http://localhost:5173/clients', title: 'Clients', instance: 'tab-1', workingFolder: null, viewport: { width: 390, height: 844, preset: 'Phone' }, deviceScale: 3 }, [])).toBe('Clients · Phone')
+    expect(visualPlace({ kind: 'page', url: 'http://localhost:5173/clients', title: 'Clients', instance: 'tab-1', workingFolder: null, viewport: { width: 390, height: 844, preset: 'Phone' }, deviceScale: 3 }, [])).toBe('Clients · phone')
     expect(visualSummary({ marks: [{ found: true }, { found: true }], strokes: [{ tool: 'arrow' }], adjustments: [1, 2] })).toBe('2 things marked, all found ✓ · 1 arrow · 2 adjustments')
     expect(visualSummary({ marks: [{ found: null }], strokes: [{ tool: 'draw' }, { tool: 'draw' }], adjustments: [] })).toBe('1 thing marked · 2 drawings')
     expect(visualSummary({ marks: [{ found: true }, { found: false }], strokes: [], adjustments: [] })).toBe('2 things marked, 1 of 2 found')

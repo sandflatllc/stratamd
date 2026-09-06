@@ -56,11 +56,11 @@ import { postedMessageItems } from '../../core/items'
 import { inferredMessageItems } from '../../core/inference'
 import { pngSize, VisualEvidenceStore } from './visual-evidence'
 import { emptyVisualCommentsStore, readVisualCommentsStore, referencedEvidence, writeVisualCommentsStore, type VisualCommentsStore } from './visual-comments'
-import { isVisualCommentId, revisionForReply, sendCapacity, visualAttachmentName, visualBrief, visualCommentView, visualRepliesIn, visualSendSummary, type VisualCommentRecord, type VisualRevision } from '../../core/visual-comments'
+import { isVisualCommentId, revisionForReply, sendCapacity, visualAttachmentName, visualBrief, visualCommentView, visualRepliesIn, visualSendSummary, type VisualCapture, type VisualCommentRecord, type VisualRevision } from '../../core/visual-comments'
 import { visualImageUrl } from '../../shared/visual-urls'
 import { readEngineIdentity } from './identity'
 import { z } from 'zod'
-import type { HoldVisualCommentInput, VisualCommentAction, VisualCommentView } from '../../shared/contracts'
+import type { HoldVisualCommentInput, VisualCommentAction, VisualCommentView, VisualMarkView } from '../../shared/contracts'
 
 /** A staged image the owner removed or a sweep deleted before its upload; the preparation cannot proceed. */
 class MissingStagedAttachmentError extends Error {
@@ -101,6 +101,11 @@ export interface PreviewHostBridge {
   operations: readonly string[]
   handle(request: { requestId: string; threadId: string; tabId?: string | undefined; operation: string; input: unknown; timeoutMs: number }): Promise<{ ok: true; result: unknown } | { ok: false; error: { _tag: string; message: string; detail?: unknown } }>
   setRegistered(registered: boolean): void
+  /**
+   * The re-check before Send (phase 3): each marked thing on a page comment is looked for again in its tab.
+   * Returns a refusal in plain words when navigation replaced the page or a target is gone, else which marks are found now.
+   */
+  recheckVisual?(comment: VisualCommentRecord): Promise<{ refusal: string | null; found: Record<string, boolean> }>
 }
 
 export interface EngineClientOptions {
@@ -178,6 +183,10 @@ export interface EngineReadClient {
   actVisualComment?(id: string, action: VisualCommentAction): Promise<void>
   /** Bytes for the strata-visual protocol: a piece of evidence or a staged composer image. */
   readVisualImage?(kind: 'evidence' | 'staged', id: string): Promise<{ bytes: Uint8Array; mimeType: string } | null>
+  /** A frame Annotate captured, kept as evidence until it is held or swept (phase 3). */
+  storeVisualCapture?(input: { bytes: Uint8Array; width: number; height: number }): Promise<string>
+  /** The record behind a visual comment, for Show me and the re-check. */
+  visualComment?(id: string): VisualCommentRecord | null
 }
 
 const EMPTY_ENGINE: EngineView = {
@@ -604,10 +613,14 @@ export class T3EngineClient implements EngineReadClient {
     this.#publish()
   }
 
-  /** The active thread plus every watched thread the shell still lists. */
+  /**
+   * The active thread, every watched thread, and any thread with a delivery still awaiting acknowledgment,
+   * so a Send from the preview or a card is acknowledged without the conversation being opened.
+   */
   #followedThreadIds(): string[] {
     const ids = new Set<string>(this.#watched)
     if (this.#reading.activeThreadId) ids.add(this.#reading.activeThreadId)
+    for (const [threadId, state] of Object.entries(this.#conversations.threads)) if (state.pending.length > 0) ids.add(threadId)
     return [...ids].filter((id) => this.#shell?.threads.some((thread) => thread.id === id))
   }
 
@@ -667,6 +680,14 @@ export class T3EngineClient implements EngineReadClient {
       if (comment.projectId !== thread.projectId) throw new Error(`Visual comment ${id} belongs to another project`)
       return comment
     })
+    // A page comment re-checks its marks immediately before Send: refused, with the draft kept, only when the page was
+    // replaced or a marked thing is gone; anything else on a live page sends.
+    for (const comment of visualDrafts) {
+      if (comment.anchor.kind !== 'page' || !this.#previewHost?.recheckVisual) continue
+      const check = await this.#previewHost.recheckVisual(comment)
+      if (check.refusal) throw new Error(check.refusal)
+      for (const mark of comment.draft!.marks) if (mark.id in check.found) mark.found = check.found[mark.id]!
+    }
     const evidenceNames = new Map<string, string>()
     const visualAttachments: PreparedAttachment[] = []
     const frozen: Array<{ comment: VisualCommentRecord; revision: VisualRevision; names: Map<string, string> }> = []
@@ -738,6 +759,10 @@ export class T3EngineClient implements EngineReadClient {
     await writeConversationsStore(this.#conversationsPath, this.#conversations)
     this.#publish()
     await this.#resumeDelivery(threadId, messageId)
+    // The thread is followed until the engine lists the message, which is what acknowledges the delivery.
+    if (!this.#threads.has(threadId) && this.#reachable()) {
+      try { await this.#refreshThread(threadId); await this.#subscribeThreads() } catch (error) { logError('engine', `Thread ${threadId} could not be followed after Send`, error) }
+    }
   }
 
   /** Resumes a saved preparation and keeps the visual revisions it carries honest: sending while it runs, failed and retryable when it does not. */
@@ -791,6 +816,22 @@ export class T3EngineClient implements EngineReadClient {
       // On Hold the image moves into the evidence store; the staged copy leaves so no delivery can consume it.
       await this.#staged.discard(input.source.staged)
     }
+    if (input.page) {
+      // Annotate on a page: the frames are already in the evidence store; the record says which page instance they came from.
+      if (comment && comment.anchor.kind !== 'page') throw new Error('A visual comment keeps its image. Start a new one for a page.')
+      const captures: VisualCapture[] = []
+      for (const entry of input.page.captures) {
+        if (!(await this.#evidence.exists(entry.id))) throw new Error('The captured frame is no longer available. Capture the page again.')
+        captures.push({ id: entry.id, width: entry.width, height: entry.height, scroll: entry.scroll, scale: entry.scale, takenAt: now })
+      }
+      if (!comment) {
+        const workingFolder = this.#shell?.projects.find((project) => project.id === input.projectId)?.workspaceRoot ?? null
+        comment = { id: `v_${randomUUID()}`, projectId: input.projectId, engine: null, anchor: { kind: 'page', url: input.page.url, title: input.page.title, instance: input.page.tabId, workingFolder, viewport: { width: input.page.viewport.width, height: input.page.viewport.height, preset: input.page.preset }, deviceScale: input.page.deviceScale }, captures, draft: null, revisions: [], createdAt: now, updatedAt: now }
+        this.#visual.comments[comment.id] = comment
+      } else {
+        for (const capture of captures) if (!comment.captures.some((candidate) => candidate.id === capture.id)) comment.captures.push(capture)
+      }
+    }
     if (!comment) throw new Error('A visual comment needs an image. Paste or capture one first.')
     const remap = (id: string) => captureIds.get(id) ?? id
     for (const mark of input.marks) if (!comment.captures.some((capture) => capture.id === remap(mark.captureId))) throw new Error(`The mark ${mark.label} points at a capture this comment does not have`)
@@ -807,10 +848,10 @@ export class T3EngineClient implements EngineReadClient {
     }
     const previous = comment.draft
     const latest = comment.revisions.at(-1)
-    const identityOf = (id: string) => previous?.marks.find((mark) => mark.id === id)?.identity ?? latest?.marks.find((mark) => mark.id === id)?.identity
+    const identityOf = (id: string, given: VisualMarkView['identity']) => previous?.marks.find((mark) => mark.id === id)?.identity ?? latest?.marks.find((mark) => mark.id === id)?.identity ?? given
     comment.draft = {
       text: input.text,
-      marks: input.marks.map((mark) => { const identity = identityOf(mark.id); return { id: mark.id, kind: mark.kind, label: mark.label, captureId: remap(mark.captureId), rect: mark.rect, found: mark.found, ...(identity ? { identity } : {}) } }),
+      marks: input.marks.map((mark) => { const identity = identityOf(mark.id, mark.identity); return { id: mark.id, kind: mark.kind, label: mark.label, captureId: remap(mark.captureId), rect: mark.rect, found: mark.found, ...(identity ? { identity } : {}) } }),
       strokes: input.strokes.map((stroke) => ({ id: stroke.id, tool: stroke.tool, captureId: remap(stroke.captureId), points: stroke.points.map((point) => ({ x: point.x, y: point.y })) })),
       adjustments: input.adjustments.map((adjustment) => ({ markId: adjustment.markId, property: adjustment.property, value: adjustment.value, label: adjustment.label })),
       // The active conversation when the session opened is the destination; switching conversations while writing does not move it.
@@ -857,6 +898,16 @@ export class T3EngineClient implements EngineReadClient {
     comment.updatedAt = now
     await writeVisualCommentsStore(this.#visualPath, this.#visual)
     this.#publish()
+  }
+
+  visualComment(id: string): VisualCommentRecord | null {
+    return this.#visual.comments[id] ?? null
+  }
+
+  /** A frame Annotate captured goes straight into the evidence store; an unheld one is swept at the next start. */
+  async storeVisualCapture(input: { bytes: Uint8Array; width: number; height: number }): Promise<string> {
+    const stored = await this.#evidence.put({ bytes: input.bytes, width: input.width, height: input.height, mimeType: 'image/png' })
+    return stored.id
   }
 
   async readVisualImage(kind: 'evidence' | 'staged', id: string): Promise<{ bytes: Uint8Array; mimeType: string } | null> {

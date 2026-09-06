@@ -70,6 +70,8 @@ export interface VisualCapture {
   width: number
   height: number
   scroll?: VisualPoint
+  /** Capture pixels per page pixel; absent means one. */
+  scale?: number
   /** Evidence id of the same capture with the marks drawn on it; refreshed on every Hold. */
   markedId?: string
   takenAt: number
@@ -177,8 +179,33 @@ export function visualPlace(anchor: VisualAnchor, captures: readonly Pick<Visual
     const first = captures[0]
     return first ? `Pasted image · ${first.width} × ${first.height}` : 'Pasted image'
   }
-  const size = anchor.viewport.preset ? anchor.viewport.preset : 'window size'
+  const size = anchor.viewport.preset ? anchor.viewport.preset.toLowerCase() : 'window size'
   return `${anchor.title || 'Page'} · ${size}`
+}
+
+/** Capture pixels from page pixels and back; a capture may be scaled down to fit the window. */
+export function toCaptureRect(rect: VisualRect, scale: number): VisualRect {
+  return { x: rect.x * scale, y: rect.y * scale, width: rect.width * scale, height: rect.height * scale }
+}
+
+export function toPageRect(rect: VisualRect, scale: number): VisualRect {
+  return scale > 0 ? { x: rect.x / scale, y: rect.y / scale, width: rect.width / scale, height: rect.height / scale } : rect
+}
+
+export function toPagePoint(point: VisualPoint, scale: number): VisualPoint {
+  return scale > 0 ? { x: point.x / scale, y: point.y / scale } : point
+}
+
+/**
+ * The re-check before Send: refused only when navigation replaced the page or
+ * a marked target is gone, in plain words that name the mark. Anything else,
+ * a clock ticking or text moving, sends.
+ */
+export function visualSendRefusal(check: { pageReplaced: boolean; missing: string[] }): string | null {
+  if (check.pageReplaced) return 'The page has moved on since you marked it. Your note and marks are kept; mark the page again to send.'
+  if (check.missing.length === 1) return `${check.missing[0]} is no longer on the page. Your note and marks are kept; remove that mark or mark the page again to send.`
+  if (check.missing.length > 1) return `${check.missing.slice(0, -1).join(', ')} and ${check.missing.at(-1)} are no longer on the page. Your note and marks are kept; remove those marks or mark the page again to send.`
+  return null
 }
 
 /** "2 things marked, both found ✓ · 1 arrow · 2 adjustments" for a draft or revision. */
@@ -353,7 +380,7 @@ export function visualCommentView(
     title: current ? visualTitle(current) : 'Visual comment',
     summary: current ? visualSummary(current) : '',
     thumbnail: thumbnailCapture ? options.captureUrl(thumbnailCapture.markedId ?? thumbnailCapture.id) : null,
-    captures: comment.captures.map((capture) => ({ id: capture.id, url: options.captureUrl(capture.id), width: capture.width, height: capture.height, ...(capture.scroll ? { scroll: capture.scroll } : {}) })),
+    captures: comment.captures.map((capture) => ({ id: capture.id, url: options.captureUrl(capture.id), width: capture.width, height: capture.height, ...(capture.scroll ? { scroll: capture.scroll } : {}), ...(capture.scale ? { scale: capture.scale } : {}) })),
     ...(comment.draft ? { draft: { text: comment.draft.text, marks: comment.draft.marks.map(visualMarkView), strokes: comment.draft.strokes.map(visualStrokeView), adjustments: comment.draft.adjustments.map(visualAdjustmentView), destination: destination(comment.draft.destination), updatedAt: comment.draft.updatedAt } } : {}),
     revisions,
     createdAt: comment.createdAt,

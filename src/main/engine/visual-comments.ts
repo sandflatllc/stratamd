@@ -32,7 +32,7 @@ const mark = z.object({ id: z.string().min(1), kind: z.enum(['element', 'region'
 const stroke = z.object({ id: z.string().min(1), tool: z.enum(['draw', 'arrow']), captureId: z.string().min(1), points: z.array(point) })
 const adjustment = z.object({ markId: z.string().min(1), property: z.string().min(1), value: z.string(), label: z.string() })
 const destination = z.object({ threadId: z.string().min(1), engine: z.string().nullable() })
-const capture = z.object({ id: z.string().min(1), width: z.number().positive(), height: z.number().positive(), scroll: point.optional(), markedId: z.string().optional(), takenAt: z.number() })
+const capture = z.object({ id: z.string().min(1), width: z.number().positive(), height: z.number().positive(), scroll: point.optional(), scale: z.number().positive().optional(), markedId: z.string().optional(), takenAt: z.number() })
 const anchor = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('image'), name: z.string() }),
   z.object({ kind: z.literal('page'), url: z.string(), title: z.string(), instance: z.string(), workingFolder: z.string().nullable(), viewport: z.object({ width: z.number(), height: z.number(), preset: z.string().nullable() }), deviceScale: z.number() }),

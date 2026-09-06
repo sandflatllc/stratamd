@@ -63,8 +63,8 @@ function engine() {
   return { server, fetch, commands, uploads, acknowledge, reply, failUploads: (value: boolean) => { failUploads = value } }
 }
 
-async function client(fake: ReturnType<typeof engine>, directory: string) {
-  const instance = new T3EngineClient({ dataDirectory: directory, fetch: fake.fetch, webSocket: fake.server.WebSocket, now: () => Date.parse(at), publishDelayMs: 0 })
+async function client(fake: ReturnType<typeof engine>, directory: string, previewHost?: NonNullable<ConstructorParameters<typeof T3EngineClient>[0]['previewHost']>) {
+  const instance = new T3EngineClient({ dataDirectory: directory, fetch: fake.fetch, webSocket: fake.server.WebSocket, now: () => Date.parse(at), publishDelayMs: 0, ...(previewHost ? { previewHost } : {}) })
   await instance.pair('http://engine.test', 'code'); await instance.openThread('t1')
   await settle()
   return instance
@@ -244,6 +244,50 @@ describe('visual comments through the engine client', () => {
     await instance.actVisualComment(second, 'discard')
     expect(visual(instance)[0]).toMatchObject({ id: second, status: 'sending' })
     expect(JSON.parse(await readFile(join(directory, 'engine-visual-comments.json'), 'utf8')).comments[second].revisions).toHaveLength(1)
+    await instance.shutdown()
+  })
+})
+
+describe('a comment on a running page (phase 3)', () => {
+  it('holds over captured frames, re-checks its marks before Send, refuses with the draft kept, and sends once the page agrees', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'strata-visual-page-'))
+    const fake = engine()
+    let answer: { refusal: string | null; found: Record<string, boolean> } = { refusal: 'New client button is no longer on the page. Your note and marks are kept; remove that mark or mark the page again to send.', found: {} }
+    const recheck = vi.fn(async () => answer)
+    const instance = await client(fake, directory, { operations: [], handle: async () => ({ ok: true, result: null }), setRegistered: () => undefined, recheckVisual: recheck })
+    // Annotate stored two frames, one per scroll position, before anything was held.
+    const first = await instance.storeVisualCapture({ bytes: png, width: 1, height: 1 })
+    const second = await instance.storeVisualCapture({ bytes: png, width: 1, height: 1 })
+    const page = { tabId: 'tab_1', captures: [{ id: first, width: 1, height: 1, scroll: { x: 0, y: 0 }, scale: 1 }, { id: second, width: 1, height: 1, scroll: { x: 0, y: 900 }, scale: 1 }], url: 'http://localhost:5173/clients', title: 'Clients', viewport: { width: 1200, height: 800 }, preset: null, deviceScale: 1 }
+    const identity = { role: 'button', name: 'New client', selector: 'button#new-client', testIds: ['new-client'], sources: [{ file: 'src/pages/Clients.tsx', line: 41, column: 9, role: 'usage' as const }] }
+    const id = await instance.holdVisualComment({
+      projectId: 'p1', threadId: 't1', page, text: 'Into the header row.',
+      marks: [{ id: 'k1', kind: 'element', label: 'New client button', captureId: first, rect: { x: 0, y: 0, width: 1, height: 1 }, found: true, identity }, { id: 'k2', kind: 'element', label: 'The end of the page.', captureId: second, rect: { x: 0, y: 0, width: 1, height: 1 }, found: true, identity: { role: null, name: null, selector: 'p#bottom', testIds: [] } }],
+      strokes: [], adjustments: [], marked: [{ captureId: first, bytes: marked }, { captureId: second, bytes: marked }],
+    })
+    const held = visual(instance).find((comment) => comment.id === id)!
+    expect(held.status).toBe('held')
+    expect(held.place).toBe('Clients · window size')
+    expect(held.anchor).toMatchObject({ kind: 'page', url: 'http://localhost:5173/clients', instance: 'tab_1' })
+    expect(held.captures.map((capture) => capture.scroll)).toEqual([{ x: 0, y: 0 }, { x: 0, y: 900 }])
+    // The re-check refuses: nothing is frozen, no turn starts, the draft stays.
+    await expect(instance.startTurn('t1', { text: '', ...turn, visual: [id] })).rejects.toThrow('New client button is no longer on the page')
+    expect(recheck).toHaveBeenCalledTimes(1)
+    expect(fake.commands.filter((command) => command.type === 'thread.turn.start')).toHaveLength(0)
+    expect(visual(instance).find((comment) => comment.id === id)!.status).toBe('held')
+    // The page agrees: both frames travel, the brief carries each mark's identity and sources, and the found flags follow the check.
+    answer = { refusal: null, found: { k1: true, k2: false } }
+    await instance.startTurn('t1', { text: '', ...turn, visual: [id] })
+    const command = fake.commands.find((candidate) => candidate.type === 'thread.turn.start')!
+    const attachments = (command.message as { attachments: Array<{ name: string }> }).attachments
+    expect(attachments.map((attachment) => attachment.name).filter((name) => name.endsWith('.png'))).toHaveLength(2)
+    const context = fake.uploads.find((upload) => upload.name.endsWith('.md'))!
+    const brief = contextSection(Buffer.from(context.bytes).toString('utf8'), 'Visual comments')[0]
+    expect(brief.marks[0]).toMatchObject({ label: 'New client button', found: true, selector: 'button#new-client', sources: [{ file: 'src/pages/Clients.tsx', line: 41 }] })
+    expect(brief.marks[1]).toMatchObject({ label: 'The end of the page.', found: false, selector: 'p#bottom' })
+    expect(brief.captures.map((capture: { scroll?: { y: number } }) => capture.scroll?.y)).toEqual([0, 900])
+    // Show me reads the record back: the anchor, the marks, and their identities.
+    expect(instance.visualComment(id)?.revisions[0]?.marks[0]?.identity?.selector).toBe('button#new-client')
     await instance.shutdown()
   })
 })

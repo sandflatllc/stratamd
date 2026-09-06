@@ -22,7 +22,14 @@ const visualCommentIdSchema = z.string().max(64).refine(isVisualCommentId, 'Not 
 const previewTabIdSchema = z.string().regex(/^tab_[0-9a-f-]{36}$/u)
 const visualPointSchema = z.object({ x: z.number().finite(), y: z.number().finite() }).strict()
 const visualRectSchema = z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite().nonnegative(), height: z.number().finite().nonnegative() }).strict()
-const visualMarkSchema = z.object({ id: idSchema, kind: z.enum(['element', 'region']), label: z.string().max(512), captureId: idSchema, rect: visualRectSchema, found: z.boolean().nullable() }).strict()
+const visualIdentitySchema = z.object({
+  role: z.string().max(64).nullable().optional(), name: z.string().max(512).nullable().optional(), text: z.string().max(512).nullable().optional(),
+  testIds: z.array(z.string().max(256)).max(16).optional(), selector: z.string().max(2_048).nullable().optional(), html: z.string().max(512).nullable().optional(),
+  style: z.record(z.string().max(64), z.string().max(256)).optional(),
+  sources: z.array(z.object({ file: z.string().max(1_024), line: z.number().int().nonnegative(), column: z.number().int().nonnegative(), role: z.enum(['definition', 'usage', 'candidate']).optional() }).strict()).max(16).optional(),
+  viewportRect: visualRectSchema.optional(), pageRect: visualRectSchema.optional(),
+}).strict()
+const visualMarkSchema = z.object({ id: idSchema, kind: z.enum(['element', 'region']), label: z.string().max(512), captureId: idSchema, rect: visualRectSchema, found: z.boolean().nullable(), identity: visualIdentitySchema.optional() }).strict()
 const visualStrokeSchema = z.object({ id: idSchema, tool: z.enum(['draw', 'arrow']), captureId: idSchema, points: z.array(visualPointSchema).max(20_000) }).strict()
 const visualAdjustmentSchema = z.object({ markId: idSchema, property: z.string().max(128), value: z.string().max(512), label: z.string().max(512) }).strict()
 const holdVisualCommentSchema = z.object({
@@ -30,6 +37,11 @@ const holdVisualCommentSchema = z.object({
   projectId: idSchema,
   threadId: idSchema,
   source: z.object({ staged: stagedAttachmentIdSchema, name: idSchema, width: z.number().int().positive().max(32_768), height: z.number().int().positive().max(32_768) }).strict().optional(),
+  page: z.object({
+    tabId: previewTabIdSchema,
+    captures: z.array(z.object({ id: z.string().regex(/^e_/u).max(64), width: z.number().int().positive().max(32_768), height: z.number().int().positive().max(32_768), scroll: visualPointSchema, scale: z.number().positive().max(16) }).strict()).min(1).max(32),
+    url: z.string().max(2_048), title: z.string().max(1_024), viewport: z.object({ width: z.number().int().positive().max(16_384), height: z.number().int().positive().max(16_384) }).strict(), preset: z.string().max(64).nullable(), deviceScale: z.number().positive().max(16),
+  }).strict().optional(),
   text: z.string().max(20_000),
   marks: z.array(visualMarkSchema).max(200),
   strokes: z.array(visualStrokeSchema).max(500),
@@ -216,6 +228,10 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.reportPreviewBounds]: z.tuple([z.object({ tabId: previewTabIdSchema.nullable(), bounds: z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite().nonnegative(), height: z.number().finite().nonnegative() }).strict().nullable() }).strict()]),
   [IPC.reportOverlay]: z.tuple([z.boolean()]),
   [IPC.previewProbe]: z.tuple([previewTabIdSchema, z.object({ x: z.number().finite(), y: z.number().finite() }).strict()]),
+  [IPC.capturePreviewFrame]: z.tuple([previewTabIdSchema]),
+  [IPC.describePreview]: z.tuple([previewTabIdSchema, z.union([z.object({ point: visualPointSchema }).strict(), z.object({ rect: visualRectSchema }).strict()])]),
+  [IPC.scrollPreview]: z.tuple([previewTabIdSchema, z.union([z.object({ by: visualPointSchema }).strict(), z.object({ to: visualPointSchema }).strict()])]),
+  [IPC.showVisualComment]: z.tuple([visualCommentIdSchema]),
   [IPC.startConversationTurn]: z.tuple([idSchema, conversationTurnSchema]),
   [IPC.stageConversationAttachment]: z.tuple([stageAttachmentSchema]),
   [IPC.discardConversationAttachment]: z.tuple([stagedAttachmentIdSchema]),
@@ -442,6 +458,10 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.reportOverlay]: (open: boolean) => options.api.reportOverlay(open),
     // The probe answers only when the harness asked for it; otherwise the channel refuses.
     [IPC.previewProbe]: (tabId: string, point: { x: number; y: number }) => { if (process.env.STRATAMD_PREVIEW_PROBE !== '1') throw new Error('The preview probe is off'); const probe = (options.api as { previewHumanInput?(tabId: string, point: { x: number; y: number }): void }).previewHumanInput; if (!probe) throw new Error('No preview host'); probe.call(options.api, tabId, point) },
+    [IPC.capturePreviewFrame]: (tabId: string) => options.api.capturePreviewFrame(tabId),
+    [IPC.describePreview]: (tabId: string, target: Parameters<StrataApi['describePreview']>[1]) => options.api.describePreview(tabId, target),
+    [IPC.scrollPreview]: (tabId: string, move: Parameters<StrataApi['scrollPreview']>[1]) => options.api.scrollPreview(tabId, move),
+    [IPC.showVisualComment]: (id: string) => options.api.showVisualComment(id),
     [IPC.startConversationTurn]: (threadId: string, input: Parameters<StrataApi['startConversationTurn']>[1]) => options.api.startConversationTurn(threadId, input),
     [IPC.stageConversationAttachment]: (input: Parameters<StrataApi['stageConversationAttachment']>[0]) => options.api.stageConversationAttachment(input),
     [IPC.discardConversationAttachment]: (id: string) => options.api.discardConversationAttachment(id),

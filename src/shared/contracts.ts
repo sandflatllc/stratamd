@@ -336,6 +336,20 @@ export type VisualStatus = 'held' | 'sending' | 'failed' | 'sent' | 'ready' | 'd
 export interface VisualRectView { x: number; y: number; width: number; height: number }
 export interface VisualPointView { x: number; y: number }
 
+/** What the agent needs to find a marked thing again; carried with the mark, shown in no control. */
+export interface VisualMarkIdentityView {
+  role?: string | null
+  name?: string | null
+  text?: string | null
+  testIds?: string[]
+  selector?: string | null
+  html?: string | null
+  style?: Record<string, string>
+  sources?: Array<{ file: string; line: number; column: number; role?: 'definition' | 'usage' | 'candidate' }>
+  viewportRect?: VisualRectView
+  pageRect?: VisualRectView
+}
+
 /** One marked thing as the owner sees it: a plain name, where it sits on the capture, and whether Strata can find it right now. */
 export interface VisualMarkView {
   id: string
@@ -344,6 +358,7 @@ export interface VisualMarkView {
   captureId: string
   rect: VisualRectView
   found: boolean | null
+  identity?: VisualMarkIdentityView
 }
 
 export interface VisualStrokeView {
@@ -367,7 +382,29 @@ export interface VisualCaptureView {
   width: number
   height: number
   scroll?: VisualPointView
+  /** Capture pixels per page pixel; absent means one. */
+  scale?: number
 }
+
+/** What Annotate on a page captured: the frame in the evidence store and the page it came from. */
+export interface VisualPageCapture {
+  tabId: string
+  capture: VisualCaptureView
+  page: { url: string; title: string; viewport: { width: number; height: number }; preset: string | null; deviceScale: number; document: number }
+}
+
+/** What a page says is at a point or in a box; the identity rides along for the record and never for a control. */
+export interface VisualPageProposal {
+  kind: 'element' | 'region'
+  label: string
+  /** In page pixels. */
+  rect: VisualRectView
+  found: boolean | null
+  identity?: VisualMarkIdentityView
+}
+
+/** Show me: the live tab showed the marked state again, or the saved evidence is the fallback. */
+export type VisualShowResult = { shown: true; tabId: string; outlined: string[] } | { shown: false; reason: string; url: string | null }
 
 export interface VisualDestinationView { threadId: string; threadTitle: string }
 
@@ -442,6 +479,8 @@ export interface HoldVisualCommentInput {
   threadId: string
   /** A staged composer image to open the comment over; its bytes move into the evidence store. */
   source?: { staged: string; name: string; width: number; height: number }
+  /** A page capture to open the comment over: the frames Annotate stored and the page they came from. */
+  page?: { tabId: string; captures: Array<{ id: string; width: number; height: number; scroll: VisualPointView; scale: number }>; url: string; title: string; viewport: { width: number; height: number }; preset: string | null; deviceScale: number }
   text: string
   marks: VisualMarkView[]
   strokes: VisualStrokeView[]
@@ -759,6 +798,8 @@ export interface PreviewTabView {
   activity: string | null
   error: string | null
   openedAt: number
+  /** Counts up whenever a new document replaces the page, so a session over a capture knows the live page changed. */
+  document: number
 }
 
 export interface PreviewStateView {
@@ -1002,6 +1043,11 @@ export interface StrataApi {
   reportPreviewBounds(report: PreviewBoundsReport): Promise<void>
   /** One boolean from the overlay layer: an overlay is open, so the page hides beneath it. */
   reportOverlay(open: boolean): Promise<void>
+  /** Annotate on a page (phase 3): capture the frame into the evidence store, ask the page what is somewhere, scroll it, and show a comment's marks again. */
+  capturePreviewFrame(tabId: string): Promise<VisualPageCapture>
+  describePreview(tabId: string, target: { point: VisualPointView } | { rect: VisualRectView }): Promise<VisualPageProposal | null>
+  scrollPreview(tabId: string, move: { by: VisualPointView } | { to: VisualPointView }): Promise<VisualPointView>
+  showVisualComment(id: string): Promise<VisualShowResult>
   stopConversationTurn(threadId: string): Promise<void>
   answerEngineApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
   answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
