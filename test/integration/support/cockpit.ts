@@ -27,6 +27,8 @@ export class FakeEngine implements EngineReadClient {
   readonly #threads = new Map<string, { title: string; messages: EngineMessageView[]; status: EngineView['projects'][number]['threads'][number]['status'] }>()
   #activeThreadId: string | null
   #counter = 0
+  identity: string | undefined
+  changeIdentity(identity: string) { this.identity = identity; this.#publish() }
 
   constructor(threads: ReadonlyArray<{ id: string; title: string }> = [{ id: 't1', title: 'Reviewer' }]) {
     for (const thread of threads) this.#threads.set(thread.id, { title: thread.title, messages: [], status: 'idle' })
@@ -45,6 +47,7 @@ export class FakeEngine implements EngineReadClient {
 
   view(): EngineView {
     return {
+      ...(this.identity ? { identity: this.identity } : {}),
       state: 'connected', server: 'http://engine.test', problem: null, credential: null, activeThreadId: this.#activeThreadId, accounts: [], terminalDefaults: {}, terminalShimDirectory: null,
       projects: [{ id: 'p1', title: 'Project', workspaceRoot: '/work', threads: [...this.#threads.entries()].map(([id, thread]) => ({
         id, projectId: 'p1', title: thread.title, model: 'gpt-5.6', providerInstanceId: 'codex', effort: 'medium', access: 'full-access', status: thread.status,

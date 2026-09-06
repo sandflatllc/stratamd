@@ -1,3 +1,4 @@
+import { engineStorage, engineStorageKey } from './engineStorage'
 import { flagshipModel } from '../shared/modelSelection'
 import type { ConversationAttachment, ConversationInput, CreateDraftRequest, EngineModelView, EngineView, ModelOption } from '../shared/contracts'
 
@@ -19,27 +20,27 @@ function parseDraft(raw: string | null): ConversationDraft | null {
 }
 
 export function readDraft(key: string): ConversationDraft {
-  if (memory.has(key)) return memory.get(key)!
+  if (memory.has(engineStorageKey(key))) return memory.get(engineStorageKey(key))!
   // A corrupt disposable draft cannot block conversation entry.
-  return parseDraft(localStorage.getItem(prefix + key)) ?? { text: '' }
+  return parseDraft(engineStorage.getItem(prefix + key)) ?? { text: '' }
 }
 /** False when local storage refused the draft; it then lives in memory only and will not survive reload. */
 export function writeDraft(key: string, draft: ConversationDraft): boolean {
-  memory.set(key, draft)
-  try { localStorage.setItem(prefix + key, JSON.stringify(draft)); return true } catch { return false }
+  memory.set(engineStorageKey(key), draft)
+  try { engineStorage.setItem(prefix + key, JSON.stringify(draft)); return true } catch { return false }
 }
 /** Every staged image any saved draft still references, so the main process can delete the rest. */
 export function draftAttachmentIds(): string[] {
   const ids = new Set<string>()
   const keys: string[] = []
-  try { for (let index = 0; index < localStorage.length; index += 1) { const key = localStorage.key(index); if (key?.startsWith(prefix)) keys.push(key) } } catch { /* No storage means no saved drafts. */ }
-  for (const key of keys) for (const attachment of parseDraft(localStorage.getItem(key))?.attachments ?? []) if (attachment.kind === 'image') ids.add(attachment.id)
+  try { for (let index = 0; index < engineStorage.length; index += 1) { const key = engineStorage.key(index); if (key?.startsWith(prefix)) keys.push(key) } } catch { /* No storage means no saved drafts. */ }
+  for (const key of keys) for (const attachment of parseDraft(engineStorage.getItem(key))?.attachments ?? []) if (attachment.kind === 'image') ids.add(attachment.id)
   for (const draft of memory.values()) for (const attachment of draft.attachments ?? []) if (attachment.kind === 'image') ids.add(attachment.id)
   return [...ids]
 }
 export function clearDraft(key: string): void {
-  memory.delete(key)
-  try { localStorage.removeItem(prefix + key) } catch { /* Storage may be unavailable. */ }
+  memory.delete(engineStorageKey(key))
+  try { engineStorage.removeItem(prefix + key) } catch { /* Storage may be unavailable. */ }
 }
 export function availableModels(engine: EngineView): EngineModelView[] {
   if (engine.models?.length) return engine.models
@@ -66,7 +67,7 @@ export function initialSelection(engine: EngineView, projectId: string): Compose
   const models = availableModels(engine)
   const usable = (instanceId?: string | null) => !engine.accounts.some((account) => account.instanceId === instanceId && !account.usable)
   try {
-    const saved = JSON.parse(localStorage.getItem(`stratamd.conversation-defaults.v1:${projectId}`) ?? 'null') as ComposerSelection | null
+    const saved = JSON.parse(engineStorage.getItem(`stratamd.conversation-defaults.v1:${projectId}`) ?? 'null') as ComposerSelection | null
     if (saved && usable(saved.instanceId) && models.some((model) => model.slug === saved.model && model.instanceId === saved.instanceId)) return saved
   } catch { /* Use the project's defaults. */ }
   const project = engine.projects.find((candidate) => candidate.id === projectId)
@@ -84,13 +85,13 @@ export function initialSelection(engine: EngineView, projectId: string): Compose
   return result
 }
 export function rememberSelection(projectId: string, selection: ComposerSelection): void {
-  try { localStorage.setItem(`stratamd.conversation-defaults.v1:${projectId}`, JSON.stringify(selection)) } catch { /* Session selection still works. */ }
+  try { engineStorage.setItem(`stratamd.conversation-defaults.v1:${projectId}`, JSON.stringify(selection)) } catch { /* Session selection still works. */ }
 }
 
 export interface NewConversationTarget { path: string | null; projectId?: string; comment?: CreateDraftRequest }
 export function readNewConversationTarget(): NewConversationTarget | null {
-  try { const value = JSON.parse(localStorage.getItem('stratamd.new-conversation.v1') ?? 'null'); return value && (value.path === null || typeof value.path === 'string') ? value : null } catch { return null }
+  try { const value = JSON.parse(engineStorage.getItem('stratamd.new-conversation.v1') ?? 'null'); return value && (value.path === null || typeof value.path === 'string') ? value : null } catch { return null }
 }
 export function writeNewConversationTarget(value: NewConversationTarget | null): void {
-  try { localStorage.setItem('stratamd.new-conversation.v1', JSON.stringify(value)) } catch { /* Draft text still persists independently. */ }
+  try { engineStorage.setItem('stratamd.new-conversation.v1', JSON.stringify(value)) } catch { /* Draft text still persists independently. */ }
 }

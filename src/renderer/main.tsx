@@ -1,3 +1,4 @@
+import { EngineScope } from './EngineScope'
 import '@fontsource/baloo-2/latin-500.css'
 import '@fontsource/baloo-2/latin-600.css'
 import '@fontsource/baloo-2/latin-700.css'
@@ -133,7 +134,7 @@ createRoot(root, {
 }).render(
   <StrictMode>
     <Boundary region="window" root>
-      <App createEditor={createRendererEditor} />
+      <EngineScope><App createEditor={createRendererEditor} /></EngineScope>
     </Boundary>
   </StrictMode>
 )

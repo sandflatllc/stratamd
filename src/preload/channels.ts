@@ -7,6 +7,7 @@ export const IPC = {
   state: 'strata:state',
   stateChanged: 'strata:state-changed',
   pairEngine: 'strata:pair-engine',
+  manageEngine: 'strata:manage-engine',
   reconnectEngine: 'strata:reconnect-engine',
   openConversation: 'strata:open-conversation',
   createEngineThread: 'strata:create-engine-thread',

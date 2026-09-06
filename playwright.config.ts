@@ -6,6 +6,7 @@ import { defineConfig } from '@playwright/test'
 // name included, so a bare /clipboard/ would match every test in that project.
 // test/unit/e2e-clipboard-tags.test.ts fails when a clipboard test lacks the tag.
 const clipboardTag = /@clipboard/
+const managedTag = /@managed/
 
 // Ordinary tests run in parallel at the test level, each worker on its own X
 // display (test/e2e/display.ts), so windows never steal focus from one
@@ -14,12 +15,14 @@ const clipboardTag = /@clipboard/
 // 2026-09-05); eight had pushed tests past their 30-second timeout on a
 // shared display in 2026-09-02. Public-repo CI runners have four cores. A Mac
 // has one desktop, one focus, and one clipboard, so it runs one worker in
-// total and the override does not apply.
+// total and the override does not apply. Concurrent full runs in separate
+// worktrees reproduced load timeouts on 2026-09-05, so local default is four;
+// the required eight-worker stress check remains an explicit override.
 const macHost = process.platform === 'darwin'
 function ordinaryWorkerCount(): number {
   if (macHost) return 1
   const override = process.env.STRATAMD_E2E_WORKERS
-  if (override === undefined || override === '') return process.env.CI ? 2 : 6
+  if (override === undefined || override === '') return process.env.CI ? 2 : 4
   if (!/^[1-9]\d*$/.test(override)) {
     throw new Error(`STRATAMD_E2E_WORKERS must be a positive integer such as 4; got ${JSON.stringify(override)}`)
   }
@@ -57,10 +60,11 @@ export default defineConfig({
   projects: [
     {
       name: 'ordinary',
-      grepInvert: clipboardTag,
+      grepInvert: /@clipboard|@managed/,
       fullyParallel: true,
       workers: ordinaryWorkers
     },
+    { name: 'managed', grep: managedTag, fullyParallel: false, workers: 1 },
     {
       name: 'clipboard',
       grep: clipboardTag,

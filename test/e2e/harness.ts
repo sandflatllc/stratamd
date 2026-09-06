@@ -163,6 +163,7 @@ export class Scenario {
       XDG_CONFIG_HOME: config,
       // Isolates Electron's profile and its single-instance lock per scenario;
       // XDG_CONFIG_HOME only achieves that on Linux.
+      STRATAMD_ENGINE_MODE: 'external',
       STRATAMD_USER_DATA: userData,
       ...(macHost ? {} : linuxLaunchEnv),
       // Every e2e run checks each merged view update against the full view.

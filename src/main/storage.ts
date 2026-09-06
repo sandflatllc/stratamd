@@ -101,6 +101,8 @@ export interface DocumentMeta {
   readonly segments: readonly SegmentMeta[]
   /** Absolute index of segments[0]; older version-1 metadata defaults to zero. */
   readonly segmentOffset: number
+  readonly engineIdentity?: string
+  readonly engineAttachments?: Readonly<Record<string, { attachments: Readonly<Record<string, AttachmentMeta>>; leadAgentId: string | null }>>
   readonly attachments: Readonly<Record<string, AttachmentMeta>>
   /** The attachment holding the Lead, if any; metadata written before this field reads as null. */
   readonly leadAgentId?: string | null
@@ -330,6 +332,8 @@ function normalizeMeta(value: unknown, expectedRealpath?: string): DocumentMeta 
   if (!isRecord(migrated.attachments) || !Array.isArray(migrated.annotationEvents)) {
     throw new Error('Invalid document metadata attachment or annotation state')
   }
+  if (migrated.engineIdentity !== undefined && typeof migrated.engineIdentity !== 'string') throw new Error('Invalid engine identity in document metadata')
+  if (migrated.engineAttachments !== undefined && (!isRecord(migrated.engineAttachments) || Object.values(migrated.engineAttachments).some(binding => !isRecord(binding) || !isRecord(binding.attachments) || (binding.leadAgentId !== null && typeof binding.leadAgentId !== 'string')))) throw new Error('Invalid archived engine attachments in document metadata')
   const segmentOffset = migrated.segmentOffset ?? 0
   if (!Number.isSafeInteger(segmentOffset) || (segmentOffset as number) < 0) {
     throw new Error('Invalid document metadata segment offset')
@@ -353,7 +357,7 @@ function referencedBlobs(meta: DocumentMeta): Set<string> {
     if (segment.beforeBlob) result.add(segment.beforeBlob)
     if (segment.afterBlob) result.add(segment.afterBlob)
   }
-  for (const attachment of Object.values(meta.attachments)) {
+  for (const attachment of Object.values(meta.attachments).concat(...Object.values(meta.engineAttachments ?? {}).map(binding => Object.values(binding.attachments)))) {
     result.add(attachment.baselineBlob)
     for (const delivery of attachment.deliveries) {
       result.add(delivery.snapshotBlob)

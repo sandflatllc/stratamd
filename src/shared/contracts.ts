@@ -357,7 +357,12 @@ export interface AccountView {
   live: boolean
 }
 
+export interface ManagedEngineView { state: 'starting' | 'running' | 'failed' | 'stopped'; version: string | null; nodeVersion: string | null; directory: string; problem: string | null }
+
 export interface EngineView {
+  identity?: string
+  managed?: ManagedEngineView
+
   models?: EngineModelView[]
   state: EngineConnectionState
   server: string | null
@@ -582,6 +587,7 @@ export type PaneId = 'explorer' | 'editor' | 'rightRail' | 'composer'
 export type PaneZoom = Record<PaneId, number>
 
 export interface AppSettingsView {
+  engine?: { mode: 'managed' | 'external'; keepRunning: boolean; startAtLogin: boolean }
   animatedBackground: boolean
   panelSizes: PanelSizes
   zoom: PaneZoom
@@ -788,6 +794,7 @@ export interface StrataApi {
   getState(): Promise<AppView>
   subscribe(listener: (state: AppView) => void): () => void
   pairEngine(request: PairEngineRequest): Promise<void>
+  manageEngine?(action: 'restart' | 'use-managed'): Promise<void>
   reconnectEngine(): Promise<void>
   openConversation(threadId: string): Promise<void>
   /** Sends the owner's note plus every queued item reply as one delivery (§5.4); either may be empty, not both. */

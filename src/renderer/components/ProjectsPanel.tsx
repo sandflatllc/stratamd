@@ -1,3 +1,4 @@
+import { engineStorage } from '../engineStorage'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
 import { AddProjectDialog } from './AddProjectDialog'
 import { PlusIcon } from '../icons/lucide'
@@ -30,7 +31,7 @@ const DRAG_THRESHOLD = 4
 
 function readOrder(): string[] {
   try {
-    const value = JSON.parse(localStorage.getItem(ORDER_KEY) ?? '[]') as unknown
+    const value = JSON.parse(engineStorage.getItem(ORDER_KEY) ?? '[]') as unknown
     return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : []
   } catch { return [] }
 }
@@ -39,7 +40,7 @@ interface FolderDrag { id: string; target: string | null; edge: 'before' | 'afte
 
 function readPreferences(): FolderPreferences {
   try {
-    const value = JSON.parse(localStorage.getItem(PREFERENCES_KEY) ?? '{}') as Record<string, unknown>
+    const value = JSON.parse(engineStorage.getItem(PREFERENCES_KEY) ?? '{}') as Record<string, unknown>
     return Object.fromEntries(Object.entries(value).flatMap(([id, raw]) => {
       if (typeof raw !== 'object' || raw === null) return []
       const entry = raw as Partial<FolderPreference>
@@ -160,8 +161,8 @@ export function ProjectsPanel({ engine, onOpenThread, onBeginRename, onReconnect
   const [addingProject, setAddingProject] = useState(false)
   const search = useRef<HTMLInputElement>(null)
 
-  useEffect(() => { try { localStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences)) } catch { /* Disposable view preference. */ } }, [preferences])
-  useEffect(() => { try { localStorage.setItem(ORDER_KEY, JSON.stringify(order)) } catch { /* Disposable view preference. */ } }, [order])
+  useEffect(() => { try { engineStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences)) } catch { /* Disposable view preference. */ } }, [preferences])
+  useEffect(() => { try { engineStorage.setItem(ORDER_KEY, JSON.stringify(order)) } catch { /* Disposable view preference. */ } }, [order])
   useEffect(() => {
     const keydown = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') setMenu(null)

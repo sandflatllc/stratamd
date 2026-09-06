@@ -58,7 +58,7 @@ export interface Annotation {
   /** Wall-clock creation time; absent on records written before it was recorded. */
   createdAt?: number
   /** Engine provenance for the turn checklist. Absent for owner-created annotations. */
-  source?: { threadId: string; turnId: string; messageId: string }
+  source?: { engineIdentity?: string; threadId: string; turnId: string; messageId: string }
   /** Exact anchored text when the owner last marked this item reviewed. */
   reviewedText?: string
 }
@@ -116,7 +116,7 @@ export interface CreateAnnotationInput {
   followedBy?: string
   start?: number
   createdAt?: number
-  source?: { threadId: string; turnId: string; messageId: string }
+  source?: { engineIdentity?: string; threadId: string; turnId: string; messageId: string }
 }
 
 export interface AnnotationResult {

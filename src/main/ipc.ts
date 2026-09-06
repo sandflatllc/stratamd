@@ -158,6 +158,7 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
     z.object({ link: z.string().trim().min(1).max(4_096) }).strict(),
     z.object({ host: z.string().trim().min(1).max(2_048), code: idSchema }).strict(),
   ])]),
+  [IPC.manageEngine]: z.tuple([z.enum(['restart', 'use-managed'])]),
   [IPC.reconnectEngine]: z.tuple([]),
   [IPC.openConversation]: z.tuple([idSchema]),
   [IPC.createEngineThread]: z.tuple([startThreadSchema]),
@@ -373,6 +374,7 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
       return before === nextSeq ? record(view) : lastSent!
     },
     [IPC.pairEngine]: (request: Parameters<StrataApi['pairEngine']>[0]) => options.api.pairEngine(request),
+    [IPC.manageEngine]: (action: 'restart' | 'use-managed') => { if (!options.api.manageEngine) throw new Error('Local engine controls are unavailable'); return options.api.manageEngine(action) },
     [IPC.reconnectEngine]: () => options.api.reconnectEngine(),
     [IPC.openConversation]: (threadId: string) => options.api.openConversation(threadId),
     [IPC.createEngineThread]: (input: Parameters<StrataApi['createEngineThread']>[0]) => options.api.createEngineThread(input),

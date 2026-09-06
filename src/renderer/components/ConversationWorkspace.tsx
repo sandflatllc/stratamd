@@ -13,8 +13,10 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   const [selection, setSelection] = useState<{ message: string; range: EditorSelection; id?: string } | null>(null)
   const [discussion, setDiscussion] = useState<string | null>(null)
   const returnPosition = useRef<{ message: string; offset: number } | null>(null)
-  const [replyItem, setReplyItem] = useState<string | null>(null)
-  const [reply, setReply] = useState('')
+  const [replyDraft, setReplyDraft] = useState<{ itemId: string; text: string } | null>(null)
+  const replyItem = replyDraft?.itemId ?? null
+  const reply = replyDraft?.text ?? ''
+  const setReply = (text: string) => setReplyDraft(current => current ? { ...current, text } : null)
   const [target, setTarget] = useState<PassageTarget | null>(null)
   const [excluded, setExcluded] = useState<string[]>([])
   const [reading, setReading] = useState<Record<string, string>>({})
@@ -24,7 +26,7 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   const [matchIndex, setMatchIndex] = useState(0)
   const [error, setError] = useState('')
   const [previewId, setPreviewId] = useState(() => readDraft(`thread:${thread?.id}`).messageId ?? crypto.randomUUID())
-  useEffect(() => { setReading(readConversationReading(thread?.id ?? '')); setSelection(null); setDiscussion(null); setMenu(null); setQuery(''); setTarget(null); setReplyItem(null); setExcluded([]); setReply(''); setPreviewId(readDraft(`thread:${thread?.id}`).messageId ?? crypto.randomUUID()) }, [thread?.id])
+  useEffect(() => { setReading(readConversationReading(thread?.id ?? '')); setSelection(null); setDiscussion(null); setMenu(null); setQuery(''); setTarget(null); setReplyDraft(null); setExcluded([]); setPreviewId(readDraft(`thread:${thread?.id}`).messageId ?? crypto.randomUUID()) }, [thread?.id])
   useEffect(() => { const refresh = () => setReading(readConversationReading(thread?.id ?? '')); window.addEventListener('conversation-reading', refresh); return () => window.removeEventListener('conversation-reading', refresh) }, [thread?.id])
   const remember = (key: string, value: string) => { if (thread) writeConversationReading(thread.id, { ...readConversationReading(thread.id), [key]: value }) }
   const attempt = async (action: () => Promise<unknown>) => { try { await action(); setError('') } catch (error) { setError(error instanceof Error ? error.message : String(error)) } }
@@ -44,7 +46,7 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   }
   const open = (id: string) => {
     const comment = comments.find(comment => comment.id === id)
-    if (!comment) { setReplyItem(id); setReply(thread?.items?.find(item => item.id === id)?.draftReply ?? ''); return }
+    if (!comment) { focusReply(id); return }
     const message = thread?.messages.find(message => message.id === comment.anchor.message)
     const range = resolveMessageAnchor(comment, message)
     if (discussion !== id) {
@@ -85,7 +87,7 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
     if (viewport && row) viewport.scrollTop += row.getBoundingClientRect().top - viewport.getBoundingClientRect().top - position.offset
   }
   const replyRecord = thread?.items?.find(item => item.id === replyItem)
-  const focusReply = (id: string) => { setReplyItem(id); setReply(thread?.items?.find(item => item.id === id)?.draftReply ?? '') }
+  const focusReply = (id: string) => setReplyDraft({ itemId: id, text: thread?.items?.find(item => item.id === id)?.draftReply ?? '' })
   const latestResponse = thread?.messages.findLast(message => message.role === 'assistant')
   const openItems = (thread?.items ?? []).filter(item => !isOwnerComment(item) && item.status !== 'done')
   const kindLabel = (kind: string) => kind.charAt(0).toUpperCase() + kind.slice(1)
@@ -112,7 +114,7 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
       {!!thread?.outcomes?.length && <p>{thread.outcomes.length} action outcomes</p>}
       {preview && <details><summary>Delivery preview</summary><pre>{preview}</pre></details>}
     </details>}
-    {replyItem && <div className="conversation-reply-composer"><strong>Reply to {replyRecord?.text || replyRecord?.quote || replyItem}</strong><textarea aria-label="Discussion reply" value={reply} onChange={event => setReply(event.target.value)} />{replyRecord?.options?.map(option => <button type="button" key={option} onClick={() => setReply(option)}>{option}</button>)}<button type="button" onClick={() => setReply('')}>Other</button><button type="button" disabled={!reply.trim()} onClick={() => void attempt(async () => { await window.strata.queueItemReply(thread!.id, replyItem, reply); setReplyItem(null); setReply('') })}>Queue reply</button><button type="button" onClick={() => setReplyItem(null)}>Cancel</button></div>}
+    {replyItem && <div className="conversation-reply-composer"><strong>Reply to {replyRecord?.text || replyRecord?.quote || replyItem}</strong><textarea aria-label="Discussion reply" value={reply} onChange={event => setReply(event.target.value)} />{replyRecord?.options?.map(option => <button type="button" key={option} onClick={() => setReply(option)}>{option}</button>)}<button type="button" onClick={() => setReply('')}>Other</button><button type="button" disabled={!reply.trim()} onClick={() => void attempt(async () => { const submitted = replyDraft; await window.strata.queueItemReply(thread!.id, replyItem, reply); setReplyDraft(current => current === submitted ? null : current) })}>Queue reply</button><button type="button" onClick={() => setReplyDraft(null)}>Cancel</button></div>}
     {thread?.deliveries?.map(delivery => <details key={delivery.messageId}><summary>{delivery.phase === 'uploading' ? 'Delivery upload incomplete' : 'Delivery ready to dispatch'}</summary><pre>{delivery.text}</pre><button type="button" onClick={() => void attempt(() => onStart(thread.id, { messageId: delivery.messageId, text: '', model: thread.model, effort: thread.effort, access: thread.access }))}>Retry delivery</button></details>)}
     {error && <p role="alert">{error}</p>}
   </>

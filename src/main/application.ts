@@ -1,3 +1,5 @@
+import { LocalEngineManager } from './engine/manager'
+import { connectionIdentity } from './engine/identity'
 import { conversationDelivery, renderConversationDelivery } from '../core/conversation-delivery'
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, extname, join, resolve } from 'node:path'
@@ -176,6 +178,8 @@ interface OpenDocumentSession {
   attachments: Record<string, Attachment>
   /** The at-most-one attachment holding the Lead (PRD §6.6); dies with it. */
   leadAgentId: string | null
+  engineIdentity: string | undefined
+  engineAttachments: Record<string, { attachments: Record<string, Attachment>; leadAgentId: string | null }>
   sourceMode: boolean
   reading: ReadingState
   walkthroughIndex: WalkthroughIndex
@@ -268,6 +272,7 @@ export interface ApplicationOptions {
   selectFolder?: () => Promise<string | null>
   now?: () => number
   watch?: boolean
+  managedBundle?: string
   engine?: EngineReadClient
   /** Window focus and the OS notification, supplied by Electron (§5.2). */
   notifications?: { isFocused(): boolean; notify(notification: { threadId: string; title: string; body: string }): void }
@@ -299,6 +304,8 @@ export class StrataApplication implements StrataApi {
   readonly #now: () => number
   readonly #watch: boolean
   readonly #engine: EngineReadClient
+  readonly #managedBundle: string | undefined
+  #manager: LocalEngineManager | null = null
   #followedThreadsKey = ''
   #unsubscribeEngine: (() => void) | null = null
   readonly #engineDispatching = new Set<string>()
@@ -313,6 +320,7 @@ export class StrataApplication implements StrataApi {
   #lastView: AppView | null = null
 
   constructor(options: ApplicationOptions = {}) {
+    this.#managedBundle = options.managedBundle
     this.#store = options.store ?? new GhostStore()
     this.#settingsStore = options.settingsStore ?? new SettingsStore()
     this.#themeStore = options.themeStore ?? new ThemeStore({ configDirectory: this.#settingsStore.configDirectory })
@@ -394,8 +402,20 @@ export class StrataApplication implements StrataApi {
       this.#publish()
       void this.#reconcileEngineView(view).catch((error: unknown) => logError('engine', 'Engine delivery reconciliation failed', error))
     })
-    await this.#engine.initialize()
     this.#settings = await this.#settingsStore.load()
+    if (this.#managedBundle) {
+      let configured = false
+      try { configured = !!JSON.parse(await readFile(this.#settingsStore.path, 'utf8')).engine?.mode } catch {}
+      let paired = false
+      try { paired = !!JSON.parse(await readFile(join(this.#store.dataDirectory, 'engine-credential.json'), 'utf8')).server } catch {}
+      const mode = process.env.STRATAMD_ENGINE_MODE ?? (configured ? this.#settings.engine.mode : paired ? 'external' : 'managed')
+      this.#settings = await this.#settingsStore.update({ engine: { ...this.#settings.engine, mode: mode === 'external' ? 'external' : 'managed' } })
+      if (this.#settings.engine.mode === 'managed') {
+        await this.#engine.initialize(false)
+        this.#manager = this.#createManager()
+        void this.#manager.start()
+      } else await this.#engine.initialize()
+    } else await this.#engine.initialize()
     await this.#themeStore.ensureDirectory()
     await this.#loadActiveTheme(this.#settings.theme)
     await this.#relistThemes()
@@ -645,6 +665,7 @@ export class StrataApplication implements StrataApi {
     this.#unsubscribeEngine?.()
     this.#unsubscribeEngine = null
     await this.#engine.shutdown()
+    await this.#manager?.stop()
     const sessions = [...this.#sessions.values()]
     this.#listeners.clear()
     const results = await Promise.allSettled(sessions.map((session) => this.#withSession(session.path, async () => {
@@ -684,7 +705,40 @@ export class StrataApplication implements StrataApi {
 
   async pairEngine(request: PairEngineRequest): Promise<void> {
     const target = resolvePairingTarget(request)
+    if (target.server !== this.#engine.view().server && (this.#engineDispatching.size || this.#engine.view().projects.some(project => project.threads.some(thread => thread.status === 'running' || thread.status === 'starting')))) throw new Error('Wait for active work to finish before changing engines.')
+    await Promise.all([...this.#sessionTurns.values()])
     await this.#engine.pair(target.server, target.code)
+    await this.#manager?.stop(); this.#manager = null
+    if (this.#managedBundle) this.#settings = await this.#settingsStore.update({ engine: { ...this.#settings.engine, mode: 'external' } })
+    this.#publish()
+  }
+
+  #createManager(): LocalEngineManager {
+    return new LocalEngineManager({
+          directory: join(this.#store.dataDirectory, 'engine'), bundle: this.#managedBundle!,
+          changed: () => this.#publish(),
+          connect: async (address, token, identity) => { await this.#engine.pair(address, token, identity); if (this.#engine.view().state !== 'connected') throw new Error(this.#engine.view().problem ?? 'Engine subscriptions are unavailable') },
+          authenticate: async address => {
+            try { const credential = JSON.parse(await readFile(join(this.#store.dataDirectory, 'engine-credential.json'), 'utf8')); if (credential.server !== address) return false; return (await fetch(address + '/api/orchestration/shell', { headers: { authorization: `Bearer ${credential.accessToken}` }, signal: AbortSignal.timeout(3000) })).ok } catch { return false }
+          },
+          reconnect: async () => { await this.#engine.reconnect(); if (this.#engine.view().state !== 'connected') throw new Error(this.#engine.view().problem ?? 'Engine subscriptions are unavailable') },
+        })
+  }
+
+  async manageEngine(action: 'restart' | 'use-managed'): Promise<void> {
+    if (!this.#managedBundle) throw new Error('This build has no bundled engine')
+    if (this.#engine.view().projects.some(project => project.threads.some(thread => thread.status === 'running' || thread.status === 'starting'))) throw new Error('Wait for active conversations to finish before restarting the engine.')
+    if (action === 'use-managed') {
+      await Promise.all([...this.#sessionTurns.values()])
+      this.#manager ??= this.#createManager()
+      await this.#manager.start()
+      if (this.#manager.view().state !== 'running') throw new Error(this.#manager.view().problem ?? 'The local engine could not start')
+      this.#settings = await this.#settingsStore.update({ engine: { ...this.#settings.engine, mode: 'managed' } })
+      this.#publish()
+    } else {
+      if (!this.#manager) throw new Error('This connection is an external engine')
+      await this.#manager.restart()
+    }
   }
 
   async reconnectEngine(): Promise<void> {
@@ -902,12 +956,30 @@ export class StrataApplication implements StrataApi {
     })
   }
 
+  #selectDocumentEngine(session: OpenDocumentSession, identity: string | undefined): boolean {
+    if (!identity || identity === session.engineIdentity) return false
+    for (const annotation of Object.values(session.annotations.annotations)) {
+      if (annotation.source && !annotation.source.engineIdentity) annotation.source = { ...annotation.source, engineIdentity: session.engineIdentity ?? 'legacy' }
+    }
+    if (session.engineIdentity) session.engineAttachments[session.engineIdentity] = { attachments: session.attachments, leadAgentId: session.leadAgentId }
+    else if (Object.keys(session.attachments).length) session.engineAttachments.legacy = { attachments: session.attachments, leadAgentId: session.leadAgentId }
+    const selected = session.engineAttachments[identity]
+    session.attachments = selected?.attachments ?? {}
+    session.leadAgentId = selected?.leadAgentId ?? null
+    session.engineIdentity = identity
+    delete session.engineAttachments[identity]
+    session.hunkItemSources.clear()
+    this.#clearApplicationHistory(session)
+    this.#followedThreadsKey = ''
+    return true
+  }
+
   async #reconcileEngineView(view: AppView['engine']): Promise<void> {
     const acknowledged = new Set(view.projects.flatMap((project) => project.threads.flatMap((thread) => thread.messages.map((message) => message.id))))
     for (const session of [...this.#sessions.values()]) {
       await this.#withSession(session.path, async () => {
-        if (this.#sessions.get(session.path) !== session) return
-        let changed = false
+        if (this.#sessions.get(session.path) !== session || view.identity !== this.#engine.view().identity) return
+        let changed = this.#selectDocumentEngine(session, view.identity)
         for (const thread of view.projects.flatMap((project) => project.threads)) {
           if (session.attachments[thread.id]) continue
           const bootstrap = thread.messages.find((message) => {
@@ -1001,7 +1073,7 @@ export class StrataApplication implements StrataApi {
           }
           if (annotation.kind === 'decision' && (entry.verb === 'resolve' || entry.verb === 'accept' || entry.verb === 'reject')) throw new Error('DECISION_OWNER_REQUIRED: decision answers are owner-only')
           if (entry.verb === 'resolve') {
-            if (annotation.agent !== threadId) requireLead()
+            if (annotation.agent !== threadId || (annotation.source?.engineIdentity && annotation.source.engineIdentity !== session.engineIdentity)) requireLead()
             session.annotations = resolveAnnotationThread(session.annotations, annotation.id, 'agent', threadId).log
             session.annotations = retainConfiguredResolvedAnnotations(session, this.#settings.keepResolvedAnnotations)
             outcomes.push({ index: result.index, status: 'applied', itemId: annotation.id })
@@ -1053,7 +1125,7 @@ export class StrataApplication implements StrataApi {
             createdAt: this.#now(), id: itemId, kind: entry.verb === 'suggest' ? 'suggestion' : entry.verb,
             author: 'agent', agent: threadId, name: attachment.name, quote,
             text: entry.verb === 'suggest' ? entry.replacement : entry.text, start,
-            source: { threadId, turnId, messageId },
+            source: { ...(session.engineIdentity ? { engineIdentity: session.engineIdentity } : {}), threadId, turnId, messageId },
             ...(entry.verb === 'decision' ? { anchorKind: 'quote' as const, options: entry.options } : {}),
           })
           session.annotations = created.log
@@ -1100,6 +1172,7 @@ export class StrataApplication implements StrataApi {
   }
 
   async #dispatchEngineDelivery(session: OpenDocumentSession, threadId: string): Promise<void> {
+    if (session.engineIdentity && session.engineIdentity !== this.#engine.view().identity) return
     const delivery = collectOldest(session.attachments[threadId]!)
     if (!delivery) return
     const thread = this.#engine.view().projects.flatMap((project) => project.threads).find((candidate) => candidate.id === threadId)
@@ -1179,6 +1252,7 @@ export class StrataApplication implements StrataApi {
         drafts: createDraftStore(),
         attachments: {},
         leadAgentId: null,
+        engineIdentity: this.#engine.view().identity, engineAttachments: {},
         sourceMode: true,
         reading: { ...DEFAULT_READING_STATE },
         walkthroughIndex: { markdown: state.shadow, headings: [], sections: [], nextId: 1 },
@@ -1247,6 +1321,12 @@ export class StrataApplication implements StrataApi {
     const annotations = restoredAnnotationLog(meta)
     const payloadBlobs = new WeakMap<object, string>()
     const attachments = { ...await restoreAttachments(meta, saved?.attachments, this.#store, payloadBlobs) }
+    const engineAttachments: OpenDocumentSession['engineAttachments'] = {}
+    for (const [identity, binding] of Object.entries(meta.engineAttachments ?? {})) {
+      engineAttachments[identity] = { attachments: await restoreAttachments({ ...meta, attachments: binding.attachments }, undefined, this.#store, payloadBlobs), leadAgentId: binding.leadAgentId }
+    }
+    let originalIdentity: string | undefined
+    try { originalIdentity = JSON.parse(await readFile(join(this.#store.dataDirectory, 'engine-identity.json'), 'utf8')).identity } catch {}
     const storedReading = await readReadingState(this.#store.pathsForDocument(canonical).reading)
     const draftPath = this.#store.pathsForDocument(canonical).drafts
     let drafts = await readDraftStore(draftPath)
@@ -1278,6 +1358,7 @@ export class StrataApplication implements StrataApi {
       annotations: relocateOpenAnnotations(annotations, state.shadow),
       drafts,
       attachments,
+      engineIdentity: meta.engineIdentity ?? originalIdentity, engineAttachments,
       leadAgentId: typeof meta.leadAgentId === 'string' && attachments[meta.leadAgentId] !== undefined
         ? meta.leadAgentId
         : null,
@@ -2472,6 +2553,12 @@ export class StrataApplication implements StrataApi {
     for (const [id, attachment] of Object.entries(session.attachments)) {
       attachments[id] = await persistAttachment(this.#store, session.payloadBlobs, attachment)
     }
+    const engineAttachments: Record<string, { attachments: Record<string, AttachmentMeta>; leadAgentId: string | null }> = {}
+    for (const [identity, binding] of Object.entries(session.engineAttachments)) {
+      const stored: Record<string, AttachmentMeta> = {}
+      for (const [id, attachment] of Object.entries(binding.attachments)) stored[id] = await persistAttachment(this.#store, session.payloadBlobs, attachment)
+      engineAttachments[identity] = { attachments: stored, leadAgentId: binding.leadAgentId }
+    }
     const { application: _legacyApplication, ...canonical } = existing
     const persisted = await this.#store.saveMeta({
       ...canonical,
@@ -2491,6 +2578,8 @@ export class StrataApplication implements StrataApi {
       forceNewUserSegment: session.state.forceNewUserSegment,
       attachments,
       leadAgentId: session.leadAgentId,
+      ...(session.engineIdentity ? { engineIdentity: session.engineIdentity } : {}),
+      engineAttachments,
       annotationEvents: session.annotations.events,
       annotations: session.annotations.annotations,
       nextAnnotationSeq: session.annotations.nextSeq,
@@ -2813,7 +2902,9 @@ export class StrataApplication implements StrataApi {
 
   #rawView(): AppView {
     const focused = this.#tabs.focusedPath
-    const raw = this.#engine.view()
+    const base = this.#engine.view()
+    const managed = this.#manager?.view()
+    const raw: AppView['engine'] = managed ? { ...base, managed, state: managed.state === 'starting' ? 'connecting' : managed.state === 'failed' || managed.state === 'stopped' ? 'disconnected' : base.state } : base
     const engine: AppView['engine'] = { ...raw, projects: raw.projects.map((project) => ({ ...project, threads: project.threads.map((thread) => ({ ...thread, pendingWork: this.#pendingWork(thread.id) })) })) }
     return {
       tabs: this.#tabs.list().map((tab) => {
@@ -2848,7 +2939,7 @@ export class StrataApplication implements StrataApi {
   /** Every thread attached to an open document is followed live, so its blocks and acknowledgments arrive whether or not it is the active conversation (§5.9). */
   #followAttachedThreads(): void {
     if (!this.#engine.watchThreads) return
-    const ids = [...new Set([...this.#sessions.values()].flatMap((session) => Object.keys(session.attachments)))].sort()
+    const ids = [...new Set([...this.#sessions.values()].flatMap((session) => session.engineIdentity && session.engineIdentity !== this.#engine.view().identity ? [] : Object.keys(session.attachments)))].sort()
     const key = ids.join('\0')
     if (key === this.#followedThreadsKey) return
     this.#followedThreadsKey = key
@@ -3258,7 +3349,7 @@ function agentIdentity(id: string, name: string, index: number): AgentIdentity {
   return { id, name, color: colors[index % colors.length]! }
 }
 
-function annotationView(log: AnnotationLog, attachments: Record<string, Attachment>, document: string): AnnotationView[] {
+function annotationView(log: AnnotationLog, attachments: Record<string, Attachment>, document: string, engineIdentity?: string): AnnotationView[] {
   const ids = Object.keys(attachments)
   return Object.values(log.annotations).map((annotation) => ({
     id: annotation.id,
@@ -3279,7 +3370,7 @@ function annotationView(log: AnnotationLog, attachments: Record<string, Attachme
     to: annotation.status === 'orphaned' || annotation.anchor.kind === 'document' ? null : annotation.anchor.end,
     ...(annotation.kind === 'suggestion' ? { replacement: annotation.text, inline: suggestionRendersInline(annotation.quote, annotation.text) } : {}),
     ...optionalTime(annotation),
-    ...(annotation.source ? { source: annotation.source } : {}),
+    ...(annotation.source && (!annotation.source.engineIdentity || annotation.source.engineIdentity === engineIdentity) ? { source: annotation.source } : {}),
     review: annotation.reviewedText === undefined
       ? 'unreviewed'
       : annotation.anchor.kind === 'document' || document.slice(annotation.anchor.start, annotation.anchor.end) === annotation.reviewedText ? 'reviewed' : 'revisit',
@@ -3405,10 +3496,10 @@ function documentView(session: OpenDocumentSession, store: GhostStore, now: numb
       time: save.time,
       authors: save.authors.map((author) => ({ ...author })),
     })),
-    annotations: annotationView(session.annotations, session.attachments, session.state.shadow),
+    annotations: annotationView(session.annotations, session.attachments, session.state.shadow, session.engineIdentity),
     items: deriveItems({
       documentPath: session.path,
-      annotations: annotationView(session.annotations, session.attachments, session.state.shadow),
+      annotations: annotationView(session.annotations, session.attachments, session.state.shadow, session.engineIdentity),
       hunks: hunkViews(session, now),
       attachments,
     }),
@@ -3472,6 +3563,7 @@ function explorerView(scan: ExplorerScanResult, sessions: Map<string, OpenDocume
 
 function settingsView(settings: Settings): Omit<AppSettingsView, 'theme'> {
   return {
+    engine: settings.engine,
     animatedBackground: settings.ambientMotion,
     panelSizes: { ...settings.panels },
     zoom: { ...settings.zoom }

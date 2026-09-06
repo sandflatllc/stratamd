@@ -1,6 +1,6 @@
 # Bundle the T3 server in Strata
 
-Status: phase 1 Linux proofs and repository gate passed; owner/device proofs recorded as blocked. Phase 2 is next. Last revised September 5, 2026; the [changelog](#changelog) at the end records what changed and why.
+Status: phases 1 and 2 complete, with their repository gates passed. Phase 2 also passed the 380-check eight-worker run. Owner/device proofs remain blocked. Phase 3 is next. Last revised September 5, 2026; the [changelog](#changelog) at the end records what changed and why.
 
 This file is the source of truth for the implementing agent. Rules are stated once, in the present tense. The [settings audit](settings-audit.md) is the scope checklist for every engine control, the [inspection record](references/README.md) holds the evidence captures, and the [design captures](../../../design/bundled-server/README.md) show the proposed dialogs inside the real app.
 
@@ -303,3 +303,5 @@ The packaged native modules on both platforms; a clean-machine provider install 
 - **September 5, 2026, rewrite.** Folded every finding into present-tense rules, added the storage layout, the `engine.mode` setting, the phase 1 task list and report location, the `STRATAMD_ENGINE_MODE` flag, and the upstream key list in the audit.
 
 - **September 5, 2026, phase 1 implementation.** Linux stock package and existing pairing client completed a real conversation; native modules and both Linux usage readers passed. Nonzero-port requirement, provisional provider status, duration-based Codex windows, experimental Claude API, and interactive-only Connect authorization are incorporated above. Hosted authorization, Android and macOS proofs are blocked by missing owner sign-in/devices, not represented as passing. The owner explicitly authorized continuing surrounding implementation. See [phase 1 report](phase-1/report.md).
+
+- **September 5, 2026, phase 2.** Implemented the managed runtime, process ownership, automatic connection, bounded recovery, tray lifecycle, and engine-scoped state. Legacy credentials are resolved before binding their original records. Document deliveries, Lead, renderer drafts, and account preferences remain with their engine. The full gate passed (840 unit/integration tests, 190 Electron tests) and the eight-worker repeat passed 380 checks. Repeated cross-worktree load failures reduced ordinary workers from six to four. A stress-exposed reply completion race now preserves the next draft. See [the phase 2 report](phase-2/report.md) and [identity inventory](phase-2/engine-identity.md).

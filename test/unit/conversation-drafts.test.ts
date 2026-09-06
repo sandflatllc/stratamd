@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { availableModels, clearDraft, draftAttachmentIds, initialSelection, readDraft, rememberSelection, selectionForModel, writeDraft } from '../../src/renderer/conversationDrafts'
+import { setEngineStorageIdentity } from '../../src/renderer/engineStorage'
 import { EMPTY_VIEW } from '../../src/renderer/model'
 import type { EngineModelView, EngineView } from '../../src/shared/contracts'
 
@@ -66,4 +67,22 @@ it('collects the staged image ids across every saved draft for the startup sweep
   expect(draftAttachmentIds().toSorted()).toEqual(['a_1', 'a_2'])
   clearDraft('thread:a')
   expect(draftAttachmentIds()).toEqual(['a_2'])
+})
+
+it('keeps matching thread drafts and project defaults with their engine', () => {
+  setEngineStorageIdentity('first')
+  writeDraft('thread:collision', { text: 'Only first', threadId: 'collision' })
+  rememberSelection('a', selectionForModel(claude, 'full-access'))
+  setEngineStorageIdentity('second')
+  expect(readDraft('thread:collision').text).toBe('')
+  expect(initialSelection(engine(), 'a').instanceId).toBe('work')
+  writeDraft('thread:collision', { text: 'Only second' })
+  setEngineStorageIdentity('first')
+  expect(readDraft('thread:collision').text).toBe('Only first')
+  expect(initialSelection(engine(), 'a').instanceId).toBe('personal')
+  clearDraft('thread:collision')
+  setEngineStorageIdentity('second')
+  expect(readDraft('thread:collision').text).toBe('Only second')
+  clearDraft('thread:collision')
+  setEngineStorageIdentity(undefined)
 })

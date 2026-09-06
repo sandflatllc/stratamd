@@ -81,7 +81,9 @@ export function App({ createEditor }: AppProps) {
   const [confirmResolve, setConfirmResolve] = useState(false)
   /** The engine dialog: pairing, server, version, connection state (§5.1). */
   const [terminalOpen, setTerminalOpen] = useState(false)
-  const [engineDialog, setEngineDialog] = useState(false)
+  const [engineDialog, setEngineDialog] = useState(() => sessionStorage.getItem('stratamd.reopen-engine-dialog') === '1')
+  useEffect(() => { sessionStorage.removeItem('stratamd.reopen-engine-dialog') }, [])
+  useEffect(() => { if (view.engine.managed?.state === 'failed') setEngineDialog(true) }, [view.engine.managed?.state])
   /** The picker (§5.7): from Projects with no document, or from a document, carrying the popover's pending comment when there is one. */
   const [usageOpen, setUsageOpen] = useState(false)
   const [accountsDialog, setAccountsDialog] = useState(false)
@@ -373,7 +375,7 @@ export function App({ createEditor }: AppProps) {
     // The probe on open (§5.13): a fresh usage reading while the modal is up; a failure keeps the last measurement.
     void window.strata.refreshAccounts().catch(() => undefined)
   }
-  const engineDialogNode = engineDialog && <EngineDialog engine={view.engine} onPair={async (request) => { await window.strata.pairEngine(request); report('Paired. Projects and threads come from this server now.') }} onReconnect={reconnectEngine} onClose={() => setEngineDialog(false)} onOpenAccounts={openAccounts} />
+  const engineDialogNode = engineDialog && <EngineDialog engine={view.engine} onPair={async (request) => { sessionStorage.setItem('stratamd.reopen-engine-dialog', '1'); try { await window.strata.pairEngine(request) } catch (error) { sessionStorage.removeItem('stratamd.reopen-engine-dialog'); throw error }; report('Paired. Projects and threads come from this server now.') }} onReconnect={reconnectEngine} onClose={() => setEngineDialog(false)} onOpenAccounts={openAccounts} />
   const usageDialogNode = usageOpen && <UsageDialog connected={view.engine.state === 'connected'} onClose={() => setUsageOpen(false)} onAccounts={openAccounts} />
   const accountsDialogNode = accountsDialog && <AccountsDialog onOpenUsage={openUsage} engine={view.engine} onPark={(instanceId, parked) => void perform(() => window.strata.parkAccount(instanceId, parked))} onTerminalDefault={(driver, selection) => void perform(() => window.strata.setTerminalDefault(driver, selection))} onClose={() => setAccountsDialog(false)} onOpenEngine={() => { setAccountsDialog(false); setEngineDialog(true) }} />
   const runConversation = {

@@ -1,3 +1,4 @@
+import { engineStorage } from './engineStorage'
 import type { DocumentTabView } from '../shared/contracts'
 
 // The top bar (PRD §6.9, decided 2026-09-04) shows pinned documents and
@@ -39,7 +40,7 @@ function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : []
 }
 
-export function readPins(storage: Pick<Storage, 'getItem'> | null = typeof localStorage === 'undefined' ? null : localStorage): TopBarPins {
+export function readPins(storage: Pick<Storage, 'getItem'> | null = typeof localStorage === 'undefined' ? null : engineStorage): TopBarPins {
   if (!storage) return EMPTY
   try {
     const value = JSON.parse(storage.getItem(PINS_KEY) ?? 'null') as Record<string, unknown> | null
@@ -50,7 +51,7 @@ export function readPins(storage: Pick<Storage, 'getItem'> | null = typeof local
   }
 }
 
-export function writePins(pins: TopBarPins, storage: Pick<Storage, 'setItem'> | null = typeof localStorage === 'undefined' ? null : localStorage): void {
+export function writePins(pins: TopBarPins, storage: Pick<Storage, 'setItem'> | null = typeof localStorage === 'undefined' ? null : engineStorage): void {
   try { storage?.setItem(PINS_KEY, JSON.stringify(pins)) } catch { /* a full or disabled store loses only pins */ }
 }
 

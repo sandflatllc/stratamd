@@ -25,7 +25,7 @@ test('1 pairing: host plus code pairs through the dialog, shows the server, and 
     await expect(JSON.parse(await readFile(credentialPath(scenario), 'utf8'))).toMatchObject({ server: engine.origin, accessToken: 'session-for-first-code' })
 
     await expect(dialog.getByRole('button', { name: 'Pairing…', exact: true })).toBeHidden()
-    await dialog.locator('summary').click()
+    await dialog.locator('.engine-pairing > summary').click()
     await dialog.getByLabel('Pairing link').fill(`${engine.origin}/pair?token=second-code`)
     await dialog.getByRole('button', { name: 'Pair again' }).click()
     await expect.poll(() => engine.tokenRequests).toEqual(['first-code', 'second-code'])

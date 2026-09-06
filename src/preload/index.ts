@@ -78,6 +78,7 @@ const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyn
     return () => ipcRenderer.removeListener(IPC.stateChanged, wrapped)
   },
   pairEngine: (request) => invoke<void>(IPC.pairEngine, request),
+  manageEngine: (action) => invoke<void>(IPC.manageEngine, action),
   reconnectEngine: () => invoke<void>(IPC.reconnectEngine),
   openConversation: (threadId) => invoke<void>(IPC.openConversation, threadId),
   createEngineThread: (input) => invoke<string>(IPC.createEngineThread, input),

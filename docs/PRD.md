@@ -4,7 +4,7 @@ Status: draft v28 · 2026-09-05 · personal Linux and macOS tool
 
 ## 1. Summary
 
-StrataMD is a desktop Markdown editor and the owner's cockpit for working with agents. The paired T3 server is its required engine: T3 runs agents and owns projects, threads, turns, and messages; Strata shows the conversation, documents, and every item that needs the owner in one window. The owner edits rendered Markdown, reviews external changes as track-changes, answers anchored items where they sit, and sends document rounds back as T3 turns.
+StrataMD is a desktop Markdown editor and the owner's cockpit for working with agents. The bundled official T3 server is its default engine; an external T3 server can also be paired. T3 runs agents and owns projects, threads, turns, and messages; Strata shows the conversation, documents, and every item that needs the owner in one window. The owner edits rendered Markdown, reviews external changes as track-changes, answers anchored items where they sit, and sends document rounds back as T3 turns.
 
 StrataMD runs on the owner's Linux workstation or a Mac on macOS 13 or newer. Its file-only `stratamd` tool opens Markdown files, inspects themes, installs the bundled skill, and diagnoses local paths. It does not carry agent traffic.
 
@@ -16,13 +16,13 @@ StrataMD runs on the owner's Linux workstation or a Mac on macOS 13 or newer. It
 4. **Hand each thread the right document round.** Deliver only the relevant changes and anchored owner input, with persisted retry-safe acknowledgment.
 5. **See every agent edit.** External Markdown edits remain pending until the owner keeps or reverts them.
 6. **Keep private work private.** Held comments are drafts outside the annotation log and every agent-readable payload until Send.
-7. **Run on the owner's machines.** One paired T3 engine; local document and ghost storage; no Strata account or telemetry.
+7. **Run on the owner's machines.** One selected T3 engine, managed locally by default or paired externally; separate engine identities and local document and ghost storage; no Strata account or telemetry.
 
 ## 3. Non-goals
 
 - Not a note-taking system, vault, or sync product. Documents remain independent files on disk.
 - Not an IDE. There is no terminal or native code editor; code changes are read-only diffs.
-- Not a general chat client for arbitrary engines. The paired T3 server is the only engine.
+- Not a general chat client for arbitrary engines. The official T3 protocol is the only supported engine protocol.
 - No Strata-hosted account, cloud storage, or telemetry.
 - No laptop or phone browser client for Strata, document features on the phone, preview hosting, or Outcrop integration in v1.
 - No Windows support, installer, or auto-updater. The Mac build is an unsigned zip.
@@ -38,7 +38,7 @@ StrataMD runs on the owner's Linux workstation or a Mac on macOS 13 or newer. It
 
 | Term | Meaning |
 |---|---|
-| **Engine** | The one paired T3 server. It runs agents and owns projects and threads. |
+| **Engine** | The selected managed or externally paired T3 server. It runs agents and owns projects and threads. |
 | **Project** | A T3 project: a folder on disk with its threads. |
 | **Thread** | A T3 conversation with one agent. The thread id is the agent identity in Strata. |
 | **Turn** | One owner message and the agent work that follows until it stops. |
@@ -202,7 +202,9 @@ Accounts includes Add provider and a Manage control for each instance, including
 
 Add project opens the same dialog from Projects and New conversation. Choose Local folder, Git URL or GitHub repository. Browse folders on the paired workstation, create a folder, or confirm a clone destination. Cloning waits up to five minutes; a completed clone can be registered again without recloning if project registration failed. New conversation selects the project after the engine's shell update. Folder browsing and repository failures keep the current step and entered values.
 
-The Engine dialog shows Server, Status and Session, followed by Reconnect and Open t3 connection settings. Disconnected engines show their problem and a primary Reconnect action. Pairing is a collapsed Pair again disclosure for a paired engine and an open Pair form when unpaired. Accounts and Close sit in the footer. Escape, the close control and the backdrop dismiss the dialog and return focus.
+Fresh installations start the bundled official T3 server in a private Strata data directory, using its dedicated Node runtime. Documents open while the server starts. Existing external credentials retain external mode. This computer shows managed-engine state, runtime details, failure information and Restart. An explicit switch keeps each connection's commands, conversations, account preferences, document attachments and Lead, drafts and reading state separate. No pending operation crosses engines.
+
+For an external connection, the Engine dialog shows Server, Status and Session, followed by Reconnect and Open t3 connection settings. Disconnected engines show their problem and a primary Reconnect action. Pairing is a collapsed Pair again disclosure for a paired engine and an open Pair form when unpaired. Accounts and Close sit in the footer. Escape, the close control and the backdrop dismiss the dialog and return focus.
 
 
 - **Windows.** The left window has Projects while a conversation is in the center, and Projects, Conversation, and Contents while a document is in the center. The top bar shows pinned documents and conversations, and the active one of each, as pills; other documents wait in the Docs dropdown pill, and conversations are reached through Projects. The right window has Changes, Items, and Attached, and appears only while a document is in the center. Conversation is one component in either placement.
@@ -234,7 +236,7 @@ The Engine dialog shows Server, Status and Session, followed by Reconnect and Op
   - **Open tabs, decided 2026-09-02.** The top bar, pills plus the Docs dropdown, is the only record of which documents are open; the shell has no second list of open or recent files. The open tab set and the focused tab persist in a private `open-documents.json` beside the ghost store and are restored in order at startup before any document named on the command line, which then takes focus. Files that no longer exist are skipped quietly. Persisting and restoring tabs never changes Markdown, `meta.json`, or agent traffic.
   - **Review host sizing and migration, decided 2026-09-02.** The upper review window is vertically resizable and persists one `upperReviewHeight` setting. Existing settings migrate deterministically by summing the two readable legacy heights plus their former 14px intervening gutter, then clamping to 180–954px; when only one legacy value is readable, that value is used; otherwise the 444px default applies. The renderer further clamps the visible height against the available column so Attached remains visible. Attached consumes the remaining right-column height.
   - **Per-pane text zoom.** The left window, the editor, the right rail, and the Send composer each carry an independent text-size factor (default 1.0, steps of 0.1, range 0.5–2.0). Ctrl/Cmd+= and Ctrl/Cmd+- change the factor of the pane under the pointer, or the editor when the pointer is over no pane; Ctrl/Cmd+wheel changes the pane under the pointer by one step per wheel notch, accumulating trackpad deltas so a gesture does not skip steps. A Mermaid viewport owns Ctrl+wheel and trackpad pinch that begins inside it, so those gestures change only its diagram zoom. The window itself never zooms: the Electron default menu's zoom roles are removed and pinch zoom is locked. **Reset zoom** in the logo menu returns all panes to 1.0; it is shown only while some pane is off 1.0, it is the only zoom control drawn, and no zoom icons are added. Only type scales; panel widths, spacing, and the editor toolbar row do not. Factors persist in `settings.json`. Every pane-scoped size, including the cockpit panels Projects and Conversation, is written as pixels times the pane factor and every color is a theme token; `test/unit/styles-zoom.test.ts` fails the build on a bare rem size or a custom property no theme defines.
-- Single instance: launching with a path while running opens a new tab in the existing instance. Closing the last window quits the app; engine deliveries and document attachments remain durable.
+- Single instance: launching with a path while running opens a new tab in the existing instance. In managed mode, closing the last window keeps Strata in the tray with the engine alive. The first close explains this. Quit is explicit and asks before interrupting active conversations. In external mode, closing the last window quits the app; engine deliveries and document attachments remain durable.
 - Tabs hold multiple open documents and center conversations. Each document retains its scroll position across switches in visual and source view. Ctrl/Cmd+W closes the active tab through the same close confirmation a click gets; Ctrl+Tab / Ctrl+Shift+Tab and Ctrl/Cmd+PageDown / PageUp cycle tabs; a middle click closes a tab.
 - The file-drop overlay and messages respond only to transfers that contain files; text, HTML, images, and internal editor drags do not enter the open-file workflow.
 - On Linux the `.desktop` entry declares `MimeType=text/markdown;`; `.md` and `.markdown` map to that type through the shared MIME database. On macOS the `.app` bundle declares both extensions (role Editor, rank Alternate) and Launch Services learns the association from it. Making StrataMD the default handler is a separate step done only when the owner requests it: `stratamd setup --default` records it on Linux, and on macOS prints the Finder steps (Open With → Change All) for the user to complete by hand.
