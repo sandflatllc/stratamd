@@ -1807,8 +1807,14 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .conversation-context-tray { max-height: 180px; overflow: auto; }
 .conversation-context-tray label { display: flex; align-items: start; gap: 6px; }
 .conversation-context-tray label button { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.conversation-context-entry { display: flex; align-items: center; gap: 8px; }
+.conversation-context-entry > label { flex: 1; min-width: 0; }
+.conversation-context-remove { flex: none; width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.conversation-context-remove:hover { background: var(--surfaces-inset); color: var(--controls-danger); }
 .conversation-context-tray pre, .conversation-discussion pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .conversation-discussion { margin: 12px 0; padding: 16px; border: 1px solid var(--line); border-radius: 8px; }
+.conversation-discussion > header { position: sticky; top: -16px; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -16px -16px 8px; padding: 10px 16px; background: var(--card); }
+.conversation-discussion > header .popover-close { position: static; flex: none; }
 .conversation-discussion blockquote { max-height: 100px; overflow: auto; }
 .conversation-reply-composer textarea { width: 100%; min-height: 70px; }
 .conversation-rich-message, .conversation-rich-message > [data-prosemirror-host] { display: flow-root; }
@@ -2188,8 +2194,10 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .conversation-visual-staged { display: grid; gap: 6px; margin-bottom: 10px; }
 .conversation-visual-card { position: relative; }
 .conversation-visual-card[data-included="false"] { opacity: .55; }
-.conversation-visual-card > button { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font: inherit; font-size: calc(16px * var(--zoom, 1)); line-height: 1; cursor: pointer; }
-.conversation-visual-card .visual-status { margin-right: 22px; }
+.conversation-visual-card-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 4px 8px; }
+.conversation-visual-card-actions > label { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: calc(12px * var(--zoom, 1)); }
+.conversation-visual-card-actions > button { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: inherit; font-size: calc(18px * var(--zoom, 1)); line-height: 1; cursor: pointer; }
+.conversation-visual-card-actions > button:hover { background: var(--surfaces-inset); color: var(--controls-danger); }
 .conversation-capacity { display: block; margin: 4px 12px 0; color: var(--muted); }
 .conversation-capacity[data-over] { color: var(--controls-danger); }
 .conversation-visual-replies { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }

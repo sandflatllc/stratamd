@@ -137,6 +137,15 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     setAttachments(list); persist(text, selection, list)
     if (removed?.kind === 'image') window.strata.discardConversationAttachment(removed.id).catch(() => { /* The startup sweep deletes what a failed discard left behind. */ })
   }
+  const removeVisual = async (comment: VisualCommentView) => {
+    if (busy || sending.current) return
+    setBusy(true)
+    try {
+      await window.strata.actVisualComment(comment.id, 'discard')
+      setExcludedVisual(current => current.filter(id => id !== comment.id))
+    } catch (failure) { setError(failure instanceof Error ? failure.message : `Could not remove ${comment.title}`) }
+    finally { setBusy(false) }
+  }
   useEffect(() => { if (centered) input.current?.focus() }, [])
   // A staged image that became a visual comment has no bytes left to discard; it leaves the draft quietly.
   useEffect(() => {
@@ -181,7 +190,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
   }, [menu])
   const canSend = Boolean(text.trim() || attachments.length || queuedCount || canSendContext || includedVisual.length) && !capacity.refusal
   const send = async () => {
-    if (sending.current || !valid || !canSend) return
+    if (sending.current || busy || !valid || !canSend) return
     sending.current = true; setBusy(true); setError(''); setMenu(null)
     try {
       const messageId = readDraft(draftKey).messageId ?? deliveryId ?? crypto.randomUUID()
@@ -204,7 +213,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
         const included = !excludedVisual.includes(comment.id)
         return <div key={comment.id} className="conversation-visual-card" data-included={included}>
           <VisualCommentCard comment={comment} compact actions={{ ...(onOpenVisual ? { onOpen: onOpenVisual } : {}) }} />
-          <button type="button" aria-label={included ? `Set aside ${comment.title}` : `Include ${comment.title}`} title={included ? 'Set aside for this send; it stays held' : 'Include in this send'} disabled={busy} onClick={() => setExcludedVisual((current) => included ? [...current, comment.id] : current.filter((id) => id !== comment.id))}>{included ? '×' : '+'}</button>
+          <div className="conversation-visual-card-actions"><label><input type="checkbox" checked={included} disabled={busy} onChange={() => setExcludedVisual((current) => included ? [...current, comment.id] : current.filter((id) => id !== comment.id))} />Include</label><button type="button" aria-label={`Remove held visual comment: ${comment.title}`} title="Remove held comment" disabled={busy} onClick={() => void removeVisual(comment)}>×</button></div>
         </div>
       })}</div>}
       {attachments.length > 0 && <div className="conversation-attachments">{attachments.map((attachment, index) => <div key={attachment.kind === 'image' ? attachment.id : `${attachment.name}:${index}`} className="conversation-attachment-preview" data-kind={attachment.kind}>{attachment.kind === 'image' && (onMarkUpImage ? <button type="button" className="conversation-attachment-markup" aria-label={`Mark up ${attachment.name}`} title="Mark up this image" disabled={busy} onClick={() => onMarkUpImage(attachment)}><img src={attachment.thumbnail ?? ''} alt="" /></button> : <img src={attachment.thumbnail ?? ''} alt="" />)}<strong title={attachment.name}>{attachment.name}</strong><button type="button" aria-label={`Remove ${attachment.name}`} disabled={busy} onClick={() => removeAttachment(index)}>×</button></div>)}</div>}

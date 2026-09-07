@@ -301,7 +301,7 @@ export function AnnotationComposer({ initialText = "", messageTarget = false, se
       )}
       {kind === 'decision'
         ? <div className="composer-actions"><button type="button" className="quiet-button" onClick={onDismiss}>Cancel</button><button type="submit" className="primary-button">Add</button></div>
-        : <><div className="composer-hint">{candidates.length === 0 ? 'Hold keeps this private. Start thread sends it as the first turn.' : 'Esc discards · Shift+Enter new line'}</div><div className="composer-actions"><button type="button" className="quiet-button" disabled={!text.trim()} onClick={() => onHold(kind, text)}>Hold</button>{candidates.length === 0 && onStartThread
+        : <><div className="composer-hint">{candidates.length === 0 ? 'Hold keeps this private. Start thread sends it as the first turn.' : 'Esc discards · Shift+Enter new line'}</div><div className="composer-actions"><button type="button" className="quiet-button" onClick={onDismiss}>Cancel</button><button type="button" className="quiet-button" disabled={!text.trim()} onClick={() => onHold(kind, text)}>Hold</button>{candidates.length === 0 && onStartThread
           ? <button type="button" className="primary-button" disabled={!text.trim()} onClick={() => onStartThread(kind, text)}>Start thread</button>
           : <button type="button" className="primary-button" disabled={!text.trim() || recipients.length === 0} onClick={() => onSend(kind, text, recipients)}>Send</button>}</div></>}
       <button type="button" className="composer-resize" aria-label="Resize annotation composer" onPointerDown={startResize} />

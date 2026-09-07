@@ -67,6 +67,8 @@ export interface VisualSessionProps {
   notice?: string | null
   onHold(input: HoldVisualCommentInput): Promise<string>
   onSend(id: string): Promise<void>
+  /** Removes the original photo from its conversation draft when attachment is cancelled. */
+  onCancelAttachment?(): Promise<void>
   onClose(): void
   onError(message: string): void
 }
@@ -77,7 +79,7 @@ function inTextField(target: EventTarget | null): boolean {
   return target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement || (target instanceof HTMLElement && target.isContentEditable)
 }
 
-export function VisualSession({ sessionId, session: controlled, setSession: setControlled, closeRequest, capture: opened, captures: all, commentId, source, page, onScroll, projectId, destination, place, initial, describe, onAdjust, adjustStatus, notice, onHold, onSend, onClose, onError }: VisualSessionProps) {
+export function VisualSession({ sessionId, session: controlled, setSession: setControlled, closeRequest, capture: opened, captures: all, commentId, source, page, onScroll, projectId, destination, place, initial, describe, onAdjust, adjustStatus, notice, onHold, onSend, onCancelAttachment, onClose, onError }: VisualSessionProps) {
   const captures = all && all.length ? all : [opened]
   const capture = captures[captures.length - 1]!
   const [local, setLocal] = useState(() => { const data = newVisualSession(initial); if (data.requested) data.requestedFor = JSON.stringify([data.adjusted, data.marks, data.strokes, captures.map(frame => frame.id)]); return data })
@@ -250,6 +252,20 @@ export function VisualSession({ sessionId, session: controlled, setSession: setC
     if (id) await finishSession()
   }, [hold, onClose])
 
+  const cancel = async () => {
+    if (holding.current || latest.current.busy || ending.current) return
+    holding.current = true
+    setBusy(true)
+    try {
+      if (adjustmentJob.current) await adjustmentJob.current
+      const id = latest.current.commentId ?? commentId
+      if (id) await window.strata.actVisualComment(id, 'discard')
+      else if (onCancelAttachment) await onCancelAttachment()
+      await finishSession()
+    } catch (error) { onError(error instanceof Error ? error.message : 'Could not cancel the attachment') }
+    finally { holding.current = false; setBusy(false) }
+  }
+
   const sendNow = useCallback(async () => {
     if (!latest.current.text.trim() && latest.current.marks.length === 0 && latest.current.strokes.length === 0) { onError('Mark something or write a note before sending'); return }
     const id = await hold()
@@ -402,6 +418,7 @@ export function VisualSession({ sessionId, session: controlled, setSession: setC
         {!onAdjust && adjusted.length > 0 && <p className="visual-adjustment-summary">{adjusted.map((adjustment) => adjustment.label).join(' · ')}</p>}
         <footer>
           <span className="visual-context">{place} · to <b>{destination.threadTitle}</b></span>
+          <button type="button" className="quiet-button" disabled={busy} onClick={() => void cancel()}>{source ? 'Cancel attachment' : 'Discard'}</button>
           <button type="button" className="quiet-button" disabled={busy} onClick={() => void holdAndClose()}>Hold</button>
           <button type="submit" className="primary-button" disabled={busy}>Send now</button>
         </footer>

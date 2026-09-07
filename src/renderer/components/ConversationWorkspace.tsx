@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom'
 import { readDraft } from '../conversationDrafts'
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { claimEscape, isEscapeClaimed } from '../escape'
 import type { ConversationInput, DraftKind, EngineThreadView, HeadingReference, VisualCommentView } from '../../shared/contracts'
 import type { EditorSelection } from '../../editor/types'
 import { conversationDelivery, renderConversationDelivery, resolveMessageAnchor, isOwnerComment } from '../../core/conversation-delivery'
@@ -55,7 +56,8 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
       const row = Array.from(viewport?.querySelectorAll<HTMLElement>('[data-message-id]') ?? []).find(row => row.getBoundingClientRect().bottom > top)
       returnPosition.current = row ? { message: row.dataset.messageId!, offset: row.getBoundingClientRect().top - top } : null
     }
-    setDiscussion(id)
+    setDiscussion(comment.state === 'held' ? null : id)
+    if (comment.state !== 'held') setSelection(null)
     if (range) {
       jump(comment.anchor.message, range.from, range.to, undefined, comment.id)
       if (comment.state === 'held') setSelection({ message: comment.anchor.message, id, range: { ...range, quote: comment.selection, singleBlock: true, left: window.innerWidth / 2, top: window.innerHeight / 2, annotationKind: comment.kind } })
@@ -76,6 +78,30 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   // Find as you type: the first match comes into view as soon as the query has one.
   useEffect(() => { if (query.trim() && matches.length) findStep(0) }, [query])
   const activeComment = comments.find(comment => comment.id === discussion)
+  const discussionRoot = useRef<HTMLElement>(null)
+  const discussionState = useRef({ open: false, editing: false })
+  useLayoutEffect(() => { discussionState.current = { open: Boolean(activeComment), editing: Boolean(selection) } })
+  useEffect(() => {
+    const dismissOutside = (event: PointerEvent) => {
+      if (!discussionState.current.open || discussionState.current.editing || discussionRoot.current?.contains(event.target as Node)) return
+      setDiscussion(null)
+    }
+    const dismissKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || isEscapeClaimed(event) || !discussionState.current.open || discussionState.current.editing) return
+      claimEscape(event)
+      setDiscussion(null)
+    }
+    window.addEventListener('pointerdown', dismissOutside, true)
+    window.addEventListener('keydown', dismissKey)
+    return () => { window.removeEventListener('pointerdown', dismissOutside, true); window.removeEventListener('keydown', dismissKey) }
+  }, [])
+  const removeHeld = async (id: string) => {
+    if (!thread) return
+    await window.strata.actMessageComment(thread.id, id, 'discard')
+    setSelection(current => current?.id === id ? null : current)
+    setDiscussion(current => current === id ? null : current)
+    setExcluded(current => current.filter(candidate => candidate !== id))
+  }
   const backToReading = () => {
     setDiscussion(null)
     const position = returnPosition.current
@@ -116,7 +142,7 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   </div>
   const tray = <>
     {(held.length > 0 || queued.length > 0 || preview) && <details className="conversation-context-tray" open><summary>Pending context · {held.length + queued.length + (thread?.outcomes?.length ?? 0)}</summary>
-      {[...held.map(comment => ({ id: comment.id, text: comment.text, label: `Held ${comment.kind}` })), ...queued.map(item => ({ id: item.id, text: item.draftReply!, label: 'Reply' }))].map(entry => <label key={entry.id}><input type="checkbox" checked={!excluded.includes(entry.id)} onChange={() => setExcluded(previous => previous.includes(entry.id) ? previous.filter(id => id !== entry.id) : [...previous, entry.id])} /><button type="button" onClick={() => open(entry.id)}>{entry.label}: {entry.text}</button></label>)}
+      {[...held.map(comment => ({ id: comment.id, text: comment.text, label: `Held ${comment.kind}`, removable: true })), ...queued.map(item => ({ id: item.id, text: item.draftReply!, label: 'Reply', removable: false }))].map(entry => <div className="conversation-context-entry" key={entry.id}><label><input type="checkbox" aria-label={`Include ${entry.label.toLowerCase()}: ${entry.text}`} checked={!excluded.includes(entry.id)} onChange={() => setExcluded(previous => previous.includes(entry.id) ? previous.filter(id => id !== entry.id) : [...previous, entry.id])} /><button type="button" onClick={() => open(entry.id)}>{entry.label}: {entry.text}</button></label>{entry.removable && <button type="button" className="conversation-context-remove" aria-label={`Remove held comment: ${entry.text}`} title="Remove held comment" onClick={() => void attempt(() => removeHeld(entry.id))}>×</button>}</div>)}
       {!!thread?.outcomes?.length && <p>{thread.outcomes.length} action outcomes</p>}
       {preview && <details><summary>Delivery preview</summary><pre>{preview}</pre></details>}
     </details>}
@@ -129,8 +155,8 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   const recordWidth = Math.min(420, window.innerWidth - 32)
   const recordPosition = bounds ? { position: 'fixed' as const, left: Math.max(16, Math.min(panel.current?.dataset.placement === 'side' ? bounds.left + 40 : bounds.right - recordWidth - 12, window.innerWidth - recordWidth - 16)), bottom: window.innerHeight - bounds.bottom + 12, width: recordWidth, maxHeight: Math.max(120, bounds.height * .6) } : undefined
   const ownerComment = activeComment && isOwnerComment(activeComment)
-  const discussionView = activeComment ? createPortal(<section style={recordPosition} className="conversation-discussion" aria-label={ownerComment ? 'Saved comment' : 'Passage discussion'}>
-    <small>{ownerComment ? activeComment.state === 'held' ? 'Held comment' : activeComment.state === 'pending' ? 'Sending comment' : 'Sent comment' : 'Agent item'}</small>
+  const discussionView = activeComment ? createPortal(<section ref={discussionRoot} style={recordPosition} className="conversation-discussion" role="dialog" aria-label={ownerComment ? 'Saved comment' : 'Passage discussion'}>
+    <header><small>{ownerComment ? activeComment.state === 'held' ? 'Held comment' : activeComment.state === 'pending' ? 'Sending comment' : 'Sent comment' : 'Agent item'}</small><button type="button" className="popover-close" aria-label="Close comment" onClick={() => setDiscussion(null)}>×</button></header>
     <blockquote>{activeComment.selection}</blockquote><p>{activeComment.text}</p>
     {activeComment.replies.length > 0 && <details><summary>Earlier replies</summary>{activeComment.replies.map((reply, index) => <p key={index}><strong>{reply.author === 'agent' ? 'Agent' : 'You'}</strong> {reply.text}</p>)}</details>}
     {!resolveMessageAnchor(activeComment, thread?.messages.find(message => message.id === activeComment.anchor.message)) && <p>Original passage unavailable</p>}

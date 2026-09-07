@@ -42,7 +42,7 @@ import { activitySnapshot, agentActivity, agentActivityMessage, ambientStyles, c
 import { flushPendingBuffer, peekPendingBuffer, setPendingBuffer } from './pendingBuffer'
 import { nextToast, type ToastAction, type ToastState } from './toasts'
 import { consumeDocumentLaunch, readWorkspace, writeWorkspace } from './workspaceState'
-import { draftAttachmentIds, readNewConversationTarget, writeNewConversationTarget, type NewConversationTarget } from './conversationDrafts'
+import { draftAttachmentIds, readDraft, writeDraft, readNewConversationTarget, writeNewConversationTarget, type NewConversationTarget } from './conversationDrafts'
 import { hasPrimaryModifier } from '../shared/primary-modifier'
 
 /** Ctrl+Enter inside the annotation composer or a thread reply belongs to that form (§5.2). */
@@ -530,7 +530,14 @@ export function App({ createEditor }: AppProps) {
     if (!visualSession) return null
     if (visualSession.kind === 'staged') {
       const capture = { id: visualSession.id, url: visualImageUrl('staged', visualSession.id), width: visualSession.width, height: visualSession.height }
-      return <VisualSession key={visualSession.id} capture={capture} source={{ staged: visualSession.id, name: visualSession.name }} projectId={visualSession.projectId} destination={visualSession.destination} place={`Pasted image · ${visualSession.width} × ${visualSession.height}`} onHold={holdVisual} onSend={(id) => sendVisual(id, visualSession.destination.threadId)} onClose={() => setVisualSession(null)} onError={reportError} />
+      return <VisualSession key={visualSession.id} capture={capture} source={{ staged: visualSession.id, name: visualSession.name }} projectId={visualSession.projectId} destination={visualSession.destination} place={`Pasted image · ${visualSession.width} × ${visualSession.height}`} onHold={holdVisual} onSend={(id) => sendVisual(id, visualSession.destination.threadId)} onCancelAttachment={async () => {
+        const key = `thread:${visualSession.destination.threadId}`
+        const draft = readDraft(key)
+        const attachments = (draft.attachments ?? []).filter(attachment => attachment.kind !== 'image' || attachment.id !== visualSession.id)
+        if (!writeDraft(key, { ...draft, attachments })) throw new Error(`Could not remove ${visualSession.name} from the saved draft`)
+        setConsumedStaged(current => [...current, visualSession.id])
+        await window.strata.discardConversationAttachment(visualSession.id)
+      }} onClose={() => setVisualSession(null)} onError={reportError} />
     }
     const comment = visualById(visualSession.id)
     const capture = comment?.captures[0]
