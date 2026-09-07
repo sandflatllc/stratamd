@@ -1,3 +1,4 @@
+import { seedAsks } from './inferred-asks-fixture'
 import { reviewCapture } from './captures'
 import { openAppMenu } from './harness'
 import { expect, test } from './test'
@@ -155,56 +156,49 @@ test('4 explicit message item: completed agent prose has block ids and its poste
   }
 })
 
-test('4 inference: seven prose questions queue four keyed replies in one delivery and leave three open', async ({}, testInfo) => {
+test('4 inference: passage popups queue four keyed replies and preserve unanswered asks', async ({}, testInfo) => {
   const engine = await startEngine()
   const scenario = await seededScenario(testInfo, engine.origin)
+  const questions = ['Which audience should lead?', 'Should launch be public?', 'What is the budget?', 'Which region goes first?', 'Keep the old name?', 'Require approval?', 'When should work begin?']
+  const source = questions.map((q,i) => `${i+1}. ${q}`).join('\n')
+  const asks = await seedAsks(scenario, source, questions)
   try {
-    engine.setMessage('1. Which audience should lead?\n2. Should launch be public?\n3. What is the budget?\n4. Which region goes first?\n5. Keep the old name?\n6. Require approval?\n7. When should work begin?')
+    engine.setMessage(source)
     const page = await scenario.launch()
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
     await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
     const conversation = page.getByRole('region', { name: 'Conversation' })
     await conversation.getByRole('button', { name: 'Stop' }).click()
-    const checklist = conversation.getByRole('region', { name: 'Turn items' })
-    await expect(checklist.locator('.turn-item')).toHaveCount(7)
-    await expect(checklist.getByText('inferred')).toHaveCount(7)
+    await expect(conversation.locator('.conversation-ask-tag:visible')).toHaveCount(7)
+    await expect(conversation.getByRole('region', { name: 'Turn items' })).toHaveCount(0)
     for (const [index, answer] of ['Audience', 'Yes', '$10k', 'West'].entries()) {
-      const row = checklist.locator('.turn-item').nth(index)
-      await row.getByRole('button', { name: 'Reply', exact: true }).click()
-      await conversation.getByRole('textbox', { name: 'Discussion reply' }).fill(answer)
-      await conversation.getByRole('button', { name: 'Queue reply', exact: true }).click()
+      await conversation.getByRole('button', { name: `Answer question: ${questions[index]}`, exact: true }).click()
+      const popup = page.getByRole('dialog', { name: 'Your answer' })
+      await popup.getByRole('textbox', { name: 'Your answer' }).fill(answer)
+      await popup.getByRole('button', { name: 'Queue reply', exact: true }).click()
+      await expect(popup).toHaveCount(0)
     }
-    await expect(checklist.locator('.turn-item[data-status="drafted"]')).toHaveCount(4)
-    await expect(checklist.getByText('Drafted: Audience')).toBeVisible()
+    await expect(conversation.locator('.conversation-ask-tag[data-status="drafted"]:visible')).toHaveCount(4)
     await conversation.getByRole('button', { name: 'Send', exact: true }).click()
-    await expect.poll(() => engine.commands.filter((command) => command.type === 'thread.turn.start').length).toBe(1)
-    // One delivery: the message text is one line, and the four replies travel keyed by item id in its attachment (§5.4).
-    const turn = engine.commands.find((command) => command.type === 'thread.turn.start')!.message as { text: string; attachments: unknown[] }
+    await expect.poll(() => engine.commands.filter(command => command.type === 'thread.turn.start').length).toBe(1)
+    const turn = engine.commands.find(command => command.type === 'thread.turn.start')!.message as { text: string; attachments: unknown[] }
     expect(turn.text).toBe('Replies to 4 items.')
     expect(turn.attachments).toHaveLength(1)
     await expect.poll(() => engine.uploads.length).toBe(1)
     const replies = JSON.parse(engine.uploads[0]!.match(/```json\n([\s\S]*?)\n```/)![1]!)
     expect(replies).toHaveLength(4)
-    expect(replies[0]).toMatchObject({ itemId: expect.stringMatching(/^inferred_/), text: 'Audience' })
+    expect(replies[0]).toMatchObject({ itemId: asks[0]!.id, text: 'Audience' })
     engine.finish()
-    await expect(checklist.locator('.turn-item[data-status="done"]')).toHaveCount(4)
-    await expect(checklist.locator('.turn-item[data-status="open"]')).toHaveCount(3)
-    // A dismissed inferred item stays dismissed for that message.
-    await checklist.locator('.turn-item[data-status="open"]').first().getByRole('button', { name: 'Dismiss' }).click()
-    await expect(checklist.locator('.turn-item[data-status="open"]')).toHaveCount(2)
-
-    // Reload: the answers, the open items, and the dismissal are main-process state, not the panel's.
+    await expect(conversation.locator('.conversation-ask-tag[data-status="done"]:visible')).toHaveCount(4)
+    await conversation.getByRole('button', { name: '3 items from the agent', exact: true }).click()
+    await conversation.getByRole('button', { name: `Dismiss question: ${questions[4]}`, exact: true }).click()
+    await expect(conversation.locator('.conversation-ask-tag:visible')).toHaveCount(6)
     await page.reload()
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
     await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
-    const reopened = page.getByRole('region', { name: 'Conversation' }).getByRole('region', { name: 'Turn items' })
-    await expect(reopened.locator('.turn-item')).toHaveCount(6)
-    await expect(reopened.locator('.turn-item[data-status="done"]')).toHaveCount(4)
-    await expect(reopened.locator('.turn-item[data-status="open"]')).toHaveCount(2)
-  } finally {
-    await scenario.dispose()
-    await engine.close()
-  }
+    await expect(page.locator('.conversation-ask-tag[data-status="done"]:visible')).toHaveCount(4)
+    await expect(page.locator('.conversation-ask-tag[data-status="open"]:visible')).toHaveCount(2)
+  } finally { await scenario.dispose(); await engine.close() }
 })
 
 test('8 and 9 projects: the blank draft is project-scoped, row actions dispatch, and turn files stay closed', async ({}, testInfo) => {

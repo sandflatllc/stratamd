@@ -9,6 +9,7 @@ export interface TranscriptPort {
   register(row: TranscriptRow): () => void
   invalidate(id: string, reason: string): void
   refresh(): void
+  updateReadingContent(update: () => void): void
   setStaging(element: HTMLElement | null): void
 }
 
@@ -80,6 +81,7 @@ export class ConversationHistory extends Component<Props, Record<string, never>,
     },
     invalidate: (id, reason) => this.coordinator?.invalidate(id, reason),
     refresh: () => this.coordinator?.refresh(),
+    updateReadingContent: update => { if (this.coordinator) this.coordinator.updateReadingContent(update); else update() },
     setStaging: (element) => { this.staging = element; if (element && this.viewport.current && !this.coordinator) this.createCoordinator() },
   }
 
@@ -143,7 +145,15 @@ export class ConversationHistory extends Component<Props, Record<string, never>,
       identity: this.props.identity ?? { engine: '', thread: '', placement: '' },
       geometry,
       sweep: flag('strataTranscriptSweep'),
-      onNavigation: (outcome) => this.props.onNavigation?.(outcome),
+      onNavigation: (outcome) => {
+        if (outcome.outcome === 'landed') {
+          // A jump clamped to scrollTop 0 may emit no scroll event. Forget the
+          // previous bottom-follow intent before a queued resize can restore it.
+          this.position = this.capturePosition(false)
+          this.lastScrollTop = this.viewport.current!.scrollTop
+        }
+        this.props.onNavigation?.(outcome)
+      },
     })
     this.coordinator.setActive(this.props.active !== false)
     this.coordinator.setStreaming(this.props.streaming ?? false)
@@ -189,10 +199,10 @@ export class ConversationHistory extends Component<Props, Record<string, never>,
     return previous.target?.serial !== this.props.target?.serial ? null : this.capturePosition()
   }
 
-  private capturePosition(): ReadingPosition | null {
+  private capturePosition(followBottom = true): ReadingPosition | null {
     const viewport = this.viewport.current!
     if (!viewport.clientHeight) return null
-    if (viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= 24 || this.position === 'bottom' && Math.abs(viewport.scrollTop - this.lastScrollTop) < 1) return 'bottom'
+    if (followBottom && (viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= 24 || this.position === 'bottom' && Math.abs(viewport.scrollTop - this.lastScrollTop) < 1)) return 'bottom'
     const top = viewport.getBoundingClientRect().top
     const element = Array.from(viewport.querySelectorAll<HTMLElement>('[data-history-row]'))
       .find((row) => row.getBoundingClientRect().bottom > top)

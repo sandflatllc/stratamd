@@ -95,6 +95,17 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
   test('1. deliveries queued while the engine is down reach the thread in Send order', async ({}, testInfo) => {
     const { value, engine } = await engineScenario(testInfo)
     await value.launch()
+    await value.app!.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (...args: unknown[]) => Promise<unknown>> })._invokeHandlers
+      const original = handlers.get('strata:preview-send')!
+      const previews: unknown[] = []
+      Object.assign(globalThis, { __offlinePreviews: previews })
+      handlers.set('strata:preview-send', async (...args) => {
+        const entry = { started: Date.now(), ended: 0, request: args[2] }
+        previews.push(entry)
+        try { return await original(...args) } finally { entry.ended = Date.now() }
+      })
+    })
     // Preserve actual click targets if this rare Send-dialog failure recurs under load.
     await value.page!.evaluate(() => {
       const clicks: unknown[] = []
@@ -137,6 +148,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
       completed = true
     } finally {
       if (!completed) {
+        await testInfo.attach('offline-preview-requests', { body: JSON.stringify(await value.app!.evaluate(() => (globalThis as unknown as { __offlinePreviews: unknown[] }).__offlinePreviews)), contentType: 'application/json' })
         await testInfo.attach('offline-send-state', { body: JSON.stringify(await value.page!.evaluate(async () => ({
           clicks: (window as unknown as { __offlineSendClicks: unknown[] }).__offlineSendClicks,
           document: (await window.strata.getState()).activeDocument

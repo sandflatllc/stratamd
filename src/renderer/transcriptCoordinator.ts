@@ -629,6 +629,18 @@ export class TranscriptCoordinator {
 
   // ---- reading anchors for Back to reading
 
+  /** Preserve the reading passage while an already mounted editor changes decorations. */
+  updateReadingContent(update: () => void): void {
+    if (this.navigation || !this.active || this.disposed) { update(); return }
+    const following = this.options.atBottom()
+    const anchor = following ? null : this.captureReadingAnchor()
+    const pin = this.readingPin
+    update()
+    if (following) this.scrollTo(this.viewport.scrollHeight, 'annotation-bottom')
+    else if (anchor) { this.restoreReading(anchor); this.readingPin = pin }
+    this.options.remember()
+  }
+
   captureReading(): ReadingAnchor | null {
     const anchor = this.captureReadingAnchor()
     this.readingPin = anchor?.message ?? null

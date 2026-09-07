@@ -1,3 +1,4 @@
+import type { ItemView } from '../shared/contracts'
 import { memo, type ReactNode } from 'react'
 import { fromMarkdown } from 'mdast-util-from-markdown'
 import { gfmFromMarkdown } from 'mdast-util-gfm'
@@ -46,6 +47,9 @@ export function messageBlockKinds(text: string): string[] {
 interface RenderContext {
   /** The message source, present only when text runs carry source offsets. */
   source: string | null
+  asks?: readonly ItemView[]
+  tagNodes?: Map<string, MessageNode>
+  onOpenAsk?: ((id: string) => void) | undefined
 }
 
 function span(node: MessageNode): { from: number; to: number } | null {
@@ -85,13 +89,36 @@ function inlineCodeRange(node: MessageNode, source: string): { from: number; to:
   return source.slice(from, range.to - fence.length) === node.value ? { from, to: range.to - fence.length } : null
 }
 
+function askedText(node: MessageNode, key: string, context: RenderContext): ReactNode {
+  const range = span(node), value = node.value ?? ''
+  const exact = !!range && context.source?.slice(range.from, range.to) === value
+  if (!range || !context.asks?.length) return <span key={key} {...sourceAttributes(range, exact)}>{value}</span>
+  const relevant = context.asks.filter(ask => ask.askRange && ask.askRange.from < range.to && ask.askRange.to > range.from)
+  const cuts = new Set([0, value.length])
+  if (exact) for (const ask of relevant) {
+    cuts.add(Math.max(0, ask.askRange!.from - range.from))
+    cuts.add(Math.min(value.length, ask.askRange!.to - range.from))
+  }
+  const points = [...cuts].sort((a, b) => a - b)
+  return <span key={key}>{points.slice(0, -1).map((start, index) => {
+    const end = points[index + 1]!
+    const ask = relevant.find(a => !exact || a.askRange!.from < range.from + end && a.askRange!.to > range.from + start)
+    const mappedRange = exact ? { from: range.from + start, to: range.from + end } : range
+    // Map only source text. Tag labels must never become reading-anchor text.
+    return <span key={start}>
+      <span {...sourceAttributes(mappedRange, exact)} className={ask ? 'strata-annotation strata-annotation-question' : undefined} data-annotation-id={ask?.id} onClick={ask ? () => context.onOpenAsk?.(ask.id) : undefined}>{value.slice(start, end)}</span>
+      {relevant.filter(a => context.tagNodes?.get(a.id) === node && (exact ? Math.min(a.askRange!.to - range.from, value.length) === end : end === value.length)).map(a => <button key={a.id} type="button" className="conversation-ask-tag" data-atomic="ask-tag" data-ask-id={a.id} data-status={a.status} aria-label={`Answer question: ${a.quote}`} onClick={() => context.onOpenAsk?.(a.id)}>{a.status === 'drafted' ? '✓ Drafted' : a.status === 'done' ? '✓ Answered' : '⊙ Question'}</button>)}
+    </span>
+  })}</span>
+}
+
 function inline(nodes: readonly MessageNode[] | undefined, prefix: string, context: RenderContext): ReactNode[] {
   return (nodes ?? []).map((node, index) => {
     const key = `${prefix}.${index}`
     const kids = () => inline(node.children, key, context)
     const mapped = context.source !== null
     switch (node.type) {
-      case 'text': return mapped ? <span key={key} {...sourceAttributes(span(node))}>{node.value ?? ''}</span> : node.value ?? ''
+      case 'text': return mapped ? askedText(node, key, context) : node.value ?? ''
       case 'inlineCode': return <code key={key} {...(mapped ? sourceAttributes(inlineCodeRange(node, context.source!), true) : {})}>{node.value ?? ''}</code>
       case 'strong': return <strong key={key}>{kids()}</strong>
       case 'emphasis': return <em key={key}>{kids()}</em>
@@ -153,7 +180,10 @@ function block(node: MessageNode, key: string, context: RenderContext): ReactNod
   }
 }
 
-export const MessageMarkdown = memo(function MessageMarkdown({ text, sourceMap = false }: { text: string; sourceMap?: boolean }) {
-  const context: RenderContext = { source: sourceMap ? text : null }
-  return <div className="conversation-prose" data-source-mapped={sourceMap || undefined}>{parseMessageMarkdown(text).map((node, index) => block(node, String(index), context))}</div>
+export const MessageMarkdown = memo(function MessageMarkdown({ text, sourceMap = false, asks = [], onOpenAsk }: { text: string; sourceMap?: boolean; asks?: readonly ItemView[]; onOpenAsk?: (id: string) => void }) {
+  const nodes = parseMessageMarkdown(text), tagNodes = new Map<string, MessageNode>()
+  const visit = (node: MessageNode) => { const range = span(node); if (node.type === 'text' && range) for (const ask of asks) if (ask.askRange && ask.askRange.from < range.to && ask.askRange.to > range.from) tagNodes.set(ask.id,node); node.children?.forEach(visit) }
+  nodes.forEach(visit)
+  const context: RenderContext = { source: sourceMap ? text : null, asks, tagNodes, onOpenAsk }
+  return <div className="conversation-prose" data-source-mapped={sourceMap || undefined}>{nodes.map((node, index) => block(node, String(index), context))}</div>
 })

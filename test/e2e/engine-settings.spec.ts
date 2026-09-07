@@ -25,7 +25,7 @@ test('settings change defaults and writer options, preserve concurrent fields, a
     await expect(page.getByLabel('Days of inactivity')).toHaveCount(0)
     await page.getByRole('switch', { name: 'Auto-settle inactive conversations', exact: true }).click()
     await page.getByLabel('Days of inactivity').fill('12')
-    await page.getByLabel('Generated text model Reasoning').selectOption('high')
+    await page.getByLabel('Text generation model Reasoning').selectOption('high')
     await page.getByText('Advanced', { exact: true }).click()
     await page.getByRole('switch', { name: 'Provider update checks' }).click()
     await page.getByLabel('Writing style', { exact: true }).selectOption('custom')

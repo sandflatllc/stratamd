@@ -20,6 +20,8 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   const returnPosition = useRef<ReadingAnchor | null>(null)
   const [navigationFailure, setNavigationFailure] = useState<{ target: PassageTarget; reason: string } | null>(null)
   const [replyDraft, setReplyDraft] = useState<{ itemId: string; text: string } | null>(null)
+  const answerDrafts = useRef(new Map<string, string>())
+  const answerKey = (id: string) => `${thread?.engineIdentity ?? ''}\0${thread?.id ?? ''}\0${id}`
   const replyItem = replyDraft?.itemId ?? null
   const reply = replyDraft?.text ?? ''
   const setReply = (text: string) => setReplyDraft(current => current ? { ...current, text } : null)
@@ -56,9 +58,13 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
     if (outcome.outcome === 'failed') setNavigationFailure({ target: outcome.target as PassageTarget, reason: outcome.reason })
   }
   const retryNavigation = () => { const failed = navigationFailure; if (failed) jump(failed.target.message, failed.target.from, failed.target.to, failed.target.align, failed.target.annotation) }
-  const open = (id: string) => {
+  const open = (id: string, reveal = true) => {
     const comment = comments.find(comment => comment.id === id)
-    if (!comment) { focusReply(id); return }
+    if (!comment) {
+      const ask = thread?.items?.find(item => item.id === id && item.inferred)
+      if (reveal && ask?.askRange && ask.messageId) jump(ask.messageId, ask.askRange.from, ask.askRange.to, undefined, ask.id)
+      focusReply(id); return
+    }
     const message = thread?.messages.find(message => message.id === comment.anchor.message)
     const range = resolveMessageAnchor(comment, message)
     if (discussion !== id && comment.state !== 'held') {
@@ -132,7 +138,7 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
     if (viewport && row) viewport.scrollTop += row.getBoundingClientRect().top - viewport.getBoundingClientRect().top - position.viewportOffset
   }
   const replyRecord = thread?.items?.find(item => item.id === replyItem)
-  const focusReply = (id: string) => setReplyDraft({ itemId: id, text: thread?.items?.find(item => item.id === id)?.draftReply ?? '' })
+  const focusReply = (id: string) => setReplyDraft({ itemId: id, text: answerDrafts.current.get(answerKey(id)) ?? thread?.items?.find(item => item.id === id)?.answerDraft ?? thread?.items?.find(item => item.id === id)?.draftReply ?? '' })
   const latestResponse = thread?.messages.findLast(message => message.role === 'assistant')
   const openItems = (thread?.items ?? []).filter(item => !isOwnerComment(item) && item.status !== 'done')
   const kindLabel = (kind: string) => kind.charAt(0).toUpperCase() + kind.slice(1)
@@ -145,7 +151,7 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
       <button type="button" aria-expanded={menu === 'items'} onClick={() => setMenu(menu === 'items' ? null : 'items')}>{itemsLabel}</button>
       {menu === 'items' && <div className="conversation-navigation" role="region" aria-label="Items from the agent">
         {openItems.length > 0 && <p>The agent is waiting on these. Choose one to read its passage or answer it.</p>}
-        {openItems.map(item => <button type="button" key={item.id} onClick={() => { open(item.id); setMenu(null) }}><strong>{kindLabel(item.kind)}</strong> {item.text || item.quote}{item.status === 'drafted' && <em> Reply drafted</em>}</button>)}
+        {openItems.map(item => <div className="conversation-item-entry" key={item.id}><button type="button" onClick={() => { open(item.id); setMenu(null) }}><strong>{kindLabel(item.kind)}</strong> {item.text || item.quote}{item.status === 'drafted' && <em> Reply drafted</em>}</button>{item.inferred && <button type="button" aria-label={`Dismiss question: ${item.quote}`} onClick={() => void attempt(() => window.strata.dismissItem(thread!.id, item.id))}>Dismiss</button>}</div>)}
         {visual.comments.length > 0 && <p>Visual comments in this conversation.</p>}
         {visual.comments.map(comment => <button type="button" key={comment.id} className="conversation-visual-item" data-status={comment.status} onClick={() => { visual.onOpen(comment.id); setMenu(null) }}><strong>Visual</strong> {comment.title}<em> {comment.statusLabel}</em></button>)}
       </div>}
@@ -165,7 +171,7 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
       {!!thread?.outcomes?.length && <p>{thread.outcomes.length} action outcomes</p>}
       {preview && <details><summary>Delivery preview</summary><pre>{preview}</pre></details>}
     </details>}
-    {replyItem && <div className="conversation-reply-composer"><strong>Reply to {replyRecord?.text || replyRecord?.quote || replyItem}</strong><textarea aria-label="Discussion reply" value={reply} onChange={event => setReply(event.target.value)} />{replyRecord?.options?.map(option => <button type="button" key={option} onClick={() => setReply(option)}>{option}</button>)}<button type="button" onClick={() => setReply('')}>Other</button><button type="button" disabled={!reply.trim()} onClick={() => void attempt(async () => { const submitted = replyDraft; await window.strata.queueItemReply(thread!.id, replyItem, reply); setReplyDraft(current => current === submitted ? null : current) })}>Queue reply</button><button type="button" onClick={() => setReplyDraft(null)}>Cancel</button></div>}
+    {replyItem && !replyRecord?.inferred && <div className="conversation-reply-composer"><strong>Reply to {replyRecord?.text || replyRecord?.quote || replyItem}</strong><textarea aria-label="Discussion reply" value={reply} onChange={event => setReply(event.target.value)} />{replyRecord?.options?.map(option => <button type="button" key={option} onClick={() => setReply(option)}>{option}</button>)}<button type="button" onClick={() => setReply('')}>Other</button><button type="button" disabled={!reply.trim()} onClick={() => void attempt(async () => { const submitted = replyDraft; await window.strata.queueItemReply(thread!.id, replyItem, reply); setReplyDraft(current => current === submitted ? null : current) })}>Queue reply</button><button type="button" onClick={() => setReplyDraft(null)}>Cancel</button></div>}
     {thread?.deliveries?.map(delivery => <details key={delivery.messageId}><summary>{delivery.phase === 'uploading' ? 'Delivery upload incomplete' : 'Delivery ready to dispatch'}</summary><pre>{delivery.text}</pre><button type="button" onClick={() => void attempt(() => onStart(thread.id, { messageId: delivery.messageId, text: '', model: thread.model, effort: thread.effort, access: thread.access }))}>Retry delivery</button></details>)}
     {error && <p role="alert">{error}</p>}
     {navigationFailure && <p role="alert" className="conversation-navigation-failure">The passage in message {navigationFailure.target.message} is not ready yet. <button type="button" onClick={retryNavigation}>Retry</button></p>}
@@ -184,13 +190,36 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
     {!ownerComment && <button type="button" onClick={() => focusReply(activeComment.id)}>Answer</button>}
     <button type="button" onClick={backToReading}>Back to reading</button>
   </section>, document.querySelector('.app-shell') ?? document.body) : null
+  const answerRoot = useRef<HTMLElement>(null)
+  const answerState = useRef<{ id: string | null }>({ id: null })
+  useLayoutEffect(() => { answerState.current = { id: replyRecord?.inferred ? replyItem : null } })
+  const closeAnswer = () => {
+    const id = answerState.current.id
+    setReplyDraft(null)
+    if (id) panel.current?.querySelector<HTMLButtonElement>(`[data-ask-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true })
+  }
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape' && answerState.current.id && !isEscapeClaimed(event)) { claimEscape(event); closeAnswer() } }
+    const outside = (event: PointerEvent) => { if (answerState.current.id && !answerRoot.current?.contains(event.target as Node) && !(event.target instanceof Element && event.target.closest('[data-ask-id], .conversation-marker'))) setReplyDraft(null) }
+    window.addEventListener('keydown', key)
+    window.addEventListener('pointerdown', outside, true)
+    return () => { window.removeEventListener('keydown', key); window.removeEventListener('pointerdown', outside, true) }
+  }, [])
+  const answerView = replyRecord?.inferred && replyItem ? createPortal(<section ref={answerRoot} style={recordPosition} className="conversation-discussion conversation-answer-popup" role="dialog" aria-label="Your answer">
+    <header><strong>Your answer</strong><button type="button" className="popover-close" aria-label="Close answer" onClick={closeAnswer}>×</button></header>
+    {replyRecord.unavailable && <p>Original passage unavailable</p>}
+    <div className="reply-box"><textarea key={replyItem} autoFocus aria-label="Your answer" placeholder="Write your answer…" value={reply} onChange={event => { const text = event.target.value; answerDrafts.current.set(answerKey(replyItem), text); setReply(text); void attempt(() => window.strata.saveAskDraft(thread?.engineIdentity ?? null, thread!.id, replyItem, text)) }} /></div>
+    <small>Included in your next Send</small>
+    <div className="conversation-answer-actions"><button type="button" className="quiet-button" onClick={closeAnswer}>Cancel</button><button type="button" className="primary-button" disabled={!reply.trim()} onClick={() => void attempt(async () => { const submitted = replyDraft; const key = answerKey(replyItem); await window.strata.queueItemReply(thread!.id, replyItem, reply); if (answerDrafts.current.get(key) === reply) answerDrafts.current.delete(key); setReplyDraft(current => current === submitted ? null : current) })}>Queue reply</button></div>
+    {error && <p role="alert">{error}</p>}
+  </section>, document.querySelector('.app-shell') ?? document.body) : null
   const navigate = (marker: ConversationMarker) => {
     setMenu(null)
     if (marker.comment) open(marker.comment)
     else { setDiscussion(null); jump(marker.message, 0, 0, 'start') }
   }
 
-  return { navigate, selection, target, onNavigation, tools, tray, latestResponse: latestResponse?.id, jumpToLatest: () => { setMenu(null); if (latestResponse) jump(latestResponse.id, 0, 0, 'start') }, overlay: overlay ? createPortal(overlay, document.querySelector('.app-shell') ?? document.body) : null, discussion: activeComment, discussionView, open, setReplyItem: focusReply, outgoing, previewId, sent: () => setPreviewId(crypto.randomUUID()), selectedCount: selectedComments.length + Object.keys(selectedReplies).length,
+  return { navigate, selection, target, onNavigation, tools, tray, latestResponse: latestResponse?.id, jumpToLatest: () => { setMenu(null); if (latestResponse) jump(latestResponse.id, 0, 0, 'start') }, overlay: overlay ? createPortal(overlay, document.querySelector('.app-shell') ?? document.body) : null, discussion: activeComment, discussionView: <>{discussionView}{answerView}</>, answerMessage: replyRecord?.inferred ? replyRecord.messageId : null, open, setReplyItem: focusReply, outgoing, previewId, sent: () => setPreviewId(crypto.randomUUID()), selectedCount: selectedComments.length + Object.keys(selectedReplies).length,
     select: (message: string, range: EditorSelection | null) => { if (range) setSelection(previous => previous?.message === message && previous.range.from === range.from && previous.range.to === range.to ? previous : { message, range }) },
     folds: (message: string): HeadingReference[] => { if (target?.message === message) return []; try { return JSON.parse(reading[`headings:${message}`] ?? '[]') } catch { return [] } },
     foldHeading: (message: string, heading: HeadingReference, folded: boolean) => { if (target?.message === message) setTarget(null); const previous: HeadingReference[] = JSON.parse(reading[`headings:${message}`] ?? '[]'); remember(`headings:${message}`, JSON.stringify([...previous.filter(value => JSON.stringify(value) !== JSON.stringify(heading)), ...(folded ? [heading] : [])])) },

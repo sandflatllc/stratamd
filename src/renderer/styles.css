@@ -2419,3 +2419,20 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .web-link-picker button::after { content: attr(title); position: absolute; top: calc(100% + 6px); left: 0; width: max-content; max-width: min(240px, calc(100vw - 24px)); padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--text); font: 12px/1.4 var(--font-text), sans-serif; pointer-events: none; opacity: 0; }
 .web-link-picker button:hover::after, .web-link-picker button:focus-visible::after { opacity: 1; }
 .conversation-discussion a, .thread-panel a { color: var(--document-link); text-decoration: underline; text-underline-offset: .16em; }
+
+/* Inferred asks use the original passage and the existing floating discussion. */
+.conversation-ask-tag { display:inline-flex; align-items:center; vertical-align:baseline; margin-left:6px; padding:1px 6px; border:1px solid color-mix(in srgb,var(--controls-warning) 45%,transparent); border-radius:999px; background:color-mix(in srgb,var(--controls-warning) 12%,transparent); color:var(--controls-warning); font:700 calc(11px * var(--zoom,1))/1.5 var(--font-text); cursor:pointer; }
+.conversation-ask-tag[data-status="drafted"], .conversation-ask-tag[data-status="done"] { color:var(--controls-primary); border-color:var(--controls-primary); }
+.conversation-ask-scan { display:inline-flex; align-items:center; justify-content:center; flex:none; width:26px; height:26px; border:0; padding:3px; background:transparent; color:var(--muted); cursor:pointer; }
+.conversation-ask-scan svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; }
+.conversation-ask-scan[data-state="working"] { color:var(--controls-warning); animation:conversation-pulse 1.5s ease-in-out infinite; }
+.conversation-ask-scan[data-state="done"] { color:var(--controls-positive); }
+.conversation-marker[data-kind="ask"] { color:var(--controls-warning); }
+.conversation-marker .conversation-ask-marker { display:flex; align-items:center; justify-content:center; width:15px; height:15px; border:1px solid currentColor; border-radius:50%; background:transparent; font-size:calc(11px * var(--zoom)); }
+.conversation-answer-popup { position:fixed; }
+.conversation-answer-popup .reply-box textarea { width:100%; min-height:104px; }
+.conversation-answer-popup>small { display:block; color:var(--muted); margin-top:8px; }
+.conversation-answer-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:10px; }
+
+.conversation-item-entry { display:flex; align-items:center; gap:6px; }
+.conversation-item-entry>button:first-child { flex:1; text-align:left; }

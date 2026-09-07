@@ -98,7 +98,13 @@ export interface AnnotationView {
 export type ItemKind = 'decision' | 'question' | 'suggestion' | 'edit' | 'comment'
 export type ItemStatus = 'open' | 'drafted' | 'done'
 
+export interface StoredAsk { id: string; quote: string; from: number; to: number; sourceHash?: string | undefined; retained?: boolean | undefined }
+export interface StoredAskScan { sourceHash: string; state: 'done' | 'cancelled'; asks: StoredAsk[]; reason?: string | undefined }
+export interface AskScanView { messageId: string; state: 'working' | 'done' | 'cancelled'; count: number; reason?: string | undefined }
+
 export interface ItemView {
+  askRange?: { from: number; to: number } | undefined
+  answerDraft?: string | undefined
   source?: { kind: "message"; anchor: import("../core/conversation-delivery").MessageAnchor } | { kind: "document"; path: string }
   options?: string[]
   discussion?: Array<{ author: "user" | "agent"; text: string }>
@@ -271,6 +277,8 @@ export interface EngineTurnView {
 }
 
 export interface EngineThreadView {
+  engineIdentity?: string | undefined
+  askScan?: AskScanView | undefined
   worktreePath?: string | null
   id: string
   projectId: string
@@ -551,6 +559,7 @@ export interface AccountView {
 export interface ManagedEngineView { state: 'starting' | 'recovering' | 'running' | 'failed' | 'stopped'; failure?: { at: number; exitCode: number | null; signal: string | null; attempt: number }; version: string | null; nodeVersion: string | null; directory: string; problem: string | null }
 
 export interface EngineView {
+  askScanProblem?: string | null | undefined
   identity?: string
   managed?: ManagedEngineView
 
@@ -1077,6 +1086,9 @@ export interface StrataApi {
   /** Queues a reply to a message-anchored item; the row shows Drafted until the Send carrying it is acknowledged (§5.4). */
   holdMessageComment(threadId: string, input: { id?: string; messageId: string; from: number; to: number; kind: DraftKind; text: string }): Promise<string>
   actMessageComment(threadId: string, itemId: string, action: "resolve" | "reopen" | "discard"): Promise<void>
+  runAskScan(identity: string | null, threadId: string, messageId: string): Promise<void>
+  cancelAskScan(identity: string | null, threadId: string): Promise<void>
+  saveAskDraft(identity: string | null, threadId: string, itemId: string, text: string): Promise<void>
   queueItemReply(threadId: string, itemId: string, text: string): Promise<void>
   discardItemReply(threadId: string, itemId: string): Promise<void>
   /** Hides an inferred item; remembered per message (§5.12). */

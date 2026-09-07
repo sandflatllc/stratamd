@@ -1,7 +1,8 @@
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
+import { anchorAsks, askSourceHash } from '../../src/core/asks'
 import { T3EngineClient } from '../../src/main/engine/client'
 import { fakeEngineServer } from './support/fake-engine-socket'
 
@@ -44,6 +45,7 @@ function engine() {
 describe('conversation items remembered in the main process (§5.4, §5.12)', () => {
   it('four answers travel keyed by item id in one delivery, show Drafted until acknowledged, and survive a restart with a dismissal', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'strata-conversation-state-'))
+    await writeFile(join(directory, 'engine-conversations.json'), JSON.stringify({ formatVersion: 1, threads: { t1: { replies: {}, pending: [], answered: [], dismissed: [], asks: { m1: { sourceHash: askSourceHash(questions), state: 'done', asks: anchorAsks('m1',questions,questions.split('\n').map(line=>({quote:line.slice(3)}))) } } } } }))
     const fake = engine()
     const client = new T3EngineClient({ dataDirectory: directory, fetch: fake.fetch, webSocket: fake.server.WebSocket, now: () => Date.parse(at), publishDelayMs: 0 })
     await client.pair('http://engine.test', 'code')
@@ -100,7 +102,8 @@ describe('conversation items remembered in the main process (§5.4, §5.12)', ()
 
 it('recovers rejected uploads after restart with frozen comments and replies, preserving later drafts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'strata-comment-retry-'))
-  const fake = engine()
+  await writeFile(join(directory, 'engine-conversations.json'), JSON.stringify({ formatVersion: 1, threads: { t1: { replies: {}, pending: [], answered: [], dismissed: [], asks: { m1: { sourceHash: askSourceHash(questions), state: 'done', asks: anchorAsks('m1',questions,questions.split('\n').map(line=>({quote:line.slice(3)}))) } } } } }))
+    const fake = engine()
   const options = { dataDirectory: directory, fetch: fake.fetch, webSocket: fake.server.WebSocket, now: () => Date.parse(at), publishDelayMs: 0 }
   const first = new T3EngineClient(options)
   await first.pair('http://engine.test', 'code'); await first.openThread('t1')
@@ -127,7 +130,8 @@ it('recovers rejected uploads after restart with frozen comments and replies, pr
 
 it('reuses uploaded references and command identity after a lost dispatch response', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'strata-comment-dispatch-'))
-  const fake = engine()
+  await writeFile(join(directory, 'engine-conversations.json'), JSON.stringify({ formatVersion: 1, threads: { t1: { replies: {}, pending: [], answered: [], dismissed: [], asks: { m1: { sourceHash: askSourceHash(questions), state: 'done', asks: anchorAsks('m1',questions,questions.split('\n').map(line=>({quote:line.slice(3)}))) } } } } }))
+    const fake = engine()
   const options = { dataDirectory: directory, fetch: fake.fetch, webSocket: fake.server.WebSocket, now: () => Date.parse(at), publishDelayMs: 0 }
   const first = new T3EngineClient(options)
   await first.pair('http://engine.test', 'code'); await first.openThread('t1')
@@ -143,7 +147,8 @@ it('reuses uploaded references and command identity after a lost dispatch respon
 
 it('routes standalone conversation actions once, keeps decisions owner-controlled, and delivers outcomes on the next Send', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'strata-comment-actions-'))
-  const fake = engine()
+  await writeFile(join(directory, 'engine-conversations.json'), JSON.stringify({ formatVersion: 1, threads: { t1: { replies: {}, pending: [], answered: [], dismissed: [], asks: { m1: { sourceHash: askSourceHash(questions), state: 'done', asks: anchorAsks('m1',questions,questions.split('\n').map(line=>({quote:line.slice(3)}))) } } } } }))
+    const fake = engine()
   const options = { dataDirectory: directory, fetch: fake.fetch, webSocket: fake.server.WebSocket, now: () => Date.parse(at), publishDelayMs: 0 }
   const first = new T3EngineClient(options)
   await first.pair('http://engine.test', 'code'); await first.openThread('t1')
@@ -177,7 +182,8 @@ it('routes standalone conversation actions once, keeps decisions owner-controlle
 
 it('a document-frozen context delivers the original reply while a newer revision remains queued', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'strata-frozen-document-context-'))
-  const fake = engine()
+  await writeFile(join(directory, 'engine-conversations.json'), JSON.stringify({ formatVersion: 1, threads: { t1: { replies: {}, pending: [], answered: [], dismissed: [], asks: { m1: { sourceHash: askSourceHash(questions), state: 'done', asks: anchorAsks('m1',questions,questions.split('\n').map(line=>({quote:line.slice(3)}))) } } } } }))
+    const fake = engine()
   const client = new T3EngineClient({ dataDirectory: directory, fetch: fake.fetch, webSocket: fake.server.WebSocket, now: () => Date.parse(at), publishDelayMs: 0 })
   await client.pair('http://engine.test', 'code'); await client.openThread('t1')
   const item = client.view().projects[0]!.threads[0]!.items![0]!
@@ -195,7 +201,8 @@ it('a document-frozen context delivers the original reply while a newer revision
 
 it('holds two comments through restart, quick-sends a third, then sends only one held comment', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'strata-three-comments-'))
-  const fake = engine()
+  await writeFile(join(directory, 'engine-conversations.json'), JSON.stringify({ formatVersion: 1, threads: { t1: { replies: {}, pending: [], answered: [], dismissed: [], asks: { m1: { sourceHash: askSourceHash(questions), state: 'done', asks: anchorAsks('m1',questions,questions.split('\n').map(line=>({quote:line.slice(3)}))) } } } } }))
+    const fake = engine()
   const options = { dataDirectory: directory, fetch: fake.fetch, webSocket: fake.server.WebSocket, now: () => Date.parse(at), publishDelayMs: 0 }
   const first = new T3EngineClient(options)
   await first.pair('http://engine.test', 'code'); await first.openThread('t1')

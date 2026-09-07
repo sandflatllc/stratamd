@@ -98,7 +98,7 @@ test('model order and custom ids persist separately, and a Claude-only account c
     await page.getByRole('button', { name: 'Close', exact: true }).click(); await open()
     await expect(page.getByRole('button', { name: 'Choose a model in Settings' })).toBeVisible()
     await page.getByRole('button', { name: 'Choose a model in Settings' }).click()
-    const section = page.getByRole('region', { name: 'Generated text model', exact: true })
+    const section = page.getByRole('region', { name: 'Text generation model', exact: true })
     await section.locator(':scope > details > summary').click()
     await section.getByRole('button', { name: 'Claude', exact: true }).click()
     await page.getByRole('button', { name: 'Save changes', exact: true }).click()

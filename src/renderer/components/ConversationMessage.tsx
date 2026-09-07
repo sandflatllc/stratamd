@@ -1,5 +1,5 @@
 import { memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { EngineMessageView, HeadingReference } from '../../shared/contracts'
+import type { EngineMessageView, HeadingReference, ItemView } from '../../shared/contracts'
 import { createStrataEditor, type AnnotationRange, type EditorSelection, type LayoutReadiness, type StrataEditorHandle } from '../../editor'
 import { isOwnerComment, resolveMessageAnchor, type MessageComment } from '../../core/conversation-delivery'
 import { conversationParse } from '../conversationReading'
@@ -16,8 +16,8 @@ export interface PassageTarget { message: string; from: number; to: number; seri
  * editor in a slot the coordinator fills; the swap and its scroll correction
  * are the coordinator's transaction, never this component's own effect.
  */
-export const ConversationMessage = memo(function ConversationMessage({ message, comments, pinned, target, onSelection, onOpen, root, folds, onFold }: {
-  message: EngineMessageView; comments: MessageComment[]; pinned: boolean; target: PassageTarget | null
+export const ConversationMessage = memo(function ConversationMessage({ message, comments, asks = [], pinned, target, onSelection, onOpen, root, folds, onFold }: {
+  message: EngineMessageView; comments: MessageComment[]; asks?: ItemView[]; pinned: boolean; target: PassageTarget | null
   root: string | null; folds: HeadingReference[]; onFold(heading: HeadingReference, folded: boolean): void
   onSelection(selection: EditorSelection | null): void; onOpen(id: string): void
 }) {
@@ -49,9 +49,10 @@ export const ConversationMessage = memo(function ConversationMessage({ message, 
       const range = resolveMessageAnchor(comment, message)
       return range ? [{ id: comment.id, kind: isOwnerComment(comment) && comment.kind === 'suggestion' ? 'comment' : comment.kind, status: !isOwnerComment(comment) && comment.state === 'resolved' ? 'resolved' as const : 'open' as const, from: 0, to: 0, sourceFrom: range.from, sourceTo: range.to, quote: comment.selection, text: comment.text, author: 'user', draft: comment.state === 'held' }] : []
     })
+    for (const ask of asks) if (ask.askRange && !ask.unavailable) list.push({ id: ask.id, kind: 'question', status: ask.status === 'done' ? 'resolved' : 'open', from: 0, to: 0, sourceFrom: ask.askRange.from, sourceTo: ask.askRange.to, quote: ask.quote, author: 'agent', inferredStatus: ask.status })
     if (target?.message === message.id && target.align !== 'start' && !target.annotation) list.push({ id: 'conversation-jump', kind: 'comment', status: 'open', from: 0, to: 0, sourceFrom: target.from, sourceTo: target.to, quote: source.slice(target.from, target.to), author: 'user' })
     return list
-  }, [comments, target, message, source])
+  }, [comments, asks, target, message, source])
   const rangesRef = useRef(ranges); rangesRef.current = ranges
 
   useEffect(() => {
@@ -123,17 +124,24 @@ export const ConversationMessage = memo(function ConversationMessage({ message, 
   }, [source, root, port, message.id])
 
   useEffect(() => { port?.refresh() }, [port, isPinned])
-  useLayoutEffect(() => { if (display.source === source) editor.current?.setAnnotations(ranges) }, [ranges, display.mode, display.source, source])
+  const rangesKey = JSON.stringify(ranges)
+  // Run after the parent commit so its row-position restoration cannot undo
+  // the exact passage correction for tags arriving inside a long reply.
+  useEffect(() => {
+    if (display.source !== source || !editor.current) return
+    const update = () => editor.current?.setAnnotations(rangesRef.current)
+    if (port) port.updateReadingContent(update); else update()
+  }, [rangesKey, display.mode, display.source, source, port])
   useLayoutEffect(() => {
     if (editor.current) editor.current.setFoldedHeadings(folds)
     else if (builtFolds.current !== null && builtFolds.current !== foldsKey) { builtFolds.current = null; port?.invalidate(message.id, 'folds') }
   }, [foldsKey, display.mode])
 
-  return <div ref={row} className="conversation-rich-message" data-rich-mounted={display.mode === 'rich' || undefined} data-transcript-display={display.mode} >
+  return <div onClickCapture={event => { const tag = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-ask-id]') : null; if (tag?.dataset.askId) { event.preventDefault(); event.stopPropagation(); onOpen(tag.dataset.askId) } }} ref={row} className="conversation-rich-message" data-rich-mounted={display.mode === 'rich' || undefined} data-transcript-display={display.mode} >
     {display.mode === 'rich'
       ? <div ref={slot} className="conversation-editor-slot" data-document-path={documentPath || undefined} />
       : display.mode === 'placeholder'
         ? <div className="conversation-placeholder" style={{ height: display.reserved ?? 0 }} aria-label="Preparing answer">Preparing answer…</div>
-        : <div ref={lightweight} className="conversation-lightweight"><MessageMarkdown text={display.source} sourceMap /></div>}
+        : <div ref={lightweight} className="conversation-lightweight"><MessageMarkdown text={display.source} sourceMap asks={asks} onOpenAsk={onOpen} /></div>}
   </div>
 })

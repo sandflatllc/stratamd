@@ -392,6 +392,7 @@ export class StrataApplication implements StrataApi {
       reserveLocalSetup: () => { this.#providerSetupPreparing = true },
       localSetupBusy: () => this.#providerSetupPreparing || this.#providerSetup.busy,
       localUsageAvailable: () => this.#manager !== null,
+      askRuntime: () => this.#manager?.runtimeContext() ?? null,
       measureUsage: (provider, settings, signal) => measureLocalUsage(this.#manager?.runtimeContext() ?? null, options.engineUsageHelper ?? resolve('resources/engine-helpers/usage.mjs'), provider, settings, signal),
       previewHost: { operations: this.#preview.operations, handle: (request) => this.#preview.handle(request), setRegistered: (registered) => this.#preview.setRegistered(registered), recheckVisual: (comment) => this.#recheckVisual(comment), compareVisual: (comment, revision) => this.#compareVisual(comment, revision) },
       // Terminal launchers are scripts Strata writes on Linux (§5.13); macOS gets none.
@@ -1177,6 +1178,21 @@ export class StrataApplication implements StrataApi {
     if (!this.#engine.actMessageComment) throw new Error('This engine cannot update comments')
     await this.#engine.actMessageComment(threadId, itemId, action)
   }
+  async runAskScan(identity: string | null, threadId: string, messageId: string): Promise<void> {
+    if (identity !== (this.#engine.view().identity ?? null)) throw new Error('The selected engine changed. Reopen the conversation.')
+    if (!this.#engine.runAskScan) throw new Error('This engine cannot scan replies')
+    await this.#engine.runAskScan(threadId, messageId)
+  }
+  async cancelAskScan(identity: string | null, threadId: string): Promise<void> {
+    if (identity !== (this.#engine.view().identity ?? null)) throw new Error('The selected engine changed. Reopen the conversation.')
+    await this.#engine.cancelAskScan?.(threadId)
+  }
+  async saveAskDraft(identity: string | null, threadId: string, itemId: string, text: string): Promise<void> {
+    if (identity !== (this.#engine.view().identity ?? null)) throw new Error('The selected engine changed. Reopen the conversation.')
+    if (!this.#engine.saveAskDraft) throw new Error('This engine cannot save answer drafts')
+    await this.#engine.saveAskDraft(threadId, itemId, text)
+  }
+
   async queueItemReply(threadId: string, itemId: string, text: string): Promise<void> {
     if (!this.#engine.queueItemReply) throw new Error('This engine cannot queue replies')
     await this.#engine.queueItemReply(threadId, itemId, text)

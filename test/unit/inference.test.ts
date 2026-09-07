@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
-import { inferQuestions, inferredMessageItems } from '../../src/core/inference'
+import { inferQuestions } from '../../src/core/inference'
 
-describe('prose inference', () => {
+describe('legacy inferred identities', () => {
   it('finds exactly the seven question-mark list entries in the interview corpus', async () => {
     const text = await readFile(new URL('../corpus/messages/interview-seven-questions.md', import.meta.url), 'utf8')
     const questions = inferQuestions('interview', text)
@@ -13,11 +13,4 @@ describe('prose inference', () => {
     ])
   })
 
-  it('infers only completed assistant messages and explicit items suppress the same passage', () => {
-    const message = { id: 'm1', role: 'assistant' as const, text: 'Ready. Which path?', turnId: 't1', streaming: false, createdAt: '', attachmentCount: 0 }
-    const inferred = inferredMessageItems(message, 'thread')
-    expect(inferred).toMatchObject([{ inferred: true, text: 'Which path?', messageId: 'm1' }])
-    expect(inferredMessageItems(message, 'thread', [{ ...inferred[0]!, id: 'explicit', inferred: false }])).toEqual([])
-    expect(inferredMessageItems({ ...message, streaming: true }, 'thread')).toEqual([])
-  })
 })

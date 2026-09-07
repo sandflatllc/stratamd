@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { messageBlockKinds, parseMessageMarkdown } from '../../src/renderer/messageMarkdown'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import type { ItemView } from '../../src/shared/contracts'
+import { MessageMarkdown, messageBlockKinds, parseMessageMarkdown } from '../../src/renderer/messageMarkdown'
 
 // Conversation messages keep their block structure (PRD §6.9): a heading is a
 // heading and a code fence is a code block, in the conversation as in the document.
@@ -42,4 +45,16 @@ describe('message markdown', () => {
     expect(messageBlockKinds('<div>unclosed <b>html')).toEqual(['html'])
     expect(messageBlockKinds('* [link](http://example.com) and ![img](x.png)')).toEqual(['list'])
   })
+})
+
+it('puts one lightweight ask tag after formatted request text and keeps reading offsets on source text only', () => {
+  const text = 'Before. Choose **north** or south? After.'
+  const from = text.indexOf('Choose'), to = text.indexOf(' After.')
+  const ask = { id: 'a', quote: text.slice(from, to), askRange: { from, to }, status: 'drafted' } as ItemView
+  const html = renderToStaticMarkup(createElement(MessageMarkdown, { text, sourceMap: true, asks: [ask] }))
+  expect(html.match(/data-ask-id="a"/g)).toHaveLength(1)
+  expect(html).toContain('data-status="drafted"')
+  expect(html).toContain(`data-source-from="${from}" data-source-to="${text.indexOf('**')}" data-source-verbatim="true"`)
+  expect(html).toMatch(/<button[^>]*data-atomic="ask-tag"[^>]*>✓ Drafted<\/button>/)
+  expect(html).not.toMatch(/<button[^>]*data-source-from/)
 })

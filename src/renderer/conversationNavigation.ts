@@ -4,7 +4,7 @@ import { resolveMessageAnchor, isOwnerComment } from '../core/conversation-deliv
 export interface ConversationMarker {
   id: string
   message: string
-  kind: 'message' | 'comment'
+  kind: 'message' | 'comment' | 'ask'
   text: string
   quote?: string
   comment?: string
@@ -19,6 +19,7 @@ export function conversationMarkers(thread: EngineThreadView): ConversationMarke
   const markers: ConversationMarker[] = []
   for (const message of thread.messages) {
     if (message.role === 'user') markers.push({ id: message.id, message: message.id, kind: 'message', text: message.text.trim() || 'Attached context', from: 0, to: 0, unavailable: false })
+    for (const ask of thread.items ?? []) if (ask.inferred && ask.messageId === message.id) markers.push({ id: ask.id, message: message.id, kind: 'ask', text: ask.quote, comment: ask.id, from: ask.askRange?.from ?? 0, to: ask.askRange?.to ?? 0, unavailable: !ask.askRange })
     const anchored = comments.filter(comment => comment.anchor.message === message.id).map(comment => ({ comment, range: resolveMessageAnchor(comment, message) }))
     anchored.sort((a, b) => (a.range?.from ?? Infinity) - (b.range?.from ?? Infinity))
     for (const { comment, range } of anchored) markers.push({ id: comment.id, message: message.id, kind: 'comment', text: comment.text, quote: comment.selection, comment: comment.id, from: range?.from ?? 0, to: range?.to ?? 0, unavailable: !range, held: comment.state === 'held' })

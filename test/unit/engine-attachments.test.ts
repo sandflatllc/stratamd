@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { T3EngineClient } from '../../src/main/engine/client'
 import { normalizeConversationsStore } from '../../src/main/engine/conversation-state'
 import { StagedAttachmentStore } from '../../src/main/engine/staged-attachments'
+import { anchorAsks, askSourceHash } from '../../src/core/asks'
 import { attachmentLimitMessage } from '../../src/core/composer-attachments'
 import { fakeEngineServer } from './support/fake-engine-socket'
 
@@ -44,6 +45,7 @@ const stagedFiles = (directory: string) => readdir(join(directory, 'composer-att
 const turn = { model: 'gpt-5.6', effort: null, access: 'full-access' as const }
 
 async function client(fake: ReturnType<typeof engine>, directory: string) {
+  await writeFile(join(directory, 'engine-conversations.json'), JSON.stringify({ formatVersion: 1, threads: { t1: { replies: {}, pending: [], answered: [], dismissed: [], asks: { m1: { sourceHash: askSourceHash(questions), state: 'done', asks: anchorAsks('m1', questions, questions.split('\n').map(line => ({ quote: line.slice(3) }))) } } } } }), { flag: 'wx' }).catch(error => { if (error.code !== 'EEXIST') throw error })
   const instance = new T3EngineClient({ dataDirectory: directory, fetch: fake.fetch, webSocket: fake.server.WebSocket, now: () => Date.parse(at), publishDelayMs: 0 })
   await instance.pair('http://engine.test', 'code'); await instance.openThread('t1')
   await new Promise<void>((resolve) => setImmediate(resolve))

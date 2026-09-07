@@ -16,3 +16,8 @@ it('keeps each owner comment at its passage, including sent and resolved history
   expect(conversationMarkers({ ...thread, messages: [] })).toHaveLength(3)
   expect(conversationMarkers({ ...thread, messages: [{ ...message, text: 'Changed source.' }] }).every(marker => marker.unavailable)).toBe(true)
 })
+
+it('navigates inferred asks to their original source range', () => {
+  const thread = { messages: [{ id: 'm', role: 'assistant', text: 'Choose a date.' }], items: [{ id: 'a', messageId: 'm', inferred: true, quote: 'Choose a date.', askRange: { from: 0, to: 14 } }] } as EngineThreadView
+  expect(conversationMarkers(thread)).toEqual([{ id: 'a', message: 'm', kind: 'ask', text: 'Choose a date.', comment: 'a', from: 0, to: 14, unavailable: false }])
+})

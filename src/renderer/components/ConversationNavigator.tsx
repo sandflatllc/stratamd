@@ -15,7 +15,7 @@ function keepMarkerVisible(button: HTMLElement | null | undefined) {
 
 /** A quiet route back to the owner's messages and passage feedback. */
 export function ConversationNavigator({ thread, onJump }: { thread: EngineThreadView; onJump(marker: ConversationMarker): void }) {
-  const markers = useMemo(() => conversationMarkers(thread), [thread.messages, thread.comments])
+  const markers = useMemo(() => conversationMarkers(thread), [thread.messages, thread.comments, thread.items])
   const root = useRef<HTMLElement>(null)
   const [active, setActive] = useState<string>()
   const [preview, setPreview] = useState<{ id: string; top: number; left: number }>()
@@ -69,10 +69,10 @@ export function ConversationNavigator({ thread, onJump }: { thread: EngineThread
     event.preventDefault(); buttons[next]?.focus({ preventScroll: true }); keepMarkerVisible(buttons[next])
   }}>
     <div className="conversation-marker-list">
-      {markers.map((marker, index) => <button type="button" key={marker.id} className="conversation-marker" data-kind={marker.kind} data-marker-id={marker.id} data-held={marker.held || undefined} data-distance={hovered >= 0 && Math.abs(index - hovered) <= 2 ? Math.abs(index - hovered) : undefined} aria-label={`${marker.kind === 'message' ? 'Message' : 'Comment'}: ${marker.text.slice(0, 160)}`} aria-current={active === marker.id ? 'location' : undefined} aria-describedby={shown?.id === marker.id ? tooltipId : undefined} onMouseEnter={event => reveal(marker, event.currentTarget)} onFocus={event => reveal(marker, event.currentTarget)} onClick={() => { onJump(marker); setActive(marker.id); setPreview(undefined) }}><span /></button>)}
+      {markers.map((marker, index) => <button type="button" key={marker.id} className="conversation-marker" data-kind={marker.kind} data-marker-id={marker.id} data-held={marker.held || undefined} data-distance={hovered >= 0 && Math.abs(index - hovered) <= 2 ? Math.abs(index - hovered) : undefined} aria-label={`${marker.kind === 'message' ? 'Message' : marker.kind === 'ask' ? 'Question' : 'Comment'}: ${marker.text.slice(0, 160)}`} aria-current={active === marker.id ? 'location' : undefined} aria-describedby={shown?.id === marker.id ? tooltipId : undefined} onMouseEnter={event => reveal(marker, event.currentTarget)} onFocus={event => reveal(marker, event.currentTarget)} onClick={() => { onJump(marker); setActive(marker.id); setPreview(undefined) }}>{marker.kind === 'ask' ? <span className="conversation-ask-marker">?</span> : <span />}</button>)}
     </div>
     {shown && createPortal(<div id={tooltipId} role="tooltip" className="conversation-marker-preview" style={{ top: preview!.top, left: preview!.left }}>
-      <small>{shown.kind === 'message' ? 'Your message' : shown.held ? 'Held comment' : 'Your comment'}</small>
+      <small>{shown.kind === 'message' ? 'Your message' : shown.kind === 'ask' ? 'Question' : shown.held ? 'Held comment' : 'Your comment'}</small>
       <p>{shown.text}</p>
       {shown.quote && <blockquote>{shown.quote}</blockquote>}
       {shown.unavailable && <small>Original passage unavailable</small>}

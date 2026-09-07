@@ -1,6 +1,6 @@
 import { accountForModel } from '../../core/accountState'
 import type { ComposeCommentImage } from '../visual-comment-image'
-import { effectiveProviderInstances, mergeEngineSettings, mergeProviderEdit, type EngineSettingsEdit, type ProviderEdit, type EngineSupport, type EngineActivity, isSettingsRecord } from '../../shared/engine-settings'
+import { effectiveProviderInstances, generatedModelSchema, mergeEngineSettings, mergeProviderEdit, type EngineSettingsEdit, type ProviderEdit, type EngineSupport, type EngineActivity, isSettingsRecord } from '../../shared/engine-settings'
 import { ConnectionOperations } from './connection-operations'
 import { connectionDirectory, connectionIdentity } from './identity'
 import { makeUsageWindow } from '../../core/usage'
@@ -58,7 +58,10 @@ import type { ConversationInput, ModelOption, EngineModelView, StartThreadInput,
 import { assertSupportedPlatform } from '../../platform/runtime'
 import { mapMarkdownBlocks, parseStrataBlock } from '../../core/blocks'
 import { postedMessageItems } from '../../core/items'
-import { inferredMessageItems } from '../../core/inference'
+import { preserveAskAnswers, askItems } from '../../core/asks'
+import { AskCoordinator } from './ask-coordinator'
+import { askConfigurationProblem, resolveAskInvocation, scanAsks } from './ask-scan'
+import type { LocalRuntimeContext } from './local-usage'
 import { pngSize, VisualEvidenceStore } from './visual-evidence'
 import { assertVisualCommentsWritable, emptyVisualCommentsStore, readVisualCommentsStore, referencedEvidence, writeVisualCommentsStore, type VisualCommentsStore } from './visual-comments'
 import { appendVisualContext, visibleVisualMessage, visualCaptureIds, isVisualCommentId, revisionForReply, sendCapacity, visualAttachmentName, visualBrief, visualCommentView, visualRepliesIn, visualSendSummary, type VisualCapture, type VisualCommentRecord, type VisualRevision } from '../../core/visual-comments'
@@ -120,6 +123,8 @@ export interface PreviewHostBridge {
 }
 
 export interface EngineClientOptions {
+  askRuntime?: () => LocalRuntimeContext | null
+  scanAsks?: typeof scanAsks
   composeCommentImage?: ComposeCommentImage
   dataDirectory: string
   reserveLocalSetup?: () => void
@@ -169,6 +174,9 @@ export interface EngineReadClient {
   updateThread?(threadId: string, change: EngineThreadChange): Promise<void>
   holdMessageComment?(threadId: string, input: { id?: string; messageId: string; from: number; to: number; kind: import("../../shared/contracts").DraftKind; text: string }): Promise<string>
   actMessageComment?(threadId: string, itemId: string, action: "resolve" | "reopen" | "discard"): Promise<void>
+  runAskScan?(threadId: string, messageId: string): Promise<void>
+  cancelAskScan?(threadId: string): Promise<void>
+  saveAskDraft?(threadId: string, itemId: string, text: string): Promise<void>
   queueItemReply?(threadId: string, itemId: string, text: string): Promise<void>
   discardItemReply?(threadId: string, itemId: string): Promise<void>
   dismissItem?(threadId: string, itemId: string): Promise<void>
@@ -303,6 +311,17 @@ function statusOf(thread: T3ShellSnapshot['threads'][number]): EngineThreadView[
   return thread.session?.status ?? 'idle'
 }
 
+/** Only reply changes and turn completion make stored history automatically eligible. */
+function askCompletionChanged(before: DetailThread | null, after: DetailThread): boolean {
+  if (!before) return false
+  const previous = before.messages.findLast(message => message.role === 'assistant')
+  const latest = after.messages.findLast(message => message.role === 'assistant')
+  if (!latest) return false
+  return previous?.id !== latest.id || previous.text !== latest.text || previous.streaming !== latest.streaming ||
+    JSON.stringify(before.latestTurn) !== JSON.stringify(after.latestTurn) ||
+    ['running', 'starting'].includes(before.session?.status ?? 'idle') && !['running', 'starting'].includes(after.session?.status ?? 'idle')
+}
+
 export class T3EngineClient implements EngineReadClient {
   readonly #fetch: typeof globalThis.fetch
   readonly #now: () => number
@@ -343,6 +362,12 @@ export class T3EngineClient implements EngineReadClient {
   #usageJobs = new Map<string, { abort: AbortController; done: Promise<void> }>()
   #usageAttempt = new Map<string, number>()
   #usageProblems = new Map<string, string>()
+  readonly #asks: AskCoordinator
+  readonly #askRuntime: () => LocalRuntimeContext | null
+  #askSettings: EngineSettings | null = null
+  #askShellInitialized = false
+  #askShell = new Map<string, string>()
+  #askFetching = new Map<string, Promise<void>>()
   #backgroundAllowed = true
   #configFetchedAt = 0
   #configProblem: string | null = null
@@ -414,6 +439,24 @@ export class T3EngineClient implements EngineReadClient {
     this.#shimDirectory = options.terminalShimDirectory ?? null
     this.#writeShims = options.writeShims ?? writeTerminalShims
     this.#previewHost = options.previewHost ?? null
+    this.#askRuntime = options.askRuntime ?? (() => null)
+    this.#asks = new AskCoordinator({
+      thread: id => this.view().projects.flatMap(project => project.threads).find(thread => thread.id === id),
+      state: id => this.#conversations.threads[id],
+      available: () => this.#askProblem() === null,
+      changed: () => this.#publishSoon(),
+      save: (id, messageId, record, current) => this.#operations.run(() => this.#serializeVisual(async () => {
+        if (!current()) return
+        const state = this.#conversations.threads[id] ?? emptyConversationState()
+        this.#conversations.threads[id] = { ...state, asks: { ...state.asks, [messageId]: preserveAskAnswers(messageId, record, state) } }
+        await writeConversationsStore(this.#conversationsPath, this.#conversations)
+      })),
+      scan: async (source, registered, signal) => {
+        const context = this.#askRuntime(), settings = this.#askSettings
+        if (!context || !settings || this.#localSetupBusy()) throw new Error('Ask scanning is unavailable while the provider is being configured.')
+        return (options.scanAsks ?? scanAsks)(await resolveAskInvocation(context, settings), source, registered, signal)
+      },
+    })
   }
 
   async initialize(connect = true): Promise<void> {
@@ -444,6 +487,8 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async #selectIdentity(identity: string): Promise<void> {
+    await this.#asks.stop()
+    this.#askSettings = null; this.#askShell.clear(); this.#askFetching.clear(); this.#askShellInitialized = false
     const directory = await connectionDirectory(this.#dataDirectory, identity)
     this.#identity = identity
     this.#readingPath = join(directory, 'engine-reading.json')
@@ -457,6 +502,7 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async shutdown(): Promise<void> {
+    await this.#asks.stop()
     await this.#cancelUsage()
     this.#usageAttempt.clear()
     this.#usageProblems.clear()
@@ -522,6 +568,7 @@ export class T3EngineClient implements EngineReadClient {
         })) : []
         return {
           id: thread.id,
+          engineIdentity: this.#identity,
           projectId: thread.projectId,
           title: thread.title,
           model: thread.modelSelection.model,
@@ -550,11 +597,12 @@ export class T3EngineClient implements EngineReadClient {
             : typeof latestTurn?.requestedAt === 'string' ? latestTurn.requestedAt : null,
           latestTurn: turnView(latestTurn),
           messages,
+          askScan: this.#asks.view({ id: thread.id, messages, status: statusOf(thread), latestTurn: turnView(latestTurn) }),
           activities,
           comments: this.#conversations.threads[thread.id]?.comments ?? [],
           outcomes: this.#conversations.threads[thread.id]?.outcomes ?? [],
           deliveries: (this.#conversations.threads[thread.id]?.prepared ?? []).map(entry => ({ messageId: entry.messageId, text: entry.attachments.map(a => a.kind === 'text' ? a.text : `[Image ${a.name}]`).join('\n'), phase: entry.attachments.every(a => a.uploaded) ? 'prepared' as const : 'uploading' as const })),
-          items: (() => { const explicit = postedMessageItems(messages, thread.id); return applyConversationState([...explicit.filter(item => !this.#conversations.threads[thread.id]?.comments?.some(comment => comment.id === item.id)), ...(this.#conversations.threads[thread.id]?.comments ?? []).map((comment): import("../../shared/contracts").ItemView => ({ id: comment.id, kind: comment.kind, status: comment.state === "held" || comment.state === "pending" ? "drafted" : isOwnerComment(comment) || comment.state === "resolved" ? "done" : "open", review: "unreviewed", text: comment.text, quote: comment.selection, order: 0, threadId: thread.id, turnId: messages.find(message => message.id === comment.anchor.message)?.turnId ?? null, messageId: comment.anchor.message, annotationId: null, hunkId: null, inferred: false, source: { kind: "message", anchor: comment.anchor }, discussion: comment.replies, ...(comment.options ? { options: comment.options } : {}), unavailable: !resolveMessageAnchor(comment, messages.find(message => message.id === comment.anchor.message)) })), ...messages.flatMap((message) => inferredMessageItems(message, thread.id, explicit))], this.#conversations.threads[thread.id]) })(),
+          items: (() => { const explicit = postedMessageItems(messages, thread.id); return applyConversationState([...explicit.filter(item => !this.#conversations.threads[thread.id]?.comments?.some(comment => comment.id === item.id)), ...(this.#conversations.threads[thread.id]?.comments ?? []).map((comment): import("../../shared/contracts").ItemView => ({ id: comment.id, kind: comment.kind, status: comment.state === "held" || comment.state === "pending" ? "drafted" : isOwnerComment(comment) || comment.state === "resolved" ? "done" : "open", review: "unreviewed", text: comment.text, quote: comment.selection, order: 0, threadId: thread.id, turnId: messages.find(message => message.id === comment.anchor.message)?.turnId ?? null, messageId: comment.anchor.message, annotationId: null, hunkId: null, inferred: false, source: { kind: "message", anchor: comment.anchor }, discussion: comment.replies, ...(comment.options ? { options: comment.options } : {}), unavailable: !resolveMessageAnchor(comment, messages.find(message => message.id === comment.anchor.message)) })), ...askItems(messages, thread.id, this.#conversations.threads[thread.id])], this.#conversations.threads[thread.id]) })(),
           documents,
         }
       }),
@@ -565,6 +613,7 @@ export class T3EngineClient implements EngineReadClient {
       state: this.#state,
       server: this.#credential?.server ?? null,
       problem: this.#problem,
+      askScanProblem: this.#askProblem(),
       credential: this.#credential ? { expiresAt: new Date(this.#credential.expiresAt).toISOString(), renews: this.#credential.scopes.includes(RENEWAL_SCOPE) } : null,
       projects,
       activeThreadId: this.#reading.activeThreadId,
@@ -574,6 +623,15 @@ export class T3EngineClient implements EngineReadClient {
       autoInstanceIds: Object.fromEntries([...new Set(accounts.map((account) => account.driver))].map((driver) => [driver, chooseInstance(this.#accounts, accounts, null, driver, driver === 'claudeAgent' ? 'fable' : '', this.#now())])),
       terminalShimDirectory: this.#shimDirectory,
     }
+  }
+
+  #askProblem(): string | null {
+    const problem = askConfigurationProblem(this.#askRuntime(), this.#askSettings)
+    if (problem) return problem
+    const selected = generatedModelSchema.parse(this.#askSettings!.textGenerationModelSelection)
+    const provider = this.#providers.find(provider => provider.instanceId === selected.instanceId)
+    if (!provider?.installed || provider.auth.status !== 'authenticated') return 'Sign in to the text generation account in Accounts to find asks.'
+    return null
   }
 
   #accountViews() {
@@ -806,10 +864,12 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string; context?: import("../../core/conversation-delivery").ConversationDelivery }): Promise<void> {
+    this.#asks.cancel(threadId)
     return this.#operations.run(() => this.#serializeVisual(() => this.#startTurn(threadId, input)))
   }
 
   async #startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string; context?: import("../../core/conversation-delivery").ConversationDelivery }): Promise<void> {
+    this.#asks.cancel(threadId)
     const thread = this.#shell?.threads.find((candidate) => candidate.id === threadId)
     if (!thread) throw new Error(`Thread was not found: ${threadId}`)
     const existing = this.#conversations.threads[threadId]?.prepared?.find((entry) => entry.messageId === input.messageId)
@@ -1218,8 +1278,25 @@ export class T3EngineClient implements EngineReadClient {
     this.#publish()
   }
 
+  async runAskScan(threadId: string, messageId: string): Promise<void> {
+    this.#asks.start(threadId, messageId, true)
+  }
+  async cancelAskScan(threadId: string): Promise<void> { this.#asks.cancel(threadId) }
+  async saveAskDraft(threadId: string, itemId: string, text: string): Promise<void> {
+    await this.#operations.run(() => this.#serializeVisual(async () => {
+      const item = this.#threadItem(threadId, itemId)
+      if (!item?.inferred) throw new Error(`Inferred ask was not found: ${itemId}`)
+      const state = this.#conversations.threads[threadId] ?? emptyConversationState()
+      const drafts = { ...state.askDrafts }
+      if (text.trim()) drafts[itemId] = text; else delete drafts[itemId]
+      this.#conversations.threads[threadId] = { ...state, askDrafts: drafts }
+      await writeConversationsStore(this.#conversationsPath, this.#conversations)
+      this.#publish()
+    }))
+  }
+
   async queueItemReply(threadId: string, itemId: string, text: string): Promise<void> {
-    return this.#operations.run(() => this.#queueItemReply(threadId, itemId, text))
+    return this.#operations.run(() => this.#serializeVisual(() => this.#queueItemReply(threadId, itemId, text)))
   }
 
   async #queueItemReply(threadId: string, itemId: string, text: string): Promise<void> {
@@ -1227,13 +1304,14 @@ export class T3EngineClient implements EngineReadClient {
     if (!item) throw new Error(`Item was not found: ${itemId}`)
     if (!text.trim()) throw new Error('Write a reply before queueing it')
     const state = this.#conversations.threads[threadId] ?? emptyConversationState()
-    this.#conversations.threads[threadId] = { ...state, replies: { ...state.replies, [itemId]: { text: text.trim(), kind: item.kind, quote: item.quote, messageId: item.messageId } } }
+    const askDrafts = { ...state.askDrafts }; delete askDrafts[itemId]
+    this.#conversations.threads[threadId] = { ...state, askDrafts, replies: { ...state.replies, [itemId]: { text: text.trim(), kind: item.kind, quote: item.quote, messageId: item.messageId } } }
     await writeConversationsStore(this.#conversationsPath, this.#conversations)
     this.#publish()
   }
 
   async discardItemReply(threadId: string, itemId: string): Promise<void> {
-    return this.#operations.run(() => this.#discardItemReply(threadId, itemId))
+    return this.#operations.run(() => this.#serializeVisual(() => this.#discardItemReply(threadId, itemId)))
   }
 
   async #discardItemReply(threadId: string, itemId: string): Promise<void> {
@@ -1247,14 +1325,15 @@ export class T3EngineClient implements EngineReadClient {
 
   /** Dismissals are remembered per message (§5.12): the item id is derived from the message id and the sentence. */
   async dismissItem(threadId: string, itemId: string): Promise<void> {
-    return this.#operations.run(() => this.#dismissItem(threadId, itemId))
+    return this.#operations.run(() => this.#serializeVisual(() => this.#dismissItem(threadId, itemId)))
   }
 
   async #dismissItem(threadId: string, itemId: string): Promise<void> {
     const state = this.#conversations.threads[threadId] ?? emptyConversationState()
     if (state.dismissed.includes(itemId)) return
     const { [itemId]: _dropped, ...replies } = state.replies
-    this.#conversations.threads[threadId] = { ...state, replies, dismissed: [...state.dismissed, itemId] }
+    const askDrafts = { ...state.askDrafts }; delete askDrafts[itemId]
+    this.#conversations.threads[threadId] = { ...state, replies, askDrafts, dismissed: [...state.dismissed, itemId] }
     await writeConversationsStore(this.#conversationsPath, this.#conversations)
     this.#publish()
   }
@@ -1439,7 +1518,7 @@ export class T3EngineClient implements EngineReadClient {
     this.#reading = { formatVersion: 1, activeThreadId: null, lastVisited: {}, attention: {} }
     await this.initialize(false)
   }
-  async resumeAfterMaintenance(): Promise<void> { this.#operations.resume(); await this.#operations.run(() => this.#retryPendingCommands()) }
+  async resumeAfterMaintenance(): Promise<void> { this.#asks.policy(!this.#backgroundAllowed, false); this.#operations.resume(); await this.#operations.run(() => this.#retryPendingCommands()) }
 
   async prepareLocalSetup(): Promise<void> {
     await this.#operations.switch(async () => {
@@ -1447,6 +1526,8 @@ export class T3EngineClient implements EngineReadClient {
       const shell = shellSnapshot.parse(await response.json())
       if (shell.threads.some(thread => thread.session?.status === 'running' || thread.session?.status === 'starting')) throw new Error('Wait for active conversations before changing this computer.')
       this.#reserveLocalSetup()
+      this.#asks.policy(true, true)
+      void this.#asks.stop()
       await this.#cancelUsage()
     })
   }
@@ -1487,6 +1568,7 @@ export class T3EngineClient implements EngineReadClient {
         const policy = await this.#rpcOrSocket('server.getBackgroundPolicy', {}, 'background policy', 3000)
         if (identity === this.#identity && isSettingsRecord(policy) && typeof policy.shouldRunOpportunisticWork === 'boolean') {
           this.#backgroundAllowed = policy.shouldRunOpportunisticWork
+          this.#asks.policy(!this.#backgroundAllowed, this.#localSetupBusy())
           if (!this.#backgroundAllowed) await this.#cancelUsage()
         }
       }
@@ -1643,6 +1725,7 @@ export class T3EngineClient implements EngineReadClient {
         const response = await this.#request(T3_HTTP.shell)
         this.#shell = shellSnapshot.parse(await response.json())
         this.#shellSequence = this.#shell.snapshotSequence
+        this.#observeAskShell()
         const active = this.#reading.activeThreadId
         if (active && !this.#shell.threads.some((thread) => thread.id === active)) {
           this.#reading.activeThreadId = null
@@ -1723,7 +1806,7 @@ export class T3EngineClient implements EngineReadClient {
   async #subscribeThreads(): Promise<void> {
     const wanted = new Set(this.#followedThreadIds())
     for (const [id, entry] of [...this.#threads]) {
-      if (wanted.has(id)) continue
+      if (wanted.has(id) || this.#asks.active(id)) continue
       entry.stream?.interrupt()
       this.#threads.delete(id)
     }
@@ -1769,6 +1852,7 @@ export class T3EngineClient implements EngineReadClient {
         if (this.#reading.activeThreadId === threadId) { this.#reading.activeThreadId = null; void this.#writeReading() }
       }
     }
+    this.#observeAskShell()
     for (const waiter of [...this.#shellWaiters]) waiter()
     this.#publishSoon()
   }
@@ -1780,6 +1864,7 @@ export class T3EngineClient implements EngineReadClient {
     if (!parsed.success) return
     const item = parsed.data
     if (item.kind === 'synchronized') return
+    const previous = entry.detail?.thread ?? null
     if (item.kind === 'snapshot') {
       if (item.snapshot.thread.id !== threadId) return
       entry.detail = item.snapshot
@@ -1791,8 +1876,41 @@ export class T3EngineClient implements EngineReadClient {
       if (event.aggregateKind !== 'thread' || event.aggregateId !== threadId || !entry.detail) return
       entry.detail = { ...entry.detail, thread: this.#applyThreadEvent(entry.detail.thread, event) }
     }
-    void this.#serializeVisual(() => this.#settleAcknowledgedCommands()).catch(error => logError('engine', 'Delivery acknowledgment could not be saved', error))
+    this.#reconcileAsks(threadId, !!entry.detail && askCompletionChanged(previous, entry.detail.thread))
     this.#publishSoon()
+  }
+
+  #reconcileAsks(threadId: string, automatic: boolean): void {
+    const identity = this.#identity
+    void this.#serializeVisual(() => this.#settleAcknowledgedCommands()).then(() => {
+      if (identity !== this.#identity || !this.#running) return
+      this.#asks.policy(!this.#backgroundAllowed, this.#localSetupBusy())
+      this.#asks.observe(threadId, automatic)
+    }).catch(error => logError('engine', 'Ask reconciliation failed', error))
+  }
+
+  #observeAskShell(): void {
+    if (!this.#shell) return
+    const first = !this.#askShellInitialized
+    this.#askShellInitialized = true
+    const previous = this.#askShell
+    this.#askShell = new Map(this.#shell.threads.map(thread => [thread.id, JSON.stringify([thread.latestTurn, thread.session?.status])]))
+    for (const id of previous.keys()) if (!this.#askShell.has(id)) this.#asks.cancel(id)
+    for (const thread of this.#shell.threads) {
+      if (['running','starting'].includes(statusOf(thread))) { this.#asks.cancel(thread.id); continue }
+      if (first || previous.get(thread.id) === this.#askShell.get(thread.id) || this.#askFetching.has(thread.id)) continue
+      const identity = this.#identity
+      const pending = (async () => {
+        while (identity === this.#identity && this.#askShell.has(thread.id)) {
+          const version = this.#askShell.get(thread.id)
+          await this.#refreshThread(thread.id)
+          if (identity !== this.#identity) return
+          if (version !== this.#askShell.get(thread.id)) continue
+          this.#reconcileAsks(thread.id, true); return
+        }
+      })().catch(error => logWarn('engine', `Could not read completed reply in ${thread.id}: ${error}`)).finally(() => { if (this.#askFetching.get(thread.id) === pending) this.#askFetching.delete(thread.id) })
+      this.#askFetching.set(thread.id, pending)
+    }
   }
 
   /** Mirrors the fork's projector for the events a conversation shows (§5.1, §5.3). */
@@ -1927,10 +2045,13 @@ export class T3EngineClient implements EngineReadClient {
       this.#providers = providerInstancesOf(config).map(provider => ({ ...provider, usageLocal: this.#localUsageAvailable() }))
       this.#models = config.providers.flatMap((provider) => (provider.models ?? []).map((model) => ({ instanceId: provider.instanceId, accountName: provider.displayName ?? provider.instanceId, driver: provider.driver, slug: model.slug, name: model.name, ...(model.isDefault !== undefined ? { isDefault: model.isDefault } : {}), options: model.capabilities?.optionDescriptors ?? [] })))
       const settings = engineSettingsResult.parse(config.settings ?? {})
+      this.#askSettings = { ...settings, providerInstances: effectiveProviderInstances(settings) }
       if (settings.backgroundActivity && this.#localUsageAvailable()) {
         const policy = await this.#rpcOrSocket('server.getBackgroundPolicy', {}, 'background policy', 3000).catch(() => null)
         if (isSettingsRecord(policy) && typeof policy.shouldRunOpportunisticWork === 'boolean') this.#backgroundAllowed = policy.shouldRunOpportunisticWork
       }
+      this.#asks.policy(!this.#backgroundAllowed, this.#localSetupBusy())
+      for (const id of this.#threads.keys()) this.#asks.observe(id, false)
       this.#probeUsage({ ...settings, providerInstances: effectiveProviderInstances(settings) }, forceUsage)
       this.#configProblem = null
       await this.#syncShims()
@@ -1986,12 +2107,17 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async #refreshThread(threadId: string): Promise<void> {
+    const identity = this.#identity
     const response = await this.#request(T3_HTTP.thread(threadId))
     const detail = threadDetailSnapshot.parse(await response.json())
+    if (identity !== this.#identity) return
     const entry = this.#threads.get(threadId) ?? { detail: null, sequence: 0, stream: null }
+    if (entry.sequence > detail.snapshotSequence) return
+    const previous = entry.detail?.thread ?? null
     entry.detail = detail
     entry.sequence = detail.snapshotSequence
     this.#threads.set(threadId, entry)
+    this.#reconcileAsks(threadId, askCompletionChanged(previous, detail.thread))
   }
 
   async #request(path: string): Promise<Response> {
@@ -2029,6 +2155,7 @@ export class T3EngineClient implements EngineReadClient {
     if (!this.#credential) throw new Error('No engine is paired')
     const turn = command as { type?: string; threadId?: string; bootstrap?: unknown }
     if (turn.type === 'thread.turn.start') {
+      if (turn.threadId) this.#asks.cancel(turn.threadId)
       await this.#cancelUsage()
       // Like T3's composer, save the conversation settings before the turn.
       // This also covers persisted retries, which bypass startTurn's preparation.

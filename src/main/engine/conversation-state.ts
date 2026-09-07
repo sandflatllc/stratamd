@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { normalizeAskScans } from '../../core/asks'
 import { worktreeRequest } from './t3-contract'
 import { readFile } from 'node:fs/promises'
 import { atomicWriteFile, isRecord, PRIVATE_FILE_MODE } from '../storage'
@@ -12,6 +13,8 @@ import type { ItemView } from '../../shared/contracts'
  * per message. Lives in the ghost store; T3 never sees it.
  */
 export interface ConversationState {
+  asks?: Record<string, import('../../shared/contracts').StoredAskScan>
+  askDrafts?: Record<string, string>
   workspace?: import('../../shared/contracts').WorktreeRequest
   comments?: import("../../core/conversation-delivery").MessageComment[]
   outcomes?: import("../../core/conversation-delivery").ConversationOutcome[]
@@ -102,6 +105,8 @@ export function normalizeConversationsStore(value: unknown): ConversationsStore 
       comments: Array.isArray(raw.comments) ? raw.comments.flatMap(entry => { const parsed = commentSchema.safeParse(entry); return parsed.success ? [parsed.data as import('../../core/conversation-delivery').MessageComment] : [] }) : [],
       outcomes: Array.isArray(raw.outcomes) ? raw.outcomes.flatMap(entry => { const parsed = outcomeSchema.safeParse(entry); return parsed.success ? [parsed.data as import('../../core/conversation-delivery').ConversationOutcome] : [] }) : [],
       receipts: strings(raw.receipts),
+      asks: normalizeAskScans(raw.asks),
+      askDrafts: isRecord(raw.askDrafts) ? Object.fromEntries(Object.entries(raw.askDrafts).filter((entry): entry is [string, string] => typeof entry[1] === 'string')) : {},
       replies: replies(raw.replies),
       pending: Array.isArray(raw.pending) ? raw.pending.flatMap((entry) => isRecord(entry) && typeof entry.deliveryId === 'string' ? [{ deliveryId: entry.deliveryId, itemIds: strings(entry.itemIds), replies: replies(entry.replies), commentIds: strings(entry.commentIds), outcomeKeys: strings(entry.outcomeKeys), visual: visualRefs(entry.visual) }] : []) : [],
       prepared: Array.isArray(raw.prepared) ? raw.prepared.flatMap((entry) => {

@@ -26,6 +26,7 @@ export interface AnnotationRange extends AnnotationQuoteAnchor {
   color?: string | null
   text?: string
   /** Held owner comment. Drafts are display-only and have no annotation actions. */
+  inferredStatus?: 'open' | 'drafted' | 'done'
   draft?: boolean
 }
 
@@ -116,7 +117,7 @@ function annotationDecorations(
   const ranges = adjusting
     ? stored.map((range) => range.id === adjusting.id ? { ...range, from: adjusting.from, to: adjusting.to } : range)
     : stored
-  const visible = ranges.filter((range) => range.status === 'open' && range.to > range.from)
+  const visible = ranges.filter((range) => (range.status === 'open' || range.inferredStatus !== undefined) && range.to > range.from)
   for (const range of visible) {
     const from = Math.max(0, Math.min(range.from, doc.content.size))
     const to = Math.max(from, Math.min(range.to, doc.content.size))
@@ -132,9 +133,20 @@ function annotationDecorations(
     if (color) styles.push(`--strata-annotation-color: ${color}`)
     if (styles.length > 0) attrs.style = styles.join('; ')
     decorations.push(Decoration.inline(from, to, attrs, { id: `annotation:${range.id}` }))
-    if (isActive) {
+    if (isActive && range.inferredStatus === undefined) {
       decorations.push(Decoration.widget(from, () => handleWidget(range, 'start'), { key: `annotation-handle:${range.id}:start`, side: -1, ignoreSelection: true }))
       decorations.push(Decoration.widget(to, () => handleWidget(range, 'end'), { key: `annotation-handle:${range.id}:end`, side: 1, ignoreSelection: true }))
+    }
+    if (range.inferredStatus !== undefined) {
+      decorations.push(Decoration.widget(to, () => {
+        const chip = document.createElement('button')
+        chip.type = 'button'; chip.className = 'conversation-ask-tag'
+        chip.dataset.askId = range.id; chip.dataset.status = range.inferredStatus
+        chip.contentEditable = 'false'
+        chip.textContent = range.inferredStatus === 'drafted' ? '✓ Drafted' : range.inferredStatus === 'done' ? '✓ Answered' : '⊙ Question'
+        chip.setAttribute('aria-label', `Answer question: ${range.quote}`)
+        return chip
+      }, { key: `ask-chip:${range.id}:${range.inferredStatus}`, side: 1 }))
     }
     if (range.draft) {
       decorations.push(Decoration.widget(to, () => {
