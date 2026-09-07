@@ -3,12 +3,16 @@ name: check
 on:
   push:
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 9 * * 1'
 
 jobs:
   linux:
     runs-on: ubuntu-24.04
     env:
       STRATAMD_LINUX_TOOLCHAIN: ubuntu-24.04
+      STRATAMD_VERIFY_HOME: ${{ runner.temp }}/stratamd-verification
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -38,15 +42,27 @@ jobs:
       - run: xvfb-run --auto-servernum npx electron scripts/fetch-spell-dictionary.mjs
       # Native desktop-composition evidence needs the X11 capture command.
       - run: sudo apt-get update && sudo apt-get install -y imagemagick gcc-13 g++-13 make
-      - run: xvfb-run --auto-servernum pnpm check
+      - run: ./node_modules/.bin/node-gyp rebuild --directory native/unix-support
+      - run: node scripts/verify.mjs full --task ci
+      - run: node scripts/verify.mjs stress --task ci
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+      - run: node scripts/verify.mjs managed --task ci
       # `stratamd setup` registers desktop and MIME associations through
       # update-desktop-database/update-mime-database; the runner image ships
       # without them, so the packaged-CLI test's real setup run needs both.
       - run: sudo apt-get install -y desktop-file-utils shared-mime-info
-      - run: xvfb-run --auto-servernum pnpm test:packaged
+      - run: xvfb-run -a node scripts/verify.mjs packaged --task ci --finish-task
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-verification
+          path: ${{ runner.temp }}/stratamd-verification/
+          retention-days: 14
 
   macos:
     runs-on: macos-14
+    env:
+      STRATAMD_VERIFY_HOME: ${{ runner.temp }}/stratamd-verification
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -59,21 +75,25 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: node node_modules/electron/install.js
-      - run: pnpm check
-      - run: pnpm test:packaged
+      - run: ./node_modules/.bin/node-gyp rebuild --directory native/unix-support
+      - run: node scripts/verify.mjs full --task ci
+      - run: node scripts/verify.mjs stress --task ci
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+      - run: node scripts/verify.mjs managed --task ci
+      - run: node scripts/verify.mjs packaged --task ci --finish-task
       # Playwright traces and screenshots are the only way to see a Mac-only
       # e2e failure without owning a Mac.
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
-          name: mac-test-results
-          path: test-results/
-          retention-days: 7
+          name: mac-verification
+          path: ${{ runner.temp }}/stratamd-verification/
+          retention-days: 14
       # ditto keeps execute bits and bundle structure; upload-artifact alone
       # strips permissions. The zip is what a tester downloads and dequarantines.
       - run: |
-          strata_package_output=$(node -p 'JSON.parse(require("node:fs").readFileSync("build/latest-package.json", "utf8")).output')
-          ditto -c -k --keepParent "$strata_package_output"/mac*/StrataMD.app StrataMD-mac.zip
+          strata_package_app=$(python3 -c 'import os,pathlib; print(next(pathlib.Path(os.environ["STRATAMD_VERIFY_HOME"]).glob("runs/*/package/mac*/StrataMD.app")))')
+          ditto -c -k --keepParent "$strata_package_app" StrataMD-mac.zip
       - uses: actions/upload-artifact@v4
         with:
           name: StrataMD-mac

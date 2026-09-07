@@ -36,9 +36,9 @@ it.skipIf(!process.env.STRATAMD_ENGINE_BUNDLE)('uploads Markdown and an image th
     expect(manager.view().state).toBe('running')
     const projectId = await client.createProject({ title: 'Attachment proof', workspaceRoot: join(root, 'project') })
     await expect.poll(() => client.view().projects.some(project => project.id === projectId)).toBe(true)
-    const model = client.view().models?.find(model => model.instanceId === 'codex')
-    expect(model).toBeDefined()
-    const turn = { instanceId: 'codex', model: model!.slug, effort: null, access: 'full-access' as const }
+    // The upload contract needs no authenticated provider. Use a fixture instance;
+    // turn dispatch is intercepted above before the engine can start it.
+    const turn = { instanceId: 'attachment-proof', model: 'gpt-5.6', effort: null, access: 'full-access' as const }
     const threadId = await client.createThread({ projectId, title: 'Attachment proof', ...turn })
     await expect.poll(() => client.view().projects.some(project => project.threads.some(thread => thread.id === threadId))).toBe(true)
     await client.openThread(threadId)

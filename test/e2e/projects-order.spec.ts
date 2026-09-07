@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 import { selectNavigationTab } from './harness'
 

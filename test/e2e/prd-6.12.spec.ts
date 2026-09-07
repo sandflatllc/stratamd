@@ -1,5 +1,5 @@
 import { openDocsMenu } from './harness'
-import { expect, test, type TestInfo } from '@playwright/test'
+import { expect, test, type TestInfo } from './test'
 import { mkdir, readFile, readdir, realpath, rename } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import {
@@ -43,11 +43,11 @@ async function engineScenario(testInfo: TestInfo, content: string = '# Scenario\
 }
 
 /** Attaches each thread by sending the document to it, and leaves the first one as the active conversation. */
-async function attachAll(value: Scenario, threads: Array<['t1' | 't2', string]>): Promise<void> {
+async function attachAll(value: Scenario, engine: FakeEngine, threads: Array<['t1' | 't2', string]>): Promise<void> {
   const page = value.page!
   for (const [id, title] of threads) {
     await openThread(page, title)
-    await attachThread(page, id, title)
+    await attachThread(page, engine, id, title)
   }
   await openThread(page, threads[0]![1])
   await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
@@ -109,7 +109,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     })
     let completed = false
     try {
-      await attachAll(value, [['t1', 'Agent A']])
+      await attachAll(value, engine, [['t1', 'Agent A']])
       engine.setOnline(false)
       await expect(value.page!.getByRole('button', { name: 'Engine status' })).toHaveText(/Disconnected/)
 
@@ -151,7 +151,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     const mixed = '# Plan\n\nShip the reliable importer Thursday.\n'
     const { value, engine } = await engineScenario(testInfo, original)
     await value.launch()
-    await attachAll(value, [['t1', 'Agent A']])
+    await attachAll(value, engine, [['t1', 'Agent A']])
     await agentEdits(value, engine, 't1', 'Ship the importer Friday.', 'Friday', 'Thursday')
     await waitForReviewAction(value, 'Revert')
 
@@ -174,7 +174,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     const mixed = '# Plan\n\nShip Thursday after review.\n\nUpdated owner note.\n'
     const { value, engine } = await engineScenario(testInfo, original)
     await value.launch()
-    await attachAll(value, [['t1', 'Agent A']])
+    await attachAll(value, engine, [['t1', 'Agent A']])
     await agentEdits(value, engine, 't1', 'Ship Friday.', 'Friday', 'Thursday')
 
     await setSource(value.page!, mixed)
@@ -235,7 +235,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     const laterEdit = '# Undo\n\nBase. Owner Agent. Later\n'
     const { value, engine } = await engineScenario(testInfo, original)
     await value.launch()
-    await attachAll(value, [['t1', 'Agent A']])
+    await attachAll(value, engine, [['t1', 'Agent A']])
 
     const editor = value.page!.getByRole('textbox', { name: /document editor/i })
     await editor.locator('p').filter({ hasText: 'Base.' }).click({ position: { x: 4, y: 8 } })
@@ -273,7 +273,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     const original = '# Close\n\nDisk text.\n'
     const { value, engine } = await engineScenario(testInfo, original)
     await value.launch()
-    await attachAll(value, [['t1', 'Agent A']])
+    await attachAll(value, engine, [['t1', 'Agent A']])
     await agentEdits(value, engine, 't1', 'Disk text.', 'Disk text.', 'Agent-only buffer text.')
 
     await closeTab(value, 'Discard')
@@ -307,7 +307,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     const changed = '# Suggestion\n\nThe user replaced that sentence.\n'
     const { value, engine } = await engineScenario(testInfo, original)
     await value.launch()
-    await attachAll(value, [['t1', 'Agent A']])
+    await attachAll(value, engine, [['t1', 'Agent A']])
     agentActs(engine, 't1', [{ verb: 'suggest', anchor: { document: value.file, quote: 'The exact quoted sentence.' }, replacement: 'A proposed replacement.' }])
     await annotationByText(value, 'A proposed replacement.')
 
@@ -367,9 +367,9 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
 
   test('11. StrataMD mirror and Save writes do not create external review hunks', async ({}, testInfo) => {
     const edited = '# Own writes\n\nA user edit.\n'
-    const { value } = await engineScenario(testInfo, '# Own writes\n\nOriginal.\n')
+    const { value, engine } = await engineScenario(testInfo, '# Own writes\n\nOriginal.\n')
     await value.launch()
-    await attachAll(value, [['t1', 'Agent A']])
+    await attachAll(value, engine, [['t1', 'Agent A']])
     await setSource(value.page!, edited)
     await value.waitForBuffer(edited)
     await expect(value.page!.getByRole('button', { name: /^Keep(?:\b|$)/i })).toHaveCount(0)
@@ -383,7 +383,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
   test('12. an unacknowledged delivery survives close, restart, and the engine coming back', async ({}, testInfo) => {
     const { value, engine } = await engineScenario(testInfo, '# Durable queue\n\nOriginal.\n')
     await value.launch()
-    await attachAll(value, [['t1', 'Agent A']])
+    await attachAll(value, engine, [['t1', 'Agent A']])
     engine.setOnline(false)
     await expect(value.page!.getByRole('button', { name: 'Engine status' })).toHaveText(/Disconnected/)
 
@@ -411,7 +411,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     const withUserEdit = '# Isolation\n\nAgent B private edit.\n\nOwner line updated.\n'
     const { value, engine } = await engineScenario(testInfo, original)
     await value.launch()
-    await attachAll(value, [['t1', 'Agent A'], ['t2', 'Agent B']])
+    await attachAll(value, engine, [['t1', 'Agent A'], ['t2', 'Agent B']])
     // A third thread, started from Projects, joins as Agent C.
     await value.page!.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
     await value.page!.getByRole('button', { name: 'New thread in Cockpit project', exact: true }).click()
@@ -422,7 +422,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     await value.page!.evaluate(async (id) => window.strata.updateEngineThread(id, { title: 'Agent C' }), agentC)
     await value.page!.getByRole('button', { name: 'Move to side' }).click()
     await openThread(value.page!, 'Agent C')
-    await attachThread(value.page!, agentC, 'Agent C')
+    await attachThread(value.page!, engine, agentC, 'Agent C')
     await openThread(value.page!, 'Agent A')
     await value.page!.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
 
@@ -452,7 +452,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     const original = '# Accept\n\nUse the original phrase here.\n'
     const { value, engine } = await engineScenario(testInfo, original)
     await value.launch()
-    await attachAll(value, [['t1', 'Agent A'], ['t2', 'Agent B']])
+    await attachAll(value, engine, [['t1', 'Agent A'], ['t2', 'Agent B']])
 
     agentActs(engine, 't1', [{ verb: 'suggest', anchor: { document: value.file, quote: 'the original phrase' }, replacement: 'the accepted phrase' }])
     const suggestion = await annotationByText(value, 'the accepted phrase')

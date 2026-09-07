@@ -1,4 +1,5 @@
-import { expect, test, type Locator } from '@playwright/test'
+import { reviewCapture } from './captures'
+import { expect, test, type Locator } from './test'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { openAppMenu } from './harness'
@@ -43,7 +44,7 @@ test('opaque transcript meets the toolbar and clears the composer as it grows in
       await panel.getByRole('button', { name: 'Newest', exact: true }).click()
       await expect.poll(() => history.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeLessThan(2)
       await expect(history.locator('[data-message-id]').getByText('Paragraph 35.', { exact: false })).toBeInViewport()
-      await page.screenshot({ path: testInfo.outputPath(`transcript-${placement}.png`) })
+      await reviewCapture(page, { path: testInfo.outputPath(`transcript-${placement}.png`) })
       await panel.locator('.chat-composer textarea').fill('')
     }
   } finally { await scenario.dispose(); await engine.close() }
@@ -89,7 +90,7 @@ test('transcript theme controls preview independently and persist layout, shadow
     await expect(page.locator('.navigation-rail')).toHaveCSS('background-color', 'rgb(21, 20, 26)')
     await page.getByRole('button', { name: 'Open in center' }).click()
     await expect(page.locator('.conversation-panel[data-placement="center"] .conversation-messages')).toHaveCSS('box-shadow', redShadow)
-    await page.screenshot({ path: testInfo.outputPath('transcript-shadow-center.png') })
+    await reviewCapture(page, { path: testInfo.outputPath('transcript-shadow-center.png') })
     await page.getByRole('button', { name: 'Move to side' }).click()
     await scenario.stop()
     const restored = await scenario.launch()

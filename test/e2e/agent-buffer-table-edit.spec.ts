@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { projectRoot } from './harness'
@@ -24,7 +24,7 @@ test('an agent table edit updates the open editor instead of blanking it', async
     const pageErrors: string[] = []
     page.on('pageerror', (error) => pageErrors.push(error.stack ?? error.message))
     await openThread(page, 'Claude')
-    await attachThread(page, 't1', 'Claude')
+    await attachThread(page, engine, 't1', 'Claude')
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
 
     agentEdits(engine, 't1', scenario.file, anchor, anchor, insertion)

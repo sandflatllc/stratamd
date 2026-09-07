@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Scenario, setSource, switchToDocument } from './harness'
@@ -45,7 +45,7 @@ test('tab hosts preserve the shell, expose counts, and keep Attached visible whi
   await expect(page.getByText('None attached', { exact: true })).toBeVisible()
 
   await openThread(page, 'Agent A')
-  await attachThread(page, 't1', 'Agent A')
+  await attachThread(page, engine, 't1', 'Agent A')
   await navigation.getByRole('tab', { name: 'Contents' }).click()
   agentEdits(engine, 't1', value.file, 'Original sentence.', 'Original sentence.', 'Agent proposal.')
   await expect(review.getByRole('tab', { name: /^Changes/ }).locator('.rail-tab-count')).toHaveText('1')

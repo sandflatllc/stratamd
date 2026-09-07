@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test'
+import { settledBox } from './geometry'
+import { expect, test } from './test'
 import { Scenario } from './harness'
 
 // Right-click annotates without dragging a selection: the word under the
@@ -13,7 +14,7 @@ test('right-click selects the word under the cursor and opens the annotate menu'
     const page = await scenario.launch()
     const pageErrors: string[] = []
     page.on('pageerror', (error) => pageErrors.push(error.stack ?? error.message))
-    await page.waitForTimeout(1_500)
+    await settledBox(page, page.locator('.strata-prosemirror p').first())
 
     const point = await page.evaluate((needle) => {
       const paragraphs = [...document.querySelectorAll('.strata-prosemirror p')]

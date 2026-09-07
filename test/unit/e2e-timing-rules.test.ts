@@ -14,22 +14,7 @@ import { describe, expect, it } from 'vitest'
 const e2eDir = join(__dirname, '../e2e')
 
 /** Fixed sleeps still present per file; a file absent here allows none. */
-const allowedSleeps: Record<string, number> = {
-  'agent-collaboration.spec.ts': 3,
-  'annotation-highlight-after-edit.spec.ts': 5,
-  'annotation-right-click.spec.ts': 1,
-  'annotation-stale-selection.spec.ts': 2,
-  'annotation-table-comment.spec.ts': 1,
-  'cockpit-drafts.spec.ts': 1,
-  'cockpit-engine.spec.ts': 1,
-  'cold-tabs.spec.ts': 6,
-  'editor-context-menu.spec.ts': 3,
-  'shell-keyboard.spec.ts': 2,
-  'spellcheck.spec.ts': 6,
-  'typing-flush.spec.ts': 1,
-  'undo-redo.spec.ts': 7,
-  'visual-handoff.spec.ts': 4
-}
+const allowedSleeps: Record<string, number> = {}
 
 const fixedSleeps = (source: string) => (source.match(/\bwaitForTimeout\(/g) ?? []).length + (source.match(/setTimeout\(\s*(?:resolve\w*|\(\)\s*=>\s*resolve\w*\([^)]*\))\s*,\s*[0-9_]+\s*\)/g) ?? []).length + (source.match(/\b(?:sleep|delay)\(\s*[0-9_]+\s*\)/g) ?? []).length
 
@@ -61,6 +46,14 @@ describe('e2e timing rules', () => {
     }
     expect(overages, overages.join('\n')).toEqual([])
     expect(stale, stale.join('\n')).toEqual([])
+  })
+
+  it('every spec uses the shared evidence fixture even when a worker reuses modules', async () => {
+    for (const name of (await specFiles()).filter(name => name.endsWith('.spec.ts'))) {
+      const source = await readFile(join(e2eDir, name), 'utf8')
+      expect(source, name).not.toMatch(/from ['"]@playwright\/test['"]/)
+      expect(source, name).toMatch(/from ['"]\.\/test['"]/)
+    }
   })
 
   it('keeps every per-test budget at one minute or under', async () => {

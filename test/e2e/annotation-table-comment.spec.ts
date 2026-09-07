@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test'
+import { settledBox } from './geometry'
+import { expect, test } from './test'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Scenario, projectRoot } from './harness'
@@ -17,7 +18,7 @@ test('a comment lands on text selected inside a table cell', async ({}, testInfo
     const page = await scenario.launch()
     const pageErrors: string[] = []
     page.on('pageerror', (error) => pageErrors.push(error.stack ?? error.message))
-    await page.waitForTimeout(1_500)
+    await settledBox(page, page.locator('.strata-prosemirror td').first())
 
     // A real mouse drag across the cell text, as a user would select it.
     const points = await page.evaluate((needle) => {

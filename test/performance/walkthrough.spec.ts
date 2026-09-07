@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from '../e2e/test'
 import { writeFile } from 'node:fs/promises'
 import type { WalkthroughState } from '../../src/shared/contracts'
 import { applyWalkthroughAction, buildWalkthroughIndex, updateWalkthroughIndex } from '../../src/main/walkthrough'

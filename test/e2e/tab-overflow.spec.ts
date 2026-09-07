@@ -1,4 +1,4 @@
-import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import { expect, test, type Page, type TestInfo } from './test'
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Scenario, expectActiveDocument, openDocsMenu } from './harness'

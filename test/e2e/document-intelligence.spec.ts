@@ -1,5 +1,5 @@
 import { expectActiveDocument, expectDocumentListed, openDocsMenu } from './harness'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { dirname, join } from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
 import { Scenario, primaryKey, switchToDocument } from './harness'

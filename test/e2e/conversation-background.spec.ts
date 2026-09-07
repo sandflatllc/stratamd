@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test'
+import { reviewCapture } from './captures'
+import { expect, test } from './test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 
 test('conversations keep the panel background, with an inline side header and no line under the header', async ({}, testInfo) => {
@@ -35,7 +36,7 @@ test('conversations keep the panel background, with an inline side header and no
     expect(find.x + find.width).toBeLessThanOrEqual(move.x)
     expect(Math.abs(move.x + move.width - (row.x + row.width))).toBeLessThan(1)
     for (const box of [title, find, move]) expect(Math.abs(box.y + box.height / 2 - (row.y + row.height / 2))).toBeLessThan(4)
-    await page.screenshot({ path: testInfo.outputPath('conversation-side-header.png') })
+    await reviewCapture(page, { path: testInfo.outputPath('conversation-side-header.png') })
 
     await side.getByRole('button', { name: 'Open in center' }).click()
     const center = page.locator('.conversation-panel[data-placement="center"]')
@@ -47,7 +48,7 @@ test('conversations keep the panel background, with an inline side header and no
     expect(await editor.locator('.ambient-layer').evaluate((element) => element.outerHTML)).toBe(documentAmbient)
     await expect(editor.locator('.ambient-layer')).toBeVisible()
     await expect(center.locator('> header')).toHaveCSS('border-bottom-width', '0px')
-    await page.screenshot({ path: testInfo.outputPath('conversation-background.png') })
+    await reviewCapture(page, { path: testInfo.outputPath('conversation-background.png') })
 
     // The theme's Open choice restores the original transparent reading area.
     await page.evaluate(async () => {

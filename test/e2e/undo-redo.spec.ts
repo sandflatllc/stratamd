@@ -1,5 +1,5 @@
 import { expectActiveDocument } from './harness'
-import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import { expect, test, type Page, type TestInfo } from './test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Scenario, documentEndKey, lineEndKey, lineStartKey, primaryKey, selectTextInVisualEditor, selectToLineEndKey, switchToDocument } from './harness'
@@ -22,7 +22,7 @@ test.afterEach(async () => {
 
 const BASE = '# Probe\n\nBase.\n'
 const PROPOSAL = '# Probe\n\nBase.\n\nAgent line.\n'
-/** Longer than prosemirror-history's 500 ms group delay, so each burst is its own undo event. */
+/** Advance the editor's clock past production's 500 ms group boundary without sleeping. */
 const GROUP_GAP = 600
 
 async function bufferText(value: Scenario): Promise<string> {
@@ -42,10 +42,10 @@ async function writeOutsideStrata(value: Scenario, next: string): Promise<void> 
 async function typeLineAfter(page: Page, paragraphText: string, text: string): Promise<void> {
   await editorOf(page).locator('p').filter({ hasText: paragraphText }).last().click()
   await page.keyboard.press(lineEndKey)
-  await page.waitForTimeout(GROUP_GAP)
+  await page.clock.setFixedTime(await page.evaluate(() => Date.now()) + GROUP_GAP)
   await page.keyboard.press('Enter')
   await page.keyboard.type(text)
-  await page.waitForTimeout(GROUP_GAP)
+  await page.clock.setFixedTime(await page.evaluate(() => Date.now()) + GROUP_GAP)
 }
 async function deleteLine(page: Page, paragraphText: string): Promise<void> {
   await editorOf(page).locator('p').filter({ hasText: paragraphText }).last().click()
@@ -53,7 +53,7 @@ async function deleteLine(page: Page, paragraphText: string): Promise<void> {
   await page.keyboard.press(selectToLineEndKey)
   await page.keyboard.press('Backspace')
   await page.keyboard.press('Backspace')
-  await page.waitForTimeout(GROUP_GAP)
+  await page.clock.setFixedTime(await page.evaluate(() => Date.now()) + GROUP_GAP)
 }
 async function undo(page: Page): Promise<void> {
   await editorOf(page).focus()
@@ -110,7 +110,7 @@ test.describe('undo and redo timeline', () => {
     try {
       const page = await value.launch()
       await openThread(page, 'Agent A')
-      await attachThread(page, 't1', 'Agent A')
+      await attachThread(page, engine, 't1', 'Agent A')
       await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
       agentEdits(engine, 't1', value.file, 'Base.', 'Base.', 'Base.\n\nAgent line.')
       await value.waitForBuffer(PROPOSAL)
@@ -154,8 +154,9 @@ test.describe('undo and redo timeline', () => {
 
     // Two typed lines: each line and its paragraph break undo as separate bursts.
     for (let presses = 0; presses < 6 && (await bufferText(value)) !== afterKeep; presses += 1) {
+      const before = await bufferText(value)
       await undo(value.page!)
-      await value.page!.waitForTimeout(150)
+      await expect.poll(() => bufferText(value)).not.toBe(before)
     }
     await value.waitForBuffer(afterKeep)
     if (await keepButtons(value.page!).count() === 0) await undo(value.page!)
@@ -239,9 +240,9 @@ test.describe('undo and redo timeline', () => {
     await source.focus()
     await page.keyboard.press(documentEndKey)
     await page.keyboard.type('First line.\n')
-    await page.waitForTimeout(GROUP_GAP)
+    await page.clock.setFixedTime(await page.evaluate(() => Date.now()) + GROUP_GAP)
     await page.keyboard.type('Second line.\n')
-    await page.waitForTimeout(GROUP_GAP)
+    await page.clock.setFixedTime(await page.evaluate(() => Date.now()) + GROUP_GAP)
     const afterTyping = `${BASE}First line.\nSecond line.\n`
     await value.waitForBuffer(afterTyping)
 
@@ -250,7 +251,7 @@ test.describe('undo and redo timeline', () => {
     await page.keyboard.press(selectToLineEndKey)
     await page.keyboard.press('Backspace')
     await page.keyboard.press('Backspace')
-    await page.waitForTimeout(GROUP_GAP)
+    await page.clock.setFixedTime(await page.evaluate(() => Date.now()) + GROUP_GAP)
     const afterDelete = `${BASE}First line.\n`
     await value.waitForBuffer(afterDelete)
 

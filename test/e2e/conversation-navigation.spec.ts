@@ -1,5 +1,6 @@
+import { reviewCapture } from './captures'
 import { execFileSync } from 'node:child_process'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 
 for (const placement of ['center', 'side'] as const) test(`conversation markers revisit five comments without a discussion workflow in ${placement}`, async ({}, testInfo) => {
@@ -38,19 +39,19 @@ for (const placement of ['center', 'side'] as const) test(`conversation markers 
     if (placement === 'center') await expect(page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents', exact: true })).toHaveCount(0)
     await expect(panel.getByRole('button', { name: 'Contents', exact: true })).toHaveCount(0)
     await page.mouse.move(1300, 90)
-    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-strip.png`) })
+    await reviewCapture(page, { animations: 'disabled', path: testInfo.outputPath(`${placement}-strip.png`) })
     const third = navigator.locator(`[data-marker-id="${ids[2]}"]`)
     await third.hover()
     await expect(page.getByRole('tooltip')).toContainText(notes[2]!)
     await expect(page.getByRole('tooltip')).toContainText('Show each passage comment in the strip.')
-    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-preview.png`) })
+    await reviewCapture(page, { animations: 'disabled', path: testInfo.outputPath(`${placement}-preview.png`) })
     await third.click()
     await expect(panel.locator(`[data-annotation-id="${ids[2]}"]`).first()).toBeInViewport()
     const saved = page.getByRole('dialog', { name: 'Saved comment' })
     await expect(saved).toContainText(notes[2]!)
     await expect(saved.getByRole('button', { name: /^(Reply|Resolve|Reopen|Accept|Reject)$/ })).toHaveCount(0)
     await page.mouse.move(1300, 90)
-    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-saved-comment.png`) })
+    await reviewCapture(page, { animations: 'disabled', path: testInfo.outputPath(`${placement}-saved-comment.png`) })
     await saved.getByRole('button', { name: 'Close comment', exact: true }).click()
     await expect(saved).toBeHidden()
     await third.click()
@@ -73,7 +74,7 @@ for (const placement of ['center', 'side'] as const) test(`conversation markers 
       const viewport = row.closest('.conversation-messages')!
       return Math.abs(row.getBoundingClientRect().top - viewport.getBoundingClientRect().top - Number.parseFloat(getComputedStyle(viewport).paddingTop))
     })).toBeLessThan(2)
-    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-keyboard-jump.png`) })
+    await reviewCapture(page, { animations: 'disabled', path: testInfo.outputPath(`${placement}-keyboard-jump.png`) })
     await page.keyboard.press('Escape')
     await expect(page.getByRole('tooltip')).toHaveCount(0)
     // History survives a real app restart and is still independently navigable.

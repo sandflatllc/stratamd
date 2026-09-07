@@ -12,6 +12,9 @@ const invoke = async <Result>(channel: string, ...arguments_: unknown[]): Promis
   }
 }
 
+let saveRequest = 0
+let lastSave: { request: number; path: string; error: string | null } | null = null
+
 let synced: SyncedView | null = null
 let resyncing: Promise<AppView> | null = null
 let resyncs = 0
@@ -51,7 +54,11 @@ const windowApi: WindowApi = {
 }
 contextBridge.exposeInMainWorld('strataWindow', windowApi)
 
-const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyncDiagnostics(): { seq: number; resyncs: number; verifyMismatches: number } } = {
+const api: StrataApi & {
+  openDroppedFiles(files: File[]): Promise<void>
+  saveDiagnostics(): { issued: number; completed: typeof lastSave }
+  viewSyncDiagnostics(): { seq: number; resyncs: number; verifyMismatches: number }
+} = {
   getState: () => fetchState(),
   reportError: (report) => {
     // Fire-and-forget into the local failure log; a failing report must never
@@ -62,6 +69,7 @@ const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyn
       // Dropped.
     }
   },
+  saveDiagnostics: () => ({ issued: saveRequest, completed: lastSave }),
   viewSyncDiagnostics: () => ({ seq: synced?.seq ?? 0, resyncs, verifyMismatches }),
   subscribe(listener) {
     const wrapped = (_event: Electron.IpcRendererEvent, update: unknown): void => {
@@ -173,7 +181,16 @@ const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyn
   updateBuffer: (path, content, origin) => invoke<void>(IPC.updateBuffer, path, content, origin),
   undo: (path) => invoke<'undone' | 'empty'>(IPC.undo, path),
   redo: (path) => invoke<'redone' | 'empty'>(IPC.redo, path),
-  save: (path) => invoke<void>(IPC.save, path),
+  save: async (path) => {
+    const request = ++saveRequest
+    try {
+      await invoke<void>(IPC.save, path)
+      lastSave = { request, path, error: null }
+    } catch (error) {
+      lastSave = { request, path, error: error instanceof Error ? error.message : String(error) }
+      throw error
+    }
+  },
   setSourceMode: (path, source) => invoke<void>(IPC.setSourceMode, path, source),
   updateReadingState: (path, state) => invoke<void>(IPC.updateReadingState, path, state),
   updateWalkthrough: (path, action) => invoke<void>(IPC.updateWalkthrough, path, action),

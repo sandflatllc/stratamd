@@ -1,4 +1,4 @@
-import { expect, test, type TestInfo } from '@playwright/test'
+import { expect, test, type TestInfo } from './test'
 import { setSource, type Scenario } from './harness'
 import { seededScenario, startEngine, type FakeEngine } from './cockpit-engine-harness'
 import { agentActs, annotationByText, attachThread, openThread } from './cockpit-agent'
@@ -15,7 +15,7 @@ async function scenario(testInfo: TestInfo, content: string, name: string): Prom
   const value = await seededScenario(testInfo, engine.origin, content, name)
   const page = await value.launch()
   await openThread(page, 'Agent A')
-  await attachThread(page, 't1', 'Agent A')
+  await attachThread(page, engine, 't1', 'Agent A')
   await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
   return { value, engine }
 }
@@ -39,7 +39,7 @@ async function agentEditsAll({ value, engine }: Fixture, edits: Array<[quote: st
 test('the item panel accepts, rejects, and confirms before resolving an open suggestion', async ({}, testInfo) => {
   const original = '# Thread\n\nFirst wording here.\n\nSecond wording here.\n\nThird wording here.\n'
   const fixture = await scenario(testInfo, original, 'thread.md')
-  const { value } = fixture
+  const { value, engine } = fixture
   try {
     const page = value.page!
     const first = await suggest(fixture, 'First wording', 'first replacement')
@@ -114,7 +114,7 @@ test('Revert all confirms with the count and author, then reverts every change b
   const paragraphs = Array.from({ length: 30 }, (_, index) => `Paragraph ${index + 1} keeps the document long enough to scroll.`)
   const original = `# Bulk\n\nTop sentence.\n\n${paragraphs.join('\n\n')}\n\nBottom sentence.\n`
   const fixture = await scenario(testInfo, original, 'bulk.md')
-  const { value } = fixture
+  const { value, engine } = fixture
   try {
     const page = value.page!
     await agentEditsAll(fixture, [['Top sentence.', 'Top sentence, rewritten.'], ['Bottom sentence.', 'Bottom sentence, rewritten.']])
@@ -142,7 +142,7 @@ test('F7 and Shift+F7 step through pending changes and open suggestions in docum
   const paragraphs = Array.from({ length: 30 }, (_, index) => `Paragraph ${index + 1} keeps the document long enough to scroll.`)
   const original = `# Step\n\nTop sentence.\n\n${paragraphs.join('\n\n')}\n\nBottom sentence.\n`
   const fixture = await scenario(testInfo, original, 'step.md')
-  const { value } = fixture
+  const { value, engine } = fixture
   try {
     const page = value.page!
     await agentEditsAll(fixture, [['Top sentence.', 'Top sentence, rewritten.'], ['Bottom sentence.', 'Bottom sentence, rewritten.']])
@@ -180,7 +180,7 @@ test('F7 and Shift+F7 step through pending changes and open suggestions in docum
 
 test('a suggestion that cannot render inline keeps Accept and Reject on its rail row', async ({}, testInfo) => {
   const fixture = await scenario(testInfo, '# Rail\n\nOne paragraph to split.\n', 'rail.md')
-  const { value } = fixture
+  const { value, engine } = fixture
   try {
     const page = value.page!
     await suggest(fixture, 'One paragraph to split.', 'First half.\n\nSecond half.')
@@ -199,12 +199,12 @@ test('a suggestion that cannot render inline keeps Accept and Reject on its rail
 test('control names and headings use plain words: author and excerpt, not ids or internal vocabulary', async ({}, testInfo) => {
   const original = '# Copy\n\nThe original sentence stays here.\n'
   const fixture = await scenario(testInfo, original, 'copy.md')
-  const { value } = fixture
+  const { value, engine } = fixture
   try {
     const page = value.page!
     // Attached before Agent A writes, so Agent A's change is news to it later.
     await openThread(page, 'Agent B')
-    await attachThread(page, 't2', 'Agent B')
+    await attachThread(page, engine, 't2', 'Agent B')
     await openThread(page, 'Agent A')
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
     await agentEditsAll(fixture, [['The original sentence stays here.', 'The rewritten sentence stays here.']])

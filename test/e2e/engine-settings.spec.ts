@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test'
+import { reviewCapture } from './captures'
+import { expect, test } from './test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 import { openAppMenu } from './harness'
 
@@ -33,7 +34,7 @@ test('settings change defaults and writer options, preserve concurrent fields, a
     await page.getByRole('switch', { name: 'Separate writer model' }).click()
     await page.getByLabel('Source control writer model Reasoning').selectOption('low')
     await expect(page.getByRole('region', { name: 'Source control readiness' })).toContainText('Install and sign in with gh.')
-    await page.screenshot({ path: testInfo.outputPath('settings.png'), animations: 'disabled' })
+    await reviewCapture(page, { path: testInfo.outputPath('settings.png'), animations: 'disabled' })
     engine.setSettings({ futureRoot: { untouched: 'changed elsewhere' } })
     await page.getByRole('button', { name: 'Save changes', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Save changes', exact: true })).toBeDisabled()
@@ -62,7 +63,7 @@ test('background tuning edits all eight controls and keeps unknown policy values
     const intervals = ['Git fetch interval', 'Provider health interval', 'Active host power interval', 'Idle host power interval']
     for (let index = 0; index < intervals.length; index++) await page.getByLabel(intervals[index]!, { exact: true }).fill(String((index + 1) * 30))
     for (const label of ['Pause when locked', 'Pause when host is in low power mode', 'Pause when client is in low power mode', 'Pause on battery']) await page.getByLabel(label, { exact: true }).selectOption('on')
-    await page.screenshot({ path: testInfo.outputPath('background.png'), animations: 'disabled' })
+    await reviewCapture(page, { path: testInfo.outputPath('background.png'), animations: 'disabled' })
     await page.getByRole('button', { name: 'Done' }).click()
     await page.getByRole('button', { name: 'Save changes', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Save changes', exact: true })).toBeDisabled()
@@ -97,13 +98,13 @@ test('settings and provider dialogs keep controls reachable at approved and smal
       await openAppMenu(page); await page.getByRole('menuitem', { name: 'Settings', exact: true }).click()
       const dialog = page.getByRole('dialog', { name: 'Settings', exact: true })
       await expect(page.getByLabel('New conversations', { exact: true })).toBeVisible()
-      await page.screenshot({ path: testInfo.outputPath(`settings-${width}.png`), animations: 'disabled' })
+      await reviewCapture(page, { path: testInfo.outputPath(`settings-${width}.png`), animations: 'disabled' })
       await page.getByText('Advanced', { exact: true }).click()
       await dialog.locator('.setup-dialog-body').evaluate(element => { element.scrollTop = element.scrollHeight })
       await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeInViewport()
       await expect(dialog.getByRole('heading', { name: 'Settings', exact: true })).toBeInViewport()
       expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
-      await page.screenshot({ path: testInfo.outputPath(`settings-advanced-${width}.png`), animations: 'disabled' })
+      await reviewCapture(page, { path: testInfo.outputPath(`settings-advanced-${width}.png`), animations: 'disabled' })
       await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
       await openAppMenu(page); await page.getByRole('menuitem', { name: 'Accounts', exact: true }).click()
       await page.getByRole('button', { name: 'Manage Codex work' }).click()
@@ -115,7 +116,7 @@ test('settings and provider dialogs keep controls reachable at approved and smal
       await expect(manage.getByRole('tab', { name: 'Models', exact: true })).toBeInViewport()
       await expect(manage.getByRole('button', { name: 'Save changes' })).toBeInViewport()
       expect(await manage.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
-      await page.screenshot({ path: testInfo.outputPath(`provider-${width}.png`), animations: 'disabled' })
+      await reviewCapture(page, { path: testInfo.outputPath(`provider-${width}.png`), animations: 'disabled' })
       await manage.getByRole('button', { name: 'Close dialog' }).click()
     }
   } finally { await scenario.dispose(); await engine.close() }

@@ -1,4 +1,5 @@
-import { expect, test, type Locator } from '@playwright/test'
+import { reviewCapture } from './captures'
+import { expect, test, type Locator } from './test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 
 test('unassigned steering keeps its place with work folded, expanded, and after reload', async ({}, testInfo) => {
@@ -73,7 +74,7 @@ for (const placement of ['side', 'center']) test(`latest response aligns long an
     await panel.getByRole('button', { name: 'Latest response', exact: true }).click()
     await expectStart(anchor)
     await expect(anchor.locator('.strata-prosemirror')).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath(`latest-response-${placement}.png`) })
+    await reviewCapture(page, { path: testInfo.outputPath(`latest-response-${placement}.png`) })
     const top = await anchor.evaluate(el => el.getBoundingClientRect().top)
     const next = engine.postAssistant('t1', 'A short new answer.')
     const short = panel.locator(`[data-message-id="${next}"]`)
@@ -170,6 +171,28 @@ test('Comment discussion opens oldest first and preserves position when a reply 
     await expectBottom(history)
     await expect(rows.last()).toBeInViewport()
     await expect(panel.getByRole('textbox', { name: 'Reply', exact: true })).toBeInViewport()
-    await page.screenshot({ path: testInfo.outputPath('chronological-passage.png') })
+    await reviewCapture(page, { path: testInfo.outputPath('chronological-passage.png') })
+  } finally { await scenario.dispose(); await engine.close() }
+})
+
+test('Latest response honors its displayed action before a scroll frame updates the label', async ({}, info) => {
+  const engine = await startEngine()
+  const scenario = await seededScenario(info, engine.origin)
+  const latest = engine.postAssistant('t1', '# Answer\n\n' + Array.from({ length: 35 }, (_, index) => `Paragraph ${index}. Read from the start.`).join('\n\n'))
+  try {
+    const page = await scenario.launch()
+    await page.getByRole('tab', { name: 'Projects', exact: true }).click()
+    await page.getByRole('button', { name: 'Open Live engine thread', exact: true }).click()
+    const panel = page.locator('.conversation-panel:visible')
+    await expectBottom(panel.locator('.conversation-messages'))
+    await expect(panel.getByRole('button', { name: 'Latest response', exact: true })).toBeVisible()
+    await panel.evaluate(element => {
+      const viewport = element.querySelector<HTMLElement>('.conversation-messages')!
+      // Layout can move before the scroll listener's next animation frame.
+      // The button still promises Latest response at the instant of input.
+      viewport.querySelector<HTMLElement>('.conversation-column')!.style.paddingBottom = '100px'
+      element.querySelector<HTMLButtonElement>('.conversation-latest')!.click()
+    })
+    await expectStart(panel.locator(`[data-message-id="${latest}"]`))
   } finally { await scenario.dispose(); await engine.close() }
 })

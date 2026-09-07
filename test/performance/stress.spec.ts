@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from '../e2e/test'
 import { basename, dirname, join } from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
 import { Scenario, save } from '../e2e/harness'

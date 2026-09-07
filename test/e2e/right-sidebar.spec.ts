@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test'
+import { reviewCapture } from './captures'
+import { expect, test } from './test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 
 test('right sidebar collapses to its handle and only appears in document mode', async ({}, testInfo) => {
@@ -23,7 +24,7 @@ test('right sidebar collapses to its handle and only appears in document mode', 
     await expect(handle).toBeVisible()
     await expect(handle).toHaveAttribute('aria-expanded', 'false')
     await expect.poll(async () => (await editor.boundingBox())!.width).toBeGreaterThan(editorWidth)
-    await page.screenshot({ path: testInfo.outputPath('collapsed-sidebar.png') })
+    await reviewCapture(page, { path: testInfo.outputPath('collapsed-sidebar.png') })
     await handle.dblclick()
     await expect(rail).toBeVisible()
     expect((await rail.boundingBox())!.width).toBe(width)
@@ -35,7 +36,7 @@ test('right sidebar collapses to its handle and only appears in document mode', 
     await page.getByRole('button', { name: 'Open in center' }).click()
     await expect(handle).toHaveCount(0)
     await expect(rail).toHaveCount(0)
-    await page.screenshot({ path: testInfo.outputPath('conversation-without-sidebar.png') })
+    await reviewCapture(page, { path: testInfo.outputPath('conversation-without-sidebar.png') })
     await page.locator('.conversation-panel[data-placement="center"]').getByRole('button', { name: 'Move to side' }).click()
     await expect(handle).toHaveAttribute('aria-expanded', 'false')
     await expect(rail).toHaveCount(0)

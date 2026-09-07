@@ -1,7 +1,7 @@
 import { expectActiveDocument } from './harness'
 import { openDocsMenu } from './harness'
 import { openAppMenu } from './harness'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { spawn } from 'node:child_process'
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -117,7 +117,7 @@ test('send composer traps focus and Escape restores the trigger', async ({}, tes
   try {
     const page = await value.launch()
     await openThread(page, 'Agent A')
-    await attachThread(page, 't1', 'Agent A')
+    await attachThread(page, engine, 't1', 'Agent A')
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
     await setSource(page, '# Focus\n\nUser edit.\n')
     await value.waitForBuffer('# Focus\n\nUser edit.\n')

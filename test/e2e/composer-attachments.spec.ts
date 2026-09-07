@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 
 /** A 1 by 1 PNG, enough for Chromium to decode a thumbnail from. */

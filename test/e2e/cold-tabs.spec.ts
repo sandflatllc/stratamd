@@ -1,5 +1,5 @@
 import { expectActiveDocument } from './harness'
-import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import { expect, test, type Page, type TestInfo } from './test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Scenario, documentEndKey, lineEndKey, primaryKey, switchToDocument } from './harness'
@@ -21,7 +21,7 @@ test.afterEach(async () => {
 })
 
 const BASE = '# Probe\n\nBase.\n'
-/** Longer than prosemirror-history's 500 ms group delay, so each burst is its own undo event. */
+/** Advance the editor's clock past production's 500 ms group boundary without sleeping. */
 const GROUP_GAP = 800
 
 async function bufferText(value: Scenario): Promise<string> {
@@ -33,10 +33,10 @@ function editorOf(page: Page) {
 async function typeLineAfter(page: Page, paragraphText: string, text: string): Promise<void> {
   await editorOf(page).locator('p').filter({ hasText: paragraphText }).last().click()
   await page.keyboard.press(lineEndKey)
-  await page.waitForTimeout(GROUP_GAP)
+  await page.clock.setFixedTime(await page.evaluate(() => Date.now()) + GROUP_GAP)
   await page.keyboard.press('Enter')
   await page.keyboard.type(text)
-  await page.waitForTimeout(GROUP_GAP)
+  await page.clock.setFixedTime(await page.evaluate(() => Date.now()) + GROUP_GAP)
 }
 async function undo(page: Page): Promise<void> {
   await editorOf(page).focus()
@@ -54,9 +54,7 @@ async function stepUntilBuffer(value: Scenario, direction: 'undo' | 'redo', expe
     await step(value.page!)
     // Buffer publication is debounced by 180 ms and can take longer on a busy
     // gate worker. Do not issue the next keypress until this step is observable.
-    for (let poll = 0; poll < 30 && (await bufferText(value)) === before; poll += 1) {
-      await value.page!.waitForTimeout(100)
-    }
+    await expect.poll(() => bufferText(value)).not.toBe(before)
   }
   await value.waitForBuffer(expected)
 }
@@ -68,7 +66,6 @@ async function coldSwitchAway(value: Scenario): Promise<void> {
   // Let the editor publish its final history frame before the active document
   // changes and a zero-sized cache destroys the view.
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
-  await page.waitForTimeout(250)
   await page.evaluate((path) => window.strata.openDocument(path), second)
   await expectActiveDocument(page, /second\.md/i)
   await switchToDocument(page, /scenario\.md/i)
@@ -138,7 +135,7 @@ test.describe('cold tabs (STRATAMD_EDITOR_CACHE=0)', () => {
     await source.focus()
     await page.keyboard.press(documentEndKey)
     await page.keyboard.type('Extra line.\n')
-    await page.waitForTimeout(GROUP_GAP)
+    await page.clock.setFixedTime(await page.evaluate(() => Date.now()) + GROUP_GAP)
     const afterTyping = `${BASE}Extra line.\n`
     await value.waitForBuffer(afterTyping)
 
@@ -147,8 +144,9 @@ test.describe('cold tabs (STRATAMD_EDITOR_CACHE=0)', () => {
     await expect(source).toBeVisible()
     await source.focus()
     for (let presses = 0; presses < 6 && (await bufferText(value)) !== BASE; presses += 1) {
+      const before = await bufferText(value)
       await page.keyboard.press(primaryKey('z'))
-      await page.waitForTimeout(150)
+      await expect.poll(() => bufferText(value)).not.toBe(before)
     }
     await value.waitForBuffer(BASE)
     expect(await source.inputValue()).toBe(BASE)

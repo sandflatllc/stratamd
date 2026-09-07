@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 
 // Agents (§6.9, decided 2026-09-06): subagents of the newest turn show as

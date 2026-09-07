@@ -1,15 +1,31 @@
 import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
+import * as managedProcess from '../../src/main/engine/managed-process'
 import { LocalEngineManager } from '../../src/main/engine/manager'
 import { recoveryFixture } from '../fixtures/managed-recovery/runtime'
 import { createEngineBackup } from '../../src/main/engine/backups'
+
+/** Keep real child death, polling, and filesystem work; control only the retry ladder. */
+function immediateRecoveryTimers() {
+  const schedule = globalThis.setTimeout
+  const delays: number[] = []
+  const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => {
+    if ([1000, 3000, 10000].includes(ms ?? -1)) {
+      delays.push(ms!)
+      return schedule(callback, 0, ...args)
+    }
+    return schedule(callback, ms, ...args)
+  }) as typeof setTimeout)
+  return { delays, restore: () => spy.mockRestore() }
+}
 
 it('stops repeated ready-then-crash cycles and retains the failure signal', async () => {
   const root = await mkdtemp(join(tmpdir(), 'strata-crash-budget-'))
   const bundle = await recoveryFixture(root)
   const manager = new LocalEngineManager({ directory: join(root, 'engine'), bundle, connect: async () => {}, authenticate: async () => true, reconnect: async () => {}, changed: () => {} })
+  const timers = immediateRecoveryTimers()
   try {
     await manager.start()
     for (let index = 0; index < 4; index++) {
@@ -19,24 +35,41 @@ it('stops repeated ready-then-crash cycles and retains the failure signal', asyn
       else await expect.poll(() => manager.view().state).toBe('failed')
     }
     expect(manager.view().failure).toMatchObject({ signal: 'SIGKILL', attempt: 3 })
-  } finally { await manager.stop(); await rm(root, { recursive: true, force: true }) }
+    expect(timers.delays).toEqual([1000, 3000, 10000])
+  } finally { timers.restore(); await manager.stop(); await rm(root, { recursive: true, force: true }) }
 }, 30000)
 
-it('replenishes retry attempts only after sustained health', async () => {
+it('replenishes retry attempts only after a native health check and ignores duplicate death reports', async () => {
   const root = await mkdtemp(join(tmpdir(), 'strata-healthy-budget-'))
   const bundle = await recoveryFixture(root)
   const manager = new LocalEngineManager({ directory: join(root, 'engine'), bundle, healthyIntervalMs: 20, connect: async () => {}, authenticate: async () => true, reconnect: async () => {}, changed: () => {} })
+  const timers = immediateRecoveryTimers()
+  const verified = managedProcess.verifiedProcess
+  let readyAt = Infinity
+  const healthy = new Set<number>()
+  const monitor = vi.spyOn(managedProcess, 'verifiedProcess').mockImplementation(async record => {
+    const alive = await verified(record)
+    if (alive && manager.view().state === 'running' && Date.now() - readyAt >= 20) healthy.add(record.pid)
+    return alive
+  })
   try {
     await manager.start()
     for (let index = 0; index < 5; index++) {
       const record = JSON.parse(await readFile(join(root, 'engine/runtime.json'), 'utf8'))
-      const readyAt = Date.now()
-      await expect.poll(() => Date.now() - readyAt >= 40).toBe(true)
+      readyAt = Date.now()
+      healthy.delete(record.pid)
+      await expect.poll(async () => {
+        if (!healthy.has(record.pid)) return false
+        // Let the monitor consume the native check's result before killing.
+        await new Promise<void>(resolve => setImmediate(resolve))
+        return true
+      }).toBe(true)
       process.kill(record.pid, 'SIGKILL')
       await expect.poll(async () => manager.view().state === 'running' && JSON.parse(await readFile(join(root, 'engine/runtime.json'), 'utf8')).pid !== record.pid, { timeout: 4000 }).toBe(true)
     }
     expect(manager.view().failure?.attempt).toBe(0)
-  } finally { await manager.stop(); await rm(root, { recursive: true, force: true }) }
+    expect(timers.delays).toEqual([1000, 1000, 1000, 1000, 1000])
+  } finally { monitor.mockRestore(); timers.restore(); await manager.stop(); await rm(root, { recursive: true, force: true }) }
 }, 20000)
 
 it.each(['before-delete', 'after-delete', 'after-rename'])('recovers interrupted restore at %s with its data and Strata bindings', async boundary => {
@@ -115,4 +148,45 @@ it('prunes only superseded automatic backups after a clean replacement session a
     for (const version of ['v1', 'v2', 'v3']) expect((await stat(join(directory, 'runtime', version))).isDirectory()).toBe(true)
     await expect(stat(join(directory, 'runtime/unused'))).rejects.toMatchObject({ code: 'ENOENT' })
   } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+it('a delayed child exit cannot spend a second retry after health monitoring starts recovery', async () => {
+  const runtime = await import('../../src/main/engine/managed-runtime')
+  const { ChildProcess } = await import('node:child_process')
+  const root = await mkdtemp(join(tmpdir(), 'strata-late-exit-'))
+  const bundle = await recoveryFixture(root)
+  const timers = immediateRecoveryTimers()
+  const originalStage = runtime.stageRuntime, originalEmit = ChildProcess.prototype.emit
+  let stages = 0, targetPid = -1, releaseExit: (() => void) | undefined, releaseStage!: () => void
+  const stageGate = new Promise<void>(resolve => { releaseStage = resolve })
+  const manager = new LocalEngineManager({ directory: join(root, 'engine'), bundle, healthyIntervalMs: 20, connect: async () => {}, authenticate: async () => true, reconnect: async () => {}, changed: () => {} })
+  const stage = vi.spyOn(runtime, 'stageRuntime').mockImplementation(async (...args) => {
+    stages += 1
+    if (stages === 2) await stageGate
+    return originalStage(...args)
+  })
+  const exit = vi.spyOn(ChildProcess.prototype, 'emit').mockImplementation(function (this: InstanceType<typeof ChildProcess>, event: string | symbol, ...args: unknown[]) {
+    if (event === 'exit' && this.pid === targetPid) {
+      releaseExit = () => { originalEmit.call(this, event, ...args) }
+      return true
+    }
+    return originalEmit.call(this, event, ...args)
+  })
+  try {
+    await manager.start()
+    const record = JSON.parse(await readFile(join(root, 'engine/runtime.json'), 'utf8'))
+    targetPid = record.pid
+    process.kill(targetPid, 'SIGKILL')
+    await expect.poll(() => stages).toBe(2)
+    expect(releaseExit).toBeDefined()
+    expect(manager.view().state).toBe('starting')
+    releaseExit!()
+    expect(timers.delays).toEqual([1000])
+    expect(manager.view().state).toBe('starting')
+    releaseStage()
+    await expect.poll(() => manager.view().state).toBe('running')
+  } finally {
+    releaseStage(); exit.mockRestore(); stage.mockRestore(); timers.restore()
+    await manager.stop(); await rm(root, { recursive: true, force: true })
+  }
 })

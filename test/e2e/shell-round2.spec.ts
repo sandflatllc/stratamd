@@ -1,5 +1,5 @@
 import { expectDocumentListed, openDocsMenu, expectDocumentDirty } from './harness'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Scenario, switchToDocument } from './harness'
@@ -17,7 +17,7 @@ test('an item focuses its reply and hands focus back on close; F8 steps through 
   try {
     const page = await scenario.launch()
     await openThread(page, 'Agent A')
-    await attachThread(page, 't1', 'Agent A')
+    await attachThread(page, engine, 't1', 'Agent A')
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
     agentActs(engine, 't1', [
       { verb: 'question', anchor: { document: scenario.file, quote: 'Second point to question.' }, text: 'Is this right?' },

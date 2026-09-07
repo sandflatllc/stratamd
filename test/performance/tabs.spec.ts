@@ -1,6 +1,6 @@
 import { mkdir, readdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import { expect, test } from '@playwright/test'
+import { expect, test } from '../e2e/test'
 import { Scenario } from '../e2e/harness'
 import { generateCorpus, writeCorpusAssets } from './corpus'
 import { ProcessSampler } from './metrics'

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { Scenario, lineEndKey } from './harness'
 
 // Typing across the 180 ms mirror boundary (usability round 2 §5.3). The view
@@ -20,7 +20,8 @@ test('keystrokes typed across several flush boundaries all survive and reach the
     await expect(editor.locator('p').last()).toHaveText(`Start here.${typed}`)
     await scenario.waitForBuffer(`# Type\n\nStart here.${typed}\n`)
     // And the echo of that final flush leaves the editor alone.
-    await page.waitForTimeout(600)
+    await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).activeDocument?.content).toBe(`# Type\n\nStart here.${typed}\n`)
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
     await expect(editor.locator('p').last()).toHaveText(`Start here.${typed}`)
   } finally {
     await scenario.dispose()

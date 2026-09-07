@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from '../e2e/test'
 import { writeFile } from 'node:fs/promises'
 import { generateCorpus } from './corpus'
 import { Scenario } from '../e2e/harness'

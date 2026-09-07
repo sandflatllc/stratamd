@@ -302,7 +302,9 @@ export class LocalEngineManager {
     this.#healthTimer.unref()
   }
   #unexpectedExit(exitCode: number | null = null, signal: string | null = null): void {
-    if (this.#stopping || this.#restartTimer) return
+    // Native exit and an in-flight health check can report the same death.
+    // Once recovery starts, late reports must not spend another retry.
+    if (this.#stopping || this.#restartTimer || this.#view.state !== 'running') return
     if (this.#healthTimer) clearInterval(this.#healthTimer)
     this.#healthTimer = null
     this.#healthySince = null

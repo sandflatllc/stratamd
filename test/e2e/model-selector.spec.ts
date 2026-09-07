@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { mkdir } from 'node:fs/promises'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 import { modelSelectorProviders } from './model-selector-fixture'
@@ -25,7 +25,7 @@ for (const family of ['GPT', 'Claude'] as const) {
       await expect(picker.getByRole('button', { name: `Use ${flagship}` })).toBeVisible()
       await expect(picker.getByRole('button', { name: other, exact: true })).toBeHidden()
       await mkdir(captures, { recursive: true })
-      await page.screenshot({ path: `${captures}/${family}-draft.png` })
+      if (process.env.STRATA_CAPTURES || process.env.STRATAMD_SELECTOR_CAPTURES) await page.screenshot({ path: `${captures}/${family}-draft.png` })
       await picker.getByRole('button', { name: `Use ${flagship}` }).click()
       await page.getByLabel('Message conversation').fill(`Start ${family} work.`)
       await page.getByLabel('Message conversation').press('Enter')
@@ -44,10 +44,10 @@ for (const family of ['GPT', 'Claude'] as const) {
         await expect(picker).not.toContainText('Claude Personal')
         await expect(picker).not.toContainText('GPT')
       }
-      await page.screenshot({ path: `${captures}/${family}-ongoing.png` })
+      if (process.env.STRATA_CAPTURES || process.env.STRATAMD_SELECTOR_CAPTURES) await page.screenshot({ path: `${captures}/${family}-ongoing.png` })
       await picker.locator('summary').click()
       await expect(picker.getByRole('button', { name: other, exact: true })).toBeVisible()
-      await page.screenshot({ path: `${captures}/${family}-other-models.png` })
+      if (process.env.STRATA_CAPTURES || process.env.STRATAMD_SELECTOR_CAPTURES) await page.screenshot({ path: `${captures}/${family}-other-models.png` })
       await picker.getByRole('button', { name: other, exact: true }).click()
       await page.getByLabel('Message conversation').fill(`Continue with ${other}.`)
       await page.getByLabel('Message conversation').press('Enter')
@@ -71,7 +71,7 @@ for (const family of ['GPT', 'Claude'] as const) {
         await expect(picker).not.toContainText('Claude Personal')
         await expect(picker.getByRole('button', { name: `Use ${flagship}` })).toBeDisabled()
         await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled()
-        await page.screenshot({ path: `${captures}/Claude-unavailable.png` })
+        if (process.env.STRATA_CAPTURES || process.env.STRATAMD_SELECTOR_CAPTURES) await page.screenshot({ path: `${captures}/Claude-unavailable.png` })
       }
     } finally { await scenario.dispose(); await engine.close() }
   })
@@ -96,7 +96,7 @@ test('a stale cross-family draft keeps its text but cannot change an existing GP
     expect(bounds!.y).toBeGreaterThanOrEqual(0)
     expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(1000)
     expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(760)
-    if (process.env.STRATAMD_SELECTOR_CAPTURES) await page.screenshot({ path: `${process.env.STRATAMD_SELECTOR_CAPTURES}/narrow.png` })
+    if (process.env.STRATAMD_SELECTOR_CAPTURES) if (process.env.STRATA_CAPTURES || process.env.STRATAMD_SELECTOR_CAPTURES) await page.screenshot({ path: `${process.env.STRATAMD_SELECTOR_CAPTURES}/narrow.png` })
     await picker.getByRole('button', { name: 'Use GPT-6-Astra' }).click()
     await page.getByLabel('Message conversation').press('Enter')
     await expect.poll(() => engine.commands.filter(command => command.type === 'thread.turn.start').length).toBe(1)

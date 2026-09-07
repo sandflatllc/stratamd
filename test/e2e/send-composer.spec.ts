@@ -1,5 +1,5 @@
 import { openAppMenu } from './harness'
-import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test'
+import { expect, test, type Locator, type Page, type TestInfo } from './test'
 import { selectTextInVisualEditor, setSource, type Scenario } from './harness'
 import { seededScenario, startEngine, type FakeEngine } from './cockpit-engine-harness'
 import { agentActs, attachThread, openThread, uploadsFor } from './cockpit-agent'
@@ -31,7 +31,7 @@ async function scenario(testInfo: TestInfo, content: string, threads: Array<['t1
   const page = await value.launch()
   for (const [id, title] of threads) {
     await openThread(page, title)
-    await attachThread(page, id, title)
+    await attachThread(page, engine, id, title)
   }
   await openThread(page, threads[0]![1])
   await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()

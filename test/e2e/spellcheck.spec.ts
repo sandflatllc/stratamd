@@ -1,7 +1,8 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { copyFile, mkdir, readdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { settledBox } from './geometry'
 import { primaryKey, save, selectVisualEditorRange, Scenario } from './harness'
 
 // The annotate menu's spelling column (docs/plans/completed/spellcheck-plan.md): Electron
@@ -38,25 +39,28 @@ async function seedDictionaries(scenario: Scenario): Promise<void> {
 
 /**
  * Chromium spellchecks lazily, so the first right-click can precede the marks.
- * Retry the gesture until the pill's spelling column attaches. The left click
- * first collapses any standing selection (right-clicking inside one annotates
- * it, by design) — and it must land on a DIFFERENT word: Chromium hides the
- * spelling marker of the word holding the caret, which would blank the params.
+ * Retry the gesture until the pill's spelling column attaches. Read coordinates
+ * after layout settles, then let native selection and focus settle across two
+ * frames after clicking another word. Chromium hides the spelling marker of
+ * the word holding the caret, so the neutral word must differ.
  */
 async function rightClickMisspelling(page: Page, word: string, neutralWord: string): Promise<void> {
-  const point = await wordPoint(page, word)
-  const neutral = await wordPoint(page, neutralWord)
   const column = page.locator('.spelling-options')
   const menu = page.getByRole('menu', { name: /annotate selection/i })
   for (let attempt = 0; attempt < 10; attempt += 1) {
+    await wordPoint(page, neutralWord)
+    await settledBox(page, page.locator('.strata-prosemirror'))
+    const neutral = await wordPoint(page, neutralWord)
     await page.mouse.click(neutral.x, neutral.y)
-    await page.waitForTimeout(400)
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+    await expect.poll(() => page.evaluate(() => document.getSelection()?.isCollapsed)).toBe(true)
+    const point = await wordPoint(page, word)
     await page.mouse.click(point.x, point.y, { button: 'right' })
     await menu.waitFor({ state: 'visible', timeout: 2_000 }).catch(() => undefined)
-    await page.waitForTimeout(700)
+    if (await menu.isVisible()) await column.waitFor({ state: 'visible', timeout: 700 }).catch(() => undefined)
     if (await menu.isVisible() && await column.isVisible().catch(() => false)) return
     await page.keyboard.press('Escape')
-    await page.waitForTimeout(300)
+    await expect(menu).toBeHidden()
   }
   throw new Error(`The spelling column never appeared for ${JSON.stringify(word)}`)
 }
@@ -90,14 +94,25 @@ test('right-click corrects a misspelling through the annotate menu and learns ne
   const corrected = 'Alpha beta occurred delta.\n\nGamma blorptastic epsilon.\n'
 
   const scenario = await Scenario.create(testInfo, sample, 'spellcheck.md')
+  let completed = false
   try {
     await seedDictionaries(scenario)
     const page = await scenario.launch()
+    await scenario.app!.evaluate(({ BrowserWindow }) => {
+      const details: unknown[] = []
+      Object.assign(globalThis, { spellDetails: details })
+      BrowserWindow.getAllWindows()[0]!.webContents.on('context-menu', (_event, params) => details.push({ word: params.misspelledWord, selection: params.selectionText, editable: params.isEditable, suggestions: params.dictionarySuggestions }))
+    })
+    await page.evaluate(() => {
+      const events: unknown[] = []
+      Object.assign(window, { spellClicks: events })
+      document.addEventListener('mouseup', event => events.push({ x: event.clientX, y: event.clientY, button: event.button, target: (event.target as HTMLElement).outerHTML.slice(0, 180), selection: document.getSelection()?.toString() }), true)
+    })
     const pageErrors: string[] = []
     page.on('pageerror', (error) => pageErrors.push(error.stack ?? error.message))
     const consoleErrors: string[] = []
     page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()) })
-    await page.waitForTimeout(1_500)
+    await expect(page.locator('.strata-prosemirror p').first()).toBeVisible()
 
     const menu = page.getByRole('menu', { name: /annotate selection/i })
     const column = page.locator('.spelling-options')
@@ -115,7 +130,7 @@ test('right-click corrects a misspelling through the annotate menu and learns ne
     const inSelection = await wordPoint(page, 'occured')
     await page.mouse.click(inSelection.x, inSelection.y, { button: 'right' })
     await expect(menu).toBeVisible()
-    await page.waitForTimeout(1_000)
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
     await expect(column).toBeHidden()
     await page.keyboard.press('Escape')
     await expect(menu).toBeHidden()
@@ -147,13 +162,17 @@ test('right-click corrects a misspelling through the annotate menu and learns ne
     const learned = await wordPoint(page, 'blorptastic')
     await page.mouse.click(learned.x, learned.y, { button: 'right' })
     await expect(menu).toBeVisible()
-    await page.waitForTimeout(1_000)
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
     await expect(column).toBeHidden()
     await page.keyboard.press('Escape')
 
     expect(pageErrors).toEqual([])
     expect(consoleErrors.filter((entry) => entry.includes('diverged'))).toEqual([])
+    completed = true
   } finally {
+    if (!completed && scenario.app && scenario.page) {
+      await testInfo.attach('spell-native-state', { body: JSON.stringify({ native: await scenario.app.evaluate(() => (globalThis as unknown as { spellDetails: unknown[] }).spellDetails), clicks: await scenario.page.evaluate(() => (window as unknown as { spellClicks: unknown[] }).spellClicks) }), contentType: 'application/json' })
+    }
     await scenario.dispose()
   }
 })

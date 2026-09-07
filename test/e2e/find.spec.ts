@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { Scenario, primaryKey, sourceEditor } from './harness'
 
 // Find (PRD §6.1): Ctrl/Cmd+F opens a bar in the editor pane in both views,

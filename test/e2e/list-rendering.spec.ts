@@ -1,4 +1,5 @@
-import { expect, test, type Locator } from '@playwright/test'
+import { reviewCapture } from './captures'
+import { expect, test, type Locator } from './test'
 import { Scenario } from './harness'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 
@@ -78,7 +79,7 @@ test('a document renders bullet, numbered, nested, tight, and loose lists with m
     await expect(editor.locator('ul ul ul > li')).toHaveCount(1)
     expectMarkers(await listStyles(editor))
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
-    await page.locator('.editor-island').screenshot({ path: testInfo.outputPath('document-lists.png'), animations: 'disabled' })
+    await reviewCapture(page.locator('.editor-island'), { path: testInfo.outputPath('document-lists.png'), animations: 'disabled' })
   } finally {
     await scenario.dispose()
   }
@@ -101,7 +102,7 @@ test('a completed conversation message keeps its list markers once the read-only
     await expect(editor.locator('ol > li')).toHaveCount(5)
     expectMarkers(await listStyles(editor))
     await editor.locator('ul').first().scrollIntoViewIfNeeded()
-    await page.locator('.conversation-panel[data-placement="center"]').screenshot({ path: testInfo.outputPath('conversation-lists.png'), animations: 'disabled' })
+    await reviewCapture(page.locator('.conversation-panel[data-placement="center"]'), { path: testInfo.outputPath('conversation-lists.png'), animations: 'disabled' })
   } finally {
     await scenario.dispose()
     await engine.close()

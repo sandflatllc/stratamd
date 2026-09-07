@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from '../e2e/test'
 import { writeFile } from 'node:fs/promises'
 import { setSource } from '../e2e/harness'
 import { seededScenario, startEngine } from '../e2e/cockpit-engine-harness'
@@ -22,7 +22,7 @@ test('note typing does not rerender a 250-item Send checklist', async ({}, testI
     const page = await scenario.launch()
     for (const [id, title] of [['t1', 'Agent A'], ['t2', 'Agent B']] as const) {
       await openThread(page, title)
-      await attachThread(page, id, title)
+      await attachThread(page, engine, id, title)
     }
     await openThread(page, 'Agent A')
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()

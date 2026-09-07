@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { dirname, join } from 'node:path'
@@ -29,7 +29,7 @@ test('an untracked file seeds from itself; agent edits stay named; save rounds p
   try {
     const page = await scenario.launch()
     await openThread(page, 'Claude')
-    await attachThread(page, 't1', 'Claude')
+    await attachThread(page, engine, 't1', 'Claude')
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
 
     // Two edits: both hunks discrete and named, never one whole-document

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { Scenario, primaryKey, selectTextInVisualEditor, sourceEditor } from './harness'
 
 // Link and image forms (usability round 2 §2.8). window.prompt does not exist

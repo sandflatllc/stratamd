@@ -4,17 +4,14 @@ StrataMD is an Electron + TypeScript Markdown editor with a CLI (`bin/stratamd`)
 
 ## Gate
 
-Run these from the repository root, in this order, before calling work done:
+Use `node scripts/verify.mjs` for verification. Read `test/e2e/README.md` for mode selection, evidence, reuse, and failure diagnosis.
 
-```sh
-./node_modules/.bin/tsc --noEmit
-./node_modules/.bin/vitest run
-./node_modules/.bin/electron-vite build && xvfb-run -a ./node_modules/.bin/playwright test
-```
-
-While iterating on a small change, run the first two commands, rebuild with `./node_modules/.bin/electron-vite build` whenever product code changed (the Playwright harness launches `out/main/index.js`; neither the typecheck nor Vitest refreshes it), and then only the spec files that cover the change, named explicitly: `xvfb-run -a ./node_modules/.bin/playwright test topbar-dropdowns shell-keyboard`. The full Playwright suite runs before calling work done.
-
-After a failed full run, copy `test-results/` aside, then rerun the failed tests by file and line: `xvfb-run -a ./node_modules/.bin/playwright test test/e2e/<file>.spec.ts:<line> --repeat-each 10`. Do not combine `--last-failed` with `--repeat-each`; the repeats carry other test ids and the filter drops them, so the test runs once. Ten passes do not clear the failure: record it under Known flakes in `test/e2e/README.md` with the date and the saved results path. A test already on that list may proceed; a new one needs one clean full run at the default worker count first, and a recurrence blocks the commit until it is diagnosed. Timeouts across unrelated specs in one run mean another suite run is sharing the box or a test is defective; find which before anything else. The ordinary worker count is six and is never lowered. A change to `test/e2e/harness.ts`, `test/e2e/display.ts`, `playwright.config.ts`, or the main-process launch path always gets a full rerun. Never raise a timeout to absorb load, never set local retries above zero, and never lower the worker count.
+- During iteration, select relevant unit/integration files and Electron specs explicitly in focused mode. Typecheck TypeScript changes and rebuild changed product inputs before Electron checks.
+- A finished code change gets one full gate on the final candidate, in order: TypeScript, all default unit/integration tests, production build, all default Electron projects. List skips in the result.
+- Scheduling, display isolation, launch/shutdown lifecycle, or concurrency-sensitive shared harness changes also require focused isolation checks and one stress pass on the final candidate. Stress uses eight ordinary workers and two repetitions, with the separate project caps preserved. Routine shell and styling edits use the ordinary gate. Recurring stress runs live in scheduled CI.
+- Preserve failure evidence. Fix understood deterministic failures before rerunning affected checks, then finish with a clean full gate. Investigate intermittent failures with explicit file/line selections and repetitions chosen for a named mechanism. Record attempts and failures. Passing repeats or a Known flakes entry do not resolve an unexplained failure; it prevents clean signoff of the affected candidate.
+- When unrelated tests time out together, inspect competing processes and resource pressure before continuing. Six ordinary workstation workers, zero local retries, and existing timeouts remain fixed.
+- At integration, reuse successful verification when the complete input identity and coverage match. A new commit id alone does not invalidate it. Integration edits require relevant checks and a full gate on the resulting candidate.
 
 Call the binaries under `./node_modules/.bin` directly. `pnpm <script>` in this checkout runs a dependency check that tries to purge `node_modules`; CI runs `pnpm check` in a fresh install, where that is fine. `scripts/install.sh` also runs pnpm scripts and is for fresh clones, not this checkout.
 
@@ -43,7 +40,6 @@ Unit and integration tests load `native/unix-support/build/Release/unix_support.
 - A per-test budget stays at one minute or under. A test that needs more is several tests; split it so a late step fails alone.
 - A window-level listener in the renderer reads the latest state through a ref kept current in a layout effect, never from its closure. The keydown listener re-registers in a passive effect after a commit, and a key that lands in that gap acts on the previous state.
 - A failure with no mechanism is not a flake, it is an open bug: record it under Known flakes with the saved results path, and find the mechanism before the test is listed twice.
-- Before a merge that touched the renderer's shell or the harness, run the suite once at eight workers with `--repeat-each 2`; one-percent races surface there in one sitting.
 
 ## Copy
 

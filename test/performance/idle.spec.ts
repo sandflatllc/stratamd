@@ -1,4 +1,4 @@
-import { expect, test, type TestInfo } from '@playwright/test'
+import { expect, test, type TestInfo } from '../e2e/test'
 import { Scenario } from '../e2e/harness'
 import { idleViolations } from './budgets'
 import { generateCorpus, writeCorpusAssets } from './corpus'

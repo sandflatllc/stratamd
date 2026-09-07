@@ -1,5 +1,6 @@
+import { reviewCapture } from './captures'
 import { writeFile } from 'node:fs/promises'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 
 const answer = '# Reading the answer\n\n<Callout kind="context">\n\nA useful **formatted passage** for a comment.\n\n</Callout>\n\n<Verdict outcome="recommended">\n\nKeep the source immutable.\n\n</Verdict>\n\n| Choice | Value |\n| --- | --- |\n| First | 12 |\n| Second | 24 |\n\n```mermaid\ngraph LR\nA --> B\n```\n\nRepeated passage.\n\nRepeated passage.\n'
@@ -22,9 +23,9 @@ for (const placement of ['side', 'center'] as const) test(`owner holds and sends
     await expect(message.locator('.strata-prosemirror')).toContainText('A useful')
     await expect(message.locator('.strata-mermaid-canvas svg')).toBeAttached()
     await message.locator('.strata-mermaid-canvas').scrollIntoViewIfNeeded()
-    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-diagram.png`) })
+    await reviewCapture(page, { animations: 'disabled', path: testInfo.outputPath(`${placement}-diagram.png`) })
     await message.locator('.strata-table-block').scrollIntoViewIfNeeded()
-    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-table-diagram.png`) })
+    await reviewCapture(page, { animations: 'disabled', path: testInfo.outputPath(`${placement}-table-diagram.png`) })
     await message.locator('.strata-prosemirror p').filter({ hasText: 'A useful' }).scrollIntoViewIfNeeded()
     await message.locator('.strata-prosemirror').evaluate(element => {
       const text = Array.from(element.querySelectorAll('p')).find(p => p.textContent?.includes('A useful'))!
@@ -36,7 +37,7 @@ for (const placement of ['side', 'center'] as const) test(`owner holds and sends
     const composer = page.locator('.annotation-composer')
     await expect(composer).toBeVisible()
     await composer.locator('textarea').fill('Please explain this.\nKeep both lines.')
-    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-passage-composer.png`) })
+    await reviewCapture(page, { animations: 'disabled', path: testInfo.outputPath(`${placement}-passage-composer.png`) })
     await composer.getByRole('button', { name: 'Hold', exact: true }).click()
     await expect(panel.locator('.conversation-context-tray')).toContainText('Please explain this.')
     await panel.getByText('Delivery preview', { exact: true }).click()
@@ -76,14 +77,14 @@ for (const placement of ['side', 'center'] as const) test(`owner holds and sends
     await expect.poll(async () => Math.abs(await readingPosition() - beforeDiscussion)).toBeLessThan(3)
     await panel.getByRole('navigation', { name: 'Conversation history' }).getByRole('button', { name: /^Comment: Please explain this/ }).click()
     await page.getByRole('dialog', { name: 'Saved comment' }).scrollIntoViewIfNeeded()
-    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-discussion.png`) })
+    await reviewCapture(page, { animations: 'disabled', path: testInfo.outputPath(`${placement}-discussion.png`) })
     await page.getByRole('button', { name: 'Jump to passage' }).click()
-    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-anchored-discussion.png`) })
+    await reviewCapture(page, { animations: 'disabled', path: testInfo.outputPath(`${placement}-anchored-discussion.png`) })
     const themes = await page.evaluate(async () => (await window.strata.getState()).settings.theme.available)
     for (const theme of themes) {
       await page.evaluate(async id => window.strata.selectTheme(id), theme.id)
       await page.evaluate(async () => { const state = await window.strata.getState(); await window.strata.updateSettings({ zoom: { ...state.settings.zoom, explorer: 1.2, editor: 1.2 } }) })
-      await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-${theme.name.replace(/[^a-z0-9]+/gi, '-')}-zoom.png`) })
+      await reviewCapture(page, { animations: 'disabled', path: testInfo.outputPath(`${placement}-${theme.name.replace(/[^a-z0-9]+/gi, '-')}-zoom.png`) })
     }
 
   } finally { await scenario.dispose(); await engine.close() }
@@ -136,6 +137,6 @@ for (const placement of ['side', 'center'] as const) test(`100 exchanges mount o
     const diagnostics = await page.evaluate(() => window.strataTranscript!.snapshot())
     expect(diagnostics.counters.peakLive).toBeLessThan(12)
     await writeFile(testInfo.outputPath(`${placement}-allocation-events.json`), JSON.stringify(diagnostics, null, 2))
-    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-long-history.png`) })
+    await reviewCapture(page, { animations: 'disabled', path: testInfo.outputPath(`${placement}-long-history.png`) })
   } finally { await scenario.dispose(); await engine.close() }
 })

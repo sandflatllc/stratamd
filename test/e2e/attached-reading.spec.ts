@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test'
+import { reviewCapture } from './captures'
+import { expect, test } from './test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 import { attachThread, openThread } from './cockpit-agent'
 
@@ -8,16 +9,16 @@ test('populated Attached rows keep actions visible in a narrow window and at inc
   try {
     const page = await scenario.launch()
     await openThread(page, 'Review the bundled engine and preview recovery')
-    await attachThread(page, 't1')
+    await attachThread(page, engine, 't1')
     await openThread(page, 'Check visual comments and their evidence')
-    await attachThread(page, 't2')
+    await attachThread(page, engine, 't2')
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
     for (const zoom of [1, 1.3]) {
       await scenario.app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1024, 700))
       await page.evaluate(async zoom => { const state = await window.strata.getState(); await window.strata.updateSettings({ zoom: { ...state.settings.zoom, rightRail: zoom } }) }, zoom)
       await expect.poll(() => page.locator('[data-pane="rightRail"]').evaluate(element => getComputedStyle(element).getPropertyValue('--zoom').trim())).toBe(String(zoom))
       await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
-      await page.screenshot({ path: testInfo.outputPath(`attached-1024-zoom-${zoom}.png`), animations: 'disabled' })
+      await reviewCapture(page, { path: testInfo.outputPath(`attached-1024-zoom-${zoom}.png`), animations: 'disabled' })
       const rows = page.locator('.agent-row')
       await expect(rows).toHaveCount(2)
       for (const row of await rows.all()) {

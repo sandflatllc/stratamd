@@ -1,5 +1,6 @@
+import { reviewCapture } from './captures'
 import { expectDocumentListed } from './harness'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Scenario, primaryKey, setSource } from './harness'
@@ -82,7 +83,7 @@ test('populated renderer preserves the handoff tokens, controls, and motion poli
     await expect(page.locator('.strata-source-suggestion-deletion')).toHaveAttribute('data-replacement', 'each construct')
     await expect(page.locator('.strata-source-frontmatter')).toContainText('owner: me')
     await expect(page.locator('.strata-source-layer')).toHaveCSS('animation-name', 'slide-a')
-    await page.screenshot({ path: testInfo.outputPath('handoff-source-review.png'), fullPage: true })
+    await reviewCapture(page, { path: testInfo.outputPath('handoff-source-review.png'), fullPage: true })
     await page.keyboard.press(primaryKey('/'))
     await expect(page.getByRole('textbox', { name: /source editor/i })).toBeHidden()
     await expect(page.locator('.ProseMirror')).toBeVisible()
@@ -158,7 +159,7 @@ test('populated renderer preserves the handoff tokens, controls, and motion poli
     )
     const driftBefore = await sampleWashDrift()
     expect(driftBefore.length).toBeGreaterThan(0)
-    await page.waitForTimeout(300)
+    await expect.poll(async () => (await sampleWashDrift()).every((time, index) => time > driftBefore[index]!)).toBe(true)
     const driftAfter = await sampleWashDrift()
     expect(driftAfter).toHaveLength(driftBefore.length)
     for (const [index, time] of driftAfter.entries()) expect(time).toBeGreaterThan(driftBefore[index]!)
@@ -166,13 +167,13 @@ test('populated renderer preserves the handoff tokens, controls, and motion poli
     // PRD §6.12: ambient motion pauses while keystrokes arrive. Under the
     // ticker, data-typing="true" freezes the ambient clock entirely.
     await page.evaluate(() => document.documentElement.setAttribute('data-typing', 'true'))
-    await page.waitForTimeout(300)
+    await expect.poll(() => page.evaluate(() => document.getAnimations().filter(animation => animation instanceof CSSAnimation && animation.animationName.includes('wash')).every(animation => animation.playState === 'paused'))).toBe(true)
     const frozenFirst = await sampleWashDrift()
-    await page.waitForTimeout(300)
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
     const frozenSecond = await sampleWashDrift()
     expect(frozenSecond).toEqual(frozenFirst)
     await page.evaluate(() => document.documentElement.removeAttribute('data-typing'))
-    await page.waitForTimeout(300)
+    await expect.poll(async () => (await sampleWashDrift()).every((time, index) => time > frozenSecond[index]!)).toBe(true)
     const resumed = await sampleWashDrift()
     for (const [index, time] of resumed.entries()) expect(time).toBeGreaterThan(frozenSecond[index]!)
     await expect(page.locator('[data-frontmatter-chip="true"]')).toHaveText('▸ --- frontmatter · 2 keys ---')
@@ -188,12 +189,12 @@ test('populated renderer preserves the handoff tokens, controls, and motion poli
     await expect(page.getByRole('button', { name: 'Docs menu' }).locator('.tab-menu-count')).toHaveText('2')
     await expect(page.locator('.agent-row')).toHaveCount(0)
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
-    await page.screenshot({ path: testInfo.outputPath('handoff-populated.png'), fullPage: true })
+    await reviewCapture(page, { path: testInfo.outputPath('handoff-populated.png'), fullPage: true })
     await page.setViewportSize({ width: 2048, height: 821 })
     await expect(page.locator('.app-shell')).toHaveCSS('width', '2048px')
     await expect(page.locator('.navigation-rail')).toBeVisible()
     await expect(page.locator('.right-rail')).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath('handoff-ultrawide.png'), fullPage: true })
+    await reviewCapture(page, { path: testInfo.outputPath('handoff-ultrawide.png'), fullPage: true })
     const flashing = await page.evaluate(() => {
       document.querySelector<HTMLButtonElement>('.strata-review-controls button:first-of-type')?.click()
       return document.querySelectorAll('.is-flashing').length

@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import { expect, test, type Page, type TestInfo } from '../e2e/test'
 import { Scenario } from '../e2e/harness'
 import { generateCorpus, writeCorpusAssets } from './corpus'
 import { selfTimes, stageOf, threadNames, type TraceEvent } from './trace-utils'

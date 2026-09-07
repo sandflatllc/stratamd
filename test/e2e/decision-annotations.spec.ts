@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { Scenario, selectTextInVisualEditor } from './harness'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 import { agentActs, annotationByText, attachThread, openThread, uploadsFor } from './cockpit-agent'
@@ -11,7 +11,7 @@ test('owner decisions keep choice, discussion, delivery, and edits separate', as
   try {
     const page = await scenario.launch()
     await openThread(page, 'Agent A')
-    await attachThread(page, 't1', 'Agent A')
+    await attachThread(page, engine, 't1', 'Agent A')
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
 
     await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
@@ -145,7 +145,7 @@ test('an orphaned decision remains answerable', async ({}, testInfo) => {
   try {
     const page = await scenario.launch()
     await openThread(page, 'Agent A')
-    await attachThread(page, 't1', 'Agent A')
+    await attachThread(page, engine, 't1', 'Agent A')
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
     agentActs(engine, 't1', [{ verb: 'decision', anchor: { document: scenario.file, quote: 'Choose the release gate.' }, text: 'Which gate?', options: ['CI', 'Manual'] }])
     const id = (await annotationByText(scenario, 'Which gate?')).id
@@ -172,7 +172,7 @@ test('a requoted annotation produces one send item', async ({}, testInfo) => {
   try {
     const page = await scenario.launch()
     await openThread(page, 'Agent A')
-    await attachThread(page, 't1', 'Agent A')
+    await attachThread(page, engine, 't1', 'Agent A')
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
     agentActs(engine, 't1', [{ verb: 'comment', anchor: { document: scenario.file, quote: 'First target.' }, text: 'Move this.' }])
     const id = (await annotationByText(scenario, 'Move this.')).id

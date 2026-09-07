@@ -1,4 +1,6 @@
-import { expect, test } from '@playwright/test'
+import { reviewCapture } from './captures'
+import { settledBox } from './geometry'
+import { expect, test } from './test'
 import { cp, mkdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Scenario, lineStartKey, projectRoot } from './harness'
@@ -21,7 +23,7 @@ async function run(testInfo: import('@playwright/test').TestInfo, typeFirst: str
     log('launched')
     const editor = page.getByRole('textbox', { name: /document editor/i })
     await expect(editor).toBeVisible()
-    await page.waitForTimeout(1000)
+    await settledBox(page, editor)
 
     const caretAt = async (selector: (blocks: Element[]) => Element, offset = 0) => page.evaluate(([selectorSource, offset]) => {
       const pick = new Function('blocks', `return (${selectorSource})(blocks)`) as (blocks: Element[]) => Element
@@ -42,7 +44,7 @@ async function run(testInfo: import('@playwright/test').TestInfo, typeFirst: str
       await page.mouse.click(point.x, point.y)
       await page.keyboard.press(lineStartKey)
       await page.keyboard.type(typeFirst)
-      await page.waitForTimeout(800)
+      await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).activeDocument?.content).toContain(typeFirst)
       log(`typed ${typeFirst.length} chars at the start of the first paragraph`)
     }
 
@@ -67,7 +69,7 @@ async function run(testInfo: import('@playwright/test').TestInfo, typeFirst: str
     await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 5 })
     await page.mouse.move(to.x, to.y, { steps: 5 })
     await page.mouse.up()
-    await page.waitForTimeout(300)
+    await expect(page.getByRole('menu', { name: /annotate selection/i })).toBeVisible()
     const selected = await page.evaluate(() => document.getSelection()?.toString() ?? '')
     log(`dragged; browser selection = ${JSON.stringify(clip(selected))}`)
 
@@ -82,7 +84,8 @@ async function run(testInfo: import('@playwright/test').TestInfo, typeFirst: str
     await composer.locator('textarea').fill('probe comment')
     await page.evaluate(() => (document.querySelector('.annotation-composer') as HTMLFormElement).requestSubmit())
     await composer.waitFor({ state: 'hidden', timeout: 10_000 })
-    await page.waitForTimeout(800)
+    await expect.poll(async () => (await value.inspectDocument()).annotations?.some(a => a.text === 'probe comment')).toBe(true)
+    await expect(page.locator('.strata-annotation[data-annotation-author="user"]').first()).toBeVisible()
     log('submitted comment')
 
     const highlight = await page.evaluate(() => [...document.querySelectorAll('.strata-annotation[data-annotation-author="user"]')].map((el) => el.textContent).join(''))
@@ -132,13 +135,14 @@ test('dragging the end handle moves the stored quote to the new span', async ({}
     await page.mouse.move((grip.x + target.x) / 2, (grip.y + target.y) / 2, { steps: 6 })
     await page.mouse.move(target.x, target.y, { steps: 6 })
     await page.mouse.up()
-    await page.waitForTimeout(1000)
+    await expect.poll(async () => (await value.inspectDocument()).annotations?.find(a => a.text === 'probe comment')?.quote).toMatch(/Windows build yet\.$/)
+    await expect.poll(() => page.locator('.strata-annotation[data-annotation-author="user"]').allTextContents()).toEqual(expect.arrayContaining([expect.stringContaining('Windows build yet.')]))
     log('dragged the end handle to the end of the Project status paragraph')
     highlightAfter = await page.evaluate(() => [...document.querySelectorAll('.strata-annotation[data-annotation-author="user"]')].map((el) => el.textContent).join(''))
     const state = await value.inspectDocument()
     storedAfter = state.annotations?.find((a) => a.text === 'probe comment')?.quote
     console.log(JSON.stringify({ storedAfter: clip(storedAfter), highlightAfter: clip(highlightAfter) }, null, 1))
-    await page.screenshot({ path: testInfo.outputPath('after-drag.png') })
+    await reviewCapture(page, { path: testInfo.outputPath('after-drag.png') })
   })
   expect(storedAfter).toMatch(/^Other than the paired T3 engine/)
   expect(storedAfter).toMatch(/Windows build yet\.$/)

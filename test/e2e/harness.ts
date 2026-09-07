@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AnnotationContext } from '../../src/shared/contracts'
+import { settledBox } from './geometry'
+import { scenarioEvidence } from './test'
 import { DISPLAYS_VARIABLE, SERIAL_COMMAND, parseDisplays } from './display'
 
 export interface Hunk {
@@ -115,7 +117,15 @@ async function processExit(child: ChildProcess, timeoutMs: number): Promise<void
   })
 }
 
+
 export class Scenario {
+  private tracing = false
+  private launches = 0
+  readonly rawTraces: string
+  readonly traces: string[] = []
+  readonly screenshots: string[] = []
+  private readonly testInfo: TestInfo
+
   readonly root: string
   readonly file: string
   readonly runtimeRoot: string
@@ -123,7 +133,11 @@ export class Scenario {
   app: ElectronApplication | undefined
   page: Page | undefined
 
-  private constructor(root: string, file: string, runtimeRoot: string, env: Record<string, string>) {
+  private constructor(root: string, file: string, runtimeRoot: string, env: Record<string, string>, testInfo: TestInfo) {
+    this.testInfo = testInfo
+    const scenarios = scenarioEvidence(testInfo)
+    this.rawTraces = testInfo.outputPath(`electron-raw-${scenarios.size}`)
+    scenarios.add(this)
     this.root = root
     this.file = file
     this.runtimeRoot = runtimeRoot
@@ -177,7 +191,7 @@ export class Scenario {
       // Each boundary renders a hidden crash-probe button for the containment
       // tests (docs/plans/completed/crash-hardening-plan.md §4).
       STRATAMD_CRASH_PROBE: '1'
-    })
+    }, testInfo)
   }
 
   /** Tests run on the shipped default, Strata Vivid, unless they choose a theme. */
@@ -200,8 +214,14 @@ export class Scenario {
     this.app = await electron.launch({
       args: [...launchArgs, ...extraArgs, mainEntry, file],
       cwd: projectRoot,
+      tracesDir: this.rawTraces,
       env: this.env
     })
+    this.launches += 1
+    if (!process.env.STRATAMD_PERF_PROFILE) {
+      await this.app.context().tracing.start({ screenshots: true, snapshots: true, sources: true })
+      this.tracing = true
+    }
     this.page = await this.app.firstWindow()
     await this.page.waitForLoadState('domcontentloaded')
     await expect.poll(async () => (await this.page!.evaluate(() => window.strata.getState())).activeDocument?.path).toBe(file)
@@ -214,15 +234,48 @@ export class Scenario {
     this.app = await electron.launch({
       args: [...launchArgs, mainEntry],
       cwd: projectRoot,
+      tracesDir: this.rawTraces,
       env: this.env
     })
+    this.launches += 1
+    if (!process.env.STRATAMD_PERF_PROFILE) {
+      await this.app.context().tracing.start({ screenshots: true, snapshots: true, sources: true })
+      this.tracing = true
+    }
     this.page = await this.app.firstWindow()
     await this.page.waitForLoadState('domcontentloaded')
     await expect(this.page.getByRole('button', { name: 'StrataMD menu' })).toBeVisible()
     return this.page
   }
 
+  async captureEvidence(): Promise<void> {
+    if (!this.app || !this.tracing) return
+    this.tracing = false
+    const name = `electron-${this.testInfo.parallelIndex}-${this.testInfo.testId.replace(/[^a-zA-Z0-9]/g, '').slice(-12)}-${[...scenarioEvidence(this.testInfo)].indexOf(this)}-${this.launches}`
+    const trace = this.testInfo.outputPath(`${name}.zip`)
+    const screenshot = this.testInfo.outputPath(`${name}.png`)
+    // Disposal often runs inside a test's finally block, before Playwright marks
+    // the assertion failed. Keep evidence until afterEach knows the result.
+    if (this.testInfo.status !== this.testInfo.expectedStatus || this.testInfo.errors.length) {
+      await this.page?.screenshot({ path: screenshot }).then(() => this.screenshots.push(screenshot)).catch(() => undefined)
+    }
+    try {
+      await this.app.context().tracing.stop({ path: trace })
+      this.traces.push(trace)
+    } catch (error) {
+      // A process may exit through a native close action before teardown. Raw
+      // trace data is already in this invocation's directory, even on a crash.
+      const child = this.app.process()
+      if ((child.exitCode === null && child.signalCode === null) || !/Target page, context or browser has been closed/.test(String(error))) throw error
+      await this.testInfo.attach('electron-trace-note', { body: `Electron exited before archive export. Raw trace: ${this.rawTraces}`, contentType: 'text/plain' })
+    }
+  }
+
   async stop(crash = false): Promise<void> {
+    try { await this.captureEvidence() } finally { await this.closeApplication(crash) }
+  }
+
+  private async closeApplication(crash: boolean): Promise<void> {
     const app = this.app
     this.app = undefined
     this.page = undefined
@@ -296,6 +349,7 @@ export class Scenario {
   }
 }
 
+
 export async function sourceEditor(page: Page) {
   const source = page.getByRole('textbox', { name: /source editor/i })
   if (await source.count()) return source.first()
@@ -311,18 +365,22 @@ export async function setSource(page: Page, content: string): Promise<void> {
   await editor.fill(content)
 }
 
+/** Completion belongs to this IPC request, including no-op saves and conflicts. */
 export async function save(page: Page): Promise<void> {
-  // A "Saved." toast from an earlier save lives 2.8 s and is not restarted by an
-  // identical message; wait for it to clear so the poll below sees this save's toast.
-  await expect(page.locator('.toast').filter({ hasText: /^Saved\./ })).toHaveCount(0, { timeout: 4_000 })
-  // The Save button reads a quiet "Saved" when the editor matches the file; clicking it still saves.
+  const diagnostics = () => page.evaluate(() => (window.strata as unknown as {
+    saveDiagnostics(): { issued: number; completed: { request: number; path: string; error: string | null } | null }
+  }).saveDiagnostics())
+  const before = await diagnostics()
+  const path = await page.evaluate(async () => (await window.strata.getState()).activeDocument!.path)
   await page.getByRole('button', { name: /^Saved?$/i }).click()
   await expect.poll(async () => {
-    const saved = page.locator('.toast').filter({ hasText: /^Saved\./ })
-    if (await saved.count()) return (await saved.first().textContent()) ?? ''
-    const conflict = page.getByRole('dialog', { name: /changed outside StrataMD while you were editing/i })
-    return await conflict.count() ? 'conflict' : ''
-  }).not.toBe('')
+    const result = (await diagnostics()).completed
+    return result?.request === before.issued + 1 && result.path === path
+  }).toBe(true)
+  const result = (await diagnostics()).completed!
+  if (result.error) {
+    await expect(page.getByRole('dialog', { name: /changed outside StrataMD while you were editing/i }), result.error).toBeVisible()
+  }
 }
 
 export async function send(page: Page, options: { note?: string; includeExternal?: boolean; recipientNames?: string[] } = {}): Promise<void> {
@@ -345,6 +403,10 @@ export async function send(page: Page, options: { note?: string; includeExternal
     await expect(externals.first()).toBeVisible()
     for (let index = 0; index < await externals.count(); index += 1) await externals.nth(index).check()
   }
+  // Preview content and queued notices can move the action row. Setup sends
+  // wait for that layout; send-composer.spec.ts separately covers queued clicks.
+  await expect(dialog.getByRole('tabpanel')).toHaveAttribute('aria-busy', 'false')
+  await settledBox(page, dialog)
   await dialog.getByRole('button', { name: /^Send$/i }).click()
   await expect(dialog).toBeHidden()
 }

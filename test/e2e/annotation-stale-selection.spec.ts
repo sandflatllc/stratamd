@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { projectRoot, selectTextInVisualEditor } from './harness'
@@ -18,9 +18,8 @@ test('a comment composed before an agent edit above still lands', async ({}, tes
     const pageErrors: string[] = []
     page.on('pageerror', (error) => pageErrors.push(error.stack ?? error.message))
     await openThread(page, 'Claude')
-    await attachThread(page, 't1', 'Claude')
+    await attachThread(page, engine, 't1', 'Claude')
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
-    await page.waitForTimeout(1_000)
 
     // Open the composer on a paragraph far below the top.
     await selectTextInVisualEditor(page, 'Reviewing it is still awkward.')
@@ -38,7 +37,6 @@ test('a comment composed before an agent edit above still lands', async ({}, tes
     agentEdits(engine, 't1', scenario.file, target, target, 'Write with several collaborating agents. Keep the final say, always.')
     const editor = page.getByRole('textbox', { name: /document editor/i })
     await expect(editor).toContainText('several collaborating agents', { timeout: 10_000 })
-    await page.waitForTimeout(1_000)
 
     await page.evaluate(() => (document.querySelector('.annotation-composer') as HTMLFormElement).requestSubmit())
     await expect.poll(async () => {

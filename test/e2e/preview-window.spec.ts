@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { dirname } from 'node:path'
 import { openAppMenu, Scenario, switchToDocument } from './harness'
 import { seededScenario, startEngine, type FakeEngine } from './cockpit-engine-harness'

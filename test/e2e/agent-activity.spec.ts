@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 import { agentActs, agentEdits, attachThread, openThread } from './cockpit-agent'
 
@@ -14,7 +14,7 @@ test('an agent edit raises a note with the author and count, and Show jumps to t
   try {
     const page = await scenario.launch()
     await openThread(page, 'Agent A')
-    await attachThread(page, 't1', 'Agent A')
+    await attachThread(page, engine, 't1', 'Agent A')
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
     agentEdits(engine, 't1', scenario.file, 'Bottom sentence.', 'Bottom sentence.', 'Bottom sentence, rewritten.')
 

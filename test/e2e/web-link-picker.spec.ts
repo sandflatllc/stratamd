@@ -1,4 +1,5 @@
-import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { reviewCapture } from './captures'
+import { expect, test, type ElectronApplication, type Page } from './test'
 import { mkdir, realpath, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -43,7 +44,7 @@ test('document, side and center transcript links share a session choice and open
     const first = center.getByRole('link', { name: 'First page', exact: true })
     await first.click()
     await expect(picker(page).getByRole('button', { name: 'Open in default browser', exact: true })).toHaveAttribute('data-last', 'true')
-    await page.screenshot({ path: testInfo.outputPath('center-picker.png') })
+    await reviewCapture(page, { path: testInfo.outputPath('center-picker.png') })
     await page.keyboard.press('Escape')
     await expect(picker(page)).toHaveCount(0)
     await expect(first).toBeFocused()
@@ -110,10 +111,10 @@ test('saved comment links use the same picker and Escape preserves the comment',
     const comment = page.getByRole('dialog', { name: 'Saved comment', exact: true })
     await expect(comment).toBeVisible()
     await expect(comment).toContainText('reference')
-    await page.screenshot({ path: testInfo.outputPath('comment-before-picker.png') })
+    await reviewCapture(page, { path: testInfo.outputPath('comment-before-picker.png') })
     await comment.getByRole('link', { name: 'reference', exact: true }).click()
     await expect(picker(page)).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath('comment-picker.png') })
+    await reviewCapture(page, { path: testInfo.outputPath('comment-picker.png') })
     await page.keyboard.press('Escape')
     await expect(picker(page)).toHaveCount(0)
     await expect(comment).toBeVisible()
@@ -187,7 +188,7 @@ test('document links and document comments retain their project while another pr
     await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
     await page.locator('.annotations-panel .annotation-row').filter({ hasText: 'Links' }).click()
     await expect(page.getByRole('region', { name: 'comment thread', exact: true })).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath('document-comment.png') })
+    await reviewCapture(page, { path: testInfo.outputPath('document-comment.png') })
     await expect(page.getByRole('region', { name: 'comment thread', exact: true }).getByRole('link', { name: 'comment page', exact: true })).toBeVisible()
     await page.getByRole('region', { name: 'comment thread', exact: true }).getByRole('link', { name: 'comment page', exact: true }).dblclick()
     await expect.poll(async () => (await tabs()).map(tab => tab.projectId)).toEqual([projectId, projectId])

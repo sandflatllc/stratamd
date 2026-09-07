@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test'
+import { reviewCapture } from './captures'
+import { expect, test } from './test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 
 test('center conversation shares the saved document measure and fits the side pane', async ({}, testInfo) => {
@@ -39,7 +40,7 @@ test('center conversation shares the saved document measure and fits the side pa
       const transcript = (await column.boundingBox())!
       return Math.abs(box.x + box.width / 2 - transcript.x - transcript.width / 2)
     }).toBeLessThan(1)
-    await page.screenshot({ path: testInfo.outputPath('conversation-width.png') })
+    await reviewCapture(page, { path: testInfo.outputPath('conversation-width.png') })
     await center.getByRole('button', { name: 'Move to side' }).click()
     await expect(page.getByRole('button', { name: 'Resize document measure' })).toHaveAttribute('aria-valuenow', String(measure))
     const side = page.locator('.conversation-panel[data-placement="side"]')

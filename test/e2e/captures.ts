@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { mkdir } from 'node:fs/promises'
 
 /**
@@ -10,4 +10,9 @@ export async function parityCapture(page: Page, name: string): Promise<void> {
   if (!process.env.STRATA_CAPTURES) return
   await mkdir('docs/design/t3-parity/captures', { recursive: true })
   await page.screenshot({ animations: 'disabled', path: `docs/design/t3-parity/captures/${name}.png` })
+}
+
+/** Opt-in review evidence. Pixel baselines and failure captures remain unconditional. */
+export async function reviewCapture(target: Page | Locator, options: Parameters<Page['screenshot']>[0]): Promise<void> {
+  if (process.env.STRATA_CAPTURES) await target.screenshot(options)
 }

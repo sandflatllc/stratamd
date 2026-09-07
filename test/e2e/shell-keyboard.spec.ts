@@ -1,5 +1,5 @@
 import { expectActiveDocument, openDocsMenu, expectDocumentDirty } from './harness'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { chmod, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Scenario, primaryKey, selectTextInVisualEditor, setSource } from './harness'
@@ -85,12 +85,13 @@ test('an error toast uses the danger color, outlives a success, and clears from 
     expect(danger.background).toBe(danger.rgb)
 
     // Longer than a success toast lives; a success does not paint over it.
-    await page.waitForTimeout(3_200)
+    await page.clock.install()
+    await page.clock.fastForward(3_200)
     await expect(alert).toBeVisible()
     await openDocsMenu(page)
     await page.getByRole('menu', { name: 'Open docs' }).getByRole('menuitem', { name: /toast\.md/i }).click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Copy full path' }).click()
-    await page.waitForTimeout(300)
+    await expect(page.getByRole('menuitem', { name: 'Copy full path' })).toBeHidden()
     await expect(alert).toBeVisible()
     await expect(page.getByRole('status')).toHaveCount(0)
 
@@ -115,7 +116,7 @@ test('composer and reply drafts survive Escape, and Escape closes one surface at
   try {
     const page = await value.launch()
     await openThread(page, 'Agent A')
-    await attachThread(page, 't1', 'Agent A')
+    await attachThread(page, engine, 't1', 'Agent A')
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
     const edited = `${original}\nOwner edit.\n`
     await setSource(page, edited)

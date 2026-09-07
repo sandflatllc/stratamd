@@ -18,13 +18,17 @@ export async function openThread(page: Page, name: string): Promise<void> {
 }
 
 /** Attaches the thread by sending the active document to it, and waits until the row shows under Attached. */
-export async function attachThread(page: Page, threadId: string, name?: string): Promise<void> {
-  await page.evaluate(async (id) => {
+export async function attachThread(page: Page, engine: FakeEngine, threadId: string, name?: string): Promise<void> {
+  const deliveries = await page.evaluate(async (id) => {
     const document = (await window.strata.getState()).activeDocument!
     const request = { recipients: [id], note: '', includeExternal: false }
     const [preview] = await window.strata.previewSend(document.path, request)
-    await window.strata.send(document.path, { ...request, token: preview!.token })
+    return window.strata.send(document.path, { ...request, token: preview!.token })
   }, threadId)
+  expect(deliveries).toHaveLength(1)
+  await expect.poll(() => engine.commands.some(command => command.type === 'thread.turn.start'
+    && command.threadId === threadId
+    && (command.message as { messageId?: string }).messageId === deliveries[0])).toBe(true)
   if (name) await expect(page.locator('.agent-row').filter({ hasText: name })).toBeVisible()
 }
 

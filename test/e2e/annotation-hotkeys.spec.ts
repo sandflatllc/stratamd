@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { Scenario, lineStartKey, primaryKey, selectToLineEndKey, selectTextInVisualEditor } from './harness'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 import { agentActs, annotationByText, attachThread, openThread, uploadsFor } from './cockpit-agent'
@@ -59,7 +59,7 @@ test('letters typed into an item reply stay there while a selection pill is up',
   try {
     const page = await scenario.launch()
     await openThread(page, 'Agent A')
-    await attachThread(page, 't1', 'Agent A')
+    await attachThread(page, engine, 't1', 'Agent A')
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
     agentActs(engine, 't1', [{ verb: 'comment', anchor: { document: scenario.file, quote: 'Reply to this thread sentence.' }, text: 'Please reword this.' }])
     await annotationByText(scenario, 'Please reword this.')
@@ -95,7 +95,7 @@ test('a bare C opens the comment composer and Enter quick sends it', async ({}, 
   try {
     const page = await scenario.launch()
     await openThread(page, 'Agent A')
-    await attachThread(page, 't1', 'Agent A')
+    await attachThread(page, engine, 't1', 'Agent A')
     await expect.poll(() => uploadsFor(engine, 't1').length).toBe(1)
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
     await selectTextInVisualEditor(page, 'Select this other sentence.')

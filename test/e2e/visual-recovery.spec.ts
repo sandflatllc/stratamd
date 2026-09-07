@@ -1,5 +1,5 @@
 import { expectDocumentListed } from './harness'
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from './test'
 import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { projectRoot, Scenario } from './harness'

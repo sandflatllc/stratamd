@@ -1,5 +1,5 @@
 import { expectActiveDocument } from './harness'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Scenario } from './harness'

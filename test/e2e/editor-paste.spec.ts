@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { Scenario, lineEndKey, primaryKey, sourceEditor } from './harness'
 
 // Paste (usability round 2 §5.9): plain text that reads as markdown is

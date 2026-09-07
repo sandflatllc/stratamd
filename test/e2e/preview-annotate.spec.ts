@@ -1,4 +1,5 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { settledBox } from './geometry'
+import { expect, test, type Locator, type Page } from './test'
 import { seededScenario, startEngine, type FakeEngine } from './cockpit-engine-harness'
 import { startPreviewPage } from './preview-page'
 
@@ -47,16 +48,6 @@ async function annotate(page: Page, window: Locator) {
 }
 
 /** A box read twice across two animation frames and accepted only when it holds: the card growing under the picture moves it a frame later. */
-async function settledBox(page: Page, locator: Locator): Promise<{ x: number; y: number; width: number; height: number }> {
-  let previous = (await locator.boundingBox())!
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
-    const next = (await locator.boundingBox())!
-    if (Math.abs(next.x - previous.x) < 0.5 && Math.abs(next.y - previous.y) < 0.5 && Math.abs(next.width - previous.width) < 0.5 && Math.abs(next.height - previous.height) < 0.5) return next
-    previous = next
-  }
-  return previous
-}
 
 /** Page pixels onto the session's surface: the displayed capture is the page's viewport scaled to fit. */
 async function surfaceMap(page: Page, engine: FakeEngine, tabId: string): Promise<(point: { x: number; y: number }) => { x: number; y: number }> {

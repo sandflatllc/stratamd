@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test'
+import { settledBox } from './geometry'
+import { expect, test } from './test'
 import { primaryKey, Scenario } from './harness'
 
 // The right-click menu (usability round 2 §5.15) carries Cut, Copy, Paste,
@@ -12,7 +13,7 @@ test('right-click offers Copy, Cut, Paste, and Select all on the word under the 
     // The body paragraph; its text changes as the test pastes and cuts, so no text filter.
     const paragraph = editor.locator('p').last()
     await expect(paragraph).toHaveText('Alpha beta gamma.')
-    await page.waitForTimeout(1_000)
+    await settledBox(page, paragraph)
     // Right-click on the first word itself: its glyph box, not the paragraph's centre.
     const rightClickWord = async () => {
       const point = await paragraph.evaluate((element) => {
@@ -24,10 +25,9 @@ test('right-click offers Copy, Cut, Paste, and Select all on the word under the 
         const rect = range.getBoundingClientRect()
         return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
       })
-      // Let the previous menu close and the caret settle, as the other
-      // right-click specs do, then wait as long as they wait.
+      // Wait for the previous menu to close and the target geometry to settle.
       await expect(menu).toBeHidden()
-      await page.waitForTimeout(300)
+      await settledBox(page, paragraph)
       await page.mouse.click(point.x, point.y, { button: 'right' })
       await expect(menu).toBeVisible({ timeout: 10_000 })
     }
@@ -59,7 +59,7 @@ test('right-click offers Copy, Cut, Paste, and Select all on the word under the 
     await menu.getByRole('menuitem', { name: 'Paste' }).click()
     await expect(paragraph).toHaveText('delta beta gamma.')
     // The native paste's DOM change is still being read back by the editor for a moment.
-    await page.waitForTimeout(300)
+    await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).activeDocument?.content).toContain('delta beta gamma.')
 
     // Cut removes the word.
     await rightClickWord()

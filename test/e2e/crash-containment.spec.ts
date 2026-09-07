@@ -1,5 +1,5 @@
 import { openDocsMenu } from './harness'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Scenario, lineEndKey } from './harness'

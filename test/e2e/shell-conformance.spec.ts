@@ -1,6 +1,6 @@
 import { expectActiveDocument, openDocsMenu } from './harness'
 import { openAppMenu } from './harness'
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from './test'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Scenario, lineEndKey, primaryKey, selectTextInVisualEditor, setSource, switchToDocument } from './harness'
@@ -129,11 +129,11 @@ test('per-pane text zoom follows the hovered pane, resets from one button, and p
 
 
 /** Attaches the named threads by sending the document to each, then returns to Contents. */
-async function attachAgents(value: Scenario, threads: Array<['t1' | 't2', string]>): Promise<void> {
+async function attachAgents(value: Scenario, engine: FakeEngine, threads: Array<['t1' | 't2', string]>): Promise<void> {
   const page = value.page!
   for (const [id, title] of threads) {
     await openThread(page, title)
-    await attachThread(page, id, title)
+    await attachThread(page, engine, id, title)
   }
   await openThread(page, threads[0]![1])
   await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
@@ -155,7 +155,7 @@ test('a theme file sets fonts and attribution colors, applies live when rewritte
   await value.writeSettings({ theme: 'dusk' })
   try {
     const page = await value.launch()
-    await attachAgents(value, [['t1', 'Agent A']])
+    await attachAgents(value, engine, [['t1', 'Agent A']])
     agentActs(engine, 't1', [{ verb: 'edit', anchor: { document: value.file, quote: 'Original.' }, match: 'Original.', replace: 'Agent proposal.' }])
     await expect(page.getByRole('button', { name: /^Keep change /i }).first()).toBeVisible()
     await page.evaluate(async ({ path, from, to }) => window.strata.addAnnotation(path, {
@@ -365,7 +365,7 @@ test('keyboard operates composer recipient previews and an item thread', async (
   const value = await seededScenario(testInfo, engine.origin, original, 'keyboard.md')
   try {
     const page = await value.launch()
-    await attachAgents(value, [['t1', 'Agent A'], ['t2', 'Agent B']])
+    await attachAgents(value, engine, [['t1', 'Agent A'], ['t2', 'Agent B']])
     await setSource(page, edited)
     await value.waitForBuffer(edited)
 

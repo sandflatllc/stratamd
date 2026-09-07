@@ -1,5 +1,6 @@
+import { reviewCapture } from './captures'
 import { expectActiveDocument } from './harness'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
@@ -19,14 +20,14 @@ test('dropdowns remain clickable above the workspace, scroll, and restore keyboa
     const menu = page.getByRole('menu', { name: 'Open docs', exact: true })
     await docs.click()
     await expect(menu.getByRole('menuitem').first()).toBeFocused()
-    await page.screenshot({ path: testInfo.outputPath('docs-open.png') })
+    await reviewCapture(page, { path: testInfo.outputPath('docs-open.png') })
     await menu.getByRole('menuitem', { name: 'notes-00.md', exact: true }).click()
     await expect(menu).toBeHidden()
     await expectActiveDocument(page, /notes-00.md/)
     await docs.click()
     await page.keyboard.press('End')
     await expect(menu.getByRole('menuitem', { name: 'notes-23.md', exact: true })).toBeFocused()
-    await page.screenshot({ path: testInfo.outputPath('docs-scrolled.png') })
+    await reviewCapture(page, { path: testInfo.outputPath('docs-scrolled.png') })
     await page.keyboard.press('Escape')
     await expect(docs).toBeFocused()
     await page.keyboard.press('Enter')

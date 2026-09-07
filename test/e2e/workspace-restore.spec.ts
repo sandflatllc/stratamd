@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 import { selectNavigationTab, type Scenario } from './harness'
 

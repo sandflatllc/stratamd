@@ -1,5 +1,6 @@
+import { reviewCapture } from './captures'
 import { openAppMenu } from './harness'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { mapMarkdownBlocks } from '../../src/core/blocks'
 import { readFile } from 'node:fs/promises'
 import { credentialPath, seededScenario, startEngine } from './cockpit-engine-harness'
@@ -63,7 +64,7 @@ test('1 and 2 read side: disconnect is isolated and reconnect restores the activ
     await page.keyboard.press('Control+End')
     await page.keyboard.type(' Still here.')
     await expect(editor).toContainText('Still here.')
-    await page.waitForTimeout(250)
+    await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).activeDocument?.content).toContain('Still here.')
 
     engine.setMessage('Conversation restored after reconnect.')
     engine.setOnline(true)
@@ -514,11 +515,11 @@ test('conversation zoom: the side conversation follows the left window and the c
     await expect.poll(() => zoomOf('[data-pane="editor"]')).toBe('1')
     await expect.poll(() => fontSize(centerProse)).toBeCloseTo(17, 0)
     await center.getByRole('region', { name: 'Changed files' }).scrollIntoViewIfNeeded()
-    await page.screenshot({ path: testInfo.outputPath('conversation-center.png') })
+    await reviewCapture(page, { path: testInfo.outputPath('conversation-center.png') })
     await page.getByRole('button', { name: 'Move to side' }).click()
     await expect(side.locator('.conversation-message.assistant .conversation-prose').getByRole('heading', { name: 'Plan' })).toBeVisible()
     await side.getByRole('region', { name: 'Changed files' }).scrollIntoViewIfNeeded()
-    await page.screenshot({ path: testInfo.outputPath('conversation-side.png') })
+    await reviewCapture(page, { path: testInfo.outputPath('conversation-side.png') })
   } finally {
     await scenario.dispose()
     await engine.close()

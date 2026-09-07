@@ -113,9 +113,12 @@ describe('themes in the application', () => {
     const path = themeStore.pathFor(id)
     const revisionBefore = (await app.getState()).settings.theme.externalRevision
 
+    const ownWriteStart = states.length
     await app.setThemeValue('document.bold', '#123456')
     await app.flushThemeWrites()
-    await new Promise((resolve) => setTimeout(resolve, 400))
+    // The edit and completed write each publish once. The next publication
+    // confirms the filesystem watcher has processed the active file too.
+    await until(() => states.slice(ownWriteStart).filter(state => state.settings.theme.active.values['document.bold'] === '#123456').length, count => count >= 3)
     expect((await app.getState()).settings.theme.externalRevision).toBe(revisionBefore)
 
     await writeFile(path, JSON.stringify({ name: 'Dusk', document: { bold: '#abcdef' } }))

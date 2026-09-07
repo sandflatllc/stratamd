@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { readFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { openAppMenu, projectRoot, Scenario, setSource } from './harness'

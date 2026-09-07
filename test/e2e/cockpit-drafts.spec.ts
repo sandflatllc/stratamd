@@ -1,11 +1,10 @@
-import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import { expect, test, type Page, type TestInfo } from './test'
 import { dirname } from 'node:path'
 import { selectTextInVisualEditor } from './harness'
-import { openThread, uploadsFor } from './cockpit-agent'
+import { attachThread, openThread, uploadsFor } from './cockpit-agent'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 
 async function openComment(page: Page, quote: string) {
-  await page.waitForTimeout(100)
   await page.evaluate(() => window.getSelection()?.removeAllRanges())
   await selectTextInVisualEditor(page, quote)
   const menu = page.getByRole('menu', { name: /Annotate selection/i })
@@ -16,14 +15,6 @@ async function openComment(page: Page, quote: string) {
   return composer
 }
 
-async function attachThread(page: Page, threadId: string): Promise<void> {
-  await page.evaluate(async (id) => {
-    const document = (await window.strata.getState()).activeDocument!
-    const request = { recipients: [id], note: '', includeExternal: false }
-    const [preview] = await window.strata.previewSend(document.path, request)
-    await window.strata.send(document.path, { ...request, token: preview!.token })
-  }, threadId)
-}
 
 async function closeEngine(engine: Awaited<ReturnType<typeof startEngine>>): Promise<void> {
   await engine.close()
@@ -36,7 +27,7 @@ test('5 and 6: quick send carries one comment while held drafts stay private and
   try {
     const page = await scenario.launch()
     await openThread(page, 'Live engine thread')
-    await attachThread(page, 't1')
+    await attachThread(page, engine, 't1')
     await expect.poll(() => engine.uploads.length).toBe(1)
 
     for (const [quote, text] of [['First sentence', 'Held first.'], ['Second sentence', 'Held second.']] as const) {
@@ -82,9 +73,9 @@ test('7: active conversation is the sole default until Lead changes it', async (
   try {
     const page = await scenario.launch()
     await openThread(page, 'Live engine thread')
-    await attachThread(page, 't1')
+    await attachThread(page, engine, 't1')
     await openThread(page, 'Second engine thread')
-    await attachThread(page, 't2')
+    await attachThread(page, engine, 't2')
     await openThread(page, 'Live engine thread')
 
     let comment = await openComment(page, 'Choose this passage')
@@ -213,7 +204,7 @@ test('an orphaned held draft stays out of preview and can be discarded', async (
   try {
     const page = await scenario.launch()
     await openThread(page, 'Live engine thread')
-    await attachThread(page, 't1')
+    await attachThread(page, engine, 't1')
     await expect.poll(() => uploadsFor(engine, 't1').length).toBe(1)
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
 

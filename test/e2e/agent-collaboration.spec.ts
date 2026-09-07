@@ -1,5 +1,6 @@
+import { settledBox } from './geometry'
 import { expectDocumentDirty } from './harness'
-import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test'
+import { expect, test, type Locator, type Page, type TestInfo } from './test'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { save, selectTextInVisualEditor, send, setSource, type Scenario } from './harness'
@@ -20,7 +21,7 @@ async function scenario(testInfo: TestInfo, content: string, name: string, threa
   const page = await value.launch()
   for (const [id, title] of threads) {
     await openThread(page, title)
-    await attachThread(page, id, title)
+    await attachThread(page, engine, id, title)
   }
   await openThread(page, threads[0]![1])
   await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
@@ -37,19 +38,6 @@ function agentEdit({ value, engine }: Fixture, threadId: string, quote: string, 
 }
 
 /** Panels open with a scale animation; wait until the element stops moving before measuring. */
-async function stableBox(page: Page, target: Locator): Promise<{ x: number; y: number; width: number; height: number }> {
-  let bounds = await target.boundingBox()
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    await page.waitForTimeout(60)
-    const next = await target.boundingBox()
-    if (bounds && next && Math.abs(next.x - bounds.x) < 0.5 && Math.abs(next.y - bounds.y) < 0.5 && Math.abs(next.width - bounds.width) < 0.5) {
-      return next
-    }
-    bounds = next
-  }
-  expect(bounds).toBeTruthy()
-  return bounds!
-}
 
 async function dragBy(page: Page, handle: Locator, dx: number, dy: number): Promise<void> {
   await handle.scrollIntoViewIfNeeded()
@@ -62,7 +50,7 @@ async function dragBy(page: Page, handle: Locator, dx: number, dy: number): Prom
       try { animation.finish() } catch { /* infinite animations cannot finish */ }
     }
   })
-  const bounds = await stableBox(page, handle)
+  const bounds = await settledBox(page, handle)
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
   await page.mouse.down()
   await page.mouse.move(bounds.x + bounds.width / 2 + dx, bounds.y + bounds.height / 2 + dy, { steps: 5 })
@@ -196,8 +184,9 @@ test('3b. detach confirms only when queued sends would be discarded, and ends th
     await page.getByRole('button', { name: 'Detach Agent A' }).click()
     await expect(page.getByRole('dialog', { name: /Detach Agent A/i })).toHaveCount(0)
     await expect(page.locator('.agent-row').filter({ hasText: 'Agent A' })).toHaveCount(0)
-    agentActs(engine, 't1', [{ verb: 'comment', anchor: { document: value.file, quote: 'Original sentence' }, text: 'Still here?' }])
-    await page.waitForTimeout(400)
+    agentActs(engine, 't1', [{ verb: 'comment', anchor: { document: value.file, quote: 'Original sentence' }, text: 'Still here?' }], 'Detached reply received.')
+    await openThread(page, 'Agent A')
+    await expect(page.locator('.conversation-panel:visible')).toContainText('Detached reply received.')
     expect((await value.inspectDocument()).annotations?.some((item) => item.text === 'Still here?')).toBe(false)
   } finally {
     await dispose(fixture)
@@ -281,7 +270,7 @@ test('4. an item pages below the fold opens in Conversation with the span center
     // Dismissing refocuses the editor on the next frame, restoring its old
     // selection; wait that out, then pick a different span (the dismissed
     // range would not reopen the composer).
-    await page.waitForTimeout(200)
+    await expect(page.getByRole('textbox', { name: /document editor/i })).toBeFocused()
     await selectTextInVisualEditor(page, 'below the fold.')
     await page.getByRole('menu', { name: /Annotate selection/i }).getByRole('menuitem', { name: /Comment/i }).click()
     await expect.poll(() => composer.evaluate((element) => (element as HTMLElement).style.width)).toBe('420px')

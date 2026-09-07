@@ -1,6 +1,7 @@
+import { reviewCapture } from './captures'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import { expect, test, type Page, type TestInfo } from './test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 import { pngBytes } from './png'
 
@@ -63,7 +64,7 @@ for (const placement of ['side', 'center'] as const) {
       expect(snapshot.events.filter(e => e.kind === 'scroll-write' && e.detail?.scrolling)).toEqual([])
       expect(snapshot.counters.peakLive).toBeLessThan(12)
       await evidence(page, info)
-      await page.screenshot({ path: info.outputPath('published-passage.png') })
+      await reviewCapture(page, { path: info.outputPath('published-passage.png') })
     } finally { await scenario.dispose(); await engine.close() }
   })
 

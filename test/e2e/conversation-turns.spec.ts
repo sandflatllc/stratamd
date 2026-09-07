@@ -1,4 +1,5 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { reviewCapture } from './captures'
+import { expect, test, type Locator, type Page } from './test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 
 async function openLiveThread(page: Page, placement: 'side' | 'center'): Promise<Locator> {
@@ -60,11 +61,11 @@ for (const placement of ['side', 'center'] as const) test(`a completed turn fold
     await entry.getByRole('button').click()
     await expect(entry.locator('pre')).toContainText('T3 timeline rules')
     await page.mouse.move(1300, 60)
-    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-open-turn.png`) })
+    await reviewCapture(page, { animations: 'disabled', path: testInfo.outputPath(`${placement}-open-turn.png`) })
     await toggle.click()
     await expect(older.locator('[data-message-id="old-agent-2-progress"]')).toHaveCount(0)
     await expect(older.locator('[data-message-id="old-agent-2"]')).toContainText('Second finished answer also stays visible.')
-    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-folded.png`) })
+    await reviewCapture(page, { animations: 'disabled', path: testInfo.outputPath(`${placement}-folded.png`) })
   } finally { await scenario.dispose(); await engine.close() }
 })
 
@@ -109,7 +110,7 @@ test('a turn the owner stops stays open with You stopped after, and folds on rel
     await expect(toggle).toHaveAttribute('aria-expanded', 'true')
     await expect(live.locator('.conversation-working-row')).toHaveCount(0)
     await expect(live.locator('.conversation-work-toggle')).toBeVisible()
-    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('stopped-open.png') })
+    await reviewCapture(page, { animations: 'disabled', path: testInfo.outputPath('stopped-open.png') })
     // A reload folds the stopped turn like any other settled turn.
     await scenario.stop()
     page = await scenario.launch()
@@ -167,6 +168,6 @@ test('Find and a comment marker open the folded turn that holds their target', a
     await expect(marker).toHaveCount(0)
     await expect(panel.getByRole('button', { name: 'Remove held comment: Why the order first?', exact: true })).toHaveCount(0)
     await page.mouse.move(1300, 60)
-    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('marker-reveal.png') })
+    await reviewCapture(page, { animations: 'disabled', path: testInfo.outputPath('marker-reveal.png') })
   } finally { await scenario.dispose(); await engine.close() }
 })

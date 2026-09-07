@@ -1,5 +1,5 @@
 import { expectDocumentListed } from './harness'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { chmod, readFile, readdir, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Scenario, documentStartKey, lineEndKey, primaryKey, save, send, setSource, sourceEditor } from './harness'
@@ -42,7 +42,7 @@ test('deleted while open keeps the tab and attachment, then Save recreates the e
   try {
     const page = await value.launch()
     await openThread(page, 'Agent A')
-    await attachThread(page, 't1', 'Agent A')
+    await attachThread(page, engine, 't1', 'Agent A')
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
 
     const source = await sourceEditor(page)
@@ -114,7 +114,7 @@ test('a document over 2 MB opens in the full visual editor while review and Send
     await expect(page.getByRole('status').filter({ hasText: /size ceiling|source view only/i })).toHaveCount(0)
 
     await openThread(page, 'Agent A')
-    await attachThread(page, 't1', 'Agent A')
+    await attachThread(page, engine, 't1', 'Agent A')
     await expect.poll(() => uploadsFor(engine, 't1').length, { timeout: 20_000 }).toBe(1)
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
     const state = await value.inspectDocument()

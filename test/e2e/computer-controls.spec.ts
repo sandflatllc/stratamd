@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test'
+import { reviewCapture } from './captures'
+import { expect, test } from './test'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Scenario } from './harness'
@@ -18,7 +19,7 @@ test('This computer manages real pairing links, tray and login choices in an iso
       await scenario.app!.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]!.setSize(size.width, size.height), { width: width!, height: height! })
       await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toBeInViewport()
       expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
-      await page.screenshot({ path: testInfo.outputPath(`this-computer-${width}.png`), animations: 'disabled' })
+      await reviewCapture(page, { path: testInfo.outputPath(`this-computer-${width}.png`), animations: 'disabled' })
     }
     await expect(dialog.getByLabel('Remote access', { exact: true })).toBeDisabled()
     await expect(dialog.getByLabel('Publish agent activity')).not.toBeChecked()
@@ -44,6 +45,7 @@ test('This computer manages real pairing links, tray and login choices in an iso
     await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).engine.managed?.state, { timeout: 20000 }).toBe('running')
     expect((await page.evaluate(() => window.strata.getState())).settings.engine?.keepRunning).toBe(false)
     const running = JSON.parse(await readFile(join(scenario.env.XDG_DATA_HOME!, 'stratamd/engine/runtime.json'), 'utf8'))
+    await scenario.captureEvidence()
     await scenario.app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close()).catch(error => {
       if (!/closed|destroyed/i.test(String(error))) throw error
     })
