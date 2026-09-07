@@ -82,6 +82,7 @@ export const THEME_KEYS: readonly ThemeKeyEntry[] = Object.freeze([
   color('surfaces.transcript', 'Transcript background', 'The opaque reading panel around conversation messages, separate from the composer'),
   color('surfaces.transcript-border', 'Transcript border', 'The edge of the conversation reading panel'),
   { key: 'surfaces.transcript-shadow-style', group: 'surfaces', variable: '--surfaces-transcript-shadow-style', label: 'Transcript shadow', description: 'Add a soft drop shadow around the opaque transcript panel; has no effect with Open layout', kind: 'style', sample: 'surfaces-transcript-shadow', options: [{ id: 'none', label: 'None' }, { id: 'drop-shadow', label: 'Drop shadow' }] },
+  { key: 'surfaces.transcript-shadow-strength', group: 'surfaces', variable: '--surfaces-transcript-shadow-strength', label: 'Transcript shadow strength', description: 'Make the shadow wider and darker: 0% hides it, 100% is the original size, and 300% is strongest. Applies to Drop shadow with Opaque panel layout.', kind: 'range', min: 0, max: 3, step: 0.05, unit: 'percent', sample: 'surfaces-transcript-shadow' },
   color('surfaces.transcript-shadow', 'Transcript shadow color', 'The drop shadow around the opaque transcript panel, separate from its background and border'),
   color('surfaces.overlay', 'Popover and toast background', 'The selection menu, active tab, and toasts; their text color is chosen automatically'),
 

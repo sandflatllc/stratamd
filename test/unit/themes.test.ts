@@ -17,14 +17,14 @@ afterEach(async () => {
 })
 
 describe('theme schema', () => {
-  it('exposes exactly 57 color swatches with dedicated chart and table colors and eleven non-color values', () => {
+  it('exposes exactly 57 color swatches with dedicated chart and table colors and twelve non-color values', () => {
     const colors = THEME_KEYS.filter((entry) => entry.kind === 'color')
     expect(colors).toHaveLength(57)
     expect(new Set(colors.map((entry) => entry.key)).size).toBe(57)
     const counts = Object.fromEntries(THEME_GROUPS.map((group) => [group, colors.filter((entry) => entry.group === group).length]))
     expect(counts).toEqual({ fonts: 0, surfaces: 12, interface: 4, document: 9, controls: 7, changes: 2, people: 6, visuals: 12, effects: 5 })
     const nonColor = THEME_KEYS.filter((entry) => entry.kind !== 'color')
-    expect(nonColor.map((entry) => entry.key)).toEqual(['fonts.text', 'fonts.code', 'surfaces.transcript-style', 'surfaces.transcript-shadow-style', 'visuals.table-style', 'effects.background-style', 'effects.panel-style', 'effects.side-window-style', 'effects.side-window-opacity', 'effects.intensity', 'effects.speed'])
+    expect(nonColor.map((entry) => entry.key)).toEqual(['fonts.text', 'fonts.code', 'surfaces.transcript-style', 'surfaces.transcript-shadow-style', 'surfaces.transcript-shadow-strength', 'visuals.table-style', 'effects.background-style', 'effects.panel-style', 'effects.side-window-style', 'effects.side-window-opacity', 'effects.intensity', 'effects.speed'])
   })
 
   it('gives every entry a job label, a visible target description, and highlight metadata', () => {
@@ -79,6 +79,7 @@ describe('theme normalization', () => {
     expect(old.values['surfaces.transcript-style']).toBe('panel')
     expect(old.values['surfaces.transcript-shadow-style']).toBe('none')
     expect(old.values['surfaces.transcript-shadow']).toBe('#000000')
+    expect(old.values['surfaces.transcript-shadow-strength']).toBe(1)
     expect(old.values['surfaces.transcript']).toBe(DEFAULT_THEME_VALUES['surfaces.transcript'])
     expect(old.set).not.toContain('surfaces.transcript')
     expect(old.problems).toEqual([])
@@ -205,7 +206,7 @@ describe('ThemeStore', () => {
     expect(await store.ids()).toEqual([first.id])
   })
 
-  it('New from this on every stock theme writes all 57 swatches and all eleven non-color values', async () => {
+  it('New from this on every stock theme writes all 57 swatches and all twelve non-color values', async () => {
     const store = new ThemeStore({ configDirectory: await temporaryDirectory() })
     for (const id of STOCK_THEMES.keys()) {
       const copy = await store.create(`Copy of ${id}`, id)
