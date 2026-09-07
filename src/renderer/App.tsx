@@ -183,6 +183,7 @@ export function App({ createEditor }: AppProps) {
   useLayoutEffect(() => { latestDocument.current = view.activeDocument }, [view.activeDocument])
   /** What this window last committed, so a push that merely echoes it never overrides a drag in progress (§5.14). */
   const committedPanels = useRef<PanelSizes | null>(null)
+  const pendingPanelWrites = useRef(0)
   const committedZoom = useRef<PaneZoom | null>(null)
   /** Pending changes and open suggestions seen per document, for the agent-activity note (§5.4). */
   const activitySeen = useRef(new Map<string, ActivitySnapshot>())
@@ -253,7 +254,7 @@ export function App({ createEditor }: AppProps) {
       if (previousDocument !== undefined && path && path !== previousDocument && !previousDocumentClosed) { setConversationCentered(false); setPreviewCentered(null) }
       previousDocument = path
       setView(next)
-      if (shouldAdoptPushed(next.settings.panelSizes, committedPanels.current)) {
+      if (pendingPanelWrites.current === 0 && shouldAdoptPushed(next.settings.panelSizes, committedPanels.current)) {
         committedPanels.current = next.settings.panelSizes
         setPanelSizes(next.settings.panelSizes)
       }
@@ -357,7 +358,13 @@ export function App({ createEditor }: AppProps) {
 
   const commitPanels = useCallback((next: PanelSizes) => {
     committedPanels.current = next
-    void perform(() => window.strata.updateSettings({ panelSizes: next }))
+    // Unrelated view pushes can still contain the old settings until this write
+    // publishes its acknowledgment. Keep the local gesture through that interval.
+    pendingPanelWrites.current++
+    void perform(async () => {
+      try { await window.strata.updateSettings({ panelSizes: next }) }
+      finally { pendingPanelWrites.current-- }
+    })
   }, [perform])
   const updateThemePanel = useCallback((geometry: ThemePanelGeometry, commit: boolean) => {
     setPanelSizes((sizes) => ({ ...sizes, themePanel: geometry }))

@@ -56,3 +56,47 @@ test('theme panel resizes, zooms independently, and remembers both across restar
     await scenario.dispose()
   }
 })
+
+// Hold panel persistence while a different setting publishes older panel sizes.
+test('a pending panel resize survives an unrelated view push before its save completes', async ({}, testInfo) => {
+  const scenario = await Scenario.create(testInfo, '# Pending panel save\n')
+  try {
+    const page = await scenario.launch()
+    await scenario.app!.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (...args: unknown[]) => Promise<unknown>> })._invokeHandlers
+      const original = handlers.get('strata:update-settings')!
+      const gate = { waiting: 0, release: () => {} }
+      const ready = new Promise<void>(resolve => { gate.release = resolve })
+      Object.assign(globalThis, { __panelWriteGate: gate })
+      handlers.set('strata:update-settings', async (...args) => {
+        if ((args[1] as { panelSizes?: unknown }).panelSizes) { gate.waiting++; await ready }
+        return original(...args)
+      })
+    })
+    await openAppMenu(page)
+    await page.getByRole('menuitem', { name: 'Theme', exact: true }).click()
+    const panel = page.getByRole('dialog', { name: 'Theme', exact: true })
+    const grip = panel.getByRole('button', { name: 'Resize theme panel', exact: true })
+    await grip.focus()
+    await page.keyboard.press('ArrowLeft')
+    await expect(panel).toHaveCSS('width', '350px')
+    await expect.poll(() => scenario.app!.evaluate(() => (globalThis as unknown as { __panelWriteGate: { waiting: number } }).__panelWriteGate.waiting)).toBe(1)
+    const motion = await page.evaluate(async () => {
+      const next = !(await window.strata.getState()).settings.animatedBackground
+      await window.strata.updateSettings({ animatedBackground: next })
+      return String(next)
+    })
+    await expect(page.locator('.app-shell')).toHaveAttribute('data-motion', motion)
+    await expect(panel).toHaveCSS('width', '350px')
+    await scenario.app!.evaluate(() => (globalThis as unknown as { __panelWriteGate: { release(): void } }).__panelWriteGate.release())
+    const settings = join(String(scenario.env.XDG_CONFIG_HOME), 'stratamd', 'settings.json')
+    await expect.poll(async () => JSON.parse(await readFile(settings, 'utf8')).panels.themePanel.width).toBe(350)
+    await grip.focus()
+    await page.keyboard.press('ArrowUp')
+    await expect(panel).toHaveCSS('width', '350px')
+    await expect(panel).toHaveCSS('height', '550px')
+  } finally {
+    await scenario.app?.evaluate(() => (globalThis as unknown as { __panelWriteGate?: { release(): void } }).__panelWriteGate?.release()).catch(() => undefined)
+    await scenario.dispose()
+  }
+})
