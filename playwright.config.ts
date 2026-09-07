@@ -16,13 +16,17 @@ const managedTag = /@managed/
 // shared display in 2026-09-02. Public-repo CI runners have four cores. A Mac
 // has one desktop, one focus, and one clipboard, so it runs one worker in
 // total and the override does not apply. Concurrent full runs in separate
-// worktrees reproduced load timeouts on 2026-09-05, so local default is four;
+// worktrees reproduced load timeouts on 2026-09-05, so the default became four;
 // the required eight-worker stress check remains an explicit override.
+// The stock-engine recovery check performs three runtime transitions. Four
+// concurrent UI workers pushed it past its 30-second budget in two full runs
+// on September 6; it finished in about 18 seconds after those workers ended.
+// Keep three ordinary workers beside the managed/clipboard slot.
 const macHost = process.platform === 'darwin'
 function ordinaryWorkerCount(): number {
   if (macHost) return 1
   const override = process.env.STRATAMD_E2E_WORKERS
-  if (override === undefined || override === '') return process.env.CI ? 2 : 4
+  if (override === undefined || override === '') return process.env.CI ? 2 : 3
   if (!/^[1-9]\d*$/.test(override)) {
     throw new Error(`STRATAMD_E2E_WORKERS must be a positive integer such as 4; got ${JSON.stringify(override)}`)
   }

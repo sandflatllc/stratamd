@@ -1,85 +1,71 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Scenario } from './harness'
+import { Scenario, expectActiveDocument, openDocsMenu } from './harness'
 
-/**
- * With more open documents than fit across the window, tabs keep their
- * natural single-line size and the strip scrolls sideways; tabs never
- * shrink, wrap onto multiple lines, or get clipped out of reach.
- */
+// Open documents stay in a vertically scrolling menu; the icon bar stays compact.
 let value: Scenario
 test.afterEach(async () => { await value?.dispose() })
 
 async function openDocuments(testInfo: TestInfo, count: number): Promise<Page> {
   value = await Scenario.create(testInfo, '# One\n')
   const page = await value.launch()
+  await page.setViewportSize({ width: 1100, height: 760 })
   for (let i = 2; i <= count; i += 1) {
     const file = join(dirname(value.file), `meeting-notes-${String(i).padStart(2, '0')}.md`)
     await writeFile(file, `# Doc ${i}\n`)
     await page.evaluate((path) => window.strata.openDocument(path), file)
   }
-  // Only pinned and active documents are pills (§6.9); pin them all so the strip can overflow.
-  for (let i = 1; i <= count; i += 1) {
-    const name = i === 1 ? 'scenario.md' : `meeting-notes-${String(i).padStart(2, '0')}.md`
-    await page.getByRole('button', { name: 'Docs menu' }).click()
-    await page.getByRole('button', { name: `Pin ${name}` }).click()
-    await page.keyboard.press('Escape')
-  }
-  await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(count)
+  await openDocsMenu(page)
+  await expect(page.getByRole('menu', { name: 'Open docs' }).getByRole('menuitem')).toHaveCount(count)
   return page
 }
 
-function strip(page: Page) {
-  return page.locator('.tabs')
-}
+const menu = (page: Page) => page.getByRole('menu', { name: 'Open docs', exact: true })
 
-test('overflowing tabs scroll sideways instead of squishing', async ({}, testInfo) => {
-  const page = await openDocuments(testInfo, 12)
-  const metrics = await strip(page).evaluate((el) => ({
-    scrollable: el.scrollWidth > el.clientWidth,
-    tabHeights: [...el.children].map((tab) => tab.getBoundingClientRect().height)
+test('many open documents scroll vertically without expanding the top bar', async ({}, testInfo) => {
+  const page = await openDocuments(testInfo, 24)
+  const metrics = await menu(page).evaluate(el => ({
+    scrollable: el.scrollHeight > el.clientHeight,
+    rowHeights: [...el.children].map(row => row.getBoundingClientRect().height)
   }))
   expect(metrics.scrollable).toBe(true)
-  // A squished tab wraps its name onto multiple lines and doubles in height.
-  for (const height of metrics.tabHeights) expect(height).toBeLessThan(50)
+  for (const height of metrics.rowHeights) expect(height).toBeLessThan(50)
+  expect(await page.locator('.topbar').evaluate(el => el.scrollWidth > el.clientWidth)).toBe(false)
 })
 
-test('the active tab is scrolled into view when it changes', async ({}, testInfo) => {
-  const page = await openDocuments(testInfo, 12)
-  const lastTab = page.getByRole('tab', { name: /meeting-notes-12\.md/i })
-  await expect(lastTab).toHaveAttribute('aria-selected', 'true')
-  const visible = async (tab: typeof lastTab) => {
-    const [tabBox, stripBox] = [await tab.boundingBox(), await strip(page).boundingBox()]
-    return tabBox!.x >= stripBox!.x - 1 && tabBox!.x + tabBox!.width <= stripBox!.x + stripBox!.width + 1
-  }
-  expect(await visible(lastTab)).toBe(true)
-
-  // Reactivating the first document scrolls its tab back into view.
-  await page.evaluate((path) => window.strata.openDocument(path), value.file)
-  const firstTab = page.getByRole('tab', { name: /scenario\.md/i })
-  await expect(firstTab).toHaveAttribute('aria-selected', 'true')
-  expect(await visible(firstTab)).toBe(true)
+test('keyboard navigation reaches both ends of the open-document menu', async ({}, testInfo) => {
+  const page = await openDocuments(testInfo, 24)
+  await page.keyboard.press('End')
+  const last = menu(page).getByRole('menuitem', { name: 'meeting-notes-24.md', exact: true })
+  await expect(last).toBeFocused()
+  await expect.poll(() => menu(page).evaluate(el => el.scrollTop)).toBeGreaterThan(0)
+  await page.keyboard.press('Home')
+  const first = menu(page).getByRole('menuitem', { name: 'scenario.md', exact: true })
+  await expect(first).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(menu(page)).toBeHidden()
+  await expectActiveDocument(page, /scenario\.md/)
 })
 
-test('a vertical wheel over the strip scrolls it sideways', async ({}, testInfo) => {
-  const page = await openDocuments(testInfo, 12)
-  await page.evaluate((path) => window.strata.openDocument(path), value.file)
-  await expect(page.getByRole('tab', { name: /scenario\.md/i })).toHaveAttribute('aria-selected', 'true')
-  await strip(page).hover()
+test('a vertical wheel scrolls the open-document list', async ({}, testInfo) => {
+  const page = await openDocuments(testInfo, 24)
+  await menu(page).hover()
   await page.mouse.wheel(0, 120)
-  await expect.poll(() => strip(page).evaluate((el) => el.scrollLeft)).toBeGreaterThan(0)
+  await expect.poll(() => menu(page).evaluate(el => el.scrollTop)).toBeGreaterThan(0)
 })
 
-test('one long file name is capped with an ellipsis instead of eating the strip', async ({}, testInfo) => {
+test('one long file name truncates in the menu and keeps its full path tooltip', async ({}, testInfo) => {
   value = await Scenario.create(testInfo, '# One\n')
   const page = await value.launch()
   const file = join(dirname(value.file), 'quarterly-planning-meeting-notes-with-follow-ups-and-decisions.md')
   await writeFile(file, '# Long\n')
-  await page.evaluate((path) => window.strata.openDocument(path), file)
-  const tab = page.getByRole('tab', { name: /quarterly-planning/i })
-  await expect(tab).toHaveAttribute('aria-selected', 'true')
-  expect((await tab.boundingBox())!.width).toBeLessThanOrEqual(222)
-  // The full name stays reachable as a tooltip.
-  await expect(tab).toHaveAttribute('title', 'quarterly-planning-meeting-notes-with-follow-ups-and-decisions.md')
+  await page.evaluate(path => window.strata.openDocument(path), file)
+  await openDocsMenu(page)
+  const item = menu(page).getByRole('menuitem', { name: /quarterly-planning/i })
+  await expect(item).toHaveAttribute('aria-current', 'true')
+  const title = item.locator('.tab-name')
+  await expect(title).toHaveCSS('text-overflow', 'ellipsis')
+  expect(await title.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true)
+  await expect(item).toHaveAttribute('title', file)
 })

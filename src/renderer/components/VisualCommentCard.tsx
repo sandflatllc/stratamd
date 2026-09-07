@@ -23,7 +23,7 @@ export function visualCardText(comment: VisualCommentView): string {
 export function latestVisualReply(comment: VisualCommentView): { from: string; text: string; file?: string } | null {
   const revision = comment.revisions.at(-1)
   const reply = revision?.replies.at(-1)
-  return reply ? { from: revision!.destination.threadTitle, text: reply.text, ...(reply.file ? { file: reply.file } : {}) } : null
+  return reply ? { from: reply.agentName ?? 'Agent', text: reply.text, ...(reply.file ? { file: reply.file } : {}) } : null
 }
 
 /**
@@ -61,6 +61,8 @@ export function VisualCommentCard({ comment, actions = {}, compact = false, chil
       {!compact && <div className="visual-actions">
         {comment.status === 'held' && actions.onOpen && <button type="button" onClick={() => actions.onOpen!(comment)}>Open</button>}
         {comment.status === 'held' && actions.onDiscard && <button type="button" className="visual-action-quiet" onClick={() => actions.onDiscard!(comment)}>Discard</button>}
+        {comment.status === 'failed' && actions.onReopen && <button type="button" onClick={() => actions.onReopen!(comment)}>Edit and send again</button>}
+        {comment.status === 'failed' && actions.onDiscard && <button type="button" onClick={() => actions.onDiscard!(comment)}>Discard send</button>}
         {comment.status === 'failed' && actions.onRetry && <button type="button" onClick={() => actions.onRetry!(comment)}>Retry</button>}
         {comment.status === 'ready' && actions.onAccept && <button type="button" className="visual-action-positive" onClick={() => actions.onAccept!(comment)}>Looks right</button>}
         {comment.status === 'ready' && actions.onReopen && <button type="button" className="visual-action-danger" onClick={() => actions.onReopen!(comment)}>Still wrong</button>}
@@ -93,7 +95,7 @@ export function VisualCommentPanel({ comment, actions, notice, onOpenPage, onClo
         {[...comment.revisions].reverse().map((revision) => <li key={revision.number}>
           <strong>Send {revision.number}</strong> <small>{revision.state === 'sending' ? 'sending' : revision.state === 'failed' ? 'failed' : `sent ${threadTime(revision.sentAt, now)}`} · to {revision.destination.threadTitle}</small>
           {revision.text && <p>{revision.text}</p>}
-          {revision.replies.map((reply, index) => <p className="visual-history-reply" key={index}><small>{revision.destination.threadTitle}{reply.ready ? ' · ready for review' : ''}</small>{reply.text}</p>)}
+          {revision.replies.map((reply, index) => <div className="visual-history-reply" key={index}><small>{reply.agentName ?? 'Agent'}{reply.ready ? ' · ready for review' : ''}</small><p>{reply.text}</p>{reply.comparison && <figure className="visual-compare" aria-label="Reply comparison"><div><img src={reply.comparison.thenUrl} alt="Original appearance" /><figcaption>then</figcaption></div><div>{reply.comparison.nowUrl ? <img src={reply.comparison.nowUrl} alt="Implemented appearance" /> : <span>views differ</span>}<figcaption>now</figcaption></div>{reply.comparison.note && <p>{reply.comparison.note}</p>}</figure>}</div>)}
         </li>)}
       </ol>}
     </section>

@@ -1,5 +1,5 @@
 import type { DraftKind, EngineMessageView } from '../shared/contracts'
-import { VISUAL_BRIEF_INSTRUCTIONS, type VisualBrief } from './visual-comments'
+import type { VisualBrief } from './visual-comments'
 
 export interface MessageAnchor {
   message: string
@@ -65,8 +65,7 @@ export function renderConversationDelivery(input: ConversationDelivery): string 
     ['Replies', input.replies], ['Message blocks', input.blocks], ['Strata block outcomes', input.outcomes],
     ['Visual comments', input.visual ?? []],
   ]
-  const visualNote = input.visual?.length ? `\n${VISUAL_BRIEF_INSTRUCTIONS}\n` : ''
-  return `# Conversation context\n\nDelivery: ${input.deliveryId}\nThread: ${input.threadId}\n\nAnswer owner passage feedback in your normal response in the main conversation. Comments stay saved for navigation and do not need threaded replies or resolution.\n${visualNote}` + sections.filter(([, rows]) => rows.length).map(([title, rows]) => `\n## ${title}\n\n\`\`\`json\n${JSON.stringify(rows, null, 2)}\n\`\`\`\n`).join('')
+  return `# Conversation context\n\nDelivery: ${input.deliveryId}\nThread: ${input.threadId}\n` + sections.filter(([, rows]) => rows.length).map(([title, rows]) => `\n## ${title}\n\n\`\`\`json\n${JSON.stringify(rows, null, 2)}\n\`\`\`\n`).join('')
 }
 export function conversationDelivery(threadId: string, deliveryId: string, annotations: MessageComment[], replies: Record<string, { text: string }>, messages: EngineMessageView[], outcomes: ConversationOutcome[], visual: VisualBrief[] = []): ConversationDelivery {
   const blocks = new Map<string, ConversationDelivery['blocks'][number]>()

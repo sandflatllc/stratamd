@@ -1,12 +1,13 @@
 import { engineStorage } from '../engineStorage'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
 import { AddProjectDialog } from './AddProjectDialog'
-import { PlusIcon } from '../icons/lucide'
+import { GlobeIcon, PlusIcon } from '../icons/lucide'
 import { buildProjectsRail, moveProject, orderProjects, projectThreadState, resolveShelfThreads, type ProjectFolderState, type ProjectShelfEntry, type ProjectThreadSort, type ProjectThreadState } from '../../core/projects-rail'
 import type { EngineThreadChange, EngineThreadView, EngineView } from '../../shared/contracts'
 
 interface ProjectsPanelProps {
   engine: EngineView
+  query: string
   onOpenThread(threadId: string): void
   onBeginRename(): void
   onReconnect(): void
@@ -146,8 +147,7 @@ function Shelf({ label, entries, activeThreadId, expanded, visibleCount, nowMs, 
   </section>
 }
 
-export function ProjectsPanel({ engine, onOpenThread, onBeginRename, onReconnect, onNewThread, onAddProject, onAction, onUpdate, onOpenEngine, onOpenPreview, attachedThreadIds = new Set(), now = Date.now }: ProjectsPanelProps) {
-  const [query, setQuery] = useState('')
+export function ProjectsPanel({ engine, query, onOpenThread, onBeginRename, onReconnect, onNewThread, onAddProject, onAction, onUpdate, onOpenEngine, onOpenPreview, attachedThreadIds = new Set(), now = Date.now }: ProjectsPanelProps) {
   const [sort, setSort] = useState<ProjectThreadSort>('recent')
   const [preferences, setPreferences] = useState<FolderPreferences>(readPreferences)
   const [order, setOrder] = useState<string[]>(readOrder)
@@ -161,14 +161,12 @@ export function ProjectsPanel({ engine, onOpenThread, onBeginRename, onReconnect
   const [menu, setMenu] = useState<{ thread: EngineThreadView; x: number; y: number } | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [addingProject, setAddingProject] = useState(false)
-  const search = useRef<HTMLInputElement>(null)
 
   useEffect(() => { try { engineStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences)) } catch { /* Disposable view preference. */ } }, [preferences])
   useEffect(() => { try { engineStorage.setItem(ORDER_KEY, JSON.stringify(order)) } catch { /* Disposable view preference. */ } }, [order])
   useEffect(() => {
     const keydown = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') setMenu(null)
-      if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 'k') { event.preventDefault(); search.current?.focus() }
     }
     const close = () => setMenu(null)
     window.addEventListener('keydown', keydown)
@@ -244,19 +242,18 @@ export function ProjectsPanel({ engine, onOpenThread, onBeginRename, onReconnect
 
 
   if (engine.state === 'unpaired') return <div className="engine-empty" data-testid="engine-unpaired">No engine paired.<small>Pair StrataMD with your T3 server to see its projects.</small>{onOpenEngine && <button type="button" onClick={onOpenEngine}>Pair engine</button>}</div>
+  if (engine.managed && ['failed', 'stopped', 'recovering'].includes(engine.managed.state)) return <div className="engine-empty" data-testid="engine-disconnected">{engine.managed.state === 'recovering' ? 'Restarting the engine…' : 'The engine on this computer is stopped.'}<button type="button" onClick={onOpenEngine}>This computer</button></div>
   if (engine.state === 'disconnected' || engine.state === 'connecting') return <div className="engine-empty" data-testid="engine-disconnected">{engine.server ?? 'Engine'} is {engine.state === 'connecting' ? 'connecting' : 'disconnected'}.<button type="button" onClick={onReconnect}>Reconnect</button></div>
 
   return <div className="projects-panel">
-    <div className="projects-search"><span aria-hidden="true">⌕</span><input ref={search} type="search" aria-label="Search threads" placeholder="Search threads" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>Ctrl K</kbd></div>
     <header className="projects-header"><h2>Projects</h2><label title="Sort threads"><span className="sr-only">Sort projects</span><select aria-label="Sort projects" value={sort} onChange={(event) => setSort(event.target.value as ProjectThreadSort)}><option value="recent">Recent</option><option value="oldest">Oldest</option><option value="title">Name</option></select></label><button type="button" aria-label="Add project" title="Add project" onClick={() => setAddingProject((value) => !value)}><PlusIcon /></button></header>
-    <div className="projects-primary-actions"><button type="button" title="New thread (Ctrl+Shift+N)" onClick={() => onNewThread()}>New thread</button></div>
     {addingProject && <AddProjectDialog engine={engine} onClose={() => setAddingProject(false)} />}
     <div className="project-folders" ref={folderList} data-reordering={drag !== null || undefined}>
       {filtered.folders.map((folder) => {
         const state = preference(folder.project.id)
         const id = folder.project.id
         return <section className="project-group" key={id} data-project={id} data-open={state.open} data-dragging={drag?.id === id || undefined} data-drop={drag && drag.target === id && drag.id !== id ? drag.edge : undefined}>
-          <div className="project-folder-row" onPointerDown={(event) => pressFolder(event, id)} onPointerMove={moveFolder} onPointerUp={(event) => releaseFolder(event)} onPointerCancel={(event) => releaseFolder(event, true)} onClickCapture={guardFolderClick}><button type="button" className="project-folder-header" aria-expanded={state.open} aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" title={folder.project.workspaceRoot} onKeyDown={(event) => nudgeFolder(event, id)} onClick={() => updatePreference(id, { open: !state.open })}><i className="project-folder-chevron" aria-hidden="true">›</i><span className="project-folder-icon" aria-hidden="true">▱</span><strong>{folder.project.title}</strong>{folder.state && <span className="project-folder-state" data-state={folder.state} role="img" aria-label={FOLDER_STATE_LABEL[folder.state]} />}</button>{onOpenPreview && <button type="button" className="project-preview" aria-label={`Preview ${folder.project.title}`} title={`Open a preview of ${folder.project.title}`} onClick={() => onOpenPreview(folder.project.id)}>◎</button>}<button type="button" className="project-new-thread" aria-label={`New thread in ${folder.project.title}`} title={`New thread in ${folder.project.title}`} onClick={() => onNewThread(folder.project.id)}>＋</button></div>
+          <div className="project-folder-row" onPointerDown={(event) => pressFolder(event, id)} onPointerMove={moveFolder} onPointerUp={(event) => releaseFolder(event)} onPointerCancel={(event) => releaseFolder(event, true)} onClickCapture={guardFolderClick}><button type="button" className="project-folder-header" aria-expanded={state.open} aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" title={folder.project.workspaceRoot} onKeyDown={(event) => nudgeFolder(event, id)} onClick={() => updatePreference(id, { open: !state.open })}><i className="project-folder-chevron" aria-hidden="true">›</i><span className="project-folder-icon" aria-hidden="true">▱</span><strong>{folder.project.title}</strong>{folder.state && <span className="project-folder-state" data-state={folder.state} role="img" aria-label={FOLDER_STATE_LABEL[folder.state]} />}</button>{onOpenPreview && <button type="button" className="project-preview" aria-label={`Open browser for ${folder.project.title}`} title={`Open browser for ${folder.project.title}`} onClick={() => onOpenPreview(folder.project.id)}><GlobeIcon /></button>}<button type="button" className="project-new-thread" aria-label={`New thread in ${folder.project.title}`} title={`New thread in ${folder.project.title}`} onClick={() => onNewThread(folder.project.id)}>＋</button></div>
           {state.open && <>{folder.visibleThreads.map((thread) => <ThreadRow key={thread.id} thread={thread} active={thread.id === engine.activeThreadId} attached={attachedThreadIds.has(thread.id)} nowMs={nowMs} renaming={renamingId === thread.id} onRename={() => beginRename(thread.id)} onDoneRenaming={() => setRenamingId(null)} onOpen={() => onOpenThread(thread.id)} onMenu={(event) => openMenu(event, thread)} onUpdate={(change) => onUpdate(thread.id, change)} onAction={(action) => onAction(thread.id, action)} />)}{folder.hasOverflow && folder.visibleThreads.length < folder.threads.length && <button type="button" className="project-show-more" onClick={() => updatePreference(folder.project.id, { previewCount: state.previewCount + 5 })}>Show more ({folder.threads.length - folder.visibleThreads.length})</button>}{folder.threads.length === 0 && <div className="empty-subtle">No active threads.</div>}</>}
         </section>
       })}

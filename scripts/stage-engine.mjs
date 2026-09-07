@@ -5,6 +5,10 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const source = JSON.parse(await readFile(join(root, 'packaging/engine/runtime-source.json'), 'utf8'))
+const linuxToolchain = process.env.STRATAMD_LINUX_TOOLCHAIN
+  ? source.linuxToolchainProfiles?.[process.env.STRATAMD_LINUX_TOOLCHAIN]
+  : source.linuxToolchain
+if (process.platform === 'linux' && !linuxToolchain) throw new Error(`Unknown pinned Linux toolchain: ${process.env.STRATAMD_LINUX_TOOLCHAIN}`)
 const target = `${process.platform}-${process.arch}`
 if (!source.nodeArchives[target]) throw new Error(`No bundled engine for ${target}. Build Linux x64, macOS x64 or macOS arm64 on that native host.`)
 const destination = resolve(process.argv[2] || join(root, 'build/engine'))
@@ -27,9 +31,38 @@ await mkdir(join(destination, 'node'), { recursive: true })
 run('tar', ['-xzf', archive, '--strip-components=1', '-C', join(destination, 'node')], root)
 for (const file of ['package.json', 'package-lock.json']) await copyFile(join(root, 'packaging/engine', file), join(destination, file))
 const executable = join(destination, 'node/bin/node')
-const env = { ...process.env, PATH: `${join(destination, 'node/bin')}:${process.env.PATH || ''}` }
-run(executable, [join(destination, 'node/lib/node_modules/npm/bin/npm-cli.js'), 'ci', '--omit=dev', '--no-audit', '--no-fund', '--cache', join(cache, 'npm')], destination, env)
+const env = { ...process.env, PATH: `${join(destination, 'node/bin')}:${process.env.PATH || ''}`, npm_config_nodedir: join(destination, 'node') }
+if (process.platform === 'linux') {
+  const toolchain = linuxToolchain
+  const version = (tool, args) => {
+    const result = spawnSync(tool, args, { encoding: 'utf8' })
+    if (result.status !== 0) throw new Error(`Required native tool is unavailable: ${tool}`)
+    return result.stdout.trim()
+  }
+  for (const [tool, args, expected] of [[toolchain.cc, ['-dumpfullversion'], toolchain.gcc], [toolchain.cxx, ['-dumpfullversion'], toolchain.gcc], ['python3', ['--version'], `Python ${toolchain.python}`], ['make', ['--version'], `GNU Make ${toolchain.make}`]]) {
+    if (version(tool, args).split('\n')[0] !== expected) throw new Error(`Native staging requires ${tool} ${expected}; use the pinned Linux toolchain.`)
+  }
+  Object.assign(env, { CC: toolchain.cc, CXX: toolchain.cxx, PYTHON: 'python3', PYTHONDONTWRITEBYTECODE: '1', SOURCE_DATE_EPOCH: toolchain.sourceDateEpoch,
+    CFLAGS: `-ffile-prefix-map=${destination}=. -fdebug-prefix-map=${destination}=.`, CXXFLAGS: `-ffile-prefix-map=${destination}=. -fdebug-prefix-map=${destination}=.`,
+    npm_config_build_from_source: 'true' })
+}
+
+run(executable, [join(destination, 'node/lib/node_modules/npm/bin/npm-cli.js'), 'ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', '--cache', join(cache, 'npm')], destination, env)
+// Build the PTY with the node-gyp version bundled in the authenticated Node archive.
+// Other native dependencies carry lockfile-authenticated platform packages.
+await rm(join(destination, 'node_modules/node-pty/prebuilds'), { recursive: true, force: true })
+run(executable, [join(destination, 'node/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js'), 'rebuild', `--nodedir=${join(destination, 'node')}`], join(destination, 'node_modules/node-pty'), env)
+run(executable, ['scripts/post-install.js'], join(destination, 'node_modules/node-pty'), env)
 run(executable, ['--input-type=module', '-e', "import {createRequire} from 'node:module';const r=createRequire(process.cwd()+'/package.json');r('node-pty');r('msgpackr-extract');await import('@ff-labs/fff-node');"], destination, env)
+// node-gyp emits machine paths in Makefiles, config.gypi and object files.
+// Keep only runtime native modules and the PTY spawn helper from build outputs.
+const nativeBuild = join(destination, 'node_modules/node-pty/build')
+try {
+  for (const entry of await readdir(nativeBuild)) if (entry !== 'Release') await rm(join(nativeBuild, entry), { recursive: true, force: true })
+  for (const entry of await readdir(join(nativeBuild, 'Release'))) if (!entry.endsWith('.node') && entry !== 'spawn-helper') await rm(join(nativeBuild, 'Release', entry), { recursive: true, force: true })
+} catch (error) { if (error.code !== 'ENOENT') throw error }
+for (const entry of await readdir(join(destination, 'node_modules/node-pty/node-addon-api'))) if (entry.endsWith('.target.mk')) await rm(join(destination, 'node_modules/node-pty/node-addon-api', entry))
+await writeFile(join(destination, 'build-provenance.json'), JSON.stringify({ nodeArchiveSHA256: source.nodeArchives[target], headers: 'node/include/node from the verified Node archive', toolchain: process.platform === 'linux' ? linuxToolchain : 'native macOS build; reproducibility unverified' }, null, 2) + '\n')
 const lock = JSON.parse(await readFile(join(destination, 'package-lock.json'), 'utf8'))
 const inventory = []
 const notices = [`Bundled Node ${source.node} and official t3 ${source.t3}.`, 'These packages retain their own licenses. No hosted service access is granted by redistribution.', await readFile(join(destination, 'node/LICENSE'), 'utf8')]
@@ -61,7 +94,7 @@ await writeFile(join(destination, 'THIRD_PARTY_NOTICES.txt'), notices.join('\n')
 await writeFile(join(destination, 'runtime.json'), JSON.stringify({ version: `t3-${source.t3}-node-${source.node}-${target}-r1`, nodeVersion: source.node, platform: process.platform, arch: process.arch, executable: 'node/bin/node', entry: 'node_modules/t3/dist/bin.mjs', integrity: 'integrity.json' }, null, 2) + '\n')
 const files = {}
 async function visit(directory) {
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
+  for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
     const path = join(directory, entry.name), key = relative(destination, path)
     if (entry.isDirectory()) await visit(path)
     else if (entry.isSymbolicLink()) files[key] = { link: await readlink(path) }

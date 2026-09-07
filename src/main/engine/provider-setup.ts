@@ -85,7 +85,15 @@ export class ProviderSetupJobs {
           try {
             if (this.#view.state === 'running') {
               if (error || code !== 0) throw error ?? new Error(`The provider tool exited with ${code ?? 'a signal'}. Review its message and try again.`)
-              if (action === 'install') await saveBinary(installedBinary!)
+              if (action === 'install') {
+                this.#view = { ...this.#view, installedBinary: installedBinary! }
+                try { await saveBinary(installedBinary!) } catch {
+                  this.#view = { ...this.#view, state: 'done', message: 'Installed. Your account settings were kept. Choose Use installed tool to assign it.', output: '' }
+                  await refresh()
+                  resolve()
+                  return
+                }
+              }
               this.#view = { ...this.#view, state: 'done', message: action === 'install' ? 'Installed. Sign in to use this account.' : 'Sign-in finished. Account status refreshed.', output: '' }
               await refresh()
             }

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, readdir, readlink, stat } from 'node:fs/promises'
+import { mkdtemp, readdir, readlink, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -37,7 +37,7 @@ async function discoverPackagedRoot(): Promise<string | undefined> {
   // Discovery runs only for test:packaged; a plain `pnpm test` with a stale
   // dist directory must not silently grow a two-minute packaged run.
   if (process.env.STRATAMD_PACKAGED_TEST !== '1') return undefined
-  const dist = resolve('dist')
+  const dist = JSON.parse(await readFile('build/latest-package.json', 'utf8')).output as string
   if (process.platform === 'darwin') {
     let entries
     try {

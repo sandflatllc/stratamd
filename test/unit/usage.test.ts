@@ -7,6 +7,7 @@ it('counts disjoint inputs once, includes cache creation, and never adds reasoni
   const summary = usageFixture({ sinceDay: '2026-09-01', untilDay: '2026-09-03', timeZone: 'UTC' })
   const totals = summarizeUsage(summary)
   expect(totals.sessions).toBe(4)
+  expect(totals.cacheSavingsUsd).toBe(6)
   expect(summary.buckets.reduce((sum, bucket) => sum + bucket.sessions, 0)).toBe(12)
   expect(totals.tokens).toBe(summary.buckets.reduce((sum, bucket) => sum + processedTokens(bucket.totals), 0))
   expect(usageRows([...summary.buckets].reverse(), 'day').map(row => row.label)).toEqual(['2026-09-01', '2026-09-02', '2026-09-03'])
@@ -29,5 +30,5 @@ it('keeps empty and unpriced usage honest', () => {
   summary.buckets[0]!.unpricedRecords = 2
   expect(summarizeUsage(summary).unpricedRecords).toBe(2)
   summary.buckets = []; summary.sources = []
-  expect(summarizeUsage(summary)).toMatchObject({ tokens: 0, costUsd: 0, sessions: 0, providers: [] })
+  expect(summarizeUsage(summary)).toMatchObject({ tokens: 0, costUsd: 0, cacheSavingsUsd: 0, sessions: 0, providers: [] })
 })

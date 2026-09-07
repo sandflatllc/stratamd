@@ -1,9 +1,8 @@
 import { EngineRecovery } from './EngineRecovery'
 import { ComputerControls } from './ComputerControls'
-import { useRef, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { EngineView, PairEngineRequest } from '../../shared/contracts'
-import { XIcon } from '../icons/lucide'
-import { useDialogFocus } from '../useDialogFocus'
+import { SetupDialog } from './SetupDialog'
 
 interface EngineDialogProps {
   engine: EngineView
@@ -31,14 +30,12 @@ export function engineStateLabel(engine: EngineView): string {
  * replaces the stored credential.
  */
 export function EngineDialog({ engine, onPair, onReconnect, onClose, onOpenAccounts, children }: EngineDialogProps) {
-  const dialogRef = useRef<HTMLElement>(null)
   const [link, setLink] = useState('')
   const [host, setHost] = useState('')
   const [code, setCode] = useState('')
   const [pairExpanded, setPairExpanded] = useState(!engine.managed && engine.state === 'unpaired')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  useDialogFocus(dialogRef, onClose)
   const paired = engine.state !== 'unpaired'
   const request: PairEngineRequest | null = link.trim() ? { link } : host.trim() && code.trim() ? { host, code } : null
   const pair = async () => {
@@ -55,33 +52,34 @@ export function EngineDialog({ engine, onPair, onReconnect, onClose, onOpenAccou
     }
   }
   return (
-    <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <section ref={dialogRef} tabIndex={-1} className="modal engine-dialog" role="dialog" aria-modal="true" aria-labelledby="engine-title">
-        <div className="parity-dialog-heading"><h2 id="engine-title">{engine.managed ? 'This computer' : 'Engine'}</h2><button type="button" className="quiet-button icon-button" aria-label="Close dialog" onClick={onClose}><XIcon /></button></div>
-        <p className="modal-subtitle">The T3 server that runs your agents.</p>
+    <SetupDialog title={engine.managed ? 'This computer' : 'Engine'} subtitle="The T3 server that runs your agents." onClose={onClose} className="engine-dialog" footer={<>
+      {onOpenAccounts && paired && <button type="button" className="quiet-button" onClick={onOpenAccounts}>Accounts</button>}
+      <button type="button" className="primary-button" onClick={onClose}>Close</button>
+    </>}>
         <dl className="engine-facts">
-          <div><dt>Server</dt><dd data-testid="engine-server">{engine.server ?? 'None'}</dd></div>
-          <div><dt>Status</dt><dd data-testid="engine-status" data-state={engine.state}>{engineStateLabel(engine)}</dd></div>
+          {engine.managed && <div><dt>Engine</dt><dd>T3 {engine.managed.version?.match(/^t3-(.+?)-node-/)?.[1] ?? engine.managed.version ?? 'bundled'}</dd></div>}
+          <div><dt>Address</dt><dd data-testid="engine-server">{engine.server ?? 'None'}</dd></div>
+          <div><dt>Status</dt><dd data-testid="engine-status" data-state={engine.state}>{engine.managed?.state === 'recovering' ? 'Restarting' : engineStateLabel(engine)}</dd></div>
+          {engine.managed && <div><dt>Data</dt><dd title={engine.managed.directory}>{engine.managed.directory}</dd></div>}
           {engine.credential && <div><dt>Session</dt><dd data-testid="engine-session">{engine.credential.renews ? 'Renews itself' : `Ends ${new Date(engine.credential.expiresAt).toLocaleDateString()}. Pair again with Manage access and it renews itself.`}</dd></div>}
         </dl>
         {engine.managed && <section>
-          <p>{engine.managed.state === 'starting' ? 'Starting the engine…' : `T3 ${engine.managed.version?.match(/^t3-(.+?)-node-/)?.[1] ?? engine.managed.version ?? 'bundled'} · Node ${engine.managed.nodeVersion ?? 'bundled'}`}</p>
           {engine.managed.problem && <p role="alert">{engine.managed.problem}</p>}
-          <p>Documents remain available when the engine is stopped.</p>
-          <button type="button" className="quiet-button" onClick={() => { void window.strata.manageEngine?.('restart').catch(error => setError(String(error))) }}>Restart engine</button>
-          <details><summary>Engine details</summary><p>{engine.managed.directory}</p><p>Runtime {engine.managed.version}</p></details>
+          {engine.managed.failure && <p className="engine-hint">Stopped at {new Date(engine.managed.failure.at).toLocaleTimeString()}{engine.managed.failure.signal ? ` with ${engine.managed.failure.signal}` : engine.managed.failure.exitCode !== null ? ` with exit code ${engine.managed.failure.exitCode}` : ''}.</p>}
+          {['failed', 'stopped'].includes(engine.managed.state) && <button type="button" className="primary-button" onClick={() => { void window.strata.manageEngine?.('restart').catch(error => setError(String(error))) }}>Restart engine</button>}
+          <button type="button" className="quiet-button" onClick={() => { void window.strata.manageEngine?.('show-log').catch(error => setError(String(error))) }}>Show log</button>
         </section>}
         {engine.managed && window.strata.engineRecovery && <EngineRecovery />}
         {engine.managed && window.strata.computer && <ComputerControls />}
-        {engine.problem && engine.state !== 'unpaired' && <p className="engine-problem">{engine.problem}</p>}
+        {!engine.managed?.problem && engine.problem && engine.state !== 'unpaired' && <p className="engine-problem">{engine.problem}</p>}
         {paired && <div className="engine-dialog-row">
-          <button type="button" className={engine.state === 'disconnected' ? 'primary-button' : 'quiet-button'} onClick={onReconnect}>Reconnect</button>
-          {engine.state !== 'disconnected' && engine.server && <button type="button" className="quiet-button" onClick={() => { void window.strata.openExternal?.(`${engine.server!.replace(/\/$/, '')}/settings/connections`).catch((failure) => setError(String(failure))) }}>Open t3 connection settings</button>}
+          {(!engine.managed || engine.managed.state === 'running' && engine.state === 'disconnected') && <button type="button" className={engine.state === 'disconnected' ? 'primary-button' : 'quiet-button'} onClick={onReconnect}>Reconnect</button>}
+          {engine.state !== 'disconnected' && engine.server && <button type="button" className="quiet-button" onClick={() => { void window.strata.openExternal?.(engine.server!).catch((failure) => setError(String(failure))) }}>Open T3 in a browser</button>}
         </div>}
         {!engine.managed && window.strata.manageEngine && <details><summary>Use this computer</summary><p>Your current connection keeps its conversations, document links and unsent drafts. The bundled engine starts with its own projects and conversations.</p><button type="button" className="quiet-button" onClick={() => { setError(''); void window.strata.manageEngine?.('use-managed').catch(error => setError(String(error))) }}>Switch to this computer</button></details>}
         {error && <div className="send-error" role="alert">{error}</div>}
         <details className="engine-pairing" open={pairExpanded} onToggle={(event) => setPairExpanded(event.currentTarget.open)}>
-          <summary>{engine.managed ? 'Use an external server' : paired ? 'Pair again' : 'Pair'}</summary>
+          <summary>{engine.managed ? 'Advanced: use an external server' : paired ? 'Pair again' : 'Pair'}</summary>
         <form className="engine-pairing-form" onSubmit={(event) => { event.preventDefault(); void pair() }}>
           <p className="engine-hint">{paired ? 'Pairing again replaces the stored credential.' : 'Paste the pairing link from T3, or type the host and the code shown beside it. Give the link the Manage access permission so Strata can renew the session itself.'}</p>
           <label>Pairing link<input data-dialog-initial-focus={!paired || undefined} value={link} onChange={(event) => setLink(event.target.value)} placeholder="http://host:3774/pair?token=…" autoComplete="off" spellCheck={false} /></label>
@@ -93,12 +91,7 @@ export function EngineDialog({ engine, onPair, onReconnect, onClose, onOpenAccou
           </div>
         </form>
         </details>
-        <footer className="modal-actions parity-dialog-footer">
-          {onOpenAccounts && paired && <button type="button" className="quiet-button" onClick={onOpenAccounts}>Accounts</button>}
-          <button type="button" className="primary-button" onClick={onClose}>Close</button>
-        </footer>
         {children}
-      </section>
-    </div>
+    </SetupDialog>
   )
 }

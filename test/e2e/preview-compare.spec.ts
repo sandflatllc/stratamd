@@ -17,7 +17,7 @@ const visualComments = async (page: Page) => (await state(page)).engine.projects
 
 async function openProjectPreview(page: Page) {
   await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
-  await page.getByRole('button', { name: 'Preview Cockpit project' }).click()
+  await page.getByRole('button', { name: 'Open browser for Cockpit project' }).click()
   const window = page.getByRole('region', { name: 'Cockpit project preview' })
   await expect(window).toBeVisible()
   return window
@@ -150,13 +150,14 @@ test('adjusting text size on the selected mark changes only that mark on the liv
     await expect(dialog.locator('.visual-chip').filter({ hasText: 'New client button' })).toBeVisible()
     const adjustments = dialog.getByRole('region', { name: 'Adjustments' })
     await expect(adjustments).toBeVisible()
-    await expect(adjustments).toContainText('shown live')
+    await expect(adjustments).toContainText('not shown yet')
     const size = adjustments.locator('[data-kind="text-size"] output')
     await expect(size).toHaveText('as is')
     // One step: the live page changes for that mark only, and the picture is re-captured with the adjustment on it.
     await adjustments.getByRole('button', { name: 'Text size more' }).click()
     await expect(size).toHaveText('slightly larger')
     await expect.poll(fontSize).not.toBe(original)
+    await expect(adjustments).toContainText('shown live')
     const larger = await fontSize()
     expect(await headingSize()).toBe(heading)
     await expect(dialog.locator('.visual-surface img[data-requested]')).toBeVisible()
@@ -221,7 +222,7 @@ test('a Then / now taken after an adjustment session shows no change until the c
     await page.getByRole('region', { name: 'Preview review' }).getByRole('tab', { name: /^Items/ }).click()
     const card = page.locator('#preview-review-panel-annotations .visual-card-row')
     await expect(card.locator('.visual-compare img')).toHaveCount(2)
-    const first = (await visualComments(page)).find((comment) => comment.id === sent.id)!.revisions[0]!.comparison!
+    const first = (await visualComments(page)).find((comment) => comment.id === sent.id)!.revisions[0]!.replies.at(-1)!.comparison!
     expect(first.nowUrl).not.toBeNull()
     expect(await bytesOf(page, first.nowUrl!)).toEqual(await bytesOf(page, first.thenUrl))
     // The code changed: the page is served with the bigger button, the tab reloads, and the next Then / now differs.
@@ -229,8 +230,9 @@ test('a Then / now taken after an adjustment session shows no change until the c
     await window.getByRole('button', { name: 'Reload' }).click()
     await expect.poll(() => evaluate<string>(engine, tabId, 'getComputedStyle(document.querySelector("#new-client")).fontSize')).toBe('20px')
     agentReplies(engine, sent.id, 1, 'Made it bigger in the stylesheet.', true)
-    await expect.poll(async () => (await visualComments(page)).find((comment) => comment.id === sent.id)!.revisions[0]!.comparison!.nowUrl).not.toBe(first.nowUrl)
-    const second = (await visualComments(page)).find((comment) => comment.id === sent.id)!.revisions[0]!.comparison!
+    await expect.poll(async () => (await visualComments(page)).find((comment) => comment.id === sent.id)!.revisions[0]!.replies.at(-1)?.comparison?.nowUrl ?? first.nowUrl).not.toBe(first.nowUrl)
+    const second = (await visualComments(page)).find((comment) => comment.id === sent.id)!.revisions[0]!.replies.at(-1)!.comparison!
+    expect((await visualComments(page)).find(comment => comment.id === sent.id)!.revisions[0]!.replies[0]!.comparison).toEqual(first)
     expect(second.note).toBeNull()
     expect(await bytesOf(page, second.nowUrl!)).not.toEqual(await bytesOf(page, second.thenUrl))
   } finally {

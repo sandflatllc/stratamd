@@ -17,6 +17,8 @@ export interface VisualEvidence {
   height: number
   sizeBytes: number
   createdAt: number
+  protected?: boolean
+  owners?: string[]
 }
 
 const ID_PATTERN = /^e_[0-9a-f-]{36}$/u
@@ -29,6 +31,7 @@ export class VisualEvidenceStore {
   readonly #directory: string
   readonly #now: () => number
   #ready: Promise<void> | null = null
+  #ownership: Promise<unknown> = Promise.resolve()
 
   constructor(directory: string, now: () => number = Date.now) {
     this.#directory = directory
@@ -53,12 +56,12 @@ export class VisualEvidenceStore {
     return join(this.#directory, `${id}.json`)
   }
 
-  async put(input: { bytes: Uint8Array; width: number; height: number; mimeType?: string }): Promise<VisualEvidence> {
+  async put(input: { bytes: Uint8Array; width: number; height: number; mimeType?: string; protected?: boolean }): Promise<VisualEvidence> {
     if (input.bytes.byteLength === 0) throw new Error('A capture cannot be empty')
     await this.#initialize()
-    const record: VisualEvidence = { id: `${VISUAL_EVIDENCE_PREFIX}${randomUUID()}`, mimeType: input.mimeType ?? 'image/png', width: Math.max(1, Math.round(input.width)), height: Math.max(1, Math.round(input.height)), sizeBytes: input.bytes.byteLength, createdAt: this.#now() }
-    await atomicWriteFile(this.path(record.id), input.bytes, { mode: PRIVATE_FILE_MODE })
+    const record: VisualEvidence = { id: `${VISUAL_EVIDENCE_PREFIX}${randomUUID()}`, mimeType: input.mimeType ?? 'image/png', width: Math.max(1, Math.round(input.width)), height: Math.max(1, Math.round(input.height)), sizeBytes: input.bytes.byteLength, createdAt: this.#now(), ...(input.protected ? { protected: true } : {}) }
     await atomicWriteFile(this.#metaPath(record.id), `${JSON.stringify(record)}\n`, { mode: PRIVATE_FILE_MODE })
+    await atomicWriteFile(this.path(record.id), input.bytes, { mode: PRIVATE_FILE_MODE })
     return record
   }
 
@@ -97,20 +100,50 @@ export class VisualEvidenceStore {
     }
   }
 
+  /** A durable owner replaces its previous references atomically per sidecar. */
+  retainOwner(owner: string, ids: readonly string[]): Promise<void> {
+    const update = this.#ownership.then(async () => {
+      await this.#initialize()
+      const keep = new Set(ids)
+      // Add before releasing, so interruption can retain extra evidence but cannot lose it.
+      const files = await readdir(this.#directory)
+      for (const id of keep) {
+        const path = this.#metaPath(id)
+        const meta = JSON.parse(await readFile(path, 'utf8'))
+        await atomicWriteFile(path, JSON.stringify({ ...meta, protected: false, owners: [...new Set([...(meta.owners ?? []), owner])] }), { mode: PRIVATE_FILE_MODE })
+      }
+      for (const file of files) {
+        const id = file.replace(/\.json$/, '')
+        if (!file.endsWith('.json') || !isVisualEvidenceId(id) || keep.has(id)) continue
+        const path = this.#metaPath(id), meta = JSON.parse(await readFile(path, 'utf8'))
+        if (!meta.owners?.includes(owner)) continue
+        await atomicWriteFile(path, JSON.stringify({ ...meta, owners: meta.owners.filter((value: string) => value !== owner) }), { mode: PRIVATE_FILE_MODE })
+      }
+    })
+    this.#ownership = update.catch(() => undefined)
+    return update
+  }
+
   async discard(id: string): Promise<void> {
     await this.#initialize()
+    const metadata = JSON.parse(await readFile(this.#metaPath(id), 'utf8').catch(error => { if (error.code === 'ENOENT') return '{"protected":true}'; throw error }))
+    if (metadata.protected || metadata.owners?.length) return
     for (const path of [this.path(id), this.#metaPath(id)]) {
       try { await unlink(path) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
     }
   }
 
   /** Deletes every piece of evidence whose id is not in `keep`; returns the ids removed. */
-  async sweep(keep: ReadonlySet<string>): Promise<string[]> {
+  async sweep(keep: ReadonlySet<string> | null): Promise<string[]> {
     await this.#initialize()
+    if (!keep) return []
     const removed = new Set<string>()
     for (const entry of await readdir(this.#directory)) {
       const id = entry.replace(/\.(?:bin|json)$/u, '')
       if (!isVisualEvidenceId(id) || keep.has(id) || removed.has(id)) continue
+      // A capture created by an unfinished session remains recoverable across restarts.
+      const raw = JSON.parse(await readFile(this.#metaPath(id), 'utf8').catch(error => { if (error.code === 'ENOENT') return '{"protected":true}'; throw error }))
+      if (raw.protected || raw.owners?.length) continue
       await this.discard(id)
       removed.add(id)
     }

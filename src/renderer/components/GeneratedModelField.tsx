@@ -16,9 +16,9 @@ export function GeneratedModelField({ label, engine, value, onChange }: { label:
       }} />
     </details>
     {model?.options.map(option => {
-      const selected = value.options?.find(value => value.id === option.id)?.value ?? option.currentValue
+      const selected = value.options?.find(value => value.id === option.id)?.value ?? option.currentValue ?? option.options?.find(value => value.isDefault)?.id
       return option.type === 'boolean' ? <Switch key={option.id} label={`${label} ${option.label}`} checked={selected === true} onChange={value => setOption(option.id, value)} /> : <label key={option.id} className="setup-field">{option.label}<select aria-label={`${label} ${option.label}`} value={typeof selected === 'string' ? selected : ''} onChange={event => setOption(option.id, event.target.value)}><option value="" disabled>Choose {option.label.toLowerCase()}</option>{option.options?.map(value => <option key={value.id} value={value.id}>{value.label}</option>)}</select></label>
     })}
-    {account && !account.usable && <p className="engine-hint">This account is not ready. Choose a ready account here or open Accounts to repair its sign-in.</p>}
+    {account && !(account.providerReady ?? account.usable) && <p className="engine-hint">This account is not ready. Choose a ready account here or open Accounts to repair its sign-in.</p>}
   </section>
 }

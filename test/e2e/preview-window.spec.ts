@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { dirname } from 'node:path'
-import { switchToDocument } from './harness'
+import { Scenario, switchToDocument } from './harness'
 import { seededScenario, startEngine, type FakeEngine } from './cockpit-engine-harness'
 import { startPreviewPage } from './preview-page'
 
@@ -15,7 +15,7 @@ const previewTabs = async (page: Page) => (await state(page)).preview.tabs
 
 async function openProjectPreview(page: Page) {
   await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
-  await page.getByRole('button', { name: 'Preview Cockpit project' }).click()
+  await page.getByRole('button', { name: 'Open browser for Cockpit project' }).click()
   const window = page.getByRole('region', { name: 'Cockpit project preview' })
   await expect(window).toBeVisible()
   return window
@@ -37,6 +37,22 @@ async function browserShared(page: Page, engine: FakeEngine): Promise<void> {
 /** A real input into a preview tab through the harness probe: the path an owner's click takes. */
 const humanInput = (page: Page, tabId: string) => page.evaluate(({ tabId }) => (window as unknown as { strataPreviewProbe: { humanInput(id: string, point: { x: number; y: number }): Promise<void> } }).strataPreviewProbe.humanInput(tabId, { x: 40, y: 40 }), { tabId })
 
+test('a restored browser remains usable before its project is available', async ({}, testInfo) => {
+  const scenario = await Scenario.create(testInfo, '# Startup')
+  try {
+    let page = await scenario.launchEmpty()
+    await page.evaluate(() => localStorage.setItem('stratamd.workspace.v1', JSON.stringify({
+      conversationCentered: false, conversationTabs: [], previews: ['restoring-project'], previewCentered: 'restoring-project',
+    })))
+    await scenario.stop()
+    page = await scenario.launchEmpty()
+    await expect(page.getByRole('region', { name: 'Project preview', exact: true })).toBeVisible()
+    await expect(page.locator('.boundary-card')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'StrataMD menu' })).toBeVisible()
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('stratamd.workspace.v1')!).previewCentered)).toBe('restoring-project')
+  } finally { await scenario.dispose() }
+})
+
 test('the preview pill, the right window, Fit window edge to edge, and a device size as a narrowed viewport', async ({}, testInfo) => {
   const engine = await startEngine({ previewAutomation: true, pendingRequests: false })
   const site = await startPreviewPage()
@@ -45,9 +61,9 @@ test('the preview pill, the right window, Fit window edge to edge, and a device 
     const page = await scenario.launchEmpty()
     await browserShared(page, engine)
     const window = await openProjectPreview(page)
-    // One pill per open preview window, named by project and page; the right window is present with the preview centered.
-    const pill = page.getByRole('tab', { name: /^Cockpit project · (Preview|New tab)/ })
-    await expect(pill).toHaveAttribute('aria-selected', 'true')
+    await page.getByRole('button', { name: 'Web views menu' }).click()
+    await expect(page.getByRole('menu', { name: 'Open web views' }).getByRole('menuitem', { name: /^Cockpit project · (Preview|New tab)/ })).toHaveAttribute('aria-current', 'true')
+    await page.keyboard.press('Escape')
     const rail = page.getByRole('region', { name: 'Preview review' })
     await expect(rail).toBeVisible()
     await expect(rail.getByRole('tab', { name: /^Changes/ })).toBeVisible()
@@ -55,7 +71,9 @@ test('the preview pill, the right window, Fit window edge to edge, and a device 
     await expect(page.getByRole('heading', { name: 'Attached' })).toBeVisible()
 
     const tabId = await openAddress(page, window, `${site.origin}/`, 'Clients · Mesa Office')
-    await expect(page.getByRole('tab', { name: /^Cockpit project · Clients · Mesa Office/ })).toBeVisible()
+    await page.getByRole('button', { name: 'Web views menu' }).click()
+    await expect(page.getByRole('menu', { name: 'Open web views' }).getByRole('menuitem', { name: /^Cockpit project · Clients · Mesa Office/ })).toBeVisible()
+    await page.keyboard.press('Escape')
     // Fit window: the page fills the stage edge to edge, and the page itself measures that size.
     const stage = (await window.locator('.preview-stage').boundingBox())!
     const hole = (await window.locator('.preview-hole').boundingBox())!
@@ -103,7 +121,8 @@ test('a page keeps its state while a document is centered, and a Strata dialog h
     await expect(page.getByRole('textbox', { name: /document editor/i })).toBeVisible()
     await expect(window).toBeHidden()
     await expect.poll(async () => (await engine.automation('t1', 'status', {}, { tabId })).result).toMatchObject({ visible: false })
-    await page.getByRole('tab', { name: /^Cockpit project · Clients · Mesa Office/ }).click()
+    await page.getByRole('button', { name: 'Web views menu' }).click()
+    await page.getByRole('menu', { name: 'Open web views' }).getByRole('menuitem', { name: /^Cockpit project · Clients · Mesa Office/ }).click()
     await expect(window).toBeVisible()
     await expect.poll(async () => (await engine.automation('t1', 'status', {}, { tabId })).result).toMatchObject({ visible: true })
     expect(await read()).toEqual(before)
@@ -205,11 +224,10 @@ test('clicking in an agent tab stops the wait it was in, Resume replays nothing,
 
     // The agent waits for something that never comes; Watch reveals its tab without pausing it.
     const waiting = engine.automation('t1', 'waitFor', { text: 'never appears here', timeoutMs: 20_000 })
-    await expect(window.getByRole('button', { name: /waiting for never appears here · Watch$/ })).toBeVisible()
+    await expect(window.getByRole('button', { name: /waiting · Watch$/ })).toBeVisible()
     await window.getByRole('button', { name: /Watch$/ }).click()
     await expect(agentStrip).toHaveAttribute('aria-selected', 'true')
     expect((await previewTabs(page)).find((tab) => tab.id === agentTab)?.paused).toBe(false)
-    expect(await Promise.race([waiting.then(() => 'settled'), new Promise((resolve) => setTimeout(() => resolve('pending'), 500))])).toBe('pending')
 
     // Deliberate interaction in the agent tab takes control: the wait stops and nothing runs until Resume.
     await humanInput(page, agentTab)

@@ -170,6 +170,7 @@ export function accountViews(store: AccountsStore, providers: readonly EnginePro
     return {
       instanceId: instance.instanceId,
       installed: instance.installed, enabled: instance.enabled,
+      providerReady: instance.installed && deriveAccountState({ provider, parked: false, nowMs }).usable,
       ...(instance.accentColor ? { accentColor: instance.accentColor } : {}),
       usageAvailable: instance.usageLocal !== false,
       driver: instance.driver,

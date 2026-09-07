@@ -1,3 +1,4 @@
+import { expectDocumentListed } from './harness'
 import { expect, test } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -45,7 +46,7 @@ test('populated renderer preserves the handoff tokens, controls, and motion poli
     const page = await value.launch()
     await page.setViewportSize({ width: 1600, height: 900 })
     await page.evaluate(async (path) => window.strata.openDocument(path), notes)
-    await expect(page.getByRole('tab', { name: /notes\.md/i })).toBeVisible()
+    await expectDocumentListed(page, /notes\.md/i)
     await page.evaluate(async (path) => window.strata.openDocument(path), value.file)
 
     const state = await value.inspectDocument()

@@ -232,13 +232,14 @@ The setup command is safe to repeat. If you move the app, run it again. `stratam
 <details>
 <summary>Manual Linux setup</summary>
 
-The same steps the script runs. You need git, Node.js 22 or newer, pnpm, python3, make, and g++ for the native module, and desktop-file-utils and shared-mime-info for the desktop entry (without those two, setup still works and prints what to install).
+The same steps the script runs. You need git, Node.js 22 or newer and pnpm. The default Linux build checks GCC 16.2.1, Python 3.14.7 and Make 4.4.1 before compiling its native terminal module. Ubuntu 24.04 has a separate pinned profile described in [the build evidence](docs/release/bundled-engine.md). Desktop integration uses desktop-file-utils and shared-mime-info; without those two, setup still works and prints what to install.
 
 ```bash
 pnpm install
 node node_modules/electron/install.js
 pnpm build:linux
-./dist/linux-unpacked/stratamd setup --skill claude
+strata_package_output=$(node -p 'JSON.parse(require("node:fs").readFileSync("build/latest-package.json", "utf8")).output')
+"$strata_package_output/linux-unpacked/stratamd" setup --skill claude
 stratamd open README.md
 ```
 
@@ -269,3 +270,5 @@ Bug reports, questions, and opinions can go to <dillonc@sandflatllc.com>.
 <p align="center">
   <img src="resources/stratamd-icon.svg" width="56" alt="The StrataMD folded-S icon">
 </p>
+
+Package builds write to a fresh directory under `release/`; `build/latest-package.json` records the latest completed output. Building and installing are separate. Outstanding bundled-engine checks are in [the release checklist](docs/release/bundled-engine.md).

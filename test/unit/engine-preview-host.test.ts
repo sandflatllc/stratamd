@@ -32,8 +32,9 @@ function engine(options: { identity?: string | null; accept?: boolean } = {}) {
     if (tag === 'previewAutomation.respond') { answers.push(payload); return null }
     return null
   })
-  const fetch = vi.fn(async (input: string | URL | Request) => {
+  const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input)
+    if (url.endsWith('/.well-known/t3/environment') && new Headers(init?.headers).get('authorization') !== 'Bearer secret') return new Response('authentication required', { status: 401 })
     if (url.endsWith('/.well-known/t3/environment')) return identity ? Response.json({ environmentId: identity, label: 'Fake' }) : new Response('nope', { status: 404 })
     if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
     if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
@@ -69,9 +70,9 @@ async function client(fake: ReturnType<typeof engine>, directory: string, bridge
 describe('the engine identity read', () => {
   it('reads the environment id from the well-known descriptor and refuses anything else', async () => {
     const fake = engine()
-    expect(await readEngineIdentity(fake.fetch, 'http://engine.test')).toEqual({ environmentId: 'env-1', label: 'Fake' })
+    expect(await readEngineIdentity(fake.fetch, 'http://engine.test', 3000, 'secret')).toEqual({ environmentId: 'env-1', label: 'Fake' })
     fake.setIdentity(null)
-    await expect(readEngineIdentity(fake.fetch, 'http://engine.test')).rejects.toThrow('did not describe itself')
+    await expect(readEngineIdentity(fake.fetch, 'http://engine.test', 3000, 'secret')).rejects.toThrow('did not describe itself')
   })
 })
 
@@ -85,7 +86,7 @@ describe('registering as the browser host', () => {
     expect(connect?.payload).toMatchObject({ environmentId: 'env-1', supportedOperations: ['status', 'open', 'click'] })
     expect(String((connect?.payload as { clientId: string }).clientId)).toMatch(/^strata-/)
     await vi.waitFor(() => expect(bridge.registered).toBe(true))
-    fake.server.push('previewAutomation.connect', [{ type: 'request', connectionId: 'conn-1', request: { requestId: 'r1', threadId: 't1', operation: 'status', input: {}, timeoutMs: 1000 } }])
+    fake.server.push('previewAutomation.connect', [{ type: 'request', connectionId: 'conn-1', request: { requestId: 'r1', threadId: 't1', tabId: null, operation: 'status', input: {}, timeoutMs: 1000 } }])
     await vi.waitFor(() => expect(fake.answers).toHaveLength(1))
     expect(fake.answers[0]).toMatchObject({ connectionId: 'conn-1', requestId: 'r1', ok: true, result: { available: true, threadId: 't1' } })
     fake.server.push('previewAutomation.connect', [{ type: 'request', connectionId: 'conn-1', request: { requestId: 'r2', threadId: 't1', tabId: 'tab_gone', operation: 'click', input: {}, timeoutMs: 1000 } }])

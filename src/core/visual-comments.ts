@@ -97,6 +97,7 @@ export type VisualAnchor =
 export interface VisualDestination { threadId: string; engine: string | null }
 
 export interface VisualDraft {
+  requestedCaptureId?: string
   text: string
   marks: VisualMark[]
   strokes: VisualStroke[]
@@ -106,6 +107,9 @@ export interface VisualDraft {
 }
 
 export interface VisualReply {
+  agentId?: string
+  agentName?: string
+  comparison?: VisualComparison
   messageId: string
   text: string
   ready: boolean
@@ -331,12 +335,10 @@ export function visualBrief(comment: Pick<VisualCommentRecord, 'id' | 'anchor' |
   }
 }
 
-export const VISUAL_BRIEF_INSTRUCTIONS = 'Visual comments arrive with marked screenshots as image attachments, named in each entry. A mark rect is in that image\'s pixels. Do the requested change, then reply with {"verb":"reply","anchor":{"item":"v_…"},"revision":N,"text":"…","ready":true}; ready asks the owner to review, and a reply to an earlier revision is kept but does not. Add "file" with an absolute screenshot path when you captured your own.'
-
 // ---- The renderer view
 
 export function visualMarkView(mark: VisualMark): VisualMarkView {
-  return { id: mark.id, kind: mark.kind, label: mark.label, captureId: mark.captureId, rect: mark.rect, found: mark.found }
+  return { id: mark.id, kind: mark.kind, label: mark.label, captureId: mark.captureId, rect: mark.rect, found: mark.found, ...(mark.identity ? { identity: mark.identity } : {}) }
 }
 
 export function visualStrokeView(stroke: VisualStroke): VisualStrokeView {
@@ -353,6 +355,7 @@ export function visualCommentView(
 ): VisualCommentView {
   const status = visualStatus(comment)
   const destination = (value: VisualDestination) => ({ threadId: value.threadId, threadTitle: options.threadTitle(value.threadId) })
+  const comparisonView = (value: VisualComparison) => ({ thenUrl: options.captureUrl(value.thenId), nowUrl: value.nowId ? options.captureUrl(value.nowId) : null, note: value.note, takenAt: value.takenAt })
   const revisions: VisualRevisionView[] = comment.revisions.map((revision) => ({
     number: revision.number,
     text: revision.text,
@@ -365,9 +368,9 @@ export function visualCommentView(
     sentAt: revision.sentAt,
     state: revision.state,
     ...(revision.error ? { error: revision.error } : {}),
-    replies: revision.replies.map((reply) => ({ messageId: reply.messageId, text: reply.text, ready: reply.ready, ...(reply.file ? { file: reply.file } : {}), at: reply.at })),
+    replies: revision.replies.map((reply) => ({ ...(reply.agentId ? { agentId: reply.agentId } : {}), ...(reply.agentName ? { agentName: reply.agentName } : {}), ...(reply.comparison ? { comparison: comparisonView(reply.comparison) } : {}), messageId: reply.messageId, text: reply.text, ready: reply.ready, ...(reply.file ? { file: reply.file } : {}), at: reply.at })),
     accepted: revision.accepted === true,
-    ...(revision.comparison ? { comparison: { thenUrl: options.captureUrl(revision.comparison.thenId), nowUrl: revision.comparison.nowId ? options.captureUrl(revision.comparison.nowId) : null, note: revision.comparison.note, takenAt: revision.comparison.takenAt } } : {}),
+    ...((revision.replies.at(-1)?.comparison ?? revision.comparison) ? { comparison: comparisonView((revision.replies.at(-1)?.comparison ?? revision.comparison)!) } : {}),
   }))
   const latest = comment.revisions.at(-1)
   const current = comment.draft ?? latest
@@ -383,7 +386,7 @@ export function visualCommentView(
     summary: current ? visualSummary(current) : '',
     thumbnail: thumbnailCapture ? options.captureUrl(thumbnailCapture.markedId ?? thumbnailCapture.id) : null,
     captures: comment.captures.map((capture) => ({ id: capture.id, url: options.captureUrl(capture.id), width: capture.width, height: capture.height, ...(capture.scroll ? { scroll: capture.scroll } : {}), ...(capture.scale ? { scale: capture.scale } : {}), ...(capture.requested ? { requested: true } : {}) })),
-    ...(comment.draft ? { draft: { text: comment.draft.text, marks: comment.draft.marks.map(visualMarkView), strokes: comment.draft.strokes.map(visualStrokeView), adjustments: comment.draft.adjustments.map(visualAdjustmentView), destination: destination(comment.draft.destination), updatedAt: comment.draft.updatedAt } } : {}),
+    ...(comment.draft ? { draft: { ...(comment.draft.requestedCaptureId ? { requestedCaptureId: comment.draft.requestedCaptureId } : {}), text: comment.draft.text, marks: comment.draft.marks.map(visualMarkView), strokes: comment.draft.strokes.map(visualStrokeView), adjustments: comment.draft.adjustments.map(visualAdjustmentView), destination: destination(comment.draft.destination), updatedAt: comment.draft.updatedAt } } : {}),
     revisions,
     createdAt: comment.createdAt,
     updatedAt: comment.updatedAt,
@@ -400,8 +403,8 @@ export function visualRepliesIn(parsed: { results: StrataBlockResult[] } | null)
   })
 }
 
-/** The revision a reply names, or the latest sent one when it names none. */
+/** Visual replies must name the exact revision they answer. */
 export function revisionForReply(comment: Pick<VisualCommentRecord, 'revisions'>, named: number | undefined): VisualRevision | null {
   if (named !== undefined) return comment.revisions.find((revision) => revision.number === named) ?? null
-  return comment.revisions.at(-1) ?? null
+  return null
 }

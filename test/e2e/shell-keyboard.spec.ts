@@ -1,3 +1,4 @@
+import { expectActiveDocument, openDocsMenu, expectDocumentDirty } from './harness'
 import { expect, test } from '@playwright/test'
 import { chmod, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -17,29 +18,30 @@ test('tabs cycle from the keyboard, close with the primary modifier and W, and c
   try {
     const page = await value.launch()
     await page.evaluate((path) => window.strata.openDocument(path), join(folder, 'other.md'))
-    const keysTab = page.getByRole('tab', { name: /keys\.md/i })
-    const otherTab = page.getByRole('tab', { name: /other\.md/i })
-    await expect(otherTab).toHaveAttribute('aria-selected', 'true')
+    const otherTab = page.getByRole('menu', { name: 'Open docs' }).getByRole('menuitem', { name: /other\.md/i })
+    await expectActiveDocument(page, /other\.md/i)
 
     await page.keyboard.press('Control+Tab')
-    await expect(keysTab).toHaveAttribute('aria-selected', 'true')
+    await expectActiveDocument(page, /keys\.md/i)
     await page.keyboard.press('Control+Shift+Tab')
-    await expect(otherTab).toHaveAttribute('aria-selected', 'true')
+    await expectActiveDocument(page, /other\.md/i)
     await page.keyboard.press(primaryKey('PageUp'))
-    await expect(keysTab).toHaveAttribute('aria-selected', 'true')
+    await expectActiveDocument(page, /keys\.md/i)
     await page.keyboard.press(primaryKey('PageDown'))
-    await expect(otherTab).toHaveAttribute('aria-selected', 'true')
+    await expectActiveDocument(page, /other\.md/i)
 
     // Middle click closes a clean tab outright.
+    await openDocsMenu(page)
     await otherTab.click({ button: 'middle' })
-    await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(1)
-    await expect(keysTab).toHaveAttribute('aria-selected', 'true')
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('button', { name: 'Docs menu' }).locator('.tab-menu-count')).toHaveText('1')
+    await expectActiveDocument(page, /keys\.md/i)
 
     // A dirty tab asks first; Escape keeps it open.
     await page.evaluate((path) => window.strata.openDocument(path), join(folder, 'other.md'))
-    await expect(otherTab).toHaveAttribute('aria-selected', 'true')
+    await expectActiveDocument(page, /other\.md/i)
     await setSource(page, '# Other\n\nSecond document, edited.\n')
-    await expect(otherTab.locator('.tab-dirty-dot')).toBeVisible()
+    await expectDocumentDirty(page, /other\.md/i, true)
     await page.keyboard.press(primaryKey('w'))
     const dialog = page.getByRole('dialog', { name: /Close other\.md/i })
     await expect(dialog).toBeVisible()
@@ -49,10 +51,10 @@ test('tabs cycle from the keyboard, close with the primary modifier and W, and c
 
     // A clean tab closes at once.
     await page.keyboard.press('Control+Tab')
-    await expect(keysTab).toHaveAttribute('aria-selected', 'true')
+    await expectActiveDocument(page, /keys\.md/i)
     await page.keyboard.press(primaryKey('w'))
-    await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(1)
-    await expect(otherTab).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByRole('button', { name: 'Docs menu' }).locator('.tab-menu-count')).toHaveText('1')
+    await expectActiveDocument(page, /other\.md/i)
   } finally {
     await value.dispose()
   }
@@ -85,7 +87,8 @@ test('an error toast uses the danger color, outlives a success, and clears from 
     // Longer than a success toast lives; a success does not paint over it.
     await page.waitForTimeout(3_200)
     await expect(alert).toBeVisible()
-    await page.getByRole('tab', { name: /toast\.md/i }).click({ button: 'right' })
+    await openDocsMenu(page)
+    await page.getByRole('menu', { name: 'Open docs' }).getByRole('menuitem', { name: /toast\.md/i }).click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Copy full path' }).click()
     await page.waitForTimeout(300)
     await expect(alert).toBeVisible()

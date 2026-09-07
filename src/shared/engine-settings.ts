@@ -78,6 +78,7 @@ export function mergeProviderEdit(settings: EngineSettings, edit: ProviderEdit):
   if (edit.base !== null && !latest) throw new Error(`Provider ${edit.instanceId} was removed by another client. Reload Accounts.`)
   if (latest && patch.driver && latest.driver !== patch.driver) throw new Error(`The driver of provider ${edit.instanceId} cannot be changed.`)
   const next = mergeEdited(latest, edit.base, patch, `Provider ${edit.instanceId}`) as ProviderInstanceSettings
+  if (patch.accentColor === '') delete next.accentColor
   if (!next.driver) throw new Error(`Choose a driver for provider ${edit.instanceId}.`)
   return { ...instances, [edit.instanceId]: next }
 }
@@ -103,4 +104,12 @@ export interface EngineActivity {
     stale: boolean
     updatedAt: string
   }
+}
+
+/** Refresh untouched leaves while keeping the original value of each deliberate edit. */
+export function refreshSettingsBase(base: unknown, latest: unknown, patch: unknown): unknown {
+  if (!isSettingsRecord(patch)) return base
+  const original = isSettingsRecord(base) ? base : {}
+  const current = isSettingsRecord(latest) ? latest : {}
+  return { ...current, ...Object.fromEntries(Object.entries(patch).map(([key, value]) => [key, refreshSettingsBase(original[key], current[key], value)])) }
 }

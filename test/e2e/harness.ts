@@ -165,6 +165,7 @@ export class Scenario {
       // XDG_CONFIG_HOME only achieves that on Linux.
       STRATAMD_ENGINE_MODE: 'external',
       STRATAMD_USER_DATA: userData,
+      STRATAMD_TEST_LOGIN_FILE: join(runtime, 'login-registration.json'),
       ...(macHost ? {} : linuxLaunchEnv),
       // Every e2e run checks each merged view update against the full view.
       // Performance profiles measure the production protocol, so verify mode
@@ -203,7 +204,8 @@ export class Scenario {
     })
     this.page = await this.app.firstWindow()
     await this.page.waitForLoadState('domcontentloaded')
-    await expect(this.page.getByText(file.split('/').at(-1)!, { exact: false }).first()).toBeVisible({ timeout: 5_000 })
+    await expect.poll(async () => (await this.page!.evaluate(() => window.strata.getState())).activeDocument?.path).toBe(file)
+    await expect(this.page.getByRole('button', { name: 'Docs menu', exact: true })).toBeVisible()
     return this.page
   }
 
@@ -436,13 +438,10 @@ export async function selectNavigationTab(page: Page, name: 'Projects' | 'Conver
 }
 
 /**
- * Brings a document to the center (PRD §6.9, decided 2026-09-04). Pinned and
- * active documents are pills; every other open document sits in the Docs menu.
+ * Brings an open document to the center through the Docs menu.
  */
 export async function switchToDocument(page: Page, name: RegExp): Promise<void> {
-  // The former active pill can disappear between count() and click() while
-  // an IPC-opened document renders. The menu keeps every open document.
-  await page.getByRole('button', { name: 'Docs menu' }).click()
+  await openDocsMenu(page)
   await page.getByRole('menu', { name: 'Open docs' }).getByRole('menuitem', { name }).click()
 }
 
@@ -451,4 +450,26 @@ export async function openAppMenu(page: Page): Promise<void> {
   const trigger = page.getByRole('button', { name: 'StrataMD menu' })
   if (await trigger.getAttribute('aria-expanded') !== 'true') await trigger.click()
   await expect(page.getByRole('menu', { name: 'StrataMD', exact: true })).toBeVisible()
+}
+
+/** Assert document state without relying on the removed active-document pill. */
+export async function expectActiveDocument(page: Page, name: RegExp): Promise<void> {
+  await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).activeDocument?.path ?? '').toMatch(name)
+  await expect(page.locator('.editor-island [data-document-path]')).toHaveAttribute('data-document-path', name)
+}
+
+export async function expectDocumentListed(page: Page, name: RegExp, listed = true): Promise<void> {
+  await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).tabs.some(tab => name.test(tab.path))).toBe(listed)
+}
+
+export async function openDocsMenu(page: Page): Promise<void> {
+  const trigger = page.getByRole('button', { name: 'Docs menu', exact: true })
+  if (await trigger.getAttribute('aria-expanded') !== 'true') await trigger.click()
+  await expect(page.getByRole('menu', { name: 'Open docs', exact: true })).toBeVisible()
+}
+
+export async function expectDocumentDirty(page: Page, name: RegExp, dirty: boolean): Promise<void> {
+  await openDocsMenu(page)
+  await expect(page.getByRole('menu', { name: 'Open docs', exact: true }).getByRole('menuitem', { name }).locator('.tab-dirty-dot')).toHaveCount(dirty ? 1 : 0)
+  await page.keyboard.press('Escape')
 }

@@ -78,6 +78,23 @@ describe('agent contract', () => {
 })
 
 describe('file-only tool', () => {
+  it.skipIf(process.platform !== 'linux')('passes X11 to Electron before a packaged app starts on a Wayland desktop', async () => {
+    const { home, env } = await environment()
+    const executable = join(home, 'stratamd-app')
+    const captured = join(home, 'launch-args')
+    const file = join(home, 'plan.md')
+    await writeFile(file, '# Plan\n')
+    await writeFile(executable, '#!/bin/sh\nprintf "%s\\n" "$@" > "$STRATA_LAUNCH_ARGS"\n', { mode: 0o700 })
+    const io = capture()
+    expect(await runCli(['open', file], { ...io.runtime, environment: {
+      ...env, XDG_SESSION_TYPE: 'wayland', STRATAMD_APP_EXECUTABLE: executable, STRATA_LAUNCH_ARGS: captured,
+    } })).toBe(0)
+    await expect.poll(() => readFile(captured, 'utf8').catch(error => {
+      if (error.code === 'ENOENT') return ''
+      throw error
+    })).toBe(`--ozone-platform=x11\n${file}\n`)
+  })
+
   it('launches the app with a canonical Markdown path and never calls a transport', async () => {
     const { home, env } = await environment()
     const file = join(home, 'plan.md')

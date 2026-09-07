@@ -89,14 +89,15 @@ pnpm install --frozen-lockfile
 # script, which downloads the binary; run it so dist/ exists before the build.
 node node_modules/electron/install.js
 pnpm build:linux
+package_output=$(node -p "JSON.parse(require('node:fs').readFileSync('build/latest-package.json', 'utf8')).output")
 
 echo
 echo "Registering the stratamd command, desktop entry, and the $SKILL skill"
-./dist/linux-unpacked/stratamd setup --skill "$SKILL"
+"$package_output/linux-unpacked/stratamd" setup --skill "$SKILL"
 
 cat <<NEXT
 
-StrataMD is installed at $CHECKOUT/dist/linux-unpacked.
+StrataMD is installed at $package_output/linux-unpacked.
 
 Next steps:
   - If StrataMD is already running, quit it and open it again so it runs this build.

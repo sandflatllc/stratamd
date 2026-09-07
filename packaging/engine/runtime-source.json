@@ -5,5 +5,23 @@
     "linux-x64": "855d581f8a4eb1a8117e3426de25fe02770592febcfb31369aee1ffbfee9e8ec",
     "darwin-x64": "9e5b2644cf107befb6aefca676b96d3296bc10138096f022ed378d6233ed81f4",
     "darwin-arm64": "40e5607e5ecb3db9192723776da2d75d966260fc74a7a9e731c1bd67dda96bc8"
+  },
+  "linuxToolchain": {
+    "cc": "gcc",
+    "cxx": "g++",
+    "gcc": "16.2.1",
+    "python": "3.14.7",
+    "make": "4.4.1",
+    "sourceDateEpoch": "1788652800"
+  },
+  "linuxToolchainProfiles": {
+    "ubuntu-24.04": {
+      "cc": "gcc-13",
+      "cxx": "g++-13",
+      "gcc": "13.3.0",
+      "python": "3.12.3",
+      "make": "4.3",
+      "sourceDateEpoch": "1788652800"
+    }
   }
 }

@@ -25,14 +25,15 @@ export function usageRows(buckets: UsageBucket[], group: 'model' | 'day' | 'hour
 export function summarizeUsage(summary: UsageSummary) {
   const totals: UsageTokens = { uncachedInputTokens: 0, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 0, reasoningTokens: 0 }
   let costUsd = 0
+  let cacheSavingsUsd = 0
   let unpricedRecords = 0
   for (const bucket of summary.buckets) {
     for (const key of Object.keys(totals) as (keyof UsageTokens)[]) totals[key] += bucket.totals[key]
-    costUsd += bucket.costUsd; unpricedRecords += bucket.unpricedRecords
+    costUsd += bucket.costUsd; cacheSavingsUsd += bucket.cacheSavingsUsd; unpricedRecords += bucket.unpricedRecords
   }
   const providers = (['claude', 'codex', 'grok'] as const).map(provider => {
     const buckets = summary.buckets.filter(bucket => bucket.provider === provider)
     return { provider, tokens: buckets.reduce((sum, bucket) => sum + processedTokens(bucket.totals), 0), costUsd: buckets.reduce((sum, bucket) => sum + bucket.costUsd, 0), sessions: summary.sources.filter(source => source.fingerprint.provider === provider && source.status !== 'missing').reduce((sum, source) => sum + source.distinctSessions, 0) }
   }).filter(provider => provider.tokens > 0 || provider.sessions > 0)
-  return { ...totals, tokens: processedTokens(totals), costUsd, unpricedRecords, sessions: providers.reduce((sum, provider) => sum + provider.sessions, 0), providers }
+  return { ...totals, tokens: processedTokens(totals), costUsd, cacheSavingsUsd, unpricedRecords, sessions: providers.reduce((sum, provider) => sum + provider.sessions, 0), providers }
 }

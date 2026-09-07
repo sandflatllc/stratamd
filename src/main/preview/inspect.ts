@@ -253,6 +253,7 @@ export function describeScript(target: { point: { x: number; y: number } } | { r
     const tag = String(el.tagName).toLowerCase();
     // The page itself is not a thing to mark; a click on bare background is a small region.
     if (tag === 'html' || tag === 'body') return describe(el, 'region', { x: Math.round(target.point.x - 12), y: Math.round(target.point.y - 12), width: 24, height: 24 });
+    if (/^(iframe|canvas|img)$/.test(tag)) return describe(el, 'region', round(globalRect(el)));
     return describe(el, 'element', round(globalRect(el)));
   }
   const box = target.rect;
@@ -261,7 +262,7 @@ export function describeScript(target: { point: { x: number; y: number } } | { r
   // Walk up until one thing holds most of the box without dwarfing it; otherwise the box stays a region.
   while (el) {
     const tag = String(el.tagName).toLowerCase();
-    if (tag === 'html' || tag === 'body') { el = null; break; }
+    if (/^(html|body|iframe|canvas|img)$/.test(tag)) { el = null; break; }
     const rect = globalRect(el);
     const area = Math.max(1, rect.width * rect.height);
     const shared = overlap(rect, box);

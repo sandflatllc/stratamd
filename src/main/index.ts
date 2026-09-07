@@ -1,5 +1,5 @@
 import { assertSupportedPlatform } from '../platform/runtime'
-import { setStartAtLogin } from './start-at-login'
+import { createLoginRegistration } from './start-at-login'
 import { installEngineActivity } from './engine/background-activity'
 import { engineTray } from './engine/tray'
 import { readFile, writeFile } from 'node:fs/promises'
@@ -261,7 +261,7 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
           let explained = false
           try { explained = await readFile(marker, 'utf8') === '1' } catch {}
           if (!explained) {
-            await dialog.showMessageBox(window, { type: 'info', title: 'Strata keeps running', message: 'Closing the window keeps your agents and remote access running.', detail: 'Open Strata from the tray. Choose Quit Strata there to stop the engine.', buttons: ['Got it'] })
+            await dialog.showMessageBox(window, { type: 'info', title: 'Strata keeps running', message: 'Closing the window keeps your engine running.', detail: 'Open Strata from the tray. Choose Quit Strata there to stop the engine.', buttons: ['Got it'] })
             await writeFile(marker, '1', { mode: 0o600 })
           }
           window.hide()
@@ -291,6 +291,9 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
       registeredIpc = null
       unsubscribeState?.()
       unsubscribeState = null
+      // The off-display preview parking window can still exist after the main
+      // window closes, so window-all-closed is not sufficient in external mode.
+      if (!keepRunning && !quitting) app.quit()
     })
     const explicitDocument = documentPathsFromArgv(options.argv ?? process.argv.slice(1)).length > 0
     await window.loadURL(`app://${APP_HOST}/${explicitDocument ? '?openDocument=1' : ''}`)
@@ -321,7 +324,7 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
 
   app.on('window-all-closed', () => {
     // Managed mode retains its engine and tray; external mode keeps ordinary close behavior.
-    if (!keepRunning) app.quit()
+    if (!keepRunning && !quitting) app.quit()
   })
   app.on('second-instance', (_event, argv, workingDirectory) => {
     void openLaunchDocuments(argv, workingDirectory).then(showAndFocus)
@@ -345,7 +348,7 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
     // Quit once, in order: stop taking commands, flush every buffer mirror
     // and release the locks, then leave. Electron would otherwise tear the
     // process down while the shutdown was still writing (plan 2.5).
-    if (quitting) return
+    if (quitting) { event.preventDefault(); return }
     quitting = true
     event.preventDefault()
     void (async () => {
@@ -403,7 +406,13 @@ if (!process.env.VITEST) {
   installOpenFileQueue()
   if (!app.requestSingleInstanceLock()) app.quit()
   else void createStrataApplication({
-    setStartAtLogin: async enabled => { await app.whenReady(); await setStartAtLogin(enabled, process.execPath, assertSupportedPlatform(), openAtLogin => app.setLoginItemSettings({ openAtLogin, path: process.execPath })) },
+    setStartAtLogin: createLoginRegistration({
+      packaged: app.isPackaged, executable: process.execPath, platform: assertSupportedPlatform(),
+      testFile: process.env.STRATAMD_TEST_LOGIN_FILE,
+      mac: process.env.STRATAMD_TEST_LOGIN_FILE
+        ? { get: () => ({ openAtLogin: false }), set: () => { throw new Error('Native login registration is forbidden in automated tests') } }
+        : { get: () => ({ openAtLogin: app.getLoginItemSettings({ path: process.execPath }).openAtLogin, path: process.execPath }), set: openAtLogin => app.setLoginItemSettings({ openAtLogin, path: process.execPath }) }
+    }),
     managedBundle: process.env.STRATAMD_ENGINE_BUNDLE ?? join(process.resourcesPath, 'engine'),
     engineUsageHelper: app.isPackaged ? join(process.resourcesPath, 'resources/engine-helpers/usage.mjs') : join(import.meta.dirname, '../../resources/engine-helpers/usage.mjs'),
     // Badges when the owner is elsewhere, an OS notification when the window is not focused (§5.2).

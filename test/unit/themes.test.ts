@@ -17,12 +17,12 @@ afterEach(async () => {
 })
 
 describe('theme schema', () => {
-  it('exposes exactly 46 color swatches with six dedicated chart colors and six non-color values', () => {
+  it('exposes exactly 48 color swatches with six dedicated chart colors and six non-color values', () => {
     const colors = THEME_KEYS.filter((entry) => entry.kind === 'color')
-    expect(colors).toHaveLength(46)
-    expect(new Set(colors.map((entry) => entry.key)).size).toBe(46)
+    expect(colors).toHaveLength(48)
+    expect(new Set(colors.map((entry) => entry.key)).size).toBe(48)
     const counts = Object.fromEntries(THEME_GROUPS.map((group) => [group, colors.filter((entry) => entry.group === group).length]))
-    expect(counts).toEqual({ fonts: 0, surfaces: 7, interface: 4, document: 9, controls: 7, changes: 2, people: 6, visuals: 6, effects: 5 })
+    expect(counts).toEqual({ fonts: 0, surfaces: 9, interface: 4, document: 9, controls: 7, changes: 2, people: 6, visuals: 6, effects: 5 })
     const nonColor = THEME_KEYS.filter((entry) => entry.kind !== 'color')
     expect(nonColor.map((entry) => entry.key)).toEqual(['fonts.text', 'fonts.code', 'effects.background-style', 'effects.panel-style', 'effects.intensity', 'effects.speed'])
   })

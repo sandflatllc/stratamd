@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import { z } from 'zod'
 import { atomicWriteFile, PRIVATE_FILE_MODE } from '../storage'
 import type { VisualCommentRecord } from '../../core/visual-comments'
@@ -11,6 +11,7 @@ import type { VisualCommentRecord } from '../../core/visual-comments'
  */
 export interface VisualCommentsStore {
   formatVersion: 1
+  readProblem?: string
   comments: Record<string, VisualCommentRecord>
 }
 
@@ -37,9 +38,9 @@ const anchor = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('image'), name: z.string() }),
   z.object({ kind: z.literal('page'), url: z.string(), title: z.string(), instance: z.string(), workingFolder: z.string().nullable(), viewport: z.object({ width: z.number(), height: z.number(), preset: z.string().nullable() }), deviceScale: z.number() }),
 ])
-const draft = z.object({ text: z.string(), marks: z.array(mark), strokes: z.array(stroke), adjustments: z.array(adjustment), destination, updatedAt: z.number() })
-const reply = z.object({ messageId: z.string().min(1), text: z.string(), ready: z.boolean(), file: z.string().optional(), at: z.number() })
+const draft = z.object({ requestedCaptureId: z.string().optional(), text: z.string(), marks: z.array(mark), strokes: z.array(stroke), adjustments: z.array(adjustment), destination, updatedAt: z.number() })
 const comparison = z.object({ thenId: z.string(), nowId: z.string().nullable(), note: z.string().nullable(), takenAt: z.number() })
+const reply = z.object({ messageId: z.string().min(1), text: z.string(), ready: z.boolean(), file: z.string().optional(), at: z.number(), agentId: z.string().optional(), agentName: z.string().optional(), comparison: comparison.optional() })
 const revision = z.object({
   number: z.number().int().positive(), text: z.string(), marks: z.array(mark), strokes: z.array(stroke), adjustments: z.array(adjustment), destination,
   captures: z.array(z.string()), evidence: z.array(z.string()), deliveryId: z.string().min(1), sentAt: z.number(),
@@ -55,32 +56,41 @@ export function emptyVisualCommentsStore(): VisualCommentsStore {
 }
 
 export function normalizeVisualCommentsStore(value: unknown): VisualCommentsStore {
-  const store = emptyVisualCommentsStore()
-  if (!value || typeof value !== 'object' || (value as { formatVersion?: unknown }).formatVersion !== 1) return store
-  const comments = (value as { comments?: unknown }).comments
-  if (!comments || typeof comments !== 'object') return store
-  for (const [id, raw] of Object.entries(comments as Record<string, unknown>)) {
-    const parsed = visualCommentRecord.safeParse(raw)
-    if (parsed.success && parsed.data.id === id) store.comments[id] = parsed.data as VisualCommentRecord
-  }
-  return store
+  const parsed = z.object({ formatVersion: z.literal(1), comments: z.record(z.string(), visualCommentRecord) }).strict().parse(value)
+  for (const [id, comment] of Object.entries(parsed.comments)) if (comment.id !== id) throw new Error(`Comment ${id} has a mismatched id`)
+  return parsed as VisualCommentsStore
 }
 
-export async function readVisualCommentsStore(path: string): Promise<VisualCommentsStore> {
-  try { return normalizeVisualCommentsStore(JSON.parse(await readFile(path, 'utf8'))) } catch { return emptyVisualCommentsStore() }
+export async function readVisualCommentsStore(path: string, evidenceDirectory?: string): Promise<VisualCommentsStore> {
+  try { return normalizeVisualCommentsStore(JSON.parse(await readFile(path, 'utf8'))) } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      try {
+        if (!evidenceDirectory || !(await readdir(evidenceDirectory)).some(name => /^e_.*\.(bin|json)$/.test(name))) return emptyVisualCommentsStore()
+      } catch (inventoryError) { if ((inventoryError as NodeJS.ErrnoException).code === 'ENOENT') return emptyVisualCommentsStore() }
+    }
+    return { ...emptyVisualCommentsStore(), readProblem: `Visual comments at ${path} could not be read completely. The original store and images were kept. Repair or restore that file before changing comments.` }
+  }
+}
+
+export function assertVisualCommentsWritable(store: VisualCommentsStore): void {
+  if (store.readProblem) throw new Error(store.readProblem)
 }
 
 export async function writeVisualCommentsStore(path: string, store: VisualCommentsStore): Promise<void> {
+  assertVisualCommentsWritable(store)
+  normalizeVisualCommentsStore(store)
   await atomicWriteFile(path, `${JSON.stringify(store, null, 2)}\n`, { mode: PRIVATE_FILE_MODE })
 }
 
 /** Every evidence id any comment still references: captures, marked captures, delivered evidence, and comparisons. */
-export function referencedEvidence(store: VisualCommentsStore): Set<string> {
+export function referencedEvidence(store: VisualCommentsStore): Set<string> | null {
+  if (store.readProblem) return null
   const ids = new Set<string>()
   for (const comment of Object.values(store.comments)) {
     for (const capture of comment.captures) { ids.add(capture.id); if (capture.markedId) ids.add(capture.markedId) }
     for (const revision of comment.revisions) {
       for (const id of revision.evidence) ids.add(id)
+      for (const reply of revision.replies) if (reply.comparison) { ids.add(reply.comparison.thenId); if (reply.comparison.nowId) ids.add(reply.comparison.nowId) }
       if (revision.comparison) { ids.add(revision.comparison.thenId); if (revision.comparison.nowId) ids.add(revision.comparison.nowId) }
     }
   }

@@ -12,7 +12,9 @@ test('usage changes windows and metrics, groups by hour, refreshes and opens Acc
     await page.getByRole('button', { name: 'StrataMD menu', exact: true }).click()
     await page.getByRole('menuitem', { name: 'Usage', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: 'Your usage' })
-    await expect(dialog.locator('.usage-metrics')).toContainText('4 sessions')
+    await expect(dialog.locator('.usage-total')).toContainText('4 sessions')
+    await expect(dialog.getByRole('img', { name: 'API estimate by provider over time' })).toBeVisible()
+    await dialog.getByRole('button', { name: 'Tokens', exact: true }).click()
     await expect(dialog.getByRole('img', { name: 'Tokens by provider over time' })).toBeVisible()
     await expect(dialog.getByRole('row')).toHaveCount(3)
     await parityCapture(page, 'usage-tokens')
@@ -21,7 +23,7 @@ test('usage changes windows and metrics, groups by hour, refreshes and opens Acc
     await parityCapture(page, 'usage-cost')
     for (const name of ['7 days', '90 days', 'Past 24h']) {
       await dialog.getByRole('button', { name, exact: true }).click()
-      await expect(dialog.locator('.usage-metrics')).toContainText(`4 sessions · ${name}`)
+      await expect(dialog.locator('.usage-total')).toContainText(`4 sessions · ${name}`)
     }
     await dialog.getByRole('button', { name: 'Hour', exact: true }).click()
     await expect(dialog.getByRole('row')).toHaveCount(25)

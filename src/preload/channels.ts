@@ -42,6 +42,7 @@ export const IPC = {
   queueItemReply: 'strata:queue-item-reply',
   discardItemReply: 'strata:discard-item-reply',
   dismissItem: 'strata:dismiss-item',
+  retainVisualEvidence: 'strata:retain-visual-evidence',
   holdVisualComment: 'strata:hold-visual-comment',
   actVisualComment: 'strata:act-visual-comment',
   openPreviewTab: 'strata:open-preview-tab',

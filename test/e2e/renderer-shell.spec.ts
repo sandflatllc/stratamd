@@ -1,3 +1,5 @@
+import { expectActiveDocument } from './harness'
+import { openDocsMenu } from './harness'
 import { openAppMenu } from './harness'
 import { expect, test } from '@playwright/test'
 import { spawn } from 'node:child_process'
@@ -24,7 +26,8 @@ test('blank shell opens a document from the Open file button, the bridge, and dr
     await expect(page.getByRole('textbox', { name: /Document editor/i })).toBeVisible()
     await expect(page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab')).toHaveText(['Projects', 'Conversation', 'Contents'])
 
-    await page.getByRole('button', { name: /Close tab/i }).click()
+    await openDocsMenu(page)
+    await page.getByRole('button', { name: 'Close first.md', exact: true }).click()
     await expect(page.getByRole('heading', { name: /Open a markdown file/i })).toBeVisible()
 
     await page.evaluate(() => {
@@ -95,7 +98,8 @@ test('document tabs copy full paths from a right-click menu', { tag: '@clipboard
   try {
     const page = await value.launch()
     await value.app!.evaluate(({ clipboard }) => clipboard.writeText('sentinel'))
-    const tab = page.getByRole('tab', { name: /paths\.md/i })
+    await openDocsMenu(page)
+    const tab = page.getByRole('menu', { name: 'Open docs' }).getByRole('menuitem', { name: /paths\.md/i })
     await tab.click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Copy full path' }).click()
     await expect.poll(() => value.app!.evaluate(({ clipboard }) => clipboard.readText())).toBe(value.file)
@@ -158,7 +162,7 @@ test('second-instance path launch opens a tab in the running instance', async ({
     })
     expect(childExit, childOutput).toBe(0)
     expect(value.app!.windows()).toHaveLength(1)
-    await expect(page.getByText('second.md', { exact: false }).first()).toBeVisible()
+    await expectActiveDocument(page, /second\.md/)
   } finally {
     await value.dispose()
   }

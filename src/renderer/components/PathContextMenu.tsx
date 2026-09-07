@@ -87,7 +87,7 @@ export function PathContextMenu({ menu, onClose, ...actions }: { menu: PathConte
       {isFile && actions.onRename && item('Rename…', () => actions.onRename!(menu.path))}
       {actions.onReveal && item('Show in file manager', () => actions.onReveal!(menu.path))}
       {item('Copy full path', () => actions.onCopyPath(menu.path))}
-      {isFile && actions.onTogglePin && item(actions.pinned ? 'Unpin from top bar' : 'Pin to top bar', () => actions.onTogglePin!(menu.path))}
+      {isFile && actions.onTogglePin && item(actions.pinned ? 'Unpin from list' : 'Pin to top of list', () => actions.onTogglePin!(menu.path))}
       {isFile && actions.onCloseOthers && item('Close other tabs', () => actions.onCloseOthers!(menu.path))}
       {isFile && actions.onCloseSaved && item('Close saved tabs', () => actions.onCloseSaved!())}
       {isFile && actions.onCloseAll && item('Close all tabs', () => actions.onCloseAll!())}

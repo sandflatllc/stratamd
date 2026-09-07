@@ -1,3 +1,4 @@
+import { expectActiveDocument, openDocsMenu } from './harness'
 import { openAppMenu } from './harness'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -163,7 +164,7 @@ test('a theme file sets fonts and attribution colors, applies live when rewritte
 
     const shell = page.locator('.app-shell')
     const avatar = page.locator('.agent-avatar').filter({ hasText: 'AA' })
-    const badge = page.getByRole('tab', { name: /appearance\.md/i }).locator('.tab-badge')
+    const badge = page.getByRole('menu', { name: 'Open docs' }).getByRole('menuitem', { name: /appearance\.md/i }).locator('.tab-badge')
     const chip = page.locator('.annotation-row').filter({ hasText: 'Typography' }).locator('.annotation-chip')
     await expect(shell).toHaveCSS('font-family', /Nunito/)
     // Surfaces follow the theme too, not only fonts and attribution: a light theme lightens the panels.
@@ -171,7 +172,9 @@ test('a theme file sets fonts and attribution colors, applies live when rewritte
     await expect(page.locator('.navigation-rail')).toHaveCSS('border-color', 'rgb(224, 200, 216)')
     await expect(page.locator('.editor-island .ProseMirror p').first()).toHaveCSS('color', 'rgb(34, 17, 34)')
     await expect(avatar).toHaveCSS('background-color', 'rgb(64, 80, 96)')
+    await openDocsMenu(page)
     await expect(badge).toHaveCSS('background-color', 'rgb(64, 80, 96)')
+    await page.keyboard.press('Escape')
     await expect(chip).toHaveCSS('color', 'rgb(16, 32, 48)')
 
     // Another process rewrites the file: the app follows without restart.
@@ -182,7 +185,9 @@ test('a theme file sets fonts and attribution colors, applies live when rewritte
     }))
     await expect(shell).toHaveCSS('font-family', /Baloo 2/)
     await expect(avatar).toHaveCSS('background-color', 'rgb(80, 96, 112)')
+    await openDocsMenu(page)
     await expect(badge).toHaveCSS('background-color', 'rgb(80, 96, 112)')
+    await page.keyboard.press('Escape')
     await expect(chip).toHaveCSS('color', 'rgb(32, 48, 64)')
 
     await value.stop()
@@ -217,7 +222,7 @@ test('the theme panel floats over a live app, writes only chosen keys, follows o
     await expect(panel).toContainText('Built-in theme')
     await expect(page.locator('.modal-backdrop')).toHaveCount(0)
     // The sample document opens as a real tab and explains each construct in its own words.
-    await expect(page.getByRole('tab', { name: /Theme sample\.md/ })).toHaveAttribute('aria-selected', 'true')
+    await expectActiveDocument(page, /Theme sample\.md/)
     await expect(page.locator('.editor-island .ProseMirror h1')).toContainText('level-one heading')
     await expect(page.locator('.editor-island .ProseMirror table')).toBeVisible()
     await switchToDocument(page, /theme\.md/)
@@ -275,8 +280,9 @@ test('the theme panel floats over a live app, writes only chosen keys, follows o
       window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, isPrimary: true, clientX: x - 200, clientY: y - 120, bubbles: true }))
       window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, isPrimary: true, clientX: x - 200, clientY: y - 120, bubbles: true }))
     }, dragStart)
+    // Synthetic window events schedule a React update; wait for its layout commit.
+    await expect.poll(async () => Math.round((await panel.boundingBox())?.x ?? Infinity)).toBeLessThan(Math.round(box.x) - 130)
     const moved = (await panel.boundingBox())!
-    expect(Math.round(moved.x)).toBeLessThan(Math.round(box.x) - 130)
     const settingsPath = join(String(value.env.XDG_CONFIG_HOME), 'stratamd', 'settings.json')
     await expect.poll(async () => JSON.parse(await readFile(settingsPath, 'utf8')).panels.themePanel.x).toBe(Math.round(moved.x))
 

@@ -1,4 +1,5 @@
-import { createEngineBackup, listEngineBackups, readEngineBackup, restoreEngineBackup, type EngineBackup } from './backups'
+import { engineEnvironment } from './launch-environment'
+import { createEngineBackup, listEngineBackups, readEngineBackup, restoreEngineBackup, retainEngineRecovery, type EngineBackup } from './backups'
 import type { RecoveryView } from '../../shared/engine-recovery'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
@@ -10,7 +11,7 @@ import { processStamp, takeEngineLock, verifiedProcess, type OwnedProcess } from
 import { stageRuntime, verifyRuntime, type StagedRuntime } from './managed-runtime'
 import type { ManagedEngineView } from '../../shared/contracts'
 
-interface RuntimeRecord extends OwnedProcess { version: string; nodeVersion: string; runtimeDirectory: string; generation: string; address: string; environmentId: string }
+interface RuntimeRecord extends OwnedProcess { phase?: 'bootstrap' | 'ready'; version: string; nodeVersion: string; runtimeDirectory: string; generation: string; address: string; environmentId: string }
 export interface EngineManagerOptions {
   directory: string
   bundle: string
@@ -21,6 +22,7 @@ export interface EngineManagerOptions {
   reserveChange?(): Promise<() => Promise<void>>
   captureState?(directory: string): Promise<void>
   restoreState?(directory: string): Promise<void>
+  healthyIntervalMs?: number
   network?(): { lan?: boolean; tailscale?: boolean; tailscalePort?: number }
 }
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
@@ -36,6 +38,7 @@ export class LocalEngineManager {
   #healthTimer: ReturnType<typeof setInterval> | null = null
   #restartTimer: ReturnType<typeof setTimeout> | null = null
   #attempt = 0
+  #healthySince: number | null = null
   #view: ManagedEngineView
   #transition: Promise<void> | null = null
   #changing = false
@@ -56,8 +59,8 @@ export class LocalEngineManager {
     if (this.#starting) return this.#starting
     this.#stopping = false
     this.#starting = this.#start().catch(error => {
-      if (this.#child && this.#child.exitCode === null && this.#child.signalCode === null) this.#child.kill('SIGTERM')
-      this.#publish({ state: 'failed', problem: error instanceof Error ? error.message : String(error) })
+      if (this.#child && (!this.#record || this.#record.phase === 'bootstrap') && this.#child.exitCode === null && this.#child.signalCode === null) this.#child.kill('SIGTERM')
+      this.#publish({ state: this.#attempt >= 3 ? 'failed' : 'recovering', problem: error instanceof Error ? error.message : String(error), failure: { at: Date.now(), exitCode: this.#child?.exitCode ?? null, signal: this.#child?.signalCode ?? null, attempt: this.#attempt } })
       this.#scheduleRecovery()
     }).finally(() => { this.#starting = null })
     return this.#starting
@@ -85,11 +88,26 @@ export class LocalEngineManager {
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
     let journal: { backupId: string; targetVersion: string } | null = null
     try { journal = JSON.parse(await readFile(join(this.#options.directory, 'transition.json'), 'utf8')) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+    let adopted = false
     if (this.#record && await verifiedProcess(this.#record)) {
-      if (this.#record.baseDirectory !== baseDirectory || !await this.#options.authenticate(this.#record.address)) throw new Error(`A surviving engine at ${baseDirectory} could not be authenticated. It was left running.`)
-      await this.#options.reconnect()
-      this.#publish({ state: 'running', version: this.#record.version, nodeVersion: this.#record.nodeVersion })
-      if (journal && this.#record.version === journal.targetVersion) { await rm(join(this.#options.directory, 'transition.json')); journal = null }
+      if (this.#record.baseDirectory !== baseDirectory) throw new Error(`A surviving engine does not own ${baseDirectory}. It was left running.`)
+      if (await this.#options.authenticate(this.#record.address)) {
+        await this.#options.reconnect()
+        this.#record.phase = 'ready'
+        await atomicWriteFile(join(this.#options.directory, 'runtime.json'), JSON.stringify(this.#record))
+        this.#publish({ state: 'running', version: this.#record.version, nodeVersion: this.#record.nodeVersion })
+        this.#healthySince = Date.now()
+        adopted = true
+        if (journal && this.#record.version === journal.targetVersion) { await rm(join(this.#options.directory, 'transition.json')); journal = null }
+      } else if (this.#record.phase === 'bootstrap') {
+        // Only an explicitly incomplete launch may be replaced without credentials.
+        // #halt verifies the complete incarnation again while this manager holds the lock.
+        await this.#halt(false)
+        this.#stopping = false
+      } else throw new Error(`A surviving engine at ${baseDirectory} could not be authenticated. It was left running.`)
+    }
+    if (adopted) {
+      // Authenticated survivors keep their process and data.
     } else if (journal) {
       const backup = await readEngineBackup(this.#options.directory, journal.backupId)
       const failedRuntime = this.#record ? await this.#runtime(this.#record.version) : backup.runtime
@@ -149,7 +167,7 @@ export class LocalEngineManager {
       }
       this.#pendingRuntime = null
       await this.#halt(false)
-      backup = await createEngineBackup(this.#options.directory, previous, 'upgrade', this.#options.captureState ?? (async () => undefined))
+      backup = await createEngineBackup(this.#options.directory, previous, 'upgrade', this.#options.captureState ?? (async () => undefined), runtime.version)
       await atomicWriteFile(join(this.#options.directory, 'transition.json'), JSON.stringify({ backupId: backup.id, targetVersion: runtime.version }))
       this.#stopping = false
       await this.#launch(runtime, join(this.#options.directory, 't3'))
@@ -213,7 +231,7 @@ export class LocalEngineManager {
     const host = network.lan ? '0.0.0.0' : '127.0.0.1'
     const token = randomBytes(32).toString('base64url')
     const executable = join(runtime.directory, runtime.executable)
-    const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('T3CODE_')))
+    const env = engineEnvironment()
     env.PATH = `${dirname(executable)}:${env.PATH ?? ''}`
     const child = spawn(executable, [join(runtime.directory, runtime.entry), '--base-dir', baseDirectory, '--host', host, '--port', String(port), '--no-browser', '--bootstrap-fd', '3'], { cwd: baseDirectory, env, detached: true, stdio: ['ignore', 'pipe', 'pipe', 'pipe'] })
     this.#child = child
@@ -225,7 +243,7 @@ export class LocalEngineManager {
     if (!child.pid) throw spawnError ?? new Error('The engine process could not be spawned.')
     let knownEnvironmentId = ''
     try { knownEnvironmentId = (await readFile(join(baseDirectory, 'userdata/environment-id'), 'utf8')).trim() } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
-    this.#record = { pid: child.pid, ...await processStamp(child.pid), executable, baseDirectory, version: runtime.version, nodeVersion: runtime.nodeVersion, runtimeDirectory: runtime.directory, generation: randomUUID(), address: `http://127.0.0.1:${port}`, environmentId: knownEnvironmentId }
+    this.#record = { phase: 'bootstrap', pid: child.pid, ...await processStamp(child.pid), executable, baseDirectory, version: runtime.version, nodeVersion: runtime.nodeVersion, runtimeDirectory: runtime.directory, generation: randomUUID(), address: `http://127.0.0.1:${port}`, environmentId: knownEnvironmentId }
     await atomicWriteFile(join(this.#options.directory, 'runtime.json'), JSON.stringify(this.#record))
     pipe.end(JSON.stringify({ mode: 'desktop', noBrowser: true, port, t3Home: baseDirectory, host, desktopBootstrapToken: token, tailscaleServeEnabled: network.tailscale === true, tailscaleServePort: network.tailscalePort ?? 443 }))
     const log = (bytes: Buffer) => {
@@ -243,13 +261,15 @@ export class LocalEngineManager {
         if (reported.pid !== child.pid || !['127.0.0.1', host].includes(address.hostname) || address.port !== String(port)) { await pause(50); continue }
         address.hostname = '127.0.0.1'
         const environmentId = (await readFile(join(baseDirectory, 'userdata', 'environment-id'), 'utf8')).trim()
-        const record: RuntimeRecord = { pid: child.pid!, ...await processStamp(child.pid!), executable, baseDirectory, version: runtime.version, nodeVersion: runtime.nodeVersion, runtimeDirectory: runtime.directory, generation: randomUUID(), address: address.origin, environmentId }
+        const record: RuntimeRecord = { phase: 'bootstrap', pid: child.pid!, ...await processStamp(child.pid!), executable, baseDirectory, version: runtime.version, nodeVersion: runtime.nodeVersion, runtimeDirectory: runtime.directory, generation: randomUUID(), address: address.origin, environmentId }
         if (!await verifiedProcess(record)) throw new Error(`Could not verify newly launched engine process ${child.pid}`)
         this.#record = record
         await this.#options.connect(address.origin, token, environmentId)
         if (!await this.#options.authenticate(address.origin)) throw new Error(`Engine at ${address.origin} did not pass authenticated readiness`)
+        record.phase = 'ready'
         await atomicWriteFile(join(this.#options.directory, 'runtime.json'), JSON.stringify(record))
-        child.once('exit', () => this.#unexpectedExit())
+        child.once('exit', (code, signal) => { if (this.#child === child) this.#unexpectedExit(code, signal) })
+        this.#healthySince = Date.now()
         this.#publish({ state: 'running', version: runtime.version, nodeVersion: runtime.nodeVersion, problem: null })
         this.#monitor()
         return
@@ -272,19 +292,28 @@ export class LocalEngineManager {
     this.#healthTimer = setInterval(() => {
       if (!this.#record || this.#stopping || this.#changing) return
       if (this.#pendingRuntime) { void this.#runTransition(() => this.#upgrade(this.#pendingRuntime!)).catch(error => this.#publish({ problem: String(error) })); return }
-      void verifiedProcess(this.#record).then(alive => { if (!alive && !this.#stopping) this.#unexpectedExit() })
-    }, 5000)
+      const record = this.#record
+      void verifiedProcess(record).then(alive => {
+        if (this.#record !== record || this.#stopping) return
+        if (!alive) this.#unexpectedExit()
+        else if (this.#healthySince !== null && Date.now() - this.#healthySince >= (this.#options.healthyIntervalMs ?? 300_000)) this.#attempt = 0
+      })
+    }, Math.min(5000, this.#options.healthyIntervalMs ?? 5000))
     this.#healthTimer.unref()
   }
-  #unexpectedExit(): void {
+  #unexpectedExit(exitCode: number | null = null, signal: string | null = null): void {
     if (this.#stopping || this.#restartTimer) return
     if (this.#healthTimer) clearInterval(this.#healthTimer)
     this.#healthTimer = null
-    this.#publish({ state: 'failed', problem: 'The engine stopped. Documents remain available.' })
+    this.#healthySince = null
+    this.#publish({ problem: 'The engine stopped. Documents remain available.', failure: { at: Date.now(), exitCode, signal, attempt: this.#attempt } })
     this.#scheduleRecovery()
   }
   #scheduleRecovery(): void {
-    if (this.#stopping || this.#restartTimer || this.#attempt >= 3) return
+    if (this.#stopping || this.#restartTimer) return
+    this.#healthySince = null
+    if (this.#attempt >= 3) { this.#publish({ state: 'failed' }); return }
+    this.#publish({ state: 'recovering' })
     this.#restartTimer = setTimeout(() => { this.#restartTimer = null; void this.start() }, [1000, 3000, 10_000][this.#attempt++]!)
   }
   async restart(): Promise<void> { await this.stop(); this.#attempt = 0; await this.start() }
@@ -299,16 +328,21 @@ export class LocalEngineManager {
     await this.#halt(true)
   }
   async #halt(release: boolean): Promise<void> {
+    let clean = release && this.#view.state === 'running' && !this.#changing && this.#healthySince !== null
+    this.#healthySince = null
     this.#stopping = true
     if (this.#healthTimer) clearInterval(this.#healthTimer)
     this.#healthTimer = null
     if (this.#restartTimer) clearTimeout(this.#restartTimer)
     this.#restartTimer = null
-    if (this.#record && await verifiedProcess(this.#record)) {
+    const alive = this.#record && await verifiedProcess(this.#record)
+    clean = clean && !!alive
+    if (this.#record && alive) {
       process.kill(this.#record.pid, 'SIGTERM')
       const deadline = Date.now() + 5000
       while (Date.now() < deadline && await verifiedProcess(this.#record)) await pause(50)
       if (await verifiedProcess(this.#record)) {
+        clean = false
         process.kill(-this.#record.pid, 'SIGKILL')
         const killedDeadline = Date.now() + 2000
         while (Date.now() < killedDeadline && await verifiedProcess(this.#record)) await pause(25)
@@ -323,6 +357,7 @@ export class LocalEngineManager {
       if (child.exitCode === null && child.signalCode === null) { try { process.kill(-child.pid!, 'SIGKILL') } catch { child.kill('SIGKILL') } }
     }
     await this.#logQueue
+    if (clean && this.#record) await retainEngineRecovery(this.#options.directory, this.#record.version).catch(error => this.#publish({ problem: `Engine stopped. Recovery files were kept because cleanup could not finish: ${String(error)}` }))
     if (release) { await this.#release?.(); this.#release = null }
     this.#child = null
     this.#publish({ state: 'stopped' })

@@ -1,5 +1,5 @@
-import { TerminalIcon, ChartColumnIcon, GlobeIcon } from '../icons/lucide'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
+import { FileTextIcon, MessageSquareIcon, GlobeIcon } from '../icons/lucide'
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import type { DocumentTabView, EngineView, WindowState, WindowAction } from '../../shared/contracts'
 import { AGENT_COLORS, textColorFor } from '../model'
 import { Logo } from './Logo'
@@ -7,7 +7,7 @@ import { WindowControls } from './WindowControls'
 import { engineStateLabel } from './EngineDialog'
 import { primaryModifierLabel } from '../../shared/primary-modifier'
 import { claimEscape } from '../escape'
-import { arrangeStrip, isPinned, readPins, togglePin, writePins, type ConversationTabView, type TopBarPins } from '../topbarPins'
+import { orderPinned, isPinned, readPins, togglePin, writePins, type ConversationTabView, type TopBarPins, type PinKind } from '../topbarPins'
 import { PathContextMenu, type PathContextMenuState } from './PathContextMenu'
 import { menuKeyTarget } from './PathContextMenu'
 
@@ -47,7 +47,7 @@ interface TopBarProps {
   onToggleTerminal?(): void
   onOpenAccounts?(): void
   onOpenSettings?(): void
-  /** Preview windows (docs/plans/open/visual-review, phase 2): one pill per open window, named by project and page. */
+  /** Open web views, named by project and page, listed in the web view dropdown. */
   previewPills?: Array<{ id: string; name: string; active: boolean; held: boolean }>
   onOpenPreviewPill?(id: string): void
   onClosePreviewPill?(id: string): void
@@ -57,69 +57,56 @@ interface TopBarProps {
   browserShared?: boolean
 }
 
-type MenuKind = 'app' | 'documents'
+type MenuKind = 'app' | 'documents' | 'conversations' | 'previews'
 
-function CloseControl({ name, onClose }: { name: string; onClose(): void }) {
-  return <span
-    role="button"
-    tabIndex={0}
-    aria-label={`Close tab ${name}`}
-    className="tab-close"
-    onClick={(event) => { event.stopPropagation(); onClose() }}
-    onKeyDown={(event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault()
-        event.stopPropagation()
-        onClose()
-      }
-    }}
-  >×</span>
-}
-
-/** One dropdown pill: the group label, the active item's name while it is not a pill, and the open count. */
-function MenuPill({ kind, label, count, activeName, open, onToggle }: { kind: MenuKind; label: string; count: number; activeName: string | null; open: boolean; onToggle(): void }) {
+/** One icon dropdown for each kind of open content. */
+function MenuPill({ kind, label, icon, count, open, onToggle }: { kind: MenuKind; label: string; icon: ReactNode; count: number; open: boolean; onToggle(): void }) {
   return <button
     type="button"
     className={`tab tab-menu ${open ? 'tab-menu-expanded' : ''}`}
     data-menu={kind}
     aria-haspopup="menu"
     aria-expanded={open}
-    aria-controls={`topbar-menu-${kind}`}
+    aria-controls={open ? `topbar-menu-${kind}` : undefined}
     aria-label={`${label} menu`}
+    title={label}
     onClick={onToggle}
   >
-    <span className="tab-menu-label">{label}</span>
-    {activeName && <span className="tab-name tab-menu-active">{activeName}</span>}
+    {icon}
     <span className="tab-badge tab-menu-count">{count}</span>
     <span className="tab-menu-chevron" aria-hidden="true">▾</span>
   </button>
 }
 
+interface OpenItem {
+  id: string
+  name: string
+  title?: string
+  active: boolean
+  badge?: ReactNode
+  onOpen(): void
+  onClose(): void
+  onContextMenu?(event: ReactMouseEvent): void
+}
+
 export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onOpenFile, onSend, onStartThread, zoomed, onResetZoom, onOpenTheme, conversationTabs = [], onOpenConversationTab, onCloseConversation, engine, onOpenEngine, onOpenAccounts, onOpenSettings, onToggleTerminal, onOpenUsage, previewPills = [], onOpenPreviewPill, onClosePreviewPill, onOpenPreview, browserShared = false }: TopBarProps) {
   const previewActive = previewPills.some((pill) => pill.active)
   const conversationTab = previewActive ? undefined : conversationTabs.find((tab) => tab.active)
-  const tabStrip = useRef<HTMLDivElement>(null)
   const navigation = useRef<HTMLElement>(null)
   const menuRoot = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState<PathContextMenuState | null>(null)
   const [openMenu, setOpenMenu] = useState<MenuKind | null>(null)
   const [pins, setPins] = useState<TopBarPins>(() => readPins())
-  const strip = arrangeStrip(tabs, conversationTabs, pins, conversationTab !== undefined || previewActive)
-  const activePath = previewActive ? `preview:${previewPills.find((pill) => pill.active)!.id}` : conversationTab ? `conversation:${conversationTab.id}` : tabs.find((tab) => tab.active)?.path
-  const activeDocument = tabs.find((tab) => tab.active)
-  const activeShownElsewhere = conversationTab !== undefined || previewActive
   const openContextMenu = (event: ReactMouseEvent, path: string) => {
     event.preventDefault()
     event.stopPropagation()
+    setOpenMenu(null)
     setMenu({ x: event.clientX, y: event.clientY, path })
   }
   const closeContextMenu = () => setMenu(null)
-  const pin = useCallback((kind: 'document' | 'conversation', id: string) => {
+  const pin = useCallback((kind: PinKind, id: string) => {
     setPins((current) => { const next = togglePin(current, kind, id); writePins(next); return next })
   }, [])
-  useEffect(() => {
-    tabStrip.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-  }, [activePath, pins])
   useLayoutEffect(() => {
     if (!openMenu) return
     const away = (event: Event) => { if (!menuRoot.current?.contains(event.target as Node) && !navigation.current?.querySelector(`[data-menu="${openMenu}"]`)?.contains(event.target as Node)) setOpenMenu(null) }
@@ -149,7 +136,7 @@ export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, 
     event.preventDefault()
     items[next]?.focus()
   }
-  const accountsAttention = engine?.accounts.some(account => !account.usable && !account.parked) ?? false
+  const showAccounts = engine && engine.state !== 'unpaired' && onOpenAccounts
   const menuAction = (action: () => void) => {
     setOpenMenu(null)
     navigation.current?.querySelector<HTMLElement>('[data-menu="app"]')?.focus()
@@ -158,104 +145,86 @@ export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, 
   const sendTitle = `${pending} pending${pendingUnsaved ? ' · Unsaved changes' : ''} · ${primaryModifierLabel()}+Enter`
   const pinLabel = (pinned: boolean, name: string) => `${pinned ? 'Unpin' : 'Pin'} ${name}`
 
-  const documentPill = (tab: DocumentTabView) => {
-    const active = !conversationTab && !previewActive && tab.active
-    return <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      className={`tab ${active ? 'tab-active' : ''} ${isPinned(pins, 'document', tab.path) ? 'tab-pinned' : ''}`}
-      key={tab.path}
-      title={tab.name}
-      onClick={() => onOpenTab(tab.path)}
-      // A middle click closes the tab; its mousedown default would start autoscroll.
-      onMouseDown={(event) => { if (event.button === 1) event.preventDefault() }}
-      onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); onCloseTab(tab) } }}
-      onContextMenu={(event) => openContextMenu(event, tab.path)}
-    >
-      {isPinned(pins, 'document', tab.path) && <span className="tab-pin-mark" aria-hidden="true">★</span>}
-      <span className="tab-name">{tab.name}</span>
-      {tab.dirty && <span className="tab-dirty-dot" aria-label="Unsaved changes" title="Unsaved changes" />}
-      {tab.pendingCount > 0 && <span className="tab-badge" style={tab.pendingColor ? { background: AGENT_COLORS[tab.pendingColor], color: textColorFor(AGENT_COLORS[tab.pendingColor]) } : undefined}>{tab.pendingCount}</span>}
-      <CloseControl name={tab.name} onClose={() => onCloseTab(tab)} />
-    </button>
+  const documentItems: OpenItem[] = tabs.map((tab) => ({
+    id: tab.path, name: tab.name, title: tab.path, active: !conversationTab && !previewActive && tab.active,
+    badge: <>{tab.dirty && <span className="tab-dirty-dot" aria-label="Unsaved changes" title="Unsaved changes" />}{tab.pendingCount > 0 && <span className="tab-badge" style={tab.pendingColor ? { background: AGENT_COLORS[tab.pendingColor], color: textColorFor(AGENT_COLORS[tab.pendingColor]) } : undefined}>{tab.pendingCount}</span>}</>,
+    onOpen: () => onOpenTab(tab.path), onClose: () => onCloseTab(tab),
+    onContextMenu: (event) => openContextMenu(event, tab.path),
+  }))
+  const conversationItems: OpenItem[] = conversationTabs.map((tab) => ({
+    id: tab.id, name: tab.name, active: !previewActive && tab.active,
+    badge: tab.attention > 0 ? <span className="tab-badge attention-badge" aria-label={`${tab.attention} new`}>{tab.attention}</span> : null,
+    onOpen: () => onOpenConversationTab?.(tab.id), onClose: () => onCloseConversation?.(tab.id),
+  }))
+  const previewItems: OpenItem[] = previewPills.map((tab) => ({
+    id: tab.id, name: tab.name, active: tab.active,
+    badge: tab.held ? <span className="tab-dirty-dot" aria-label="Held visual comments" title="Held visual comments" /> : null,
+    onOpen: () => onOpenPreviewPill?.(tab.id), onClose: () => onClosePreviewPill?.(tab.id),
+  }))
+  const closeContentItem = (kind: MenuKind, item: OpenItem, count: number) => {
+    if (count === 1) {
+      setOpenMenu(null)
+      navigation.current?.querySelector<HTMLElement>(`[data-menu="${kind}"]`)?.focus()
+    }
+    item.onClose()
   }
-  const conversationPill = (tab: ConversationTabView) => <button
-    type="button"
-    role="tab"
-    aria-selected={tab.active}
-    className={`tab conversation-tab ${tab.active ? 'tab-active' : ''} ${isPinned(pins, 'conversation', tab.id) ? 'tab-pinned' : ''}`}
-    title={tab.name}
-    key={tab.id}
-    onClick={() => onOpenConversationTab?.(tab.id)}
-    onMouseDown={(event) => { if (event.button === 1) event.preventDefault() }}
-    onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); onCloseConversation?.(tab.id) } }}
-  >
-    {isPinned(pins, 'conversation', tab.id) && <span className="tab-pin-mark" aria-hidden="true">★</span>}
-    <span className="tab-name">{tab.name}</span>
-    {tab.attention > 0 && <span className="tab-badge attention-badge" aria-label={`${tab.attention} new`}>{tab.attention}</span>}
-    <CloseControl name={tab.name} onClose={() => onCloseConversation?.(tab.id)} />
-  </button>
-
-  const documentsMenu = <div ref={menuRoot} id="topbar-menu-documents" className="tab-menu-list" role="menu" aria-label="Open docs" onKeyDown={menuKeys}>
-    {strip.documents.menu.length === 0 && <p className="tab-menu-empty">No documents open.</p>}
-    {strip.documents.menu.map((tab) => {
-      const active = !conversationTab && !previewActive && tab.active
-      const pinned = isPinned(pins, 'document', tab.path)
-      return <div className={`tab-menu-row ${active ? 'tab-menu-row-active' : ''}`} key={tab.path} data-pinned={pinned || undefined}>
-        <button type="button" role="menuitem" className="tab-menu-open" aria-current={active || undefined} title={tab.path} onClick={() => { setOpenMenu(null); onOpenTab(tab.path) }} onContextMenu={(event) => openContextMenu(event, tab.path)}>
-          <span className="tab-name">{tab.name}</span>
-          {tab.dirty && <span className="tab-dirty-dot" aria-label="Unsaved changes" title="Unsaved changes" />}
-          {tab.pendingCount > 0 && <span className="tab-badge" style={tab.pendingColor ? { background: AGENT_COLORS[tab.pendingColor], color: textColorFor(AGENT_COLORS[tab.pendingColor]) } : undefined}>{tab.pendingCount}</span>}
-        </button>
-        <button type="button" className="tab-pin" aria-pressed={pinned} aria-label={pinLabel(pinned, tab.name)} title={pinLabel(pinned, tab.name)} onClick={() => pin('document', tab.path)}>{pinned ? '★' : '☆'}</button>
-        <button type="button" className="tab-menu-close" aria-label={`Close ${tab.name}`} title={`Close ${tab.name}`} onClick={() => onCloseTab(tab)}>×</button>
-      </div>
-    })}
-  </div>
+  const contentMenu = (kind: Exclude<MenuKind, 'app'>, pinKind: PinKind, label: string, empty: string, items: OpenItem[]) => (
+    <div ref={menuRoot} id={`topbar-menu-${kind}`} className="tab-menu-list" role="menu" aria-label={label} onKeyDown={menuKeys}>
+      {items.length === 0 && <p className="tab-menu-empty">{empty}</p>}
+      {orderPinned(items, pins, pinKind).map((item) => {
+        const pinned = isPinned(pins, pinKind, item.id)
+        return <div className={`tab-menu-row ${item.active ? 'tab-menu-row-active' : ''}`} key={item.id} data-pinned={pinned || undefined}>
+          <button type="button" role="menuitem" className="tab-menu-open" aria-current={item.active || undefined} title={item.title ?? item.name}
+            onClick={() => { setOpenMenu(null); navigation.current?.querySelector<HTMLElement>(`[data-menu="${kind}"]`)?.focus(); item.onOpen() }}
+            onMouseDown={(event) => { if (event.button === 1) event.preventDefault() }}
+            onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); closeContentItem(kind, item, items.length) } }}
+            onContextMenu={item.onContextMenu}>
+            <span className="tab-name">{item.name}</span>{item.badge}
+          </button>
+          <button type="button" className="tab-pin" aria-pressed={pinned} aria-label={pinLabel(pinned, item.name)} title={pinLabel(pinned, item.name)} onClick={() => pin(pinKind, item.id)}>{pinned ? '★' : '☆'}</button>
+          <button type="button" className="tab-menu-close" aria-label={`Close ${item.name}`} title={`Close ${item.name}`} onClick={() => closeContentItem(kind, item, items.length)}>×</button>
+        </div>
+      })}
+    </div>
+  )
 
   return (
-    <header className="topbar" ref={navigation} data-window-chrome={windowState?.chrome} data-fullscreen={windowState?.fullscreen} data-maximized={windowState?.maximized} data-focused={windowState?.focused}>
+    <header className="topbar" ref={navigation} data-menu-open={openMenu !== null} data-window-chrome={windowState?.chrome} data-fullscreen={windowState?.fullscreen} data-maximized={windowState?.maximized} data-focused={windowState?.focused}>
+      {openMenu && <div className="topbar-menu-dismiss" aria-hidden="true" onPointerDown={() => setOpenMenu(null)} />}
       <span className="tab-menu-anchor app-menu-anchor">
-        <button type="button" className="app-menu-trigger" data-menu="app" aria-label="StrataMD menu" aria-haspopup="menu" aria-expanded={openMenu === 'app'} aria-controls={openMenu === 'app' ? 'topbar-menu-app' : undefined} title={accountsAttention ? 'StrataMD menu · Accounts needs attention' : 'StrataMD menu'} onClick={() => setOpenMenu(current => current === 'app' ? null : 'app')}>
+        <button type="button" className="app-menu-trigger" data-menu="app" aria-label="StrataMD menu" aria-haspopup="menu" aria-expanded={openMenu === 'app'} aria-controls={openMenu === 'app' ? 'topbar-menu-app' : undefined} title="StrataMD menu" onClick={() => setOpenMenu(current => current === 'app' ? null : 'app')}>
           <Logo compact />
           <span className="app-menu-chevron" aria-hidden="true">▾</span>
-          {accountsAttention && <i className="attention-dot" aria-label="Accounts needs attention" />}
         </button>
         {openMenu === 'app' && <div ref={menuRoot} id="topbar-menu-app" className="tab-menu-list app-menu-list" role="menu" aria-label="StrataMD" onKeyDown={menuKeys}>
           <button type="button" role="menuitem" className="tab-menu-open open-file-button" onClick={() => menuAction(onOpenFile)}>Open file <kbd>{primaryModifierLabel()}+O</kbd></button>
+          {onToggleTerminal && <button type="button" role="menuitem" className="tab-menu-open" onClick={() => menuAction(onToggleTerminal)}>Terminal <kbd>{primaryModifierLabel()}+`</kbd></button>}
+          {onOpenPreview && engine && engine.state === 'connected' && <button type="button" role="menuitem" className="tab-menu-open open-preview-button" onClick={() => menuAction(onOpenPreview)}>Open preview</button>}
+          {(showAccounts || onOpenUsage) && <>
+            <div className="app-menu-divider" role="separator" />
+            {showAccounts && <button type="button" role="menuitem" className="tab-menu-open accounts-button" onClick={() => menuAction(showAccounts)}>Accounts</button>}
+            {onOpenUsage && <button type="button" role="menuitem" className="tab-menu-open" onClick={() => menuAction(onOpenUsage)}>Usage</button>}
+          </>}
+          <div className="app-menu-divider" role="separator" />
+          {engine && onOpenEngine && <button type="button" role="menuitem" className="tab-menu-open" onClick={() => menuAction(onOpenEngine)}>{engine.managed ? 'This computer' : 'Engine'}</button>}
           {onOpenSettings && <button type="button" role="menuitem" className="tab-menu-open" onClick={() => menuAction(onOpenSettings)}>Settings</button>}
-          {engine && engine.state !== 'unpaired' && onOpenAccounts && <button type="button" role="menuitem" className="tab-menu-open accounts-button" aria-label="Accounts" onClick={() => menuAction(onOpenAccounts)}>Accounts{accountsAttention && <span className="account-warning">Needs attention</span>}</button>}
-          {onOpenUsage && <button type="button" role="menuitem" className="tab-menu-open" onClick={() => menuAction(onOpenUsage)}><ChartColumnIcon />Usage</button>}
-          {onToggleTerminal && <button type="button" role="menuitem" className="tab-menu-open" onClick={() => menuAction(onToggleTerminal)}><TerminalIcon />Terminal <kbd>{primaryModifierLabel()}+`</kbd></button>}
-          {onOpenPreview && engine && engine.state === 'connected' && <button type="button" role="menuitem" className="tab-menu-open open-preview-button" onClick={() => menuAction(onOpenPreview)}><GlobeIcon />Open preview</button>}
           <button type="button" role="menuitem" className="tab-menu-open theme-button" onClick={() => menuAction(onOpenTheme)}>Theme</button>
           {zoomed && <button type="button" role="menuitem" className="tab-menu-open reset-zoom" onClick={() => menuAction(onResetZoom)}>Reset zoom</button>}
         </div>}
       </span>
       <div className="tab-navigation">
         <span className="tab-menu-anchor">
-          <MenuPill kind="documents" label="Docs" count={tabs.length} activeName={activeDocument && !activeShownElsewhere && !strip.documents.pills.includes(activeDocument) ? activeDocument.name : null} open={openMenu === 'documents'} onToggle={() => setOpenMenu((current) => current === 'documents' ? null : 'documents')} />
-          {openMenu === 'documents' && documentsMenu}
+          <MenuPill kind="documents" label="Docs" icon={<FileTextIcon />} count={tabs.length} open={openMenu === 'documents'} onToggle={() => setOpenMenu((current) => current === 'documents' ? null : 'documents')} />
+          {openMenu === 'documents' && contentMenu('documents', 'document', 'Open docs', 'No documents open.', documentItems)}
         </span>
-        <div
-          className="tabs"
-          role="tablist"
-          aria-label="Open documents"
-          ref={tabStrip}
-          onWheel={(event) => {
-            if (event.deltaY !== 0 && event.deltaX === 0) event.currentTarget.scrollLeft += event.deltaY
-          }}
-        >
-          {strip.documents.pills.map(documentPill)}
-          {strip.conversations.pills.map(conversationPill)}
-          {previewPills.map((pill) => <button type="button" role="tab" aria-selected={pill.active} className={`tab preview-pill ${pill.active ? 'tab-active' : ''}`} title={pill.name} key={pill.id} onClick={() => onOpenPreviewPill?.(pill.id)} onMouseDown={(event) => { if (event.button === 1) event.preventDefault() }} onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); onClosePreviewPill?.(pill.id) } }}>
-            <GlobeIcon />
-            <span className="tab-name">{pill.name}</span>
-            {pill.held && <span className="tab-dirty-dot" aria-label="Held visual comments" title="Held visual comments" />}
-            <CloseControl name={pill.name} onClose={() => onClosePreviewPill?.(pill.id)} />
-          </button>)}
-        </div>
+        <span className="tab-menu-anchor">
+          <MenuPill kind="conversations" label="Conversations" icon={<MessageSquareIcon />} count={conversationTabs.length} open={openMenu === 'conversations'} onToggle={() => setOpenMenu((current) => current === 'conversations' ? null : 'conversations')} />
+          {openMenu === 'conversations' && contentMenu('conversations', 'conversation', 'Open conversations', 'No conversations open.', conversationItems)}
+        </span>
+        <span className="tab-menu-anchor">
+          <MenuPill kind="previews" label="Web views" icon={<GlobeIcon />} count={previewPills.length} open={openMenu === 'previews'} onToggle={() => setOpenMenu((current) => current === 'previews' ? null : 'previews')} />
+          {openMenu === 'previews' && contentMenu('previews', 'preview', 'Open web views', 'No web views open.', previewItems)}
+        </span>
       </div>
       <div className="window-drag-space" aria-hidden="true" />
       {menu && <PathContextMenu menu={menu} onCopyPath={onCopyPath} onClose={closeContextMenu} onTogglePin={(path) => pin('document', path)} pinned={isPinned(pins, 'document', menu.path)} {...(onCloseOthers ? { onCloseOthers } : {})} {...(onCloseAll ? { onCloseAll } : {})} {...(onCloseSaved ? { onCloseSaved } : {})} />}

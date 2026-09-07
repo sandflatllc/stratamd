@@ -23,8 +23,9 @@ test.describe('managed engine @managed', () => {
       await expect.poll(async () => JSON.parse(await readFile(path, 'utf8')).pid, { timeout: 20000 }).not.toBe(record.pid)
       await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).engine.managed?.state).toBe('running')
       expect((await page.evaluate(() => window.strata.getState())).engine.identity).toBe(initial.engine.identity)
-      await expect(page.getByRole('dialog', { name: 'This computer' })).toBeVisible()
-      await expect(page.getByRole('button', { name: 'Restart engine' })).toBeVisible()
+      await expect(page.getByRole('dialog', { name: 'This computer' })).toHaveCount(0)
+      await page.getByRole('button', { name: 'Engine status' }).click()
+      await expect(page.getByRole('button', { name: 'Show log' })).toBeVisible()
     } catch (error) {
       const state = await scenario.page?.evaluate(() => window.strata.getState()).catch(() => null)
       await testInfo.attach('managed-state', { body: JSON.stringify(state?.engine), contentType: 'application/json' })
@@ -72,4 +73,28 @@ test('an app crash adopts only its surviving authenticated engine @managed', asy
     expect(JSON.parse(await readFile(path, 'utf8')).pid).toBe(first.pid)
     await expect(page.getByRole('button', { name: 'Engine status' })).toContainText('Connected')
   } finally { await scenario.stop(); await scenario.dispose() }
+})
+
+test('managed tray close retains a preview form and its capture @managed', async ({}, testInfo) => {
+  test.skip(!process.env.STRATAMD_ENGINE_BUNDLE, 'Requires the stock runtime')
+  const { startPreviewPage } = await import('./preview-page')
+  const { writeFile } = await import('node:fs/promises')
+  const site = await startPreviewPage()
+  const scenario = await Scenario.create(testInfo, '# Tray preview\n')
+  scenario.env.STRATAMD_ENGINE_MODE = 'managed'
+  try {
+    const page = await scenario.launch()
+    await expect(async () => { expect((await page.evaluate(() => window.strata.getState())).engine.managed?.state).toBe('running') }).toPass({ timeout: 20000 })
+    const projectId = await page.evaluate(workspaceRoot => window.strata.createEngineProject({ title: 'Tray preview', workspaceRoot }), scenario.root)
+    const tabId = await page.evaluate(({ projectId, url }) => window.strata.openPreviewTab({ projectId, url }), { projectId, url: site.origin })
+    await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).preview.tabs.find(tab => tab.id === tabId)?.title).toBe('Clients · Mesa Office')
+    await scenario.app!.evaluate(async ({ webContents }, url) => { const guest = webContents.getAllWebContents().find(contents => contents.getURL().startsWith(url))!; await guest.executeJavaScript("document.getElementById('name').value = 'Kept in tray'") }, site.origin)
+    await writeFile(join(scenario.env.STRATAMD_USER_DATA!, 'background-close-explained'), '1')
+    await scenario.app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close())
+    await expect.poll(() => scenario.app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.isVisible())).toBe(false)
+    await scenario.app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.show())
+    expect(await scenario.app!.evaluate(async ({ webContents }, url) => webContents.getAllWebContents().find(contents => contents.getURL().startsWith(url))!.executeJavaScript("document.getElementById('name').value"), site.origin)).toBe('Kept in tray')
+    expect((await page.evaluate(() => window.strata.getState())).preview.tabs.some(tab => tab.id === tabId)).toBe(true)
+    expect((await page.evaluate(tab => window.strata.capturePreviewFrame(tab), tabId)).capture.width).toBeGreaterThan(0)
+  } finally { await scenario.stop(); await scenario.dispose(); await site.close() }
 })

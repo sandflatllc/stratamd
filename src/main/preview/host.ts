@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { BrowserWindow, WebContentsView, session, type Rectangle, type Session, type WebContents } from 'electron'
+import { BaseWindow, BrowserWindow, WebContentsView, screen, session, type Rectangle, type Session, type WebContents } from 'electron'
 import type { PreviewBoundsReport, PreviewNavigation, PreviewStateView, PreviewTabView, PreviewViewportRequest, PreviewViewportView } from '../../shared/contracts'
 import { KNOWN_PRESETS, pageName, resolvePreviewAddress, resolveViewport, viewportSetting } from '../../shared/preview'
 import { atomicWriteFile, PRIVATE_FILE_MODE } from '../storage'
 import { logError, logWarn } from '../log'
 import { guestPermissionDecision, guestWindowDisposition } from './guest-policy'
-import { screenshotPlan } from './capture-budget'
+import { reportPreviewOwnerInput } from './owner-input'
+import { withCleanPage } from './clean-capture'
 import { PreviewFailure, PreviewTabModel, partitionFor, type PersistedPreviewTab, type PreviewTabRecord } from './tabs'
 import { FOCUSED_EDITABLE_SCRIPT, findScript, focusScript, keyEvent, parseLocator, scrollScript, snapshotScript, waitConditionScript, type ParsedLocator } from './scripts'
 import { CLEAR_STRATA_SCRIPT, describeScript, locateScript, outlineScript, scrollScript as pageScrollScript, type PageDescription, type PageIdentity, type PageMatch, type PageRect } from './inspect'
@@ -29,6 +30,7 @@ export interface PreviewAutomationRequest {
   requestId: string
   threadId: string
   tabId?: string | undefined
+  tabIdExplicit?: boolean | undefined
   operation: string
   input: unknown
   timeoutMs: number
@@ -42,6 +44,7 @@ export interface PreviewHostOptions {
   dataDirectory: string
   now?: () => number
   /** The engine's projects and threads, for a tab's working folder and an agent tab's project. */
+  ownerActivity?(): void
   resolveProject(projectId: string): { workspaceRoot: string; title: string } | null
   resolveThread(threadId: string): { projectId: string; workingFolder: string } | null
 }
@@ -60,6 +63,8 @@ interface TabRuntime {
   emulation: string
   /** The size the page was last shown at; a hidden page keeps it, so leaving the preview never reflows the page. */
   size: { width: number; height: number } | null
+  popups: Set<BrowserWindow>
+  ownerRevision: number
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000
@@ -88,6 +93,7 @@ export class PreviewHost {
   readonly #sessions = new Set<Session>()
   readonly #persistPath: string
   #window: BrowserWindow | null = null
+  #parking: BaseWindow | null = null
   #shownTabId: string | null = null
   #bounds: Rectangle | null = null
   #overlay = false
@@ -142,17 +148,28 @@ export class PreviewHost {
     this.#layout()
   }
 
-  /**
-   * Every page keeps a painted widget: a background tab sits behind Strata's
-   * own view, where the window's opaque shell hides it and no input reaches it,
-   * so it keeps running and can be captured without being brought forward.
-   */
+  /** A separate, non-focusable native window gives never-shown guests a compositor.
+   * It sits beyond every display; attaching them outside the main window itself
+   * leaves Chromium without a first frame on Electron 44/Linux. */
+  #parkingWindow(): BaseWindow {
+    if (this.#parking && !this.#parking.isDestroyed()) return this.#parking
+    const displays = screen.getAllDisplays()
+    const x = Math.min(...displays.map(display => display.bounds.x)) - 4097
+    const y = Math.min(...displays.map(display => display.bounds.y)) - 4097
+    const parking = new BaseWindow({ x, y, width: 4096, height: 4096, show: false, focusable: false, skipTaskbar: true, frame: false })
+    parking.showInactive()
+    this.#parking = parking
+    return parking
+  }
+
   #attachHidden(view: WebContentsView): void {
-    const window = this.#window
-    if (!window || window.isDestroyed() || window.contentView.children.includes(view)) return
-    view.setBounds(this.#bounds ?? { x: 0, y: 0, width: 1024, height: 768 })
+    const parking = this.#parkingWindow()
+    if (!parking.contentView.children.includes(view)) {
+      parking.contentView.addChildView(view)
+      const bounds = view.getBounds()
+      view.setBounds({ x: 0, y: 0, width: bounds.width || 1024, height: bounds.height || 768 })
+    }
     view.setVisible(true)
-    window.contentView.addChildView(view, 0)
   }
 
   /** The renderer says where the shown page sits; null hides it. Switching to a document keeps every page alive. */
@@ -177,21 +194,21 @@ export class PreviewHost {
     if (!window || window.isDestroyed()) return
     for (const [id, runtime] of this.#runtimes) {
       const show = id === this.#shownTabId && this.#bounds !== null && !this.#overlay && this.#bounds.width > 0 && this.#bounds.height > 0
-      this.#attachHidden(runtime.view)
       const viewport = this.#model.get(id)?.viewport ?? { mode: 'fill' as const }
       if (show) {
+        window.contentView.addChildView(runtime.view)
         runtime.view.setBounds(this.#bounds!)
         runtime.size = { width: this.#bounds!.width, height: this.#bounds!.height }
-        // The shown page sits on top of everything; the others go back behind the shell.
+        // Only the selected page occupies the reported preview rectangle.
         window.contentView.addChildView(runtime.view)
         runtime.view.setVisible(true)
         this.#emulate(runtime, viewport, this.#bounds!)
       } else {
-        window.contentView.addChildView(runtime.view, 0)
+        this.#attachHidden(runtime.view)
         runtime.view.setVisible(true)
-        // A background page keeps the size it was last shown at, or the hole's size, so hiding it never reflows it;
+        // A background page keeps the size it was last shown at, so parking never reflows it;
         // one with a narrowed viewport is drawn at that size, so a capture of it is exact.
-        const hidden = this.#bounds ? { width: this.#bounds.width, height: this.#bounds.height } : runtime.size ?? { width: 1024, height: 768 }
+        const hidden = runtime.size ?? { width: 1024, height: 768 }
         const bounds = viewport.mode === 'fill' ? { x: 0, y: 0, ...hidden } : { x: 0, y: 0, width: viewport.width, height: viewport.height }
         runtime.view.setBounds(bounds)
         this.#emulate(runtime, viewport, bounds)
@@ -225,6 +242,7 @@ export class PreviewHost {
       this.#sessions.add(guest)
       // Pages get no permission but fullscreen, and the shell's deny-all never reaches them.
       guest.setPermissionRequestHandler((_contents, permission, callback) => callback(guestPermissionDecision(permission)))
+      guest.on('will-download', (event) => event.preventDefault())
       guest.setPermissionCheckHandler((_contents, permission) => guestPermissionDecision(permission))
     }
     return guest
@@ -240,14 +258,14 @@ export class PreviewHost {
       openedUrl: input.url, url: input.url, title: '', loading: false, canGoBack: false, canGoForward: false,
       viewport: input.viewport ?? { mode: 'fill' }, paused: false, working: false, activity: null, error: null, openedAt: input.openedAt ?? this.#now(), document: 0,
     }
-    const runtime: TabRuntime = { view, queue: Promise.resolve(), epoch: 0, console: [], actions: [], synthetic: 0, emulation: '', size: null }
+    const runtime: TabRuntime = { view, queue: Promise.resolve(), epoch: 0, console: [], actions: [], synthetic: 0, emulation: '', size: null, popups: new Set(), ownerRevision: 0 }
     this.#model.add(tab)
     this.#runtimes.set(id, runtime)
     this.#wire(id, view.webContents, runtime)
     view.setBackgroundColor('#ffffffff')
     // A background tab keeps running: an agent's page must not be throttled because the owner is looking elsewhere.
-    view.webContents.setBackgroundThrottling(false)
     this.#attachHidden(view)
+    view.webContents.setBackgroundThrottling(false)
     return tab
   }
 
@@ -285,10 +303,13 @@ export class PreviewHost {
       if (disposition === 'deny' || !tab) return { action: 'deny' }
       return { action: 'allow', overrideBrowserWindowOptions: { width: 720, height: 640, show: true, ...(this.#window && !this.#window.isDestroyed() ? { parent: this.#window } : {}), webPreferences: { partition: tab.partition, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } } }
     })
+    contents.on('did-create-window', popup => this.#wirePopup(popup, runtime))
     // Deliberate interaction in an agent tab takes control: queued actions stop, waiting ones are interrupted, completed ones stand.
     contents.on('input-event', (_event, input) => {
       if (runtime.synthetic > 0) return
       if (input.type !== 'mouseDown' && input.type !== 'keyDown' && input.type !== 'char' && input.type !== 'mouseWheel') return
+      runtime.ownerRevision++
+      reportPreviewOwnerInput(); this.#options.ownerActivity?.()
       const tab = this.#model.get(id)
       if (!tab || tab.kind !== 'agent') return
       this.takeControl(id)
@@ -296,11 +317,24 @@ export class PreviewHost {
     contents.on('destroyed', () => { if (this.#runtimes.has(id)) this.#forget(id) })
   }
 
+  #wirePopup(popup: BrowserWindow, runtime: TabRuntime): void {
+    runtime.popups.add(popup)
+    popup.once('closed', () => runtime.popups.delete(popup))
+    const contents = popup.webContents
+    contents.on('will-navigate', (event, url) => { if (!/^https?:/i.test(url)) event.preventDefault() })
+    contents.on('will-redirect', (event, url) => { if (!/^https?:/i.test(url)) event.preventDefault() })
+    contents.setWindowOpenHandler(details => guestWindowDisposition(details) === 'deny' ? { action: 'deny' } : { action: 'allow', overrideBrowserWindowOptions: { parent: popup, webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true } } })
+    contents.on('did-create-window', child => this.#wirePopup(child, runtime))
+    contents.on('before-input-event', () => { reportPreviewOwnerInput(); this.#options.ownerActivity?.() })
+    contents.on('before-mouse-event', () => { reportPreviewOwnerInput(); this.#options.ownerActivity?.() })
+  }
+
   #forget(id: string): void {
     const runtime = this.#runtimes.get(id)
     this.#runtimes.delete(id)
     this.#model.remove(id)
     if (runtime) {
+      for (const popup of runtime.popups) if (!popup.isDestroyed()) popup.destroy()
       runtime.epoch += 1
       if (this.#window && !this.#window.isDestroyed() && this.#window.contentView.children.includes(runtime.view)) this.#window.contentView.removeChildView(runtime.view)
     }
@@ -427,7 +461,8 @@ export class PreviewHost {
     this.#closed = true
     if (this.#persistTimer) clearTimeout(this.#persistTimer)
     await this.persist()
-    for (const [id, runtime] of [...this.#runtimes]) { this.#runtimes.delete(id); runtime.epoch += 1; try { runtime.view.webContents.close() } catch { /* already gone */ } }
+    for (const [id, runtime] of [...this.#runtimes]) { this.#runtimes.delete(id); runtime.epoch += 1; for (const popup of runtime.popups) if (!popup.isDestroyed()) popup.destroy(); try { runtime.view.webContents.close() } catch { /* already gone */ } }
+    this.#parking?.destroy(); this.#parking = null
   }
 
   // ---- Captures and one-shot queries (phases 3 and 4)
@@ -437,10 +472,16 @@ export class PreviewHost {
     return await contents.executeJavaScript('({ width: window.innerWidth, height: window.innerHeight, scroll: { x: Math.round(window.scrollX), y: Math.round(window.scrollY) }, deviceScale: window.devicePixelRatio || 1 })', true) as { width: number; height: number; scroll: { x: number; y: number }; deviceScale: number }
   }
 
-  /** A frame from a shown or hidden tab: a hidden one is captured without being brought forward, and shown briefly only if that gives nothing. */
+  /** A frame from a shown or parked tab, waiting for its compositor when needed. */
   async #captureImage(id: string, rect?: Rectangle): Promise<Electron.NativeImage> {
     const contents = this.#contents(id)
-    return rect ? contents.capturePage(rect) : contents.capturePage()
+    const deadline = this.#now() + 5000
+    for (;;) {
+      const image = await contents.capturePage(rect)
+      if (!image.isEmpty()) return image
+      if (this.#now() >= deadline || contents.isDestroyed()) throw new Error(`Preview tab ${id} has not produced a capturable frame`)
+      await contents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))', true)
+    }
   }
 
   /** The visible frame, or a rect of it, as PNG bytes in device pixels. */
@@ -451,28 +492,6 @@ export class PreviewHost {
     const cssWidth = rect?.width ?? viewport.width
     // The picture may be scaled down to fit the window; the ratio maps its pixels back to the page's own units.
     return { bytes: new Uint8Array(image.toPNG()), width: size.width, height: size.height, cssWidth, cssHeight: rect?.height ?? viewport.height, scroll: viewport.scroll, deviceScale: cssWidth > 0 && size.width > 0 ? size.width / cssWidth : viewport.deviceScale }
-  }
-
-  /** The whole page through the debugger; the visible frame when the page refuses or the budget says no. */
-  async captureFullPage(id: string): Promise<{ bytes: Uint8Array; width: number; height: number; complete: boolean }> {
-    const contents = this.#contents(id)
-    const attachedHere = !contents.debugger.isAttached()
-    try {
-      if (attachedHere) contents.debugger.attach('1.3')
-      const metrics = await contents.debugger.sendCommand('Page.getLayoutMetrics') as { cssContentSize?: { width: number; height: number } }
-      const size = metrics.cssContentSize ?? { width: 0, height: 0 }
-      const viewport = await this.viewportOf(id)
-      const plan = screenshotPlan(size.width, size.height, viewport.deviceScale)
-      if (!plan.complete) throw new RangeError('Full page exceeds the screenshot budget')
-      const result = await contents.debugger.sendCommand('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: { x: 0, y: 0, width: size.width, height: size.height, scale: 1 } }) as { data: string }
-      const bytes = Uint8Array.from(Buffer.from(result.data, 'base64'))
-      return { bytes, width: plan.pixelSize.width, height: plan.pixelSize.height, complete: true }
-    } catch {
-      const frame = await this.capture(id)
-      return { bytes: frame.bytes, width: frame.width, height: frame.height, complete: false }
-    } finally {
-      if (attachedHere && contents.debugger.isAttached()) { try { contents.debugger.detach() } catch { /* already detached */ } }
-    }
   }
 
   /** A one-shot page query: runs once, returns bounded data, leaves nothing behind. */
@@ -511,16 +530,19 @@ export class PreviewHost {
   }
 
   async scroll(id: string, move: { by: { x: number; y: number } } | { to: { x: number; y: number } }): Promise<{ x: number; y: number }> {
+    const runtime = this.#runtimes.get(id); if (runtime) runtime.ownerRevision++
     return await this.query<{ x: number; y: number }>(id, pageScrollScript(move))
   }
 
   /** Adjustments: the whole set of Strata's overrides at once; returns the marks that were found and styled. */
   async applyOverrides(id: string, targets: OverrideTarget[]): Promise<string[]> {
+    const runtime = this.#runtimes.get(id); if (runtime) runtime.ownerRevision++
     return await this.query<string[]>(id, applyOverridesScript(targets))
   }
 
   /** Removes only Strata's overrides; the page's own styles, live or not, are left as they are. */
   async clearOverrides(id: string): Promise<void> {
+    const runtime = this.#runtimes.get(id); if (runtime) runtime.ownerRevision++
     await this.query(id, CLEAR_OVERRIDES_SCRIPT).catch(() => undefined)
   }
 
@@ -536,26 +558,47 @@ export class PreviewHost {
     contents.setBackgroundThrottling(false)
     contents.setWindowOpenHandler(() => ({ action: 'deny' }))
     contents.on('will-navigate', (event, url) => { if (!/^https?:/i.test(url)) event.preventDefault() })
-    const window = this.#window
     try {
+      this.#attachHidden(view)
       view.setBounds({ x: 0, y: 0, width: input.viewport.width, height: input.viewport.height })
       view.setVisible(true)
-      if (window && !window.isDestroyed()) window.contentView.addChildView(view, 0)
+
       await this.#load(contents, input.url, 'load', input.timeoutMs ?? DEFAULT_TIMEOUT_MS, () => undefined)
       return await work(contents)
     } finally {
-      if (window && !window.isDestroyed() && window.contentView.children.includes(view)) window.contentView.removeChildView(view)
+      if (this.#parking && !this.#parking.isDestroyed() && this.#parking.contentView.children.includes(view)) this.#parking.contentView.removeChildView(view)
       if (!contents.isDestroyed()) contents.close()
     }
   }
 
-  /** A frame from any web contents, Strata's outline cleared first, with the page's own size and scroll. */
+  /** A frame from any web contents with the page's own size and scroll; the caller controls clean capture. */
   async frameOf(contents: WebContents): Promise<{ bytes: Uint8Array; width: number; height: number; cssWidth: number; cssHeight: number; scroll: { x: number; y: number }; scale: number }> {
-    await contents.executeJavaScript(CLEAR_STRATA_SCRIPT, true).catch(() => undefined)
     const viewport = await contents.executeJavaScript('({ width: window.innerWidth, height: window.innerHeight, scroll: { x: Math.round(window.scrollX), y: Math.round(window.scrollY) }, deviceScale: window.devicePixelRatio || 1 })', true) as { width: number; height: number; scroll: { x: number; y: number }; deviceScale: number }
     const image = await contents.capturePage()
     const size = image.getSize()
     return { bytes: new Uint8Array(image.toPNG()), width: size.width, height: size.height, cssWidth: viewport.width, cssHeight: viewport.height, scroll: viewport.scroll, scale: viewport.width > 0 && size.width > 0 ? size.width / viewport.width : viewport.deviceScale }
+  }
+
+  /** Comparisons share the tab queue and restore only the unchanged owner's view. */
+  async compareInPlace<T>(id: string, work: (contents: WebContents) => Promise<T>): Promise<T> {
+    const runtime = this.#runtimes.get(id)
+    if (!runtime) throw new Error(`Preview tab ${id} is closed`)
+    const previous = runtime.queue
+    let release!: () => void
+    runtime.queue = new Promise<void>(resolve => { release = resolve })
+    await previous
+    const epoch = runtime.epoch, revision = runtime.ownerRevision, document = this.#model.get(id)?.document
+    const unchanged = () => this.#runtimes.get(id) === runtime && runtime.epoch === epoch && runtime.ownerRevision === revision && this.#model.get(id)?.document === document
+    try {
+      const scroll = (await this.viewportOf(id)).scroll
+      return await withCleanPage(this.#contents(id), async () => {
+        try {
+          const result = await work(this.#contents(id))
+          if (!unchanged()) throw new PreviewFailure('PreviewAutomationControlInterruptedError', 'The page changed during comparison. Try again from the current page.')
+          return result
+        } finally { if (unchanged()) await this.query(id, pageScrollScript({ to: scroll })).catch(() => undefined) }
+      }, unchanged)
+    } finally { release() }
   }
 
   /** The web contents behind a tab, for a comparison run in place. */
@@ -643,18 +686,18 @@ export class PreviewHost {
           while (!fits() && this.#now() < deadline) { await delay(50); check(); measured = await this.viewportOf(tab.id) }
           return { tabId: tab.id, setting: viewportSetting(viewport), viewport: { width: measured.width, height: measured.height } }
         }
-        case 'snapshot': {
+        case 'snapshot': return withCleanPage(contents, async () => {
           const page = await contents.executeJavaScript(snapshotScript(SNAPSHOT_LIMITS), true) as Record<string, unknown>
           const image = await this.#captureImage(tab.id)
           const size = image.getSize()
           return {
-            ...page,
+            ...page, loading: contents.isLoading(),
             consoleEntries: runtime.console.slice(-50),
             networkEntries: [],
             actionTimeline: runtime.actions.slice(-50),
             screenshot: { mimeType: 'image/png', data: image.toPNG().toString('base64'), width: size.width, height: size.height },
           }
-        }
+        }, () => runtime.epoch === epoch)
         case 'click': {
           const point = typeof input.x === 'number' && typeof input.y === 'number'
             ? { x: input.x, y: input.y }
@@ -733,7 +776,8 @@ export class PreviewHost {
   async #open(request: PreviewAutomationRequest, input: Record<string, unknown>): Promise<unknown> {
     const thread = this.#options.resolveThread(request.threadId)
     if (!thread) throw new PreviewFailure('PreviewAutomationExecutionError', `Thread ${request.threadId} is not in a project Strata knows`)
-    let tab = request.tabId !== undefined ? this.#model.resolve(request.threadId, request.tabId) : input.reuseExistingTab === false ? null : this.#model.currentFor(request.threadId)
+    const explicit = request.tabId !== undefined && request.tabIdExplicit !== false
+    let tab = explicit ? this.#model.resolve(request.threadId, request.tabId) : input.reuseExistingTab === false ? null : request.tabId ? this.#model.get(request.tabId) : this.#model.currentFor(request.threadId)
     if (!tab) {
       tab = this.#create({ projectId: thread.projectId, workingFolder: thread.workingFolder, kind: 'agent', threadId: request.threadId, url: '' })
       this.#publish()
@@ -811,6 +855,7 @@ export class PreviewHost {
       this.#publish()
       try {
         const result = await task(runtime, epoch)
+        if (runtime.epoch !== epoch) throw new PreviewFailure('PreviewAutomationControlInterruptedError', 'The owner took control before the operation finished. Already executed page code cannot be undone.')
         Object.assign(entry, { status: 'succeeded', completedAt: new Date(this.#now()).toISOString() })
         return result
       } catch (error) {
@@ -828,12 +873,13 @@ export class PreviewHost {
   #describe(action: string, request: PreviewAutomationRequest): string {
     const input = record(request.input)
     const target = typeof input.locator === 'string' ? input.locator : typeof input.selector === 'string' ? input.selector : typeof input.text === 'string' ? input.text : typeof input.urlIncludes === 'string' ? input.urlIncludes : ''
-    const plain = target.replace(/^role=[a-z]+\[name=["']?([^"'\]]*)["']?\]$/i, '$1').replace(/^text=/, '')
+    const semantic = target.match(/^role=[a-z]+\[name=["']?([^"'\]]*)["']?\]$/i)
+    const plain = semantic?.[1] ?? (target.startsWith('text=') ? target.slice(5) : '')
     switch (action) {
       case 'open': case 'navigate': return 'opening a page'
       case 'snapshot': return 'reading the page'
       case 'click': return plain ? `clicking ${plain}` : 'clicking'
-      case 'type': return plain ? `typing into ${plain}` : 'typing'
+      case 'type': return (input.selector !== undefined || input.locator !== undefined) && plain ? `typing into ${plain}` : 'typing'
       case 'press': return `pressing ${String(input.key ?? 'a key')}`
       case 'scroll': return 'scrolling'
       case 'evaluate': return 'checking the page'

@@ -1,3 +1,4 @@
+import { expectDocumentListed, openDocsMenu, expectDocumentDirty } from './harness'
 import { expect, test } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -103,23 +104,26 @@ test('the tab menu closes other, saved, or all tabs and keeps the ones with unsa
     await page.evaluate((path) => window.strata.openDocument(path), join(folder, 'three.md'))
     await expect(openCount).toHaveText('3')
 
-    // Only the active document is a pill; the others wait in the Docs menu (§6.9).
-    await expect(page.getByRole('tablist', { name: 'Open documents' }).getByRole('tab')).toHaveCount(1)
+    await openDocsMenu(page)
+    await expect(page.getByRole('menu', { name: 'Open docs' }).getByRole('menuitem')).toHaveCount(3)
+    await page.keyboard.press('Escape')
     await switchToDocument(page, /one\.md/i)
-    await page.getByRole('tab', { name: /one\.md/i }).click({ button: 'right' })
+    await openDocsMenu(page)
+    await page.getByRole('menu', { name: 'Open docs' }).getByRole('menuitem', { name: /one\.md/i }).click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Close other tabs' }).click()
     await expect(openCount).toHaveText('1')
-    await expect(page.getByRole('tab', { name: /one\.md/i })).toBeVisible()
+    await expectDocumentListed(page, /one\.md/i)
 
     // A dirty tab survives Close all, and the note says so.
     await page.evaluate((path) => window.strata.openDocument(path), join(folder, 'two.md'))
     await page.getByRole('textbox', { name: /document editor/i }).click()
     await page.keyboard.type('Edited ')
-    await expect(page.getByRole('tab', { name: /two\.md/i }).locator('.tab-dirty-dot')).toBeVisible()
-    await page.getByRole('tab', { name: /two\.md/i }).click({ button: 'right' })
+    await expectDocumentDirty(page, /two\.md/i, true)
+    await openDocsMenu(page)
+    await page.getByRole('menu', { name: 'Open docs' }).getByRole('menuitem', { name: /two\.md/i }).click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Close all tabs' }).click()
     await expect(openCount).toHaveText('1')
-    await expect(page.getByRole('tab', { name: /two\.md/i })).toBeVisible()
+    await expectDocumentListed(page, /two\.md/i)
     await expect(page.getByRole('status')).toContainText(/1 tab closed\. 1 with unsaved edits stayed open\./)
   } finally {
     await scenario.dispose()

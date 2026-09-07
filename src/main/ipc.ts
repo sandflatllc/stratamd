@@ -8,7 +8,7 @@ import type { AppView, SpellingContext, StrataApi, BufferOrigin } from '../share
 import { encodeViewUpdate, type SyncedView } from '../shared/view-sync'
 import { IPC, type InvokeChannel } from '../preload/channels'
 import { electronFileOps, type FileOps } from './file-ops'
-import { logRendererReport } from './log'
+import { logError, logRendererReport } from './log'
 import { annotationContextSchema } from './validation'
 import type { WindowController } from './window-controls'
 import { MAX_ATTACHMENTS, MAX_IMAGE_BYTES, MAX_TEXT_BYTES, SUPPORTED_IMAGE_TYPES } from '../core/composer-attachments'
@@ -194,7 +194,7 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
     z.object({ link: z.string().trim().min(1).max(4_096) }).strict(),
     z.object({ host: z.string().trim().min(1).max(2_048), code: idSchema }).strict(),
   ])]),
-  [IPC.manageEngine]: z.tuple([z.enum(['restart', 'use-managed'])]),
+  [IPC.manageEngine]: z.tuple([z.enum(['restart', 'use-managed', 'show-log'])]),
   [IPC.reconnectEngine]: z.tuple([]),
   [IPC.openConversation]: z.tuple([idSchema]),
   [IPC.createEngineThread]: z.tuple([startThreadSchema]),
@@ -228,6 +228,7 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.queueItemReply]: z.tuple([idSchema, idSchema, z.string().max(20_000)]),
   [IPC.discardItemReply]: z.tuple([idSchema, idSchema]),
   [IPC.dismissItem]: z.tuple([idSchema, idSchema]),
+  [IPC.retainVisualEvidence]: z.tuple([idSchema, z.array(z.string().regex(/^e_[0-9a-f-]{36}$/)).max(128)]),
   [IPC.holdVisualComment]: z.tuple([holdVisualCommentSchema]),
   [IPC.actVisualComment]: z.tuple([visualCommentIdSchema, z.enum(['accept', 'reopen', 'discard', 'retry', 'compare'])]),
   [IPC.openPreviewTab]: z.tuple([z.object({ projectId: idSchema, url: z.string().max(2_048).optional() }).strict()]),
@@ -431,7 +432,7 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
       return before === nextSeq ? record(view) : lastSent!
     },
     [IPC.pairEngine]: (request: Parameters<StrataApi['pairEngine']>[0]) => options.api.pairEngine(request),
-    [IPC.manageEngine]: (action: 'restart' | 'use-managed') => { if (!options.api.manageEngine) throw new Error('Local engine controls are unavailable'); return options.api.manageEngine(action) },
+    [IPC.manageEngine]: (action: 'restart' | 'use-managed' | 'show-log') => { if (!options.api.manageEngine) throw new Error('Local engine controls are unavailable'); return options.api.manageEngine(action) },
     [IPC.reconnectEngine]: () => options.api.reconnectEngine(),
     [IPC.openConversation]: (threadId: string) => options.api.openConversation(threadId),
     [IPC.createEngineThread]: (input: Parameters<StrataApi['createEngineThread']>[0]) => options.api.createEngineThread(input),
@@ -465,6 +466,7 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.queueItemReply]: (threadId: string, itemId: string, text: string) => options.api.queueItemReply(threadId, itemId, text),
     [IPC.discardItemReply]: (threadId: string, itemId: string) => options.api.discardItemReply(threadId, itemId),
     [IPC.dismissItem]: (threadId: string, itemId: string) => options.api.dismissItem(threadId, itemId),
+    [IPC.retainVisualEvidence]: (owner: string, ids: string[]) => options.api.retainVisualEvidence?.(owner, ids),
     [IPC.holdVisualComment]: (input: Parameters<StrataApi['holdVisualComment']>[0]) => options.api.holdVisualComment(input),
     [IPC.actVisualComment]: (id: string, action: Parameters<StrataApi['actVisualComment']>[1]) => options.api.actVisualComment(id, action),
     [IPC.openPreviewTab]: (input: Parameters<StrataApi['openPreviewTab']>[0]) => options.api.openPreviewTab(input),
@@ -574,7 +576,8 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     options.ipcMain.handle(channel, async (event, ...untrustedArguments: unknown[]) => {
       assertTrustedSender(event, options.renderer, allowedRendererUrls)
       const parsed = argumentSchemas[channel].parse(untrustedArguments) as never[]
-      return handlers[channel](...parsed)
+      try { return await handlers[channel](...parsed) }
+      catch (error) { logError('ipc', `Request ${channel} failed`, error); throw error }
     })
   }
 

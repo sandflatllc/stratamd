@@ -1,0 +1,97 @@
+{
+  "date": "2026-09-06",
+  "stockProviderPreview": {
+    "success": true,
+    "engine": "t3-0.0.38-node-24.20.0-linux-x64-r1",
+    "model": "gpt-6-astra",
+    "nonceReturned": true,
+    "requests": [
+      {
+        "operation": "open",
+        "ok": true
+      },
+      {
+        "operation": "snapshot",
+        "ok": true
+      }
+    ]
+  },
+  "nativeStaging": {
+    "sameHost": true,
+    "entries": 19196,
+    "identical": true,
+    "nativePtySpawnReadExit": true,
+    "secondHost": "not verified",
+    "finalStageAndPackageMatch": true,
+    "integritySha256": "746b5e352ea0b2a53870f29e8f409bbcf461687700a94758462667a734ebf232"
+  },
+  "remainingReleaseEnvironments": [
+    "second Linux build host",
+    "hosted Connect and relay",
+    "actual tailnet pairing",
+    "Android",
+    "macOS packages and Keychain",
+    "fresh provider sign-ins",
+    "physical sleep/wake"
+  ],
+  "verification": {
+    "typecheck": "passed",
+    "stockUnitIntegration": {
+      "passed": 917,
+      "skipped": 1
+    },
+    "electronDefault": {
+      "passed": 220,
+      "ordinaryWorkers": 4,
+      "globalSlots": 5
+    },
+    "electronEightWorkerRepeatTwo": {
+      "passed": 440,
+      "workers": 8,
+      "repeatEach": 2
+    },
+    "logSha256": {
+      "typecheck-final.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "vitest-final.log": "7fa0898a6dfa3002f0aafd4b2f5aee4c7c90fce7409fbd0fc5030b94273df39f",
+      "build-final.log": "85723340dbcc72cecf2b33f8a45c43268439784c60293ea845b49ff9b93e085d",
+      "playwright-final.log": "ba3bdc8801bf68267083827f54f636dcb264dcd7dcf9a66397550db09b6784b8",
+      "stress-final.log": "c02886934a3836cd668dff46a059b499e35966aa85502120e344709abeef4884",
+      "package-build-final.log": "c81813c4aba294db31b0bcb1579f2a1f28bcd42af5421cbd9f38cbeb73253948",
+      "package-proof-final.log": "f28edf8bd0aa016357d78a5d69d82a77a8b54ed64094ccceec8069b8b9f03444",
+      "package-cli-final.log": "a3eb5e9444b482318ebb293f85979a2e2e372797f2bfbeb6fd77b3e7994f346d"
+    }
+  },
+  "linuxPackage": {
+    "success": true,
+    "engineVersion": "t3-0.0.38-node-24.20.0-linux-x64-r1",
+    "connected": true,
+    "directBuilderRefused": true,
+    "sentinelHashes": {
+      "stratamd-app": "180eea79cebc825a7e7291b8c5ef387760773f2b03596751bda8e6e532a8b6c8",
+      "resources/app.asar": "4c035abee174baa9e1d006b584453733d1f06d0c65ee9dcae440d9281e9a289c",
+      "resources/engine/integrity.json": "746b5e352ea0b2a53870f29e8f409bbcf461687700a94758462667a734ebf232",
+      "resources/engine/node/bin/node": "89af8424dd53e560b1933f87ba650d8bf57c83ca5a04600eefb31f416aabbae7"
+    },
+    "engineAliveAfterRefusal": true,
+    "cleanWindowClose": true,
+    "output": "release/build-AjBPUF",
+    "existingOutputRefused": true,
+    "symlinkAliasRefused": true,
+    "packagedCliTestsPassed": 2
+  },
+  "openInvestigations": [
+    {
+      "test": "test/e2e/prd-6.12.spec.ts:92",
+      "observed": "Second offline Send dialog remained visible; delivery-order assertions were not reached.",
+      "cause": "undetermined",
+      "originalExactLineRepeatsPassed": 10,
+      "diagnosticRepeatsAtEightWorkersPassed": 80,
+      "artifacts": "docs/plans/open/repair-bundled-engine-and-visual-review-2026-09-06/evidence/implementation/failed-stress-theme/",
+      "subsequentFullDefaultPassed": 220,
+      "subsequentEightWorkerRepeatTwoPassed": 440
+    }
+  ],
+  "status": "repair implemented; required local gates passed; listed investigations and release environments remain open",
+  "sourceCommit": "1b539a91756d4e64e22cced87e7efe517386397f",
+  "uncommittedChanges": true
+}

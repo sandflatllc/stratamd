@@ -1,6 +1,6 @@
 import { captureStrataEngine, restoreStrataEngine, documentBinding } from './engine/strata-backup'
 import { hostname, networkInterfaces } from 'node:os'
-import { readTailscale } from './engine/tailscale'
+import { readTailscale, readServeEndpoint } from './engine/tailscale'
 import { T3Connect } from './engine/connect'
 import type { ComputerRequest, ComputerView } from '../shared/computer'
 import { ProviderSetupJobs } from './engine/provider-setup'
@@ -162,7 +162,7 @@ import { DebouncedMirror, HashReconciler, WatchCoordinator, watchDirectory, type
 import { T3EngineClient, type EngineReadClient } from './engine/client'
 import { PreviewHost } from './preview/host'
 import { locateScript, scrollScript as pageScrollScript } from './preview/inspect'
-import { CLEAR_OVERRIDES_SCRIPT } from './preview/overrides'
+import { withCleanPage } from './preview/clean-capture'
 import { nativeImage } from 'electron'
 import { visualSendRefusal, type VisualCommentRecord, type VisualRevision } from '../core/visual-comments'
 import { visualImageUrl } from '../shared/visual-urls'
@@ -345,6 +345,7 @@ export class StrataApplication implements StrataApi {
   readonly #managedBundle: string | undefined
   #documentBarrier: Promise<void> | null = null
   #connect = new T3Connect()
+  #computerSnapshot: ComputerView | null = null
   #setStartAtLogin: (enabled: boolean) => Promise<void>
   #providerSetupPreparing = false
   #providerSetup = new ProviderSetupJobs()
@@ -469,9 +470,12 @@ export class StrataApplication implements StrataApi {
       try { configured = !!JSON.parse(await readFile(this.#settingsStore.path, 'utf8')).engine?.mode } catch {}
       let paired = false
       try { paired = !!JSON.parse(await readFile(join(this.#store.dataDirectory, 'engine-credential.json'), 'utf8')).server } catch {}
-      const mode = process.env.STRATAMD_ENGINE_MODE ?? (configured ? this.#settings.engine.mode : paired ? 'external' : 'managed')
-      this.#settings = await this.#settingsStore.update({ engine: { ...this.#settings.engine, mode: mode === 'external' ? 'external' : 'managed' } })
-      if (this.#settings.engine.mode === 'managed') {
+      const savedMode = configured ? this.#settings.engine.mode : paired ? 'external' : 'managed'
+      const override = process.env.STRATAMD_ENGINE_MODE
+      if (override && override !== 'external' && override !== 'managed') throw new Error(`Invalid STRATAMD_ENGINE_MODE: ${override}. Use managed or external.`)
+      if (!configured) this.#settings = await this.#settingsStore.update({ engine: { ...this.#settings.engine, mode: savedMode } })
+      const mode = override ?? savedMode
+      if (mode === 'managed') {
         await this.#engine.initialize(false)
         this.#manager = this.#createManager()
         void this.#manager.start()
@@ -838,7 +842,14 @@ export class StrataApplication implements StrataApi {
         })
   }
 
-  async manageEngine(action: 'restart' | 'use-managed'): Promise<void> {
+  async manageEngine(action: 'restart' | 'use-managed' | 'show-log'): Promise<void> {
+    if (action === 'show-log') {
+      const path = join(this.#store.dataDirectory, 'engine/log/engine.log')
+      const { shell } = await import('electron')
+      const error = await shell.openPath(path)
+      if (error) throw new Error(`Could not open engine log ${path}: ${error}`)
+      return
+    }
     if (this.#providerSetupPreparing || this.#providerSetup.busy || this.#connect.busy) throw new Error('Finish or cancel provider setup before changing engines.')
     if (!this.#managedBundle) throw new Error('This build has no bundled engine')
     if (this.#engine.view().projects.some(project => project.threads.some(thread => thread.status === 'running' || thread.status === 'starting'))) throw new Error('Wait for active conversations to finish before restarting the engine.')
@@ -869,6 +880,7 @@ export class StrataApplication implements StrataApi {
   async computer(request: ComputerRequest): Promise<ComputerView> {
     const context = this.#manager?.runtimeContext()
     if (!context || !this.#manager) throw new Error('Start the engine on This computer before managing its connections.')
+    if (request.action === 'progress' && this.#computerSnapshot && this.#connect.busy) return { ...this.#computerSnapshot, job: this.#connect.view() }
     const connection = async (action: string, payload?: unknown): Promise<any> => {
       if (!this.#engine.connectionRequest) throw new Error('This engine does not support connection management.')
       return this.#engine.connectionRequest(action, payload)
@@ -876,7 +888,7 @@ export class StrataApplication implements StrataApi {
     let createdLink: ComputerView['createdLink']
     if (request.action === 'cancel') await this.#connect.cancel()
     else if (request.action === 'input') this.#connect.input(request.text)
-    else if (request.action !== 'status') {
+    else if (request.action !== 'status' && request.action !== 'progress') {
       if (this.#connect.busy || this.#providerSetupPreparing || this.#providerSetup.busy) throw new Error('Finish or cancel the current setup first.')
       if (request.action === 'preferences') {
         if (request.startAtLogin !== this.#settings.engine.startAtLogin) await this.#setStartAtLogin(request.startAtLogin)
@@ -905,19 +917,19 @@ export class StrataApplication implements StrataApi {
           const previous = await this.#connect.status(context)
           if ((request.action === 'remote' || request.action === 'publish') && request.enabled && !previous.authenticated) throw new Error('Sign in to T3 before enabling this option.')
           preservePublishing = request.action === 'remote' && !request.enabled && previous.publishAgentActivity
-          await this.#engine.prepareLocalSetup?.()
+          if (restart) await this.#engine.prepareLocalSetup?.()
           if (restart) { await this.#manager!.stop(); stopped = true }
         }, async () => {
           try {
             if (stopped && preservePublishing) await this.#connect.command(context, ['publish'])
             if (stopped) { await this.#manager!.start(); if (this.#manager!.view().state !== 'running') throw new Error(this.#manager!.view().problem ?? 'Restart the local engine to apply Connect.') }
-          } finally { this.#providerSetupPreparing = false; await this.#engine.resumeAfterMaintenance?.() }
+          } finally { if (restart) { this.#providerSetupPreparing = false; await this.#engine.resumeAfterMaintenance?.() } }
         })
       }
     }
     const problems: string[] = []
     let connect: ComputerView['connect'] = null
-    try { connect = await this.#connect.status(context) } catch { problems.push('T3 Connect status is unavailable. Check the network and refresh. Local documents remain available.') }
+    try { connect = await this.#connect.status(context, request.action === 'status') } catch { problems.push('T3 Connect status is unavailable. Check the network and refresh. Local documents remain available.') }
     let remoteEnabled: boolean | null = null
     let links: ComputerView['links'] = [], devices: ComputerView['devices'] = []
     if (!this.#connect.busy && this.#engine.view().state === 'connected') {
@@ -933,7 +945,13 @@ export class StrataApplication implements StrataApi {
     const server = this.#engine.view().server
     const endpoints = server ? [server] : []
     if (prefs.lan && server) for (const entries of Object.values(networkInterfaces())) for (const address of entries ?? []) if (!address.internal && address.family === 'IPv4') endpoints.push(`http://${address.address}:${new URL(server).port}`)
-    return { connect, remoteEnabled, tailscaleStatus: await readTailscale(), job: this.#connect.view(), preferences: { keepRunning: prefs.keepRunning, startAtLogin: prefs.startAtLogin, lan: prefs.lan === true, tailscale: prefs.tailscale === true, port: prefs.tailscalePort ?? 443 }, environmentName: hostname(), endpoints, links, devices, problems, ...(createdLink ? { createdLink } : {}) }
+    if (prefs.tailscale && server) {
+      const endpoint = await readServeEndpoint(server, prefs.tailscalePort ?? 443)
+      if (endpoint) endpoints.push(endpoint)
+      else problems.push('Tailscale HTTPS is not forwarding to this engine. Check Serve before using a tailnet pairing link.')
+    }
+    this.#computerSnapshot = { connect, remoteEnabled, tailscaleStatus: await readTailscale(), job: this.#connect.view(), preferences: { keepRunning: prefs.keepRunning, startAtLogin: prefs.startAtLogin, lan: prefs.lan === true, tailscale: prefs.tailscale === true, port: prefs.tailscalePort ?? 443 }, environmentName: hostname(), endpoints, links, devices, problems, ...(createdLink ? { createdLink } : {}) }
+    return this.#computerSnapshot
   }
 
   async reconnectEngine(): Promise<void> {
@@ -1033,6 +1051,13 @@ export class StrataApplication implements StrataApi {
     await this.#engine.prepareLocalSetup?.()
     try {
     const settings = await this.readEngineSettings()
+    if (request.action === 'use-installed') {
+      const binary = this.#providerSetup.view(request.instanceId).installedBinary
+      if (!binary) throw new Error('No newly installed tool is available for this account.')
+      await this.editEngineProvider({ identity: request.identity, instanceId: request.instanceId, base: settings.providerInstances[request.instanceId]!, patch: { config: { binaryPath: binary } } })
+      await this.#engine.refreshAccounts?.()
+      return this.#providerSetup.view(request.instanceId)
+    }
     return await this.#providerSetup.start(request.action, context, account, settings, join(this.#store.dataDirectory, 'engine/providers'), async binary => {
       const base = settings.providerInstances[request.instanceId]!
       await this.editEngineProvider({ identity: request.identity, instanceId: request.instanceId, base, patch: { config: { binaryPath: binary } } })
@@ -1163,6 +1188,8 @@ export class StrataApplication implements StrataApi {
     if (!this.#engine.dismissItem) throw new Error('This engine cannot dismiss items')
     await this.#engine.dismissItem(threadId, itemId)
   }
+
+  async retainVisualEvidence(owner: string, ids: string[]): Promise<void> { await this.#engine.retainVisualEvidence?.(owner, ids) }
 
   async holdVisualComment(input: Parameters<StrataApi['holdVisualComment']>[0]): Promise<string> {
     if (!this.#engine.holdVisualComment) throw new Error('This engine cannot hold visual comments')
@@ -1297,7 +1324,6 @@ export class StrataApplication implements StrataApi {
     if (!then) return null
     const identity = mark.kind === 'element' && mark.identity ? { selector: mark.identity.selector ?? null, testIds: mark.identity.testIds ?? [], role: mark.identity.role ?? null, name: mark.identity.name ?? null } : null
     const takeNow = async (contents: import('electron').WebContents): Promise<{ now: { bytes: Uint8Array; width: number; height: number } | null; note: string | null }> => {
-      await contents.executeJavaScript(CLEAR_OVERRIDES_SCRIPT, true).catch(() => undefined)
       if (capture.scroll) await contents.executeJavaScript(pageScrollScript({ to: capture.scroll }), true).catch(() => undefined)
       if (identity) {
         const match = await contents.executeJavaScript(locateScript(identity), true).catch(() => null) as { matches: number } | null
@@ -1311,12 +1337,12 @@ export class StrataApplication implements StrataApi {
     let outcome: { now: { bytes: Uint8Array; width: number; height: number } | null; note: string | null }
     const liveSize = tab && samePage(tab.url, anchor.url) ? await this.#preview.viewportOf(tab.id).catch(() => null) : null
     if (tab && liveSize && liveSize.width === anchor.viewport.width && liveSize.height === anchor.viewport.height) {
-      outcome = await takeNow(this.#preview.contentsOf(tab.id))
+      outcome = await this.#preview.compareInPlace(tab.id, takeNow)
     } else {
       const project = this.#engine.view().projects.find((candidate) => candidate.id === comment.projectId)
       const workingFolder = anchor.workingFolder ?? project?.workspaceRoot
       if (!workingFolder) return { then, now: null, note: 'The views differ: the page could not be opened.' }
-      outcome = await this.#preview.withScratchView({ workingFolder, url: anchor.url, viewport: anchor.viewport }, takeNow).catch((error: unknown) => ({ now: null, note: `The views differ: the page could not be opened (${error instanceof Error ? error.message : String(error)}).` }))
+      outcome = await this.#preview.withScratchView({ workingFolder, url: anchor.url, viewport: anchor.viewport }, contents => withCleanPage(contents, () => takeNow(contents))).catch((error: unknown) => ({ now: null, note: `The views differ: the page could not be opened (${error instanceof Error ? error.message : String(error)}).` }))
     }
     return { then, ...outcome }
   }
@@ -3320,7 +3346,7 @@ export class StrataApplication implements StrataApi {
     const focused = this.#tabs.focusedPath
     const base = this.#engine.view()
     const managed = this.#manager?.view()
-    const raw: AppView['engine'] = managed ? { ...base, managed, state: managed.state === 'starting' ? 'connecting' : managed.state === 'failed' || managed.state === 'stopped' ? 'disconnected' : base.state } : base
+    const raw: AppView['engine'] = managed ? { ...base, managed, state: managed.state === 'starting' || managed.state === 'recovering' ? 'connecting' : managed.state === 'failed' || managed.state === 'stopped' ? 'disconnected' : base.state } : base
     const engine: AppView['engine'] = { ...raw, projects: raw.projects.map((project) => ({ ...project, threads: project.threads.map((thread) => ({ ...thread, pendingWork: this.#pendingWork(thread.id) })) })) }
     return {
       preview: this.#preview.view(),

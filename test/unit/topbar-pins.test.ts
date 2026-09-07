@@ -1,47 +1,32 @@
 import { describe, expect, it } from 'vitest'
-import type { DocumentTabView } from '../../src/shared/contracts'
-import { arrangeStrip, isPinned, PINS_KEY, readPins, togglePin, writePins } from '../../src/renderer/topbarPins'
-
-// PRD §6.9: pinned items and the active item are pills; everything else open
-// is available through Docs or Projects. Pins are a window preference,
-// never a record of what is open.
-const tab = (path: string, active = false): DocumentTabView => ({ path, name: path.split('/').pop()!, pendingCount: 0, active, dirty: false })
+import { orderPinned, isPinned, PINS_KEY, readPins, togglePin, writePins } from '../../src/renderer/topbarPins'
 
 describe('top bar pins', () => {
-  it('shows pinned items in pin order, then the active item when unpinned', () => {
-    const tabs = [tab('/a.md'), tab('/b.md', true), tab('/c.md'), tab('/d.md')]
-    const pins = { documents: ['/d.md', '/a.md', '/gone.md'], conversations: [] }
-    const strip = arrangeStrip(tabs, [], pins, false)
-    expect(strip.documents.pills.map((item) => item.path)).toEqual(['/d.md', '/a.md', '/b.md'])
-    expect(strip.documents.menu.map((item) => item.path)).toEqual(['/a.md', '/b.md', '/c.md', '/d.md'])
-    expect(strip.documents.activeShown).toBe(true)
-    // A pinned active document appears once.
-    expect(arrangeStrip(tabs, [], { documents: ['/b.md'], conversations: [] }, false).documents.pills.map((item) => item.path)).toEqual(['/b.md'])
-  })
-
-  it('treats a centered conversation as the active item and demotes the active document to the dropdown', () => {
-    const tabs = [tab('/a.md', true), tab('/b.md')]
-    const conversations = [{ id: 't1', name: 'Thread one', attention: 0, active: true }, { id: 't2', name: 'Thread two', attention: 2, active: false }]
-    const strip = arrangeStrip(tabs, conversations, { documents: [], conversations: ['t2'] }, true)
-    expect(strip.documents.pills).toEqual([])
-    expect(strip.documents.activeShown).toBe(false)
-    expect(strip.conversations.pills.map((item) => item.id)).toEqual(['t2', 't1'])
+  it('lists pinned open items first, without duplicating active items or reopening closed items', () => {
+    const items = [{ id: 'a' }, { id: 'b', active: true }, { id: 'c' }, { id: 'd' }]
+    const pins = { documents: ['d', 'b', 'gone'], conversations: ['c'], previews: ['b'] }
+    expect(orderPinned(items, pins, 'document').map(item => item.id)).toEqual(['d', 'b', 'a', 'c'])
+    expect(orderPinned(items, pins, 'conversation').map(item => item.id)).toEqual(['c', 'a', 'b', 'd'])
+    expect(orderPinned(items, pins, 'preview').map(item => item.id)).toEqual(['b', 'a', 'c', 'd'])
   })
 
   it('toggles pins and round-trips them through storage, ignoring junk', () => {
     const store = new Map<string, string>()
     const storage = { getItem: (key: string) => store.get(key) ?? null, setItem: (key: string, value: string) => { store.set(key, value) } }
     let pins = readPins(storage)
-    expect(pins).toEqual({ documents: [], conversations: [] })
+    expect(pins).toEqual({ documents: [], conversations: [], previews: [] })
     pins = togglePin(pins, 'document', '/a.md')
     pins = togglePin(pins, 'conversation', 't1')
+    pins = togglePin(pins, 'preview', 'p1')
     writePins(pins, storage)
-    expect(readPins(storage)).toEqual({ documents: ['/a.md'], conversations: ['t1'] })
+    expect(readPins(storage)).toEqual({ documents: ['/a.md'], conversations: ['t1'], previews: ['p1'] })
     expect(isPinned(pins, 'document', '/a.md')).toBe(true)
+    expect(isPinned(pins, 'preview', 'p1')).toBe(true)
+    expect(isPinned(pins, 'conversation', 'p1')).toBe(false)
     expect(togglePin(pins, 'document', '/a.md').documents).toEqual([])
     store.set(PINS_KEY, '{"documents": [1, "/ok.md"], "conversations": "nope"}')
-    expect(readPins(storage)).toEqual({ documents: ['/ok.md'], conversations: [] })
+    expect(readPins(storage)).toEqual({ documents: ['/ok.md'], conversations: [], previews: [] })
     store.set(PINS_KEY, 'not json')
-    expect(readPins(storage)).toEqual({ documents: [], conversations: [] })
+    expect(readPins(storage)).toEqual({ documents: [], conversations: [], previews: [] })
   })
 })

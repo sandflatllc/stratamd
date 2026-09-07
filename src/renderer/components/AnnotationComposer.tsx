@@ -127,7 +127,7 @@ export function AnnotationComposer({ initialText = "", messageTarget = false, se
   }, [messageTarget, selection, kind, text, size])
   const candidateIds = candidates.map((recipient) => recipient.id).join('\0')
   const outsideState = useRef({ kind, text, onHold, onDismiss })
-  outsideState.current = { kind, text, onHold, onDismiss }
+  useLayoutEffect(() => { outsideState.current = { kind, text, onHold, onDismiss } })
 
   useEffect(() => {
     setKind(selection?.annotationKind ?? null)
@@ -168,9 +168,11 @@ export function AnnotationComposer({ initialText = "", messageTarget = false, se
     return () => window.removeEventListener('keydown', key, true)
   }, [kind, onDismiss, selection])
   useEffect(() => {
-    if (!kind) return
+    // Transcript selections remain pinned while interacting with the overlay,
+    // so its initial pill also needs explicit click-away dismissal.
+    if (!selection || (!kind && !messageTarget)) return
     const outside = (event: PointerEvent) => {
-      if (form.current?.contains(event.target as Node)) return
+      if (form.current?.contains(event.target as Node) || pill.current?.contains(event.target as Node)) return
       // A screenshot pin can emit the same anchored selection again on click.
       // Keep the empty composer alive so that click refreshes it instead of
       // dismissing and then being mistaken for the selection just dismissed.
@@ -181,7 +183,7 @@ export function AnnotationComposer({ initialText = "", messageTarget = false, se
     }
     window.addEventListener('pointerdown', outside, true)
     return () => window.removeEventListener('pointerdown', outside, true)
-  }, [kind])
+  }, [kind, messageTarget, Boolean(selection)])
 
   const startResize = (event: React.PointerEvent<HTMLButtonElement>) => {
     event.preventDefault()

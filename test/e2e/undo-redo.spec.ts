@@ -1,3 +1,4 @@
+import { expectActiveDocument } from './harness'
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -273,9 +274,9 @@ test.describe('undo and redo timeline', () => {
     await typeLineAfter(page, 'Base.', 'Typed here.')
     await expect.poll(() => bufferText(value)).toContain('Typed here.')
     await page.evaluate((path) => window.strata.openDocument(path), second)
-    await expect(page.getByRole('tab', { name: /second\.md/i })).toHaveAttribute('aria-selected', 'true')
+    await expectActiveDocument(page, /second\.md/i)
     await switchToDocument(page, /scenario\.md/i)
-    await expect(page.getByRole('tab', { name: /scenario\.md/i })).toHaveAttribute('aria-selected', 'true')
+    await expectActiveDocument(page, /scenario\.md/i)
 
     await undo(page)
     await value.waitForBuffer(BASE)

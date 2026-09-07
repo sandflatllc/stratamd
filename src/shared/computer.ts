@@ -1,7 +1,7 @@
 import { z } from 'zod'
 export const accessScopes = ['orchestration:read', 'orchestration:operate', 'terminal:operate', 'review:write', 'access:read', 'access:write', 'relay:read', 'relay:write'] as const
 export const computerRequest = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('status') }).strict(),
+  z.object({ action: z.enum(['status', 'progress']) }).strict(),
   z.object({ action: z.enum(['login', 'logout', 'cancel']) }).strict(),
   z.object({ action: z.literal('input'), text: z.string().max(4096) }).strict(),
   z.object({ action: z.enum(['remote', 'publish']), enabled: z.boolean() }).strict(),

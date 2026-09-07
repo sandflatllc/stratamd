@@ -4,6 +4,7 @@ import { sendCapacity } from '../../core/visual-comments'
 import { VisualCommentCard } from './VisualCommentCard'
 import { continuationScope, modelDesignation, permitsSelection } from '../../shared/modelSelection'
 import { ProviderGlyph } from './ProviderGlyph'
+import { ContextWindowMeter } from './ContextWindowMeter'
 import { FolderIcon, FolderGit2Icon, GitBranchIcon } from '../icons/lucide'
 import { ModelPicker } from './ModelPicker'
 import { availableModels, clearDraft, readDraft, rememberSelection, selectionForModel, writeDraft, type ComposerSelection, type DraftAttachment } from '../conversationDrafts'
@@ -96,8 +97,14 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
   const account = engine.accounts.find((account) => account.instanceId === selection.instanceId)
   const access = accessModes.find(([id]) => id === selection.access) ?? accessModes[0]
   const descriptors = model?.options ?? []
-  const optionSummary = descriptors.flatMap((descriptor) => {
+  const selectedOptions = descriptors.map((descriptor) => {
     const value = selection.options?.find((option) => option.id === descriptor.id)?.value ?? descriptor.currentValue ?? descriptor.options?.find((option) => option.isDefault)?.id
+    return { descriptor, value }
+  })
+  const isFastOption = (id: string, value: unknown) => id === 'fastMode' && value === true || id === 'serviceTier' && (value === 'fast' || value === 'priority')
+  const fastMode = selectedOptions.some(({ descriptor, value }) => isFastOption(descriptor.id, value))
+  const optionSummary = selectedOptions.flatMap(({ descriptor, value }) => {
+    if (descriptor.id === 'serviceTier' && value === 'default' || isFastOption(descriptor.id, value)) return []
     const label = descriptor.options?.find((option) => option.id === value)?.label
     return label ? [label] : typeof value === 'boolean' && value ? [descriptor.label] : []
   }).join(' · ') || selection.effort || 'Model defaults'
@@ -218,7 +225,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
             <ModelPicker models={models} accounts={engine.accounts} selection={selection} scope={scope} onSelect={(next, close) => { choose(selectionForModel(next, selection.access)); if (close) { setMenu(null); input.current?.focus() } }} />
           </div>}
         </div>
-        <div className="chat-control"><button type="button" className="chat-pill" aria-label="Thinking and context" aria-expanded={menu === 'options'} disabled={busy} onClick={() => setMenu(menu === 'options' ? null : 'options')}>{optionSummary}<span aria-hidden="true">⌄</span></button>
+        <div className="chat-control"><button type="button" className="chat-pill" aria-label={fastMode ? 'Thinking and context, super speed on' : 'Thinking and context'} aria-expanded={menu === 'options'} disabled={busy} onClick={() => setMenu(menu === 'options' ? null : 'options')}>{optionSummary}{fastMode && <svg className="chat-fast-mode" viewBox="0 0 24 24" role="img" aria-label="Super speed"><title>Super speed</title><path d="M13 2 3 14h8l-1 8 11-12h-8l1-8Z" /></svg>}<span aria-hidden="true">⌄</span></button>
           {menu === 'options' && <div ref={popup} popover="manual" className="chat-menu chat-options-menu" role="region" aria-label="Model options">
             {descriptors.length === 0 && <p>This engine reports no adjustable options for this model.</p>}
             {descriptors.map((descriptor) => <fieldset key={descriptor.id}><legend>{descriptor.label}</legend>{descriptor.type === 'boolean' ? <label><input type="checkbox" checked={selection.options?.find((option) => option.id === descriptor.id)?.value === true} onChange={(event) => choose({ ...selection, options: [...(selection.options ?? []).filter((option) => option.id !== descriptor.id), { id: descriptor.id, value: event.target.checked }] })} />{descriptor.label}</label> : descriptor.options?.map((option) => <button type="button" key={option.id} aria-pressed={selection.options?.find((value) => value.id === descriptor.id)?.value === option.id} onClick={() => choose({ ...selection, ...(descriptor.id === 'effort' ? { effort: option.id } : {}), options: [...(selection.options ?? []).filter((value) => value.id !== descriptor.id), { id: descriptor.id, value: option.id }] })}>{option.label}{option.isDefault && <small>Default</small>}{option.description && <span className="chat-option-description">{option.description}</span>}</button>)}</fieldset>)}
@@ -230,8 +237,8 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
         <div className="chat-send-actions"><input ref={fileInput} className="conversation-attachment-input" type="file" accept={PICKER_ACCEPT} multiple hidden onChange={(event) => {
           const files = Array.from(event.target.files ?? []); event.target.value = ''
           if (files.length) void stageFiles(files, false)
-        }} /><button type="button" aria-label="Attach file" disabled={busy || canSendContext} onClick={() => fileInput.current?.click()}>＋</button>{running && !busy && onStop
-          ? <button className="chat-send chat-stop" type="button" aria-label="Stop" title="Stop the agent" onClick={onStop}><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7" rx="1.5" /></svg></button>
+        }} /><button type="button" aria-label="Attach file" disabled={busy || canSendContext} onClick={() => fileInput.current?.click()}>＋</button><ContextWindowMeter activities={boundThread?.activities ?? []} />{running && !busy && onStop
+          ? <button className="chat-send chat-stop" type="button" aria-label="Stop" title="Stop the agent" onClick={onStop}><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="2" /></svg></button>
           : <button className="chat-send" type="submit" aria-label="Send" disabled={busy || !valid || !canSend}>{busy ? '…' : '↑'}</button>}</div>
       </div>
     </div>

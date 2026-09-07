@@ -45,7 +45,7 @@ The reviewing agent then rebuilt and opened `dist/linux-unpacked/stratamd-app` w
 
 ## Visual review (§6.17)
 
-Working plan: `docs/plans/open/visual-review/STRATA_ABSORPTION_PLAN.md`, with its review checklist per phase.
+Working plan: `docs/plans/completed/visual-review/STRATA_ABSORPTION_PLAN.md`, with its review checklist per phase.
 
 | Phase | Requirement | Verification |
 |---|---|---|
@@ -168,7 +168,7 @@ Conversation navigation gate, 2026-09-05: verified in an isolated checkout of da
 | --- | --- |
 | Official isolated Connect commands, cancellation and failed authorization | `test/unit/t3-connect.test.ts` |
 | Stock pairing expiry, scope selection, link/device revocation, explicit LAN restart | `test/integration/managed-connections.test.ts` |
-| This computer controls, persisted tray preference and isolated login entry | `test/e2e/computer-controls.spec.ts`, `test/unit/t3-connect.test.ts` |
+| Named This computer / Engine entry in the Strata menu, computer controls, persisted tray preference and isolated login entry | `test/e2e/computer-controls.spec.ts`, `test/e2e/engine-dialog.spec.ts`, `test/unit/t3-connect.test.ts` |
 | Hosted sign-in, relay reachability, Android turn/reconnect, macOS login integration | Blocked release proofs; phase reports record missing sign-in/devices. |
 
 ### Bundled distribution and recovery
@@ -181,3 +181,19 @@ Conversation navigation gate, 2026-09-05: verified in an isolated checkout of da
 | Unpacked Linux fresh profile, no system Node, private official provider installs and owned-engine Quit | Bundled-server phase 6 packaged proof; `packaging/engine/README.md` documents the artifact and platform limits |
 
 The upgrade fixtures use distinct runtime manifests around the same official server artifact. They verify transition mechanics; each future release must also test its actual upstream schema migration. macOS package/Keychain and hosted Android proofs remain release blockers, not automated passes.
+
+
+## Bundled engine and visual repair, September 2026
+
+| Requirement | Coverage |
+| --- | --- |
+| Safe package output and isolated login registration | `package-output.test.ts`, `t3-connect.test.ts`; fresh package proof in `docs/release/bundled-engine.md` |
+| Bounded recovery, bootstrap ownership, interrupted restore, conservative retention | `managed-recovery-boundaries.test.ts`, `managed-process.test.ts` |
+| Unreadable comment stores and durable multi-owner capture protection | `visual-store-safety.test.ts` |
+| Never-shown guest captures and native desktop composition; stock snapshot schema | `preview-composition.spec.ts`, `preview-window.spec.ts` |
+| Tray close/reopen retains preview state; closing with tray mode off stops the owned engine | `managed-engine.spec.ts`, `computer-controls.spec.ts`; fresh package window-close proof in `docs/release/bundled-engine.md` |
+| Navigation retains annotation sessions; requested images and strict per-reply history | `preview-annotate.spec.ts`, `engine-visual-comments.test.ts`, `visual-comments.test.ts` |
+| Accent reset, edited-field refresh, Connect discovery and status deduplication | `managed-settings.test.ts`, `engine-settings-edit.test.ts`, `connect-repair.test.ts` |
+| Dialog layout, model defaults and secret-preserving provider edits | `engine-settings.spec.ts`, `provider-settings-fields.spec.ts`, `engine-dialog.spec.ts`, `computer-controls.spec.ts`, `attached-reading.spec.ts` |
+
+Contract probes and fixture tests do not clear hosted, provider, phone or macOS release checks. See the release checklist for remaining real-environment evidence.

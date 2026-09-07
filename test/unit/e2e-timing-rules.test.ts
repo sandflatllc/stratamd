@@ -31,6 +31,8 @@ const allowedSleeps: Record<string, number> = {
   'visual-handoff.spec.ts': 4
 }
 
+const fixedSleeps = (source: string) => (source.match(/\bwaitForTimeout\(/g) ?? []).length + (source.match(/setTimeout\(\s*(?:resolve\w*|\(\)\s*=>\s*resolve\w*\([^)]*\))\s*,\s*[0-9_]+\s*\)/g) ?? []).length + (source.match(/\b(?:sleep|delay)\(\s*[0-9_]+\s*\)/g) ?? []).length
+
 const BUDGET_LIMIT_MS = 60_000
 
 async function specFiles(): Promise<string[]> {
@@ -38,13 +40,17 @@ async function specFiles(): Promise<string[]> {
 }
 
 describe('e2e timing rules', () => {
+  it('recognizes fixed-delay wrappers as sleeps', () => {
+    expect(fixedSleeps('await new Promise(resolve => setTimeout(resolve, 250)); await sleep(100); await delay(1_000); await page.waitForTimeout(50)')).toBe(4)
+    expect(fixedSleeps('setTimeout(() => child.kill(), 1000)')).toBe(0)
+  })
   it('adds no fixed sleeps beyond the ones already allowed', async () => {
     const overages: string[] = []
     const stale: string[] = []
     const counts = new Map<string, number>()
     for (const name of await specFiles()) {
       const source = await readFile(join(e2eDir, name), 'utf8')
-      const count = (source.match(/\bwaitForTimeout\(/g) ?? []).length
+      const count = name.endsWith('.spec.ts') ? fixedSleeps(source) : (source.match(/\bwaitForTimeout\(/g) ?? []).length
       counts.set(name, count)
       const allowed = allowedSleeps[name] ?? 0
       if (count > allowed) overages.push(`${name}: ${count} fixed sleep(s), ${allowed} allowed; wait for the condition instead`)

@@ -135,7 +135,7 @@ function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEn
   const [generatedInstance, setGeneratedInstance] = useState<string | null>(null)
   useEffect(() => { let alive = true; void window.strata.readEngineSettings().then(settings => { const parsed = generatedModelSchema.safeParse(settings.textGenerationModelSelection); if (alive && parsed.success) setGeneratedInstance(parsed.data.instanceId) }).catch(() => undefined); return () => { alive = false } }, [engine.identity])
   const generatedAccount = engine.accounts.find(account => account.instanceId === generatedInstance)
-  const generatedUnavailable = generatedInstance && (!generatedAccount?.installed || !generatedAccount.usable)
+  const generatedUnavailable = generatedInstance && (!generatedAccount?.installed || !(generatedAccount.providerReady ?? generatedAccount.usable))
   const now = Date.now()
   const drivers = [...new Set(engine.accounts.map((account) => account.driver))]
   const active = drivers.filter((driver) => engine.accounts.some((account) => account.driver === driver && account.state !== 'disabled'))
@@ -145,7 +145,7 @@ function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEn
       <section ref={dialogRef} tabIndex={-1} className="modal accounts-dialog" role="dialog" aria-modal="true" aria-labelledby="accounts-title">
         <div className="accounts-body">
           <div className="parity-dialog-heading"><h2 id="accounts-title">Accounts</h2><button type="button" className="quiet-button" onClick={() => onManage('new')}><PlusIcon /> Add provider</button></div>
-          <p className="modal-subtitle">Provider logins on {engine.server ? <code>{engine.server.replace(/^https?:\/\//, '')}</code> : 'the engine'}. Auto picks the least loaded account that can take a thread.</p>
+          <p className="modal-subtitle">Provider logins on {engine.managed ? 'this computer' : engine.server ? <code>{engine.server.replace(/^https?:\/\//, '')}</code> : 'the engine'}. Auto picks the least loaded account that can take a thread.</p>
           {engine.state !== 'connected' && <p className="engine-problem">The engine is {engine.state === 'unpaired' ? 'not paired' : engine.state}. Showing what Strata last measured.</p>}
           {!engine.accounts.some(account => account.usable) && <p className="engine-hint">Documents keep working while you set up an account.</p>}
           {generatedUnavailable && <p className="engine-hint">The account for generated text is not ready. <button type="button" className="text-action" onClick={onOpenSettings}>Choose a model in Settings</button>.</p>}

@@ -3,6 +3,7 @@ import { access, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { resolve } from 'node:path'
 import { getConfigDirectory, getDataDirectory } from '../platform/paths.js'
+import { assertSupportedPlatform } from '../platform/runtime.js'
 import { SettingsStore } from '../main/settings.js'
 import { BUILT_IN_THEME, describeTheme, ThemeBrokenError, ThemeStore } from '../main/themes.js'
 import { AGENT_HELP } from './agent-help.js'
@@ -83,6 +84,8 @@ async function defaultLaunchApp(file: string | undefined, environment: NodeJS.Pr
   const packaged = Boolean(environment.STRATAMD_APP_EXECUTABLE)
   const root = resolve(new URL('../../', import.meta.url).pathname)
   const args = packaged ? (file ? [file] : []) : [root, ...(file ? [file] : [])]
+  // Set before Electron starts: Wayland cannot position the browser's hidden host.
+  if (assertSupportedPlatform() === 'linux') args.unshift('--ozone-platform=x11')
   const child = spawn(executable, args, {
     detached: true,
     stdio: 'ignore',

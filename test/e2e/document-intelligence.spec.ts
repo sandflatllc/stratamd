@@ -1,3 +1,4 @@
+import { expectActiveDocument, expectDocumentListed, openDocsMenu } from './harness'
 import { expect, test } from '@playwright/test'
 import { dirname, join } from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
@@ -192,15 +193,18 @@ test('diagrams, trees, images, local previews, and durable folds remain document
     const linkPreview = page.getByRole('dialog', { name: 'Preview notes.md#details' })
     await expect(linkPreview).toContainText('Preview body.')
     await linkPreview.getByRole('button', { name: 'Open document' }).click()
-    await expect(page.getByRole('tab', { name: /notes\.md/i })).toHaveAttribute('aria-selected', 'true')
+    await expectActiveDocument(page, /notes\.md/i)
     await switchToDocument(page, /intelligence\.md/i)
     await editor.getByRole('button', { name: 'Preview notes.md' }).press('Enter')
     await expect(page.getByRole('dialog', { name: 'Preview notes.md' })).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(editor.getByRole('button', { name: 'Preview notes.md' })).toBeFocused()
 
-    await page.getByRole('button', { name: 'Close tab intelligence.md' }).click()
-    await expect(page.getByRole('tab', { name: /intelligence\.md/i })).toHaveCount(0)
+    await openDocsMenu(page)
+    await page.getByRole('button', { name: 'Close intelligence.md', exact: true }).click()
+    await page.keyboard.press('Escape')
+    await expectDocumentListed(page, /intelligence\.md/i, false)
+    await expectActiveDocument(page, /notes\.md/i)
     await page.evaluate(async (path) => window.strata.openDocument(path), scenario.file)
     await expect(diagram.locator('svg')).toBeVisible({ timeout: 20_000 })
     await expect(diagram.locator('.strata-mermaid-canvas')).toHaveAttribute('style', /translate\(0px, 0px\) scale\(1\)/)

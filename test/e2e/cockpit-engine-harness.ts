@@ -23,6 +23,8 @@ export interface FakeEngineOptions {
   projectsParity?: boolean
   /** Seeds two completed turns before the running turn for the Conversation parity scenario. */
   conversationParity?: boolean
+  /** A real-shaped owner reply between the progress and final answer of one turn. */
+  conversationSteering?: boolean
   previousWorktree?: boolean
   longHistory?: boolean
   /** Whether `t1` starts with an open approval and an open user-input request; defaults to true. False leaves it plainly running. */
@@ -218,12 +220,13 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       { id: `history-agent-${index}`, role: 'assistant', text: `# Answer ${index + 1}\n\n<Callout>\n\nHistory passage ${index + 1}.\n\n</Callout>\n\n` + 'Read this completed answer while new work continues. '.repeat(30), attachments: [], turnId: `history-turn-${index}`, streaming: false, createdAt: at, updatedAt: at },
     ]).flat() : []
     const parityMessages = options.conversationParity && threadId === 't1' ? [
-      { id: 'old-user-1', role: 'user', text: 'Inspect the timeline.', attachments: [], turnId: 'turn-old-1', streaming: false, createdAt: '2026-09-03T09:00:00.000Z', updatedAt: '2026-09-03T09:00:00.000Z' },
+      { id: 'old-user-1', role: 'user', text: 'Inspect the timeline.', attachments: [], turnId: null, streaming: false, createdAt: '2026-09-03T09:00:00.000Z', updatedAt: '2026-09-03T09:00:00.000Z' },
       { id: 'old-agent-1', role: 'assistant', text: 'First finished answer stays fully visible in the narrow placement.', attachments: [], turnId: 'turn-old-1', streaming: false, createdAt: '2026-09-03T09:00:04.000Z', updatedAt: '2026-09-03T09:00:04.000Z' },
-      { id: 'old-user-2', role: 'user', text: 'Check the grouping.', attachments: [], turnId: 'turn-old-2', streaming: false, createdAt: '2026-09-03T10:00:00.000Z', updatedAt: '2026-09-03T10:00:00.000Z' },
+      { id: 'old-user-2', role: 'user', text: 'Check the grouping.', attachments: [], turnId: null, streaming: false, createdAt: '2026-09-03T10:00:00.000Z', updatedAt: '2026-09-03T10:00:00.000Z' },
       { id: 'old-agent-2-progress', role: 'assistant', text: 'Checking the grouping order first.', attachments: [], turnId: 'turn-old-2', streaming: false, createdAt: '2026-09-03T10:00:01.500Z', updatedAt: '2026-09-03T10:00:01.500Z' },
+      ...(options.conversationSteering ? [{ id: 'steering-user', role: 'user', text: 'Keep the work collapsible.', attachments: [], turnId: null, streaming: false, createdAt: '2026-09-03T10:00:02.500Z', updatedAt: '2026-09-03T10:00:02.500Z' }] : []),
       { id: 'old-agent-2', role: 'assistant', text: 'Second finished answer also stays visible.', attachments: [], turnId: 'turn-old-2', streaming: false, createdAt: '2026-09-03T10:00:04.000Z', updatedAt: '2026-09-03T10:00:04.000Z' },
-      { id: 'live-user', role: 'user', text: 'Run the build.', attachments: [], turnId: 'turn-1', streaming: false, createdAt: at, updatedAt: at },
+      { id: 'live-user', role: 'user', text: 'Run the build.', attachments: [], turnId: null, streaming: false, createdAt: at, updatedAt: at },
       { id: messageId, role: 'assistant', text: message, attachments: [], turnId: 'turn-1', streaming: status === 'running', createdAt: at, updatedAt: at },
       ...sentMessages(threadId, 'turn-1', false),
       ...postedMessages(threadId),
@@ -295,7 +298,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       response.end(JSON.stringify({ ticket: 'test-ticket', expiresAt: new Date(Date.now() + 60_000).toISOString() }))
       return
     }
-    if (request.url?.startsWith('/upload/') && request.method === 'PUT') {
+    if (request.url?.startsWith('/upload/') && request.method === 'POST') {
       const chunks: Buffer[] = []
       const attachmentId = request.url.slice('/upload/'.length)
       request.on('data', (piece) => chunks.push(Buffer.from(piece)))
@@ -304,7 +307,8 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
         const text = bytes.toString('utf8')
         uploads.push(text); uploadsById.set(attachmentId, text)
         uploadRequests.push({ attachmentId, contentType: String(request.headers['content-type'] ?? ''), byteLength: bytes.byteLength })
-        response.end('{}')
+        response.statusCode = 204
+        response.end()
       })
       return
     }

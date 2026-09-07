@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { effectiveProviderInstances, mergeEngineSettings, mergeProviderEdit } from '../../src/shared/engine-settings'
+import { refreshSettingsBase, effectiveProviderInstances, mergeEngineSettings, mergeProviderEdit } from '../../src/shared/engine-settings'
 import type { EngineSettings } from '../../src/shared/contracts'
 
 it('preserves other clients changes and unknown nested fields, while rejecting an edited-field conflict', () => {
@@ -31,4 +31,16 @@ it('clears only the requested inherited override and preserves future fields', (
   const base: EngineSettings = { providerInstances: {}, backgroundActivity: { schemaVersion: 1, profile: 'custom', overrides: { providerHealthRefreshInterval: 1000, futureNullable: null, futureSetting: 12 } } }
   const patch = mergeEngineSettings(base, { identity: null, base, patch: { backgroundActivity: { overrides: { providerHealthRefreshInterval: null } } } })
   expect(patch.backgroundActivity?.overrides).toEqual({ futureNullable: null, futureSetting: 12 })
+})
+
+it('removes a default accent and advances untouched bases without losing competing-edit protection', () => {
+  const provider = { driver: 'codex', accentColor: '#123456', future: true }
+  const reset = mergeProviderEdit({ providerInstances: { work: provider } }, { identity: null, instanceId: 'work', base: provider, patch: { accentColor: '', displayName: 'Work' } })
+  expect(reset.work).toEqual({ driver: 'codex', future: true, displayName: 'Work' })
+  const base: EngineSettings = { providerInstances: {}, sourceControlWritingStyle: { mode: 'repo_conventions', customInstructions: 'Old' } }
+  const latest: EngineSettings = { ...base, sourceControlWritingStyle: { mode: 'conventional_commits', customInstructions: 'Fresh' } }
+  const refreshed = refreshSettingsBase(base, latest, { sourceControlWritingStyle: { mode: 'custom' } }) as EngineSettings
+  expect(refreshed.sourceControlWritingStyle).toEqual({ mode: 'repo_conventions', customInstructions: 'Fresh' })
+  expect(mergeEngineSettings(latest, { identity: null, base: refreshed, patch: { sourceControlWritingStyle: { customInstructions: 'My fresh edit' } } }).sourceControlWritingStyle?.customInstructions).toBe('My fresh edit')
+  expect(() => mergeEngineSettings(latest, { identity: null, base: refreshed, patch: { sourceControlWritingStyle: { mode: 'custom' } } })).toThrow('changed in another client')
 })

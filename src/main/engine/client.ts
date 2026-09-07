@@ -58,7 +58,7 @@ import { mapMarkdownBlocks, parseStrataBlock } from '../../core/blocks'
 import { postedMessageItems } from '../../core/items'
 import { inferredMessageItems } from '../../core/inference'
 import { pngSize, VisualEvidenceStore } from './visual-evidence'
-import { emptyVisualCommentsStore, readVisualCommentsStore, referencedEvidence, writeVisualCommentsStore, type VisualCommentsStore } from './visual-comments'
+import { assertVisualCommentsWritable, emptyVisualCommentsStore, readVisualCommentsStore, referencedEvidence, writeVisualCommentsStore, type VisualCommentsStore } from './visual-comments'
 import { isVisualCommentId, revisionForReply, sendCapacity, visualAttachmentName, visualBrief, visualCommentView, visualRepliesIn, visualSendSummary, type VisualCapture, type VisualCommentRecord, type VisualRevision } from '../../core/visual-comments'
 import { visualImageUrl } from '../../shared/visual-urls'
 import { readEngineIdentity } from './identity'
@@ -103,7 +103,7 @@ export interface EngineNotification { threadId: string; title: string; body: str
 /** The preview host the engine's browser requests go to (docs/plans/open/visual-review, phase 2). */
 export interface PreviewHostBridge {
   operations: readonly string[]
-  handle(request: { requestId: string; threadId: string; tabId?: string | undefined; operation: string; input: unknown; timeoutMs: number }): Promise<{ ok: true; result: unknown } | { ok: false; error: { _tag: string; message: string; detail?: unknown } }>
+  handle(request: { requestId: string; threadId: string; tabId?: string | undefined; tabIdExplicit?: boolean | undefined; operation: string; input: unknown; timeoutMs: number }): Promise<{ ok: true; result: unknown } | { ok: false; error: { _tag: string; message: string; detail?: unknown } }>
   setRegistered(registered: boolean): void
   /**
    * The re-check before Send (phase 3): each marked thing on a page comment is looked for again in its tab.
@@ -201,6 +201,7 @@ export interface EngineReadClient {
   /** Deletes staged images no draft or saved preparation references. */
   retainAttachments?(ids: readonly string[]): Promise<void>
   /** Holds a visual comment privately over a staged image or updates its draft (docs/plans/open/visual-review). */
+  retainVisualEvidence?(owner: string, ids: string[]): Promise<void>
   holdVisualComment?(input: HoldVisualCommentInput): Promise<string>
   actVisualComment?(id: string, action: VisualCommentAction): Promise<void>
   /** Bytes for the strata-visual protocol: a piece of evidence or a staged composer image. */
@@ -300,6 +301,9 @@ export class T3EngineClient implements EngineReadClient {
   #conversationsPath: string
   #staged: StagedAttachmentStore
   #evidence: VisualEvidenceStore
+  #visualMutations: Promise<unknown> = Promise.resolve()
+  #deliveries = new Map<string, Promise<void>>()
+  #acceptedTurns = new Set<string>()
   #visualPath: string
   #visual: VisualCommentsStore = emptyVisualCommentsStore()
   #conversations: ConversationsStore = { formatVersion: 1, threads: {} }
@@ -351,7 +355,7 @@ export class T3EngineClient implements EngineReadClient {
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null
   #reconnectAttempt = 0
   /** Comparisons owed to ready replies, taken after the state is written. */
-  #comparisons: Array<{ id: string; number: number }> = []
+  #comparisons: Array<{ id: string; number: number; replyId: string }> = []
   #comparing = false
   #messageCache = new Map<string, { text: string; prose: string; blocks: ReturnType<typeof mapMarkdownBlocks>["blocks"]; visualReplies: Array<{ id: string; revision?: number; ready: boolean }> }>()
   #publishTimer: ReturnType<typeof setTimeout> | null = null
@@ -400,9 +404,8 @@ export class T3EngineClient implements EngineReadClient {
       let identity = this.#credential.identity
       if (!identity && connect) {
         try {
-          const response = await this.#fetch(this.#credential.server + '/.well-known/t3/environment', { headers: { authorization: `Bearer ${this.#credential.accessToken}` }, signal: AbortSignal.timeout(3000) })
-          const descriptor = await response.json() as { environmentId?: unknown }
-          if (response.ok && typeof descriptor.environmentId === 'string') identity = connectionIdentity(this.#credential.server, descriptor.environmentId)
+          const descriptor = await readEngineIdentity(this.#fetch, this.#credential.server, 3000, this.#credential.accessToken)
+          identity = connectionIdentity(this.#credential.server, descriptor.environmentId)
         } catch { /* Servers predating environment descriptors keep origin identity. */ }
       }
       await this.#selectIdentity(identity ?? connectionIdentity(this.#credential.server))
@@ -413,7 +416,7 @@ export class T3EngineClient implements EngineReadClient {
     this.#pendingCommands = await this.#readCommands()
     this.#accounts = await readAccountsStore(this.#accountsPath)
     this.#conversations = await readConversationsStore(this.#conversationsPath)
-    this.#visual = await readVisualCommentsStore(this.#visualPath)
+    this.#visual = await readVisualCommentsStore(this.#visualPath, this.#evidence.directory)
     // Evidence outlives its comment only until this sweep; sent comments keep theirs while they exist.
     await this.#evidence.sweep(referencedEvidence(this.#visual)).catch((error: unknown) => logError('engine', 'Visual evidence could not be tidied', error))
     if (!this.#credential || !connect) return
@@ -638,10 +641,8 @@ export class T3EngineClient implements EngineReadClient {
     let descriptorId = environmentId
     if (!descriptorId) {
       try {
-        const token = tokenExchangeResult.parse(exchange)
-        const response = await this.#fetch(origin + '/.well-known/t3/environment', { headers: { authorization: `Bearer ${token.access_token}` }, signal: AbortSignal.timeout(3000) })
-        const descriptor = await response.json() as { environmentId?: unknown }
-        if (response.ok && typeof descriptor.environmentId === 'string') descriptorId = descriptor.environmentId
+        const descriptor = await readEngineIdentity(this.#fetch, origin, 3000, exchange.access_token)
+        descriptorId = descriptor.environmentId
       } catch { /* Older servers retain origin-based identity until an explicit new pairing. */ }
     }
     let sameCredentialStore = false
@@ -664,7 +665,7 @@ export class T3EngineClient implements EngineReadClient {
       this.#pendingCommands = await this.#readCommands()
       this.#accounts = await readAccountsStore(this.#accountsPath)
       this.#conversations = await readConversationsStore(this.#conversationsPath)
-      this.#visual = await readVisualCommentsStore(this.#visualPath)
+      this.#visual = await readVisualCommentsStore(this.#visualPath, this.#evidence.directory)
       await this.#evidence.sweep(referencedEvidence(this.#visual)).catch((error: unknown) => logError('engine', 'Visual evidence could not be tidied', error))
     }
     await this.#writeCredential(origin, exchange)
@@ -781,7 +782,7 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string; context?: import("../../core/conversation-delivery").ConversationDelivery }): Promise<void> {
-    return this.#operations.run(() => this.#startTurn(threadId, input))
+    return this.#operations.run(() => this.#serializeVisual(() => this.#startTurn(threadId, input)))
   }
 
   async #startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string; context?: import("../../core/conversation-delivery").ConversationDelivery }): Promise<void> {
@@ -821,11 +822,13 @@ export class T3EngineClient implements EngineReadClient {
     // Visual comments (docs/plans/open/visual-review): each held draft freezes one revision; the marked capture for every
     // capture a mark or stroke sits on travels as an image, identical bytes once, and the brief rides in the context file.
     const visualIds = [...new Set(input.visual ?? [])]
+    if (visualIds.length) assertVisualCommentsWritable(this.#visual)
     if (visualIds.length && input.context) throw new Error('A document delivery cannot carry visual comments')
     const visualDrafts = visualIds.map((id) => {
       const comment = this.#visual.comments[id]
       if (!comment) throw new Error(`Visual comment ${id} was not found`)
       if (!comment.draft) throw new Error(`Visual comment ${id} has nothing new to send`)
+      if (comment.draft.destination.threadId !== threadId || comment.draft.destination.engine !== comment.engine) throw new Error(`Visual comment ${id} belongs to its original destination. Open that conversation to send it.`)
       if (comment.projectId !== thread.projectId) throw new Error(`Visual comment ${id} belongs to another project`)
       return comment
     })
@@ -844,7 +847,8 @@ export class T3EngineClient implements EngineReadClient {
       const draft = comment.draft!
       const referenced = [...new Set([...draft.marks.map((mark) => mark.captureId), ...draft.strokes.map((stroke) => stroke.captureId)])]
       // The requested appearance rides along as a reference when the draft carries adjustments.
-      const requested = draft.adjustments.length ? comment.captures.filter((capture) => capture.requested && !referenced.includes(capture.id)).slice(-1).map((capture) => capture.id) : []
+      if (draft.adjustments.length && !draft.requestedCaptureId) throw new Error(`Visual comment ${comment.id} needs a current requested image. Reopen it to refresh the adjustments.`)
+      const requested = draft.adjustments.length && draft.requestedCaptureId ? [draft.requestedCaptureId] : []
       const captureIds = [...(referenced.length ? referenced : comment.captures.filter((capture) => !capture.requested).slice(0, 1).map((capture) => capture.id)), ...requested]
       const number = comment.revisions.length + 1
       const names = new Map<string, string>()
@@ -855,7 +859,8 @@ export class T3EngineClient implements EngineReadClient {
         let name = evidenceNames.get(evidenceId)
         if (!name) {
           const meta = await this.#evidence.meta(evidenceId)
-          if (!meta) throw new MissingEvidenceError(visualAttachmentName(comment.id, number, index))
+          if (!meta || !await this.#evidence.exists(evidenceId)) throw new MissingEvidenceError(visualAttachmentName(comment.id, number, index))
+          if (meta.sizeBytes > 10 * 1024 * 1024) throw new Error(`Image ${visualAttachmentName(comment.id, number, index)} exceeds the 10 MiB limit. Use a smaller capture.`)
           name = visualAttachmentName(comment.id, number, index)
           evidenceNames.set(evidenceId, name)
           visualAttachments.push({ kind: 'evidence', id: evidenceId, name, mimeType: meta.mimeType, sizeBytes: meta.sizeBytes })
@@ -917,7 +922,15 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   /** Resumes a saved preparation and keeps the visual revisions it carries honest: sending while it runs, failed and retryable when it does not. */
-  async #resumeDelivery(threadId: string, messageId: string): Promise<void> {
+  #resumeDelivery(threadId: string, messageId: string): Promise<void> {
+    const key = `${this.#identity}:${messageId}`
+    const existing = this.#deliveries.get(key)
+    if (existing) return existing
+    const pending = this.#executeDelivery(threadId, messageId).finally(() => this.#deliveries.delete(key))
+    this.#deliveries.set(key, pending)
+    return pending
+  }
+  async #executeDelivery(threadId: string, messageId: string): Promise<void> {
     await this.#markVisual(messageId, 'sending')
     try { await this.#resumePrepared(threadId, messageId) }
     catch (error) { await this.#markVisual(messageId, 'failed', error); throw error }
@@ -948,13 +961,28 @@ export class T3EngineClient implements EngineReadClient {
       .map((comment) => visualCommentView(comment, { captureUrl: (id) => visualImageUrl('evidence', id), threadTitle: (id) => titles.get(id) ?? 'a closed thread' }))
   }
 
-  async holdVisualComment(input: HoldVisualCommentInput): Promise<string> {
+  #serializeVisual<T>(operation: () => Promise<T>): Promise<T> {
+    const pending = this.#visualMutations.then(operation, operation)
+    this.#visualMutations = pending.catch(() => undefined)
+    return pending
+  }
+
+  holdVisualComment(input: HoldVisualCommentInput): Promise<string> {
+    return this.#operations.run(() => this.#serializeVisual(() => this.#holdVisualComment(input)))
+  }
+  async #holdVisualComment(input: HoldVisualCommentInput): Promise<string> {
+    assertVisualCommentsWritable(this.#visual)
     const now = this.#now()
     const thread = this.#shell?.threads.find((candidate) => candidate.id === input.threadId)
     if (!thread) throw new Error(`Thread was not found: ${input.threadId}`)
     if (thread.projectId !== input.projectId) throw new Error(`Thread ${input.threadId} is not in project ${input.projectId}`)
     let comment = input.id ? this.#visual.comments[input.id] : undefined
     if (input.id && !comment) throw new Error(`Visual comment ${input.id} was not found`)
+    for (const revision of comment?.revisions ?? []) if (revision.state === 'failed') {
+      await this.#abandonPrepared(revision.destination.threadId, revision.deliveryId)
+      this.#pendingCommands = this.#pendingCommands.filter(command => command.messageId !== revision.deliveryId)
+      await this.#writeCommands()
+    }
     const captureIds = new Map<string, string>()
     if (input.source) {
       if (comment) throw new Error('A visual comment keeps its image. Start a new one for a new image.')
@@ -1007,7 +1035,9 @@ export class T3EngineClient implements EngineReadClient {
     const previous = comment.draft
     const latest = comment.revisions.at(-1)
     const identityOf = (id: string, given: VisualMarkView['identity']) => previous?.marks.find((mark) => mark.id === id)?.identity ?? latest?.marks.find((mark) => mark.id === id)?.identity ?? given
+    const requestedCaptureId = input.page?.captures.filter(capture => capture.requested).at(-1)?.id
     comment.draft = {
+      ...(input.adjustments.length && requestedCaptureId ? { requestedCaptureId } : {}),
       text: input.text,
       marks: input.marks.map((mark) => { const identity = identityOf(mark.id, mark.identity); return { id: mark.id, kind: mark.kind, label: mark.label, captureId: remap(mark.captureId), rect: mark.rect, found: mark.found, ...(identity ? { identity } : {}) } }),
       strokes: input.strokes.map((stroke) => ({ id: stroke.id, tool: stroke.tool, captureId: remap(stroke.captureId), points: stroke.points.map((point) => ({ x: point.x, y: point.y })) })),
@@ -1022,10 +1052,14 @@ export class T3EngineClient implements EngineReadClient {
     return comment.id
   }
 
-  async actVisualComment(id: string, action: VisualCommentAction): Promise<void> {
+  actVisualComment(id: string, action: VisualCommentAction): Promise<void> {
+    return this.#operations.run(() => this.#serializeVisual(() => this.#actVisualComment(id, action)))
+  }
+  async #actVisualComment(id: string, action: VisualCommentAction): Promise<void> {
+    assertVisualCommentsWritable(this.#visual)
     const comment = this.#visual.comments[id]
     if (!comment) throw new Error(`Visual comment ${id} was not found`)
-    if (action === 'compare') { await this.compareVisualComment(id); return }
+    if (action === 'compare') { await this.#compareVisualComment(id); return }
     const latest = comment.revisions.at(-1)
     const now = this.#now()
     if (action === 'accept') {
@@ -1036,8 +1070,14 @@ export class T3EngineClient implements EngineReadClient {
     } else if (action === 'reopen') {
       // Still wrong opens the next private note over the same marks; Send transmits it as the next revision.
       if (!latest) throw new Error('Nothing has been sent to reopen')
-      comment.draft = { text: '', marks: latest.marks.map((mark) => ({ ...mark })), strokes: latest.strokes.map((stroke) => ({ ...stroke, points: [...stroke.points] })), adjustments: latest.adjustments.map((adjustment) => ({ ...adjustment })), destination: { ...latest.destination }, updatedAt: now }
+      const requestedCaptureId = latest.captures.find(id => comment.captures.some(capture => capture.id === id && capture.requested))
+      comment.draft = { ...(latest.adjustments.length && requestedCaptureId ? { requestedCaptureId } : {}), text: latest.state === 'failed' ? latest.text : '', marks: latest.marks.map((mark) => ({ ...mark })), strokes: latest.strokes.map((stroke) => ({ ...stroke, points: [...stroke.points] })), adjustments: latest.adjustments.map((adjustment) => ({ ...adjustment })), destination: { ...latest.destination }, updatedAt: now }
     } else if (action === 'discard') {
+      for (const revision of comment.revisions) if (revision.state === 'failed') {
+        await this.#abandonPrepared(revision.destination.threadId, revision.deliveryId)
+        this.#pendingCommands = this.#pendingCommands.filter(command => command.messageId !== revision.deliveryId)
+      }
+      await this.#writeCommands()
       if (comment.revisions.length === 0) {
         delete this.#visual.comments[id]
         await writeVisualCommentsStore(this.#visualPath, this.#visual)
@@ -1064,8 +1104,15 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   /** A frame Annotate captured goes straight into the evidence store; an unheld one is swept at the next start. */
+  retainVisualEvidence(owner: string, ids: string[]): Promise<void> {
+    return this.#operations.run(() => this.#serializeVisual(async () => {
+      await this.#evidence.retainOwner(owner, ids)
+      await this.#evidence.sweep(referencedEvidence(this.#visual))
+    }))
+  }
+
   async storeVisualCapture(input: { bytes: Uint8Array; width: number; height: number }): Promise<string> {
-    const stored = await this.#evidence.put({ bytes: input.bytes, width: input.width, height: input.height, mimeType: 'image/png' })
+    const stored = await this.#evidence.put({ bytes: input.bytes, width: input.width, height: input.height, mimeType: 'image/png', protected: true })
     return stored.id
   }
 
@@ -1610,14 +1657,14 @@ export class T3EngineClient implements EngineReadClient {
   async #registerPreviewHost(socket: EngineSocket): Promise<void> {
     const host = this.#previewHost
     if (!host || !this.#credential) return
-    const identity = await readEngineIdentity(this.#fetch, this.#credential.server).catch(() => null)
+    const identity = await readEngineIdentity(this.#fetch, this.#credential.server, 3000, this.#credential.accessToken).catch(() => null)
     if (!identity) return
     if (this.#previewEnvironmentId && this.#previewEnvironmentId !== identity.environmentId) { logWarn('engine', `The engine now reports another identity (${identity.environmentId}); the browser stays registered only with ${this.#previewEnvironmentId}`); return }
     if (this.#socket !== socket || socket.closed) return
     this.#previewEnvironmentId = identity.environmentId
     this.#previewStream = await socket.stream(T3_RPC.previewAutomationConnect, { clientId: this.#previewClientId, environmentId: identity.environmentId, supportedOperations: [...host.operations] }, (item) => {
       const parsed = previewStreamEvent.safeParse(item)
-      if (!parsed.success) return
+      if (!parsed.success) { logWarn('engine', `The engine sent an unreadable preview event: ${parsed.error.message}`); return }
       if (parsed.data.type === 'connected') { this.#previewConnectionId = parsed.data.connectionId; host.setRegistered(true); return }
       void this.#servePreviewRequest(socket, parsed.data.connectionId, parsed.data.request)
     }, () => { if (this.#socket === socket) { this.#previewStream = null; this.#previewConnectionId = null; host.setRegistered(false) } })
@@ -1627,7 +1674,7 @@ export class T3EngineClient implements EngineReadClient {
   async #servePreviewRequest(socket: EngineSocket, connectionId: string, request: z.infer<typeof previewStreamEvent> extends infer T ? T extends { type: 'request'; request: infer R } ? R : never : never): Promise<void> {
     const host = this.#previewHost
     if (!host) return
-    const outcome = await host.handle({ requestId: request.requestId, threadId: request.threadId, ...(request.tabId !== undefined ? { tabId: request.tabId } : {}), operation: request.operation, input: request.input, timeoutMs: request.timeoutMs })
+    const outcome = await host.handle({ requestId: request.requestId, threadId: request.threadId, ...(request.tabId !== undefined ? { tabId: request.tabId } : {}), tabIdExplicit: request.tabIdExplicit, operation: request.operation, input: request.input, timeoutMs: request.timeoutMs })
     const response = { clientId: this.#previewClientId, connectionId, requestId: request.requestId, ...(outcome.ok ? { ok: true, result: outcome.result } : { ok: false, error: outcome.error }) }
     try { await socket.request(T3_RPC.previewAutomationRespond, response, 15_000) }
     catch (error) { logWarn('engine', `The engine did not take the browser answer for ${request.operation}: ${error instanceof Error ? error.message : String(error)}`) }
@@ -1705,7 +1752,7 @@ export class T3EngineClient implements EngineReadClient {
       if (event.aggregateKind !== 'thread' || event.aggregateId !== threadId || !entry.detail) return
       entry.detail = { ...entry.detail, thread: this.#applyThreadEvent(entry.detail.thread, event) }
     }
-    void this.#settleAcknowledgedCommands()
+    void this.#serializeVisual(() => this.#settleAcknowledgedCommands()).catch(error => logError('engine', 'Delivery acknowledgment could not be saved', error))
     this.#publishSoon()
   }
 
@@ -1929,9 +1976,11 @@ export class T3EngineClient implements EngineReadClient {
 
   async #postCommand(command: unknown): Promise<void> {
     const isTurn = (command as { type?: string }).type === 'thread.turn.start'
+    const receipt = `${this.#identity}:${(command as { commandId?: string }).commandId}`
+    if (isTurn && this.#acceptedTurns.has(receipt)) return
     if (isTurn && this.#localSetupBusy()) throw new Error('Finish or cancel provider setup before starting a conversation.')
     if (isTurn) this.#usageSuspensions++
-    try { await this.#postCommandPaused(command) } finally { if (isTurn) this.#usageSuspensions-- }
+    try { await this.#postCommandPaused(command); if (isTurn) this.#acceptedTurns.add(receipt) } finally { if (isTurn) this.#usageSuspensions-- }
   }
 
   async #postCommandPaused(command: unknown): Promise<void> {
@@ -2022,7 +2071,7 @@ export class T3EngineClient implements EngineReadClient {
     if (!this.#credential) throw new Error('No engine is paired')
     const upload = attachmentUploadResult.parse(await this.#rpc(T3_RPC.createAttachmentUploadUrl, { type: input.type, name: input.name, mimeType: input.mimeType, sizeBytes: input.bytes.byteLength }, 'attachment upload'))
     const response = await this.#fetch(new URL(upload.relativeUrl, this.#credential.server), {
-      method: 'PUT', headers: { 'content-type': input.mimeType, 'content-length': String(input.bytes.byteLength) }, body: new Uint8Array(input.bytes),
+      method: 'POST', headers: { 'content-type': input.mimeType, 'content-length': String(input.bytes.byteLength) }, body: new Uint8Array(input.bytes),
       signal: AbortSignal.timeout(10_000),
     })
     if (!response.ok) throw new Error(`The engine refused the attachment bytes (${response.status})`)
@@ -2071,9 +2120,20 @@ export class T3EngineClient implements EngineReadClient {
     await this.#staged.sweep(keep)
   }
 
-  async #retryPendingCommands(): Promise<void> {
+  #retryPendingCommands(): Promise<void> {
+    return this.#serializeVisual(() => this.#retryPendingCommandsLocked())
+  }
+  async #retryPendingCommandsLocked(): Promise<void> {
     if (this.#localSetupBusy()) return
     await this.#settleAcknowledgedCommands()
+    let recovered = false
+    for (const comment of Object.values(this.#visual.comments)) for (const revision of comment.revisions) {
+      if (revision.state !== 'sending' || this.#conversations.threads[revision.destination.threadId]?.prepared?.some(entry => entry.messageId === revision.deliveryId) || this.#pendingCommands.some(command => command.messageId === revision.deliveryId)) continue
+      revision.state = 'failed'; revision.error = 'Preparation was interrupted. Open this comment to edit and send it again.'
+      comment.draft ??= { text: revision.text, marks: structuredClone(revision.marks), strokes: structuredClone(revision.strokes), adjustments: structuredClone(revision.adjustments), destination: { ...revision.destination }, updatedAt: this.#now() }
+      recovered = true
+    }
+    if (recovered) await writeVisualCommentsStore(this.#visualPath, this.#visual)
     const resumed = new Set<string>()
     for (const [threadId, state] of Object.entries(this.#conversations.threads)) {
       // Old stores could strand replies before a command existed. Restore only those without a command or transcript receipt.
@@ -2158,12 +2218,13 @@ export class T3EngineClient implements EngineReadClient {
                 if (!target) throw new Error(`Visual comment ${anchor.item} was not found`)
                 if (entry.verb !== 'reply') throw new Error(`Only the owner can ${entry.verb} a visual comment`)
                 const revision = revisionForReply(target, entry.revision)
-                if (!revision) throw new Error(`Visual comment ${anchor.item} has no revision ${entry.revision}`)
-                revision.replies.push({ messageId: message.id, text: entry.text, ready: entry.ready === true, ...(entry.file ? { file: entry.file } : {}), at: this.#now() })
+                if (!revision) throw new Error(`Visual comment ${anchor.item} requires an explicit existing revision.`)
+                if (revision.destination.threadId !== thread.id) throw new Error(`Visual comment ${anchor.item} revision ${revision.number} belongs to another conversation.`)
+                revision.replies.push({ agentId: thread.providerInstanceId, agentName: this.view().accounts.find(account => account.instanceId === thread.providerInstanceId)?.name ?? 'Agent', messageId: message.id, text: entry.text, ready: entry.ready === true, ...(entry.file ? { file: entry.file } : {}), at: this.#now() })
                 target.updatedAt = this.#now()
                 visualChanged = true
                 // Ready for review is a trigger: Strata takes its own "now" capture of the target and attaches the comparison to this reply.
-                if (entry.ready === true && revision === target.revisions.at(-1)) this.#comparisons.push({ id: target.id, number: revision.number })
+                if (entry.ready === true) this.#comparisons.push({ id: target.id, number: revision.number, replyId: message.id })
               } catch (error) { reason = error instanceof Error ? error.message : String(error) }
               state.receipts.push(key)
               state.outcomes.push({ message: message.id, index: result.index, status: reason ? 'failed' : 'applied', ...(reason ? { reason } : { itemId: anchor.item }) })
@@ -2213,13 +2274,17 @@ export class T3EngineClient implements EngineReadClient {
     try {
       while (this.#comparisons.length) {
         const next = this.#comparisons.shift()!
-        try { await this.compareVisualComment(next.id, next.number) } catch (error) { logError('engine', `Then / now could not be taken for ${next.id}`, error) }
+        try { await this.compareVisualComment(next.id, next.number, next.replyId) } catch (error) { logError('engine', `Then / now could not be taken for ${next.id}`, error) }
       }
     } finally { this.#comparing = false }
   }
 
   /** Takes or retakes the comparison for a revision; the bridge does the capture, the record keeps the crops. */
-  async compareVisualComment(id: string, number?: number): Promise<void> {
+  compareVisualComment(id: string, number?: number, replyId?: string): Promise<void> {
+    return this.#operations.run(() => this.#serializeVisual(() => this.#compareVisualComment(id, number, replyId)))
+  }
+  async #compareVisualComment(id: string, number?: number, replyId?: string): Promise<void> {
+    assertVisualCommentsWritable(this.#visual)
     const comment = this.#visual.comments[id]
     if (!comment) throw new Error(`Visual comment ${id} was not found`)
     const revision = number === undefined ? comment.revisions.at(-1) : comment.revisions.find((candidate) => candidate.number === number)
@@ -2229,11 +2294,14 @@ export class T3EngineClient implements EngineReadClient {
     if (!result) return
     const then = await this.#evidence.put({ bytes: result.then.bytes, width: result.then.width, height: result.then.height, mimeType: 'image/png' })
     const now = result.now ? await this.#evidence.put({ bytes: result.now.bytes, width: result.now.width, height: result.now.height, mimeType: 'image/png' }) : null
-    const previous = revision.comparison
-    revision.comparison = { thenId: then.id, nowId: now?.id ?? null, note: result.note, takenAt: this.#now() }
+    const reply = replyId ? revision.replies.find(reply => reply.messageId === replyId) : revision.replies.at(-1)
+    if (replyId && !reply) throw new Error(`Reply ${replyId} no longer belongs to this revision`)
+    const target = reply ?? revision
+    const previous = target.comparison
+    target.comparison = { thenId: then.id, nowId: now?.id ?? null, note: result.note, takenAt: this.#now() }
     comment.updatedAt = this.#now()
-    if (previous) { await this.#evidence.discard(previous.thenId); if (previous.nowId) await this.#evidence.discard(previous.nowId) }
     await writeVisualCommentsStore(this.#visualPath, this.#visual)
+    if (previous) await this.#evidence.sweep(referencedEvidence(this.#visual))
     this.#publish()
   }
 
@@ -2245,7 +2313,7 @@ export class T3EngineClient implements EngineReadClient {
       const instanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId
       if (this.#providers.some(provider => provider.instanceId === instanceId && provider.driver === 'codex')) this.#usageJobs.get(instanceId)?.abort.abort()
     }
-    if (this.#operations.accepting) void this.#operations.run(() => this.#reconcileComments()).catch(error => logError('engine', 'Could not save conversation actions', error))
+    if (this.#operations.accepting) void this.#operations.run(() => this.#serializeVisual(() => this.#reconcileComments())).catch(error => logError('engine', 'Could not save conversation actions', error))
     let view = this.view()
     const threads = view.projects.flatMap((project) => project.threads)
     if (this.#reachable() && this.#lastThreads.length) {
@@ -2376,7 +2444,8 @@ export class T3EngineClient implements EngineReadClient {
 
 export { EMPTY_ENGINE }
 
-const previewRequest = z.object({ requestId: z.string().min(1), threadId: z.string().min(1), tabId: z.string().optional(), tabIdExplicit: z.boolean().optional(), operation: z.string().min(1), input: z.unknown(), timeoutMs: z.number().int().positive() }).passthrough()
+// Stock T3 0.0.38 sends null for an unassigned tab despite declaring it optional.
+const previewRequest = z.object({ requestId: z.string().min(1), threadId: z.string().min(1), tabId: z.preprocess(value => value === null ? undefined : value, z.string().optional()), tabIdExplicit: z.boolean().optional(), operation: z.string().min(1), input: z.unknown(), timeoutMs: z.number().int().positive() }).passthrough()
 const previewStreamEvent = z.union([
   z.object({ type: z.literal('connected'), connectionId: z.string().min(1) }).passthrough(),
   z.object({ type: z.literal('request'), connectionId: z.string().min(1), request: previewRequest }).passthrough(),

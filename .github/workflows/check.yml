@@ -6,7 +6,9 @@ on:
 
 jobs:
   linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    env:
+      STRATAMD_LINUX_TOOLCHAIN: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -17,6 +19,9 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.3"
       - run: pnpm install --frozen-lockfile
       # pnpm's build-script approval does not reliably run electron's install
       # script, which downloads the binary; run it explicitly so dist/ exists
@@ -31,6 +36,8 @@ jobs:
       # The spellcheck e2e spec seeds Hunspell dictionaries from the profile;
       # a fresh runner has none, so fetch en-US through Electron's own path.
       - run: xvfb-run --auto-servernum npx electron scripts/fetch-spell-dictionary.mjs
+      # Native desktop-composition evidence needs the X11 capture command.
+      - run: sudo apt-get update && sudo apt-get install -y imagemagick gcc-13 g++-13 make
       - run: xvfb-run --auto-servernum pnpm check
       # `stratamd setup` registers desktop and MIME associations through
       # update-desktop-database/update-mime-database; the runner image ships
@@ -64,7 +71,9 @@ jobs:
           retention-days: 7
       # ditto keeps execute bits and bundle structure; upload-artifact alone
       # strips permissions. The zip is what a tester downloads and dequarantines.
-      - run: ditto -c -k --keepParent dist/mac*/StrataMD.app StrataMD-mac.zip
+      - run: |
+          strata_package_output=$(node -p 'JSON.parse(require("node:fs").readFileSync("build/latest-package.json", "utf8")).output')
+          ditto -c -k --keepParent "$strata_package_output"/mac*/StrataMD.app StrataMD-mac.zip
       - uses: actions/upload-artifact@v4
         with:
           name: StrataMD-mac

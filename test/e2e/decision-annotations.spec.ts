@@ -23,14 +23,14 @@ test('owner decisions keep choice, discussion, delivery, and edits separate', as
     await annotations.getByRole('textbox', { name: 'Decision choice 2' }).fill('Manual review')
     await annotations.getByRole('button', { name: 'Add decision' }).click()
 
-    const created = (await scenario.inspectDocument()).annotations?.find((item) => item.kind === 'decision')
-    expect(created).toMatchObject({
+    await expect.poll(async () => (await scenario.inspectDocument()).annotations?.find((item) => item.kind === 'decision')).toMatchObject({
       status: 'open',
       anchor: 'heading',
       quote: '## Delivery',
       text: 'Which release gate should we use?',
       decision: { options: ['Use CI', 'Manual review'], answers: [] },
     })
+    const created = (await scenario.inspectDocument()).annotations?.find((item) => item.kind === 'decision')
     expect(created).toBeTruthy()
 
     // The agent takes the Lead and discusses; it cannot answer or resolve an owner decision (§5.6).
@@ -81,8 +81,8 @@ test('owner decisions keep choice, discussion, delivery, and edits separate', as
     await annotations.getByRole('button').filter({ hasText: 'Which release gate should we use?' }).click()
     const resolvedThread = page.getByRole('region', { name: /decision thread/i })
     await resolvedThread.getByRole('button', { name: /Reopen decision/i }).click()
-    const reopened = (await scenario.inspectDocument()).annotations?.find((item) => item.id === created!.id)
-    expect(reopened).toMatchObject({
+    // Reopen schedules IPC work; the click itself does not acknowledge its completion.
+    await expect.poll(async () => (await scenario.inspectDocument()).annotations?.find((item) => item.id === created!.id)).toMatchObject({
       status: 'open',
       decision: { answers: [{ option: 'Use CI', author: 'user' }] },
     })

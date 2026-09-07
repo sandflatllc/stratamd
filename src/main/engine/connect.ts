@@ -1,3 +1,4 @@
+import { engineEnvironment } from './launch-environment'
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { promisify } from 'node:util'
 import { dirname, join } from 'node:path'
@@ -10,16 +11,19 @@ export class T3Connect {
   #done: Promise<void> = Promise.resolve()
   #job: ConnectJob = { state: 'idle', message: '', output: '' }
   #busy = false
-  #status: { time: number; value: Promise<ConnectStatus> } | null = null
+  #status: { pending: boolean; key: string; value: Promise<ConnectStatus> } | null = null
   get busy(): boolean { return this.#busy }
   view(): ConnectJob { return { ...this.#job } }
   #invocation(context: LocalRuntimeContext, args: string[]) {
-    return { executable: context.executable, args: [join(context.directory, 'node_modules/t3/dist/bin.mjs'), 'connect', ...args, '--base-dir', context.baseDirectory], options: { cwd: context.baseDirectory, env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('T3CODE_'))), PATH: `${dirname(context.executable)}:${process.env.PATH ?? ''}`, BROWSER: 'false', NO_COLOR: '1' } } }
+    return { executable: context.executable, args: [join(context.directory, 'node_modules/t3/dist/bin.mjs'), 'connect', ...args, '--base-dir', context.baseDirectory], options: { cwd: context.baseDirectory, env: { ...engineEnvironment(), PATH: `${dirname(context.executable)}:${process.env.PATH ?? ''}`, BROWSER: 'false', NO_COLOR: '1' } } }
   }
-  async status(context: LocalRuntimeContext): Promise<ConnectStatus> {
-    if (this.#status && Date.now() - this.#status.time < 5000) return this.#status.value
+  async status(context: LocalRuntimeContext, refresh = false): Promise<ConnectStatus> {
+    const key = context.directory + ':' + context.baseDirectory
+    if (this.#status?.key === key && (!refresh || this.#status.pending)) return this.#status.value
     const value = this.#readStatus(context)
-    this.#status = { time: Date.now(), value }
+    this.#status = { pending: true, key, value }
+    void value.then(() => { if (this.#status?.value === value) this.#status.pending = false }, () => undefined)
+    void value.catch(() => { if (this.#status?.value === value) this.#status = null })
     return value
   }
   async command(context: LocalRuntimeContext, args: string[]): Promise<void> {

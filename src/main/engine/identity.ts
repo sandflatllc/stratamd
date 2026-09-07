@@ -43,8 +43,8 @@ export interface EngineIdentity {
   label: string | null
 }
 
-export async function readEngineIdentity(fetch: typeof globalThis.fetch, server: string, timeoutMs = 3_000): Promise<EngineIdentity> {
-  const response = await fetch(`${server}${ENGINE_ENVIRONMENT_PATH}`, { signal: AbortSignal.timeout(timeoutMs) })
+export async function readEngineIdentity(fetch: typeof globalThis.fetch, server: string, timeoutMs = 3_000, accessToken?: string): Promise<EngineIdentity> {
+  const response = await fetch(`${server}${ENGINE_ENVIRONMENT_PATH}`, { signal: AbortSignal.timeout(timeoutMs), ...(accessToken ? { headers: { authorization: `Bearer ${accessToken}` } } : {}) })
   if (!response.ok) throw new Error(`The engine did not describe itself (${response.status})`)
   const parsed = descriptor.safeParse(await response.json())
   if (!parsed.success) throw new Error('The engine described itself in a form Strata cannot read')

@@ -3,6 +3,9 @@
 #endif
 
 #include <node_api.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/file.h>
 
 #if defined(__APPLE__)
 #include <errno.h>
@@ -49,7 +52,30 @@ static napi_value get_path_for_fd(napi_env env, napi_callback_info info) {
 }
 #endif
 
+/* flock is tied to the open descriptor and released by the kernel on death. */
+static napi_value try_lock(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1], value;
+  int32_t fd;
+  if (napi_get_cb_info(env, info, &argc, argv, NULL, NULL) != napi_ok || argc != 1 ||
+      napi_get_value_int32(env, argv[0], &fd) != napi_ok || fd < 0) {
+    napi_throw_type_error(env, NULL, "tryLock requires a file descriptor"); return NULL;
+  }
+  int result;
+  do { result = flock(fd, LOCK_EX | LOCK_NB); } while (result == -1 && errno == EINTR);
+  if (result == -1 && errno != EWOULDBLOCK && errno != EAGAIN) {
+    napi_throw_error(env, NULL, strerror(errno)); return NULL;
+  }
+  napi_get_boolean(env, result == 0, &value);
+  return value;
+}
+
 static napi_value initialize(napi_env env, napi_value exports) {
+  napi_value lock_function;
+  if (napi_create_function(env, "tryLock", NAPI_AUTO_LENGTH, try_lock, NULL, &lock_function) != napi_ok ||
+      napi_set_named_property(env, exports, "tryLock", lock_function) != napi_ok) {
+    napi_throw_error(env, NULL, "Could not export tryLock"); return NULL;
+  }
 #if defined(__APPLE__)
   napi_value function;
   if (napi_create_function(env, "getPathForFd", NAPI_AUTO_LENGTH, get_path_for_fd, NULL, &function) != napi_ok ||

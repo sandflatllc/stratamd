@@ -23,3 +23,16 @@ it('serializes competing reclaimers of a dead incarnation', async () => {
   for (const result of results) if (result.status === 'fulfilled') await result.value()
   await rm(root, { recursive: true, force: true })
 })
+
+it('recovers an abandoned reclaim without deleting its marker', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'engine-abandoned-lock-'))
+  try {
+    await writeFile(join(root, 'lock'), JSON.stringify({ pid: process.pid, bootId: 'previous-boot', startTime: '0' }))
+    await writeFile(join(root, 'lock.reclaim'), '')
+    const release = await takeEngineLock(root)
+    await expect(takeEngineLock(root)).rejects.toThrow('owns')
+    await release()
+    expect(await readFile(join(root, 'lock.reclaim'), 'utf8')).toBe('')
+    await (await takeEngineLock(root))()
+  } finally { await rm(root, { recursive: true, force: true }) }
+})

@@ -7,19 +7,20 @@ import { seededScenario, startEngine } from './cockpit-engine-harness'
 let value: Scenario
 test.afterEach(async () => { await value?.dispose() })
 
-test('the logo retains account attention and exposes all moved actions', async ({}, testInfo) => {
+test('the logo groups secondary actions without account notifications', async ({}, testInfo) => {
   const engine = await startEngine({ providers: [{ instanceId: 'codex', driver: 'codex', displayName: 'Codex', enabled: true, installed: true, status: 'ready', version: '1.0.0', checkedAt: '2026-09-04T12:00:00.000Z', auth: { status: 'unauthenticated', type: 'chatgpt', label: 'Pro' }, models: [] }] })
   try {
     value = await seededScenario(testInfo, engine.origin, '# Window design\n\nThe logo menu keeps secondary actions together.\n', 'window-design.md')
     await value.writeSettings({ animatedBackground: false, theme: 'strata-vivid', zoom: { explorer: 1, editor: 1.1, rightRail: 1, composer: 1 } })
     const page = await value.launch()
-    await expect(page.getByRole('button', { name: 'StrataMD menu' })).toHaveAttribute('title', /Accounts needs attention/)
-    await expect(page.locator('.app-menu-trigger .attention-dot')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'StrataMD menu' })).toHaveAttribute('title', 'StrataMD menu')
+    await expect(page.locator('.app-menu-trigger .attention-dot')).toHaveCount(0)
     // Open preview joins the menu once the engine is connected; wait for that so the list is the same on every run.
     await expect(page.getByRole('button', { name: 'Engine status' })).toHaveText(/Connected/)
     await openAppMenu(page)
     const menu = page.getByRole('menu', { name: 'StrataMD', exact: true })
-    await expect(menu.getByRole('menuitem')).toHaveText([/Open file/, 'Settings', /Accounts.*Needs attention/, 'Usage', /Terminal/, 'Open preview', 'Theme', 'Reset zoom'])
+    await expect(menu.getByRole('menuitem')).toHaveText([/Open file/, /Terminal/, 'Open preview', 'Accounts', 'Usage', 'Engine', 'Settings', 'Theme', 'Reset zoom'])
+    await expect(menu.getByRole('separator')).toHaveCount(2)
     const capture = process.env.STRATAMD_FRAMELESS_CAPTURES
     if (capture) {
       const directory = join(projectRoot, capture)
@@ -60,7 +61,7 @@ test('the integrated bar keeps navigation, a drag area, and keyboard-accessible 
     expect(metrics.drag).toBe('drag')
     expect(metrics.navigation).toBe('no-drag')
     await expect(page.getByRole('button', { name: 'Docs menu' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Conversations menu' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Conversations menu' })).toBeVisible()
   }
   await openAppMenu(page)
   await expect(page.getByRole('menuitem', { name: /^Open file/ })).toBeFocused()

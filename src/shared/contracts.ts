@@ -413,6 +413,9 @@ export type VisualShowResult = { shown: true; tabId: string; outlined: string[] 
 export interface VisualDestinationView { threadId: string; threadTitle: string }
 
 export interface VisualReplyView {
+  agentId?: string
+  agentName?: string
+  comparison?: VisualComparisonView
   messageId: string
   text: string
   ready: boolean
@@ -445,6 +448,7 @@ export interface VisualRevisionView {
 }
 
 export interface VisualDraftView {
+  requestedCaptureId?: string
   text: string
   marks: VisualMarkView[]
   strokes: VisualStrokeView[]
@@ -506,6 +510,8 @@ export type AccountStateView = 'ready' | 'stale' | 'limited' | 'no-subscription'
 
 /** One provider instance as Accounts and the picker show it (§5.13). */
 export interface AccountView {
+  /** Provider readiness independent of Strata parking. */
+  providerReady?: boolean
   installed?: boolean
   enabled?: boolean
   accentColor?: string
@@ -533,7 +539,7 @@ export interface AccountView {
   live: boolean
 }
 
-export interface ManagedEngineView { state: 'starting' | 'running' | 'failed' | 'stopped'; version: string | null; nodeVersion: string | null; directory: string; problem: string | null }
+export interface ManagedEngineView { state: 'starting' | 'recovering' | 'running' | 'failed' | 'stopped'; failure?: { at: number; exitCode: number | null; signal: string | null; attempt: number }; version: string | null; nodeVersion: string | null; directory: string; problem: string | null }
 
 export interface EngineView {
   identity?: string
@@ -1036,7 +1042,7 @@ export interface StrataApi {
   getState(): Promise<AppView>
   subscribe(listener: (state: AppView) => void): () => void
   pairEngine(request: PairEngineRequest): Promise<void>
-  manageEngine?(action: 'restart' | 'use-managed'): Promise<void>
+  manageEngine?(action: 'restart' | 'use-managed' | 'show-log'): Promise<void>
   reconnectEngine(): Promise<void>
   openConversation(threadId: string): Promise<void>
   /** Sends the owner's note plus every queued item reply as one delivery (§5.4); either may be empty, not both. */
@@ -1054,6 +1060,7 @@ export interface StrataApi {
   /** Hides an inferred item; remembered per message (§5.12). */
   dismissItem(threadId: string, itemId: string): Promise<void>
   /** Holds a visual comment privately: creates it over a staged image or updates its draft, and keeps the marked captures as evidence. */
+  retainVisualEvidence?(owner: string, ids: string[]): Promise<void>
   holdVisualComment(input: HoldVisualCommentInput): Promise<string>
   /** Looks right (accept), Still wrong (reopen), discard the draft, or retry a failed send. Accept starts no turn. */
   actVisualComment(id: string, action: VisualCommentAction): Promise<void>

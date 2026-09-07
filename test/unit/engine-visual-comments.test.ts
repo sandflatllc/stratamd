@@ -146,10 +146,10 @@ describe('visual comments through the engine client', () => {
 
     // A reply naming the revision with ready moves the card to ready for review; resolve is owner-only.
     fake.reply('reply-1', `Moved the labels.\n\n\`\`\`strata\n${JSON.stringify([{ verb: 'reply', anchor: { item: id }, revision: 1, text: 'Moved the labels back under the cells.', ready: true, file: '/tmp/after.png' }, { verb: 'resolve', anchor: { item: id } }])}\n\`\`\``)
-    await settle(); await settle()
+    await vi.waitFor(() => expect(visual(instance)[0]!.revisions[0]!.replies.length).toBeGreaterThan(0))
     card = visual(instance)[0]!
     expect(card.status).toBe('ready')
-    expect(card.revisions[0]!.replies).toEqual([{ messageId: 'reply-1', text: 'Moved the labels back under the cells.', ready: true, file: '/tmp/after.png', at: Date.parse(at) }])
+    expect(card.revisions[0]!.replies).toMatchObject([{ messageId: 'reply-1', text: 'Moved the labels back under the cells.', ready: true, file: '/tmp/after.png', at: Date.parse(at) }])
     const outcomes = instance.view().projects[0]!.threads[0]!.outcomes!
     expect(outcomes.map((outcome) => outcome.status)).toEqual(['applied', 'failed'])
     expect(outcomes[1]!.reason).toContain('Only the owner can resolve')
@@ -176,7 +176,7 @@ describe('visual comments through the engine client', () => {
 
     // A late reply to revision 1 stays readable and changes nothing on the card.
     fake.reply('reply-2', `\`\`\`strata\n${JSON.stringify([{ verb: 'reply', anchor: { item: id }, revision: 1, text: 'One more note on the first pass.', ready: true }])}\n\`\`\``)
-    await settle(); await settle()
+    await vi.waitFor(() => expect(visual(instance)[0]!.revisions[0]!.replies).toHaveLength(2))
     card = visual(instance)[0]!
     expect(card.status).toBe('sent')
     expect(card.revisions[0]!.replies).toHaveLength(2)
@@ -215,18 +215,33 @@ describe('visual comments through the engine client', () => {
     expect(card.statusLabel).toBe('send failed')
     expect(card.revisions[0]!.error).toBeTruthy()
     expect(fake.commands).toHaveLength(0)
-    // A newer note held meanwhile stays a draft; retry sends what was frozen.
-    await instance.holdVisualComment({ id, projectId: 'p1', threadId: 't1', text: 'Newer thought.', marks: [], strokes: [], adjustments: [], marked: [] })
     fake.failUploads(false)
-    await instance.actVisualComment(id, 'retry')
+    await Promise.all([instance.actVisualComment(id, 'retry'), instance.resumeAfterMaintenance()])
     expect(fake.commands).toHaveLength(1)
     const context = new TextDecoder().decode(fake.uploads.find((upload) => upload.contentType === 'text/markdown')!.bytes)
     expect(context).toContain('The header labels drift left.')
     expect(context).not.toContain('Newer thought.')
     card = visual(instance)[0]!
-    expect(card.status).toBe('held')
+    expect(card.status).toBe('sending')
     expect(card.revisions[0]!.state).toBe('sending')
-    expect(card.draft?.text).toBe('Newer thought.')
+    expect(card.draft).toBeUndefined()
+    await instance.shutdown()
+  })
+
+  it('cancels a failed frozen send before replacing it and preserves the replacement on late acknowledgment', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'strata-visual-replacement-'))
+    const fake = engine(), instance = await client(fake, directory)
+    const { id } = await hold(instance, directory)
+    fake.failUploads(true)
+    await expect(instance.startTurn('t1', { ...turn, text: '', visual: [id] })).rejects.toThrow()
+    const old = instance.visualComment(id)!.revisions[0]!.deliveryId
+    await instance.holdVisualComment({ id, projectId: 'p1', threadId: 't1', text: 'Replacement note', marks: [], strokes: [], adjustments: [], marked: [] })
+    fake.failUploads(false)
+    await expect(instance.actVisualComment(id, 'retry')).rejects.toThrow('frozen send is gone')
+    fake.acknowledge(old, 'Old note')
+    await vi.waitFor(() => expect(instance.view().projects[0]!.threads[0]!.messages?.some(message => message.id === old)).toBe(true))
+    expect(visual(instance)[0]!.draft?.text).toBe('Replacement note')
+    expect(fake.commands).toHaveLength(0)
     await instance.shutdown()
   })
 
@@ -330,9 +345,10 @@ describe('Then / now and adjustments (phase 4)', () => {
     fake.reply('a2', `Again.\n\n\`\`\`strata\n${JSON.stringify([{ verb: 'reply', anchor: { item: id }, revision: 1, text: 'Again.', ready: true }])}\n\`\`\``)
     await vi.waitFor(() => expect(visual(instance)[0]!.revisions[0]!.comparison?.nowUrl).toBeNull())
     expect(visual(instance)[0]!.revisions[0]!.comparison?.note).toContain('views differ')
-    // The earlier crops were released; the current ones and the comment's own captures remain.
+    // Each reply keeps its own comparison alongside the original captures.
+    expect(visual(instance)[0]!.revisions[0]!.replies[0]!.comparison).toEqual(first)
     const files = (await readdir(join(directory, 'visual-evidence'))).filter((name) => name.endsWith('.bin'))
-    expect(files).toHaveLength(4)
+    expect(files).toHaveLength(6)
     await instance.shutdown()
   })
 })

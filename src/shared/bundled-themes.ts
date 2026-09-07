@@ -1,7 +1,7 @@
 import type { SparseTheme, ThemeValues } from './theme-keys'
 
 // The four stock themes (PRD §6.13). Each definition chooses every one of the
-// 46 color swatches and all six non-color values explicitly — a stock theme
+// color swatches and all six non-color values explicitly — a stock theme
 // never inherits a value from Strata Vivid, so changing the default can never
 // silently restyle another stock theme. Equal hex values within a definition
 // are deliberate. `New from this` copies a stock theme with every value, while
@@ -29,6 +29,8 @@ const STRATA_VIVID: StockTheme = {
     'surfaces.window': '#0a0810',
     'surfaces.panel': '#15141a',
     'surfaces.inset': '#312a50',
+    'surfaces.user-message': '#312a50',
+    'surfaces.tool-call': '#1d1731',
     'surfaces.field': '#1d1731',
     'surfaces.code': '#1d1731',
     'surfaces.border': '#463c6e',
@@ -90,6 +92,8 @@ const STRATA_VIVID_LIGHT: StockTheme = {
     'surfaces.window': '#ece6fa',
     'surfaces.panel': '#fbfaff',
     'surfaces.inset': '#ebe4fb',
+    'surfaces.user-message': '#ebe4fb',
+    'surfaces.tool-call': '#f3eefe',
     'surfaces.field': '#f3eefe',
     'surfaces.code': '#f3eefe',
     'surfaces.border': '#cdbfea',
@@ -151,6 +155,8 @@ const STRATA_NIGHT: StockTheme = {
     'surfaces.window': '#07080c',
     'surfaces.panel': '#121318',
     'surfaces.inset': '#1c1e26',
+    'surfaces.user-message': '#1c1e26',
+    'surfaces.tool-call': '#0d0e13',
     'surfaces.field': '#0d0e13',
     'surfaces.code': '#0d0e13',
     'surfaces.border': '#2a2d38',
@@ -213,6 +219,8 @@ const STRATA_DAY: StockTheme = {
     'surfaces.window': '#dedbd3',
     'surfaces.panel': '#f1eee7',
     'surfaces.inset': '#e5e1d8',
+    'surfaces.user-message': '#e5e1d8',
+    'surfaces.tool-call': '#e7e3da',
     'surfaces.field': '#e8e4db',
     'surfaces.code': '#e7e3da',
     'surfaces.border': '#bab5aa',

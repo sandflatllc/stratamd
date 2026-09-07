@@ -25,7 +25,7 @@ describe('visual comment status (docs/plans/open/visual-review, phase 1)', () =>
     const record = comment({ revisions: [revision(1, { replies: [{ messageId: 'm', text: 'Fixed the first one', ready: true, at: 2 }] }), revision(2)] })
     expect(visualStatus(record)).toBe('sent')
     expect(revisionForReply(record, 1)?.number).toBe(1)
-    expect(revisionForReply(record, undefined)?.number).toBe(2)
+    expect(revisionForReply(record, undefined)).toBeNull()
     expect(revisionForReply(record, 3)).toBeNull()
   })
 
@@ -65,18 +65,20 @@ describe('the brief and the view', () => {
     expect(brief.adjustments).toEqual([{ mark: 'k1', property: 'font-size', value: '18px' }])
     const rendered = renderConversationDelivery({ deliveryId: 'd1', threadId: 't1', annotations: [], replies: [], blocks: [], outcomes: [], visual: [brief] })
     expect(rendered).toContain('## Visual comments')
-    expect(rendered).toContain('"ready":true')
+    expect(rendered).not.toContain('"ready":true')
+    expect(rendered).not.toContain('Answer owner passage feedback')
+    expect(rendered).not.toContain('Do the requested change')
     expect(rendered).toContain('visual-1-r1-1.png')
   })
 
-  it('keeps identity out of the view and names the status in plain words', () => {
+  it('keeps mark identity available for editing and names the status in plain words', () => {
     const record = comment({ revisions: [revision(1, { marks: [{ ...mark, identity: { selector: 'button.save' } }], replies: [{ messageId: 'm', text: 'Moved it', ready: true, at: 3 }] })] })
     const view = visualCommentView(record, { captureUrl: (id) => `strata-visual://evidence/${id}`, threadTitle: () => 'Clients table review' })
     expect(view.status).toBe('ready')
     expect(view.statusLabel).toBe('ready for review')
     expect(view.thumbnail).toBe('strata-visual://evidence/e_marked')
     expect(view.revisions[0]!.destination).toEqual({ threadId: 't1', threadTitle: 'Clients table review' })
-    expect(JSON.stringify(view)).not.toContain('button.save')
+    expect(view.revisions[0]!.marks[0]!.identity?.selector).toBe('button.save')
     expect(view.summary).toBe('1 thing marked')
   })
 })

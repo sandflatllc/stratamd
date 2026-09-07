@@ -1,3 +1,4 @@
+import { openDocsMenu } from './harness'
 import { expect, test, type Page } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -45,7 +46,9 @@ test('a pane crash shows the pane card, leaves the rest working, logs once, and 
     // The other panes keep working: the rail's change row and the explorer's
     // file entry are both still there.
     await expect(page.locator('.changes-panel .change-row').first()).toBeVisible()
-    await expect(page.getByText('containment.md', { exact: false }).first()).toBeVisible()
+    await openDocsMenu(page)
+    await expect(page.getByRole('menuitem', { name: /containment\.md/ })).toHaveAttribute('aria-current', 'true')
+    await page.keyboard.press('Escape')
 
     // Exactly one boundary report for this crash (§3's single-owner rule).
     await expect.poll(async () => (await logLines(scenario)).filter((line) => line.scope === 'boundary:editor').length).toBe(1)

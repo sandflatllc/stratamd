@@ -3,6 +3,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 interface UnixSupportBinding {
+  tryLock(descriptor: number): boolean
   /** Darwin only: Linux resolves descriptors through /proc instead. */
   getPathForFd?(descriptor: number): string
 }

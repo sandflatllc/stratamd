@@ -1,3 +1,4 @@
+import { expectDocumentListed } from './harness'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
@@ -156,7 +157,7 @@ test('the Mesa-style review reads as numbered sections with Contents, the walkth
 
   // The ordered change list as a PhaseBoard, labelled in human copy.
   await page.evaluate(async (path) => window.strata.openDocument(path), components)
-  await expect(page.getByRole('tab', { name: /mesa-review-components\.md/i })).toBeVisible()
+  await expectDocumentListed(page, /mesa-review-components\.md/i)
   await navigation.getByRole('tab', { name: 'Contents' }).click()
   await page.getByRole('button', { name: 'Start walkthrough' }).click()
   await page.getByRole('button', { name: /3\. Change list, ordered/ }).first().click()

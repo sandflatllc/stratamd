@@ -1,6 +1,28 @@
 import { expect, test, type Locator } from '@playwright/test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 
+test('unassigned steering keeps its place with work folded, expanded, and after reload', async ({}, testInfo) => {
+  const engine = await startEngine({ conversationParity: true, conversationSteering: true })
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    for (const reload of [false, true]) {
+      if (reload) await scenario.stop()
+      const page = await scenario.launch()
+      await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
+      await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
+      const panel = page.locator('.conversation-panel[data-placement="side"]')
+      const order = () => panel.locator('[data-message-id]').evaluateAll(rows => rows.map(row => row.getAttribute('data-message-id')))
+      const folded = ['old-user-1', 'old-agent-1', 'old-user-2', 'steering-user', 'old-agent-2', 'live-user', 'm1']
+      await expect.poll(order).toEqual(folded)
+      const turn = panel.locator('.conversation-turn').filter({ has: page.locator('[data-message-id="steering-user"]') })
+      await turn.locator('.conversation-turn-toggle').click()
+      await expect.poll(order).toEqual([...folded.slice(0, 3), 'old-agent-2-progress', ...folded.slice(3)])
+      await turn.locator('.conversation-turn-toggle').click()
+      await expect.poll(order).toEqual(folded)
+    }
+  } finally { await scenario.dispose(); await engine.close() }
+})
+
 test('conversation messages and history markers run oldest to newest in both placements', async ({}, testInfo) => {
   const engine = await startEngine({ conversationParity: true })
   const scenario = await seededScenario(testInfo, engine.origin)

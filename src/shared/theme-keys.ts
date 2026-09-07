@@ -61,6 +61,8 @@ export const THEME_KEYS: readonly ThemeKeyEntry[] = Object.freeze([
   color('surfaces.window', 'Window background', 'The window itself, behind all panels'),
   color('surfaces.panel', 'Panel background', 'Explorer, editor, right rail, dialogs, theme panel, Conversation, and ordinary menus'),
   color('surfaces.inset', 'Inset and hover background', 'Hovered rows, chips, table header cells, notices, and nested panel areas'),
+  color('surfaces.user-message', 'User message background', 'Your message boxes in the conversation transcript'),
+  color('surfaces.tool-call', 'Tool call background', 'Tool call rows, their output, and changed-file cards in the conversation transcript'),
   color('surfaces.field', 'Text field background', 'Annotation, reply, send, rename, and other text-entry fields'),
   color('surfaces.code', 'Code and preview background', 'Boxes behind code, source previews, image placeholders, and delivery previews'),
   color('surfaces.border', 'Borders and rules', 'Panel borders, input borders, dividers, tables, scrollbars, and horizontal rules'),

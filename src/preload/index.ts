@@ -3,7 +3,14 @@ import type { AppView, SpellingContext, StrataApi, WindowApi, WindowState } from
 import { applyViewUpdate, isViewUpdate, sameJson, type SyncedView } from '../shared/view-sync'
 import { IPC } from './channels'
 
-const invoke = <Result>(channel: string, ...arguments_: unknown[]): Promise<Result> => ipcRenderer.invoke(channel, ...arguments_)
+const invoke = async <Result>(channel: string, ...arguments_: unknown[]): Promise<Result> => {
+  try { return await ipcRenderer.invoke(channel, ...arguments_) }
+  catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    const message = detail.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '').replace(/^Error: /, '')
+    const plain = new Error(message); plain.name = ''; throw plain
+  }
+}
 
 let synced: SyncedView | null = null
 let resyncing: Promise<AppView> | null = null
@@ -113,6 +120,7 @@ const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyn
   queueItemReply: (threadId, itemId, text) => invoke<void>(IPC.queueItemReply, threadId, itemId, text),
   discardItemReply: (threadId, itemId) => invoke<void>(IPC.discardItemReply, threadId, itemId),
   dismissItem: (threadId, itemId) => invoke<void>(IPC.dismissItem, threadId, itemId),
+  retainVisualEvidence: (owner, ids) => invoke<void>(IPC.retainVisualEvidence, owner, ids),
   holdVisualComment: (input) => invoke<string>(IPC.holdVisualComment, input),
   actVisualComment: (id, action) => invoke<void>(IPC.actVisualComment, id, action),
   openPreviewTab: (input) => invoke<string>(IPC.openPreviewTab, input),

@@ -93,7 +93,9 @@ test('2 conversation: moves between placements and dispatches a message, approva
     const center = page.locator('.conversation-panel[data-placement="center"]')
     await expect(center).toBeVisible()
     await expect(center.getByRole('tablist', { name: 'Conversation scope' })).toHaveCount(0)
-    await expect(page.getByRole('tab', { name: /^Live engine thread/ })).toBeVisible()
+    await page.getByRole('button', { name: 'Conversations menu' }).click()
+    await expect(page.getByRole('menu', { name: 'Open conversations' }).getByRole('menuitem', { name: /^Live engine thread/ })).toBeVisible()
+    await page.keyboard.press('Escape')
     await expect(center.locator('.conversation-message.assistant')).toContainText('Read-side conversation from T3.')
 
     const composer = center.getByRole('textbox', { name: 'Message conversation' })
@@ -210,7 +212,7 @@ test('8 and 9 projects: the blank draft is project-scoped, row actions dispatch,
   try {
     const page = await scenario.launch()
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
-    await page.getByRole('button', { name: 'New thread', exact: true }).click()
+    await page.getByRole('button', { name: 'New thread in Cockpit project', exact: true }).click()
     const draft = page.getByRole('region', { name: 'New conversation' })
     await expect(draft.getByLabel('Conversation project')).toHaveAttribute('data-value', 'p1')
     await expect(draft.getByRole('button', { name: 'Choose model and account' })).toContainText('5.6')
@@ -259,7 +261,7 @@ test('10 accounts: external usage is unavailable, parking from the top bar, and 
     await modal.getByRole('button', { name: 'Close' }).click()
 
     await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
-    await page.getByRole('button', { name: 'New thread', exact: true }).click()
+    await page.getByRole('button', { name: 'New thread in Cockpit project', exact: true }).click()
     await page.getByRole('button', { name: 'Choose model and account' }).click()
     const models = page.getByRole('region', { name: 'Models and accounts' })
     await expect(models.getByRole('button', { name: 'GPT', exact: true })).toBeDisabled()
@@ -270,7 +272,7 @@ test('10 accounts: external usage is unavailable, parking from the top bar, and 
   }
 })
 
-test('5.2 rows and notifications: pin, rename, and snooze go to T3, and a turn finishing elsewhere badges Projects and the thread until it opens', async ({}, testInfo) => {
+test('5.2 rows and notifications: pin, rename, and snooze go to T3, and thread attention does not add a Projects counter', async ({}, testInfo) => {
   const engine = await startEngine()
   const scenario = await seededScenario(testInfo, engine.origin)
   try {
@@ -305,7 +307,8 @@ test('5.2 rows and notifications: pin, rename, and snooze go to T3, and a turn f
     await expect(page.getByRole('region', { name: 'Conversation' })).toBeVisible()
     await expect(navigation.getByRole('tab', { name: 'Projects' }).locator('.rail-tab-count')).toHaveCount(0)
     engine.finish()
-    await expect(navigation.getByRole('tab', { name: 'Projects' }).locator('.rail-tab-count')).toHaveText('1')
+    await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).engine.projects.flatMap(project => project.threads).find(thread => thread.id === 't1')?.attention).toBe(1)
+    await expect(navigation.getByRole('tab', { name: 'Projects' }).locator('.rail-tab-count')).toHaveCount(0)
     await navigation.getByRole('tab', { name: 'Projects' }).click()
     await expect(page.locator('.project-thread[data-thread="t1"]')).toBeVisible()
     // The approval is still open, so the finished turn keeps the Approval pill rather than the completed dot; never-visited threads never read as unread.

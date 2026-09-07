@@ -5,6 +5,7 @@ import type { EngineActivityView, EngineThreadView, EngineView, ItemView, Visual
 import type { DraftAttachment } from '../conversationDrafts'
 import { changedFilesLabel, formatDelta, summarizeChangedFiles, type ChangedFileInput, type ChangedFileView } from '../../core/changed-files'
 import { deriveTurnFold, deriveWorkEntries, groupWorkRows, turnRows, type WorkEntry, type WorkGroupRow } from '../../core/work-log'
+import { conversationTurns } from '../../core/conversation-turns'
 import { ConversationComposer } from './ConversationComposer'
 import { ConversationHistory } from './ConversationHistory'
 import { ConversationNavigator } from './ConversationNavigator'
@@ -256,22 +257,13 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
 
   const approvals = useMemo(() => thread ? openRequests(thread.activities, 'approval') : [], [thread?.activities])
   const userInputs = useMemo(() => thread ? openRequests(thread.activities, 'user-input') : [], [thread?.activities])
-  const turns = useMemo(() => {
-    if (!thread) return []
-    const ids: string[] = []
-    for (const value of [...thread.messages, ...thread.activities]) {
-      const id = value.turnId ?? 'thread'
-      if (!ids.includes(id)) ids.push(id)
-    }
-    return ids.map((id) => ({ id, messages: thread.messages.filter((message) => (message.turnId ?? 'thread') === id), activities: thread.activities.filter((activity) => (activity.turnId ?? 'thread') === id) }))
-  }, [thread])
-  const workEntries = useMemo(() => deriveWorkEntries(thread?.activities ?? []), [thread?.activities])
-  const workGroups = useMemo(() => groupWorkRows(
-    workEntries,
-    // Before T3 names the new turn, only the newest turn counts as running; older turns keep their folds.
-    turns.map((turn, index) => ({ id: turn.id, running: Boolean(thread && (thread.status === 'running' || thread.status === 'starting') && (thread.activeTurnId === turn.id || (thread.activeTurnId === null && index === turns.length - 1))), finished: thread?.activeTurnId !== turn.id })),
-    thread?.messages ?? [],
-  ), [workEntries, turns, thread?.status, thread?.activeTurnId, thread?.messages])
+  const turns = useMemo(() => conversationTurns(thread?.messages ?? [], thread?.activities ?? [], thread?.activeTurnId ?? null), [thread])
+  const workGroups = useMemo(() => turns.flatMap((turn, index) => groupWorkRows(
+    deriveWorkEntries(turn.activities).map(entry => ({ ...entry, turnId: turn.id })),
+    // Before T3 names the new turn, only the newest group counts as running.
+    [{ id: turn.id, running: Boolean(thread && (thread.status === 'running' || thread.status === 'starting') && (thread.activeTurnId !== null ? thread.activeTurnId === turn.turnId : index === turns.length - 1)), finished: thread?.activeTurnId !== turn.turnId }],
+    turn.messages.map(message => ({ ...message, turnId: turn.id })),
+  )), [turns, thread?.status, thread?.activeTurnId])
   const allItems = useMemo(() => thread ? [...items, ...(thread.items ?? []).filter(item => !isOwnerComment(item))] : [...items], [items, thread])
   /** Replies queued in the main process for this thread's message items; they ride the next Send. */
   const queuedCount = thread ? (thread.items ?? []).filter((item) => item.draftReply !== undefined).length : 0
@@ -285,7 +277,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
   const running = thread.status === 'running' || thread.status === 'starting'
   // Find and comment markers reach into folded turns: the target's turn stays open for that navigation, apart from the owner's own disclosures.
   const targetMessage = workspace.target && dismissedReveal !== workspace.target.serial ? thread.messages.find((message) => message.id === workspace.target?.message) : undefined
-  const revealedTurn = targetMessage ? targetMessage.turnId ?? 'thread' : null
+  const revealedTurn = targetMessage ? turns.find(turn => turn.messages.some(message => message.id === targetMessage.id))?.id : null
   return <section ref={panelRef} className="conversation-panel" aria-label="Conversation" data-placement={placement} style={placement === 'center' ? { '--conversation-measure': `${documentMeasure}px` } as CSSProperties : undefined} onKeyDownCapture={workspace.onKeyDown}>
     <header>
       <div className="conversation-title">
@@ -302,16 +294,16 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
       {turns.map((turn) => {
         const groups = workGroups.filter((candidate) => candidate.turnId === turn.id)
         const timeline = turnRows(turn.messages, groups)
-        const turnRunning = groups.some((group) => group.live) || (running && (thread.activeTurnId === turn.id || (thread.activeTurnId === null && turn.id === turns.at(-1)?.id)))
-        const fold = deriveTurnFold({ id: turn.id, messages: turn.messages, groups, running: turnRunning, latestTurn: thread.latestTurn ?? null })
+        const turnRunning = groups.some((group) => group.live) || (running && (thread.activeTurnId !== null && thread.activeTurnId === turn.turnId || (thread.activeTurnId === null && turn.id === turns.at(-1)?.id)))
+        const fold = deriveTurnFold({ id: turn.turnId ?? turn.id, messages: turn.messages, groups, running: turnRunning, latestTurn: thread.latestTurn ?? null })
         const revealed = revealedTurn === turn.id
-        const open = fold === null || revealed || (expandedTurns[turn.id] ?? false)
+        const open = fold === null || revealed || (expandedTurns[turn.turnId ?? turn.id] ?? false)
         const toggleTurn = () => {
-          setExpandedTurns((value) => ({ ...value, [turn.id]: !open }))
+          setExpandedTurns((value) => ({ ...value, [turn.turnId ?? turn.id]: !open }))
           if (revealed && workspace.target) setDismissedReveal(workspace.target.serial)
         }
         const lastAssistant = turn.messages.findLast((message) => message.role === 'assistant')?.id
-        const changedFiles = thread.documents?.filter((file) => file.turnId === turn.id) ?? []
+        const changedFiles = thread.documents?.filter((file) => file.turnId === turn.turnId) ?? []
         /** While the turn runs, T3's header sits where Worked for will: after the request, before the first work or answer. */
         const workingRow = turnRunning && !fold ? <div className="conversation-turn-fold" data-history-row><div className="conversation-working-row"><span className="working-pulse" aria-hidden="true" />Working for <time>{elapsed(thread.turnStartedAt, now)}</time></div></div> : null
         const headerIndex = timeline.findIndex((row) => row.kind === 'work' || row.message.role !== 'user')
@@ -351,9 +343,9 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
             </article></Fragment>
           })}
           {headerIndex === -1 && workingRow}
-          {approvals.filter((activity) => (activity.turnId ?? 'thread') === turn.id).map((activity) => { const payload = record(activity.payload); const requestId = String(payload.requestId ?? ''); return <section className="conversation-request" data-kind="approval" key={activity.id}><strong>{typeof payload.detail === 'string' ? payload.detail : activity.summary}</strong><div className="conversation-actions"><button type="button" onClick={() => onApproval(thread.id, requestId, 'accept')}>Approve</button><button type="button" onClick={() => onApproval(thread.id, requestId, 'decline')}>Decline</button></div></section> })}
-          {userInputs.filter((activity) => (activity.turnId ?? 'thread') === turn.id).map((activity) => <UserInputCard key={activity.id} activity={activity} onAnswer={(requestId, answers) => onUserInput(thread.id, requestId, answers)} />)}
-          <TurnChecklist items={allItems.filter((item) => item.threadId === thread.id && item.turnId === turn.id)} onReply={(item, value) => { if (item.annotationId && onReplyItem) onReplyItem(item, value); else onQueueReply?.(thread.id, item, value) }} onDismiss={(item) => onDismissItem?.(thread.id, item)} onOpen={item => { if (item.annotationId) onOpenItem?.(item); else workspace.open(item.id) }} {...(onActItem ? { onAct: onActItem } : {})} />
+          {approvals.filter(activity => turn.activities.some(candidate => candidate.id === activity.id)).map((activity) => { const payload = record(activity.payload); const requestId = String(payload.requestId ?? ''); return <section className="conversation-request" data-kind="approval" key={activity.id}><strong>{typeof payload.detail === 'string' ? payload.detail : activity.summary}</strong><div className="conversation-actions"><button type="button" onClick={() => onApproval(thread.id, requestId, 'accept')}>Approve</button><button type="button" onClick={() => onApproval(thread.id, requestId, 'decline')}>Decline</button></div></section> })}
+          {userInputs.filter(activity => turn.activities.some(candidate => candidate.id === activity.id)).map((activity) => <UserInputCard key={activity.id} activity={activity} onAnswer={(requestId, answers) => onUserInput(thread.id, requestId, answers)} />)}
+          <TurnChecklist items={allItems.filter((item) => item.threadId === thread.id && item.turnId === turn.turnId)} onReply={(item, value) => { if (item.annotationId && onReplyItem) onReplyItem(item, value); else onQueueReply?.(thread.id, item, value) }} onDismiss={(item) => onDismissItem?.(thread.id, item)} onOpen={item => { if (item.annotationId) onOpenItem?.(item); else workspace.open(item.id) }} {...(onActItem ? { onAct: onActItem } : {})} />
         </section>
       })}
       </div>

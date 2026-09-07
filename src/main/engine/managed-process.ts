@@ -5,6 +5,7 @@ import { open, readFile, realpath, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { bootId, processStartTime } from '../../platform/process-identity'
+import { unixSupportBinding } from '../../platform/unix-support'
 import { ensurePrivateDirectory } from '../storage'
 
 const execute = promisify(execFile)
@@ -28,41 +29,36 @@ export async function verifiedProcess(record: OwnedProcess): Promise<boolean> {
   } catch { return false }
 }
 
-/** Exclusive creation and an incarnation stamp keep overlapping launches from owning the same store. */
+/** The advisory file is never unlinked: every contender must lock the same inode. */
 export async function takeEngineLock(root: string): Promise<() => Promise<void>> {
   await ensurePrivateDirectory(root)
   const path = join(root, 'lock')
-  const stamp = { lease: randomUUID(), pid: process.pid, ...await processStamp(process.pid) }
-  let reclaim: Awaited<ReturnType<typeof open>> | null = null
+  const guard = await open(join(root, 'ownership.lock'), 'a+', 0o600)
   try {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const file = await open(path, 'wx', 0o600)
-      await file.writeFile(JSON.stringify(stamp)); await file.sync(); await file.close()
-      return async () => {
-        try { if (await readFile(path, 'utf8') === JSON.stringify(stamp)) await unlink(path) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
-      }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-      // Serialize stale-lock reclamation, including the subsequent exclusive creation.
-      // An interrupted reclaimer is refused conservatively; it never authorizes deleting another lock.
-      if (!reclaim) {
-        try { reclaim = await open(`${path}.reclaim`, 'wx', 0o600) }
-        catch { throw new Error(`Engine lock recovery is already in progress at ${path}.reclaim`) }
-      }
-      let old: typeof stamp
-      try { old = JSON.parse(await readFile(path, 'utf8')) } catch { throw new Error(`Engine lock ${path} is unreadable. Another Strata may be starting.`) }
-      let alive = true
-      try { process.kill(old.pid, 0) } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') alive = false }
-      if (alive) {
-        try { const current = await processStamp(old.pid); alive = current.bootId === old.bootId && current.startTime === old.startTime } catch { /* Unknown ownership is not permission to remove the lock. */ }
-      }
-      if (alive) throw new Error(`Another Strata process (${old.pid}) owns ${path}`)
-      // Verify the file still names the same owner immediately before removing a stale lock.
-      if (await readFile(path, 'utf8') !== JSON.stringify(old)) throw new Error(`Engine ownership changed at ${path}`)
-      await unlink(path)
+    if (!unixSupportBinding().tryLock(guard.fd)) throw new Error(`Another Strata process owns ${path}`)
+    // Compatibility with a live manager using the former exclusive-file protocol.
+    // An abandoned reclaim marker cannot confer ownership; it is left untouched.
+    let previous: { pid: number; bootId: string; startTime: string } | undefined
+    try { previous = JSON.parse(await readFile(path, 'utf8')) } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error(`Engine lock ${path} is unreadable. Inspect its owner before recovery.`)
     }
-  }
-  throw new Error(`Could not acquire engine lock ${path}`)
-  } finally { if (reclaim) { await reclaim.close(); await unlink(`${path}.reclaim`) } }
+    if (previous) {
+      let alive = true
+      try { process.kill(previous.pid, 0) } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') alive = false }
+      if (alive) {
+        try { const stamp = await processStamp(previous.pid); alive = stamp.bootId === previous.bootId && stamp.startTime === previous.startTime } catch { /* Unknown owner remains protected. */ }
+      }
+      if (alive) throw new Error(`Another Strata process (${previous.pid}) owns ${path}`)
+    }
+    const stamp = JSON.stringify({ lease: randomUUID(), pid: process.pid, ...await processStamp(process.pid) })
+    const { atomicWriteFile } = await import('../storage')
+    await atomicWriteFile(path, stamp)
+    let released = false
+    return async () => {
+      if (released) return
+      released = true
+      try { if (await readFile(path, 'utf8') === stamp) await unlink(path) }
+      finally { await guard.close() }
+    }
+  } catch (error) { await guard.close(); throw error }
 }

@@ -70,7 +70,7 @@ export function viewportLabel(viewport: PreviewViewportView): string {
 /** The caption under a framed page: a narrowed viewport, never a phone. */
 export function viewportCaption(viewport: PreviewViewportView): string | null {
   if (viewport.mode === 'fill') return null
-  return `Narrowed viewport · ${viewportLabel(viewport)} · ${viewport.width} × ${viewport.height}`
+  return `Narrowed viewport · ${viewport.mode === 'preset' ? viewport.label + ' · ' : ''}${viewport.width} × ${viewport.height}`
 }
 
 /** The size in T3's own words, for the resize result. */

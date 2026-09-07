@@ -30,7 +30,7 @@ function engine() {
     const url = String(input)
     if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
     if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
-    if (url.endsWith('/upload/next')) { uploads.push({ contentType: String((init?.headers as Record<string, string>)['content-type']), bytes: new Uint8Array(init?.body as Uint8Array) }); return new Response('', { status: 200 }) }
+    if (url.endsWith('/upload/next') && init?.method === 'POST') { uploads.push({ contentType: String((init?.headers as Record<string, string>)['content-type']), bytes: new Uint8Array(init?.body as Uint8Array) }); return new Response(null, { status: 204 }) }
     if (url.endsWith('/api/orchestration/dispatch')) { commands.push(JSON.parse(String(init?.body)) as Record<string, unknown>); if (failDispatch) throw new Error('Lost dispatch response'); return Response.json({ sequence: 10 + commands.length }) }
     if (url.endsWith('/api/orchestration/shell')) return Response.json(shell)
     if (url.endsWith('/api/orchestration/threads/t1')) return Response.json({ snapshotSequence: 10, thread: { ...thread, deletedAt: null, messages, activities: [], checkpoints: [] }, page: { beforeCursor: null, hasMore: false, snapshotSequence: 10, threadSequence: 10 } })

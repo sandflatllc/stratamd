@@ -1,3 +1,4 @@
+import { expectDocumentDirty } from './harness'
 import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -347,29 +348,28 @@ test('6. save state is always visible: groups, the tab dot, the Save button, and
   try {
     const page = value.page!
     const footer = page.locator('.save-state-footer')
-    const dot = page.locator('.tab-dirty-dot')
     const saveButton = page.locator('.save-button')
     await expect(footer).toContainText('Everything saved')
-    await expect(dot).toHaveCount(0)
+    await expectDocumentDirty(page, /save-state\.md/, false)
     await expect(saveButton).toHaveText('Saved')
 
     // An agent edit lands under Unsaved with the dot shown and Save accented.
     agentEdit(fixture, 't1', 'Last paragraph.', 'Last paragraph.\n\nAgent line one.')
     await expect(page.locator('.change-group-heading')).toHaveText(['Unsaved · 1'])
-    await expect(dot).toHaveCount(1)
+    await expectDocumentDirty(page, /save-state\.md/, true)
     await expect(saveButton).toHaveText('Save')
     await expect(footer).toContainText('Unsaved changes')
 
     // Save moves it to the Saved group, clears the dot, and flips the footer sentence.
     await save(page)
     await expect(page.locator('.change-group-heading')).toHaveText(['Saved · 1'])
-    await expect(dot).toHaveCount(0)
+    await expectDocumentDirty(page, /save-state\.md/, false)
     await expect(saveButton).toHaveText('Saved')
     await expect(footer).toContainText('Everything saved')
 
     // Revert on a Saved hunk restores text the file does not have: unsaved again.
     await page.getByRole('button', { name: /^Revert change /i }).first().click()
-    await expect(dot).toHaveCount(1)
+    await expectDocumentDirty(page, /save-state\.md/, true)
     await expect(footer).toContainText('Unsaved changes')
     await save(page)
     await expect(footer).toContainText('Everything saved')

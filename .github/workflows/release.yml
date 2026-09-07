@@ -27,7 +27,9 @@ jobs:
       - run: node node_modules/electron/install.js
       # Builds the .app and proves the packaged CLI and bundle layout work.
       - run: pnpm test:packaged
-      - run: ditto -c -k --keepParent dist/mac*/StrataMD.app StrataMD-mac.zip
+      - run: |
+          strata_package_output=$(node -p 'JSON.parse(require("node:fs").readFileSync("build/latest-package.json", "utf8")).output')
+          ditto -c -k --keepParent "$strata_package_output"/mac*/StrataMD.app StrataMD-mac.zip
       - run: |
           gh release create "$GITHUB_REF_NAME" StrataMD-mac.zip \
             --title "StrataMD $GITHUB_REF_NAME" \

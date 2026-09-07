@@ -12,9 +12,9 @@ export function ProviderInstall({ account, engine }: { account: AccountView; eng
     let alive = true
     const refresh = () => void window.strata.providerSetup!({ identity: engine.identity ?? null, instanceId: account.instanceId, action: 'status' }).then(value => { if (alive) setJob(value) }).catch(() => undefined)
     refresh()
-    const timer = window.setInterval(refresh, 1000)
+    const timer = job?.state === 'running' ? window.setInterval(refresh, 1000) : undefined
     return () => { alive = false; window.clearInterval(timer) }
-  }, [account.instanceId, engine.identity, !!engine.managed])
+  }, [account.instanceId, engine.identity, !!engine.managed, job?.state === 'running'])
   const act = async (action: ProviderSetupRequest['action']) => {
     if (!window.strata.providerSetup) return
     setError(''); setStarting(true)
@@ -22,13 +22,14 @@ export function ProviderInstall({ account, engine }: { account: AccountView; eng
   }
   const running = job?.state === 'running'
   const supported = ['codex', 'claudeAgent'].includes(account.driver)
-  const needsSetup = !account.installed || account.state === 'signed-out' || !account.usable && account.enabled !== false
+  const needsSetup = !account.installed || account.state === 'signed-out' || !(account.providerReady ?? account.usable) && !account.parked && account.enabled !== false
   if (!needsSetup && (!job || job.state === 'idle')) return null
   const url = job?.output.match(/https:\/\/[^\s<>\x1b]+/)?.[0]
   return <div className="provider-install" aria-label={`Set up ${account.name}`}>
     {engine.managed && supported ? <>
       {!running && <button type="button" className="quiet-button" disabled={starting} onClick={() => void act(account.installed ? 'login' : 'install')}>{account.installed ? 'Sign in' : 'Install'} {account.name}</button>}
-      {!running && account.installed && !account.usable && <button type="button" className="quiet-button" disabled={starting} onClick={() => void act('install')}>Check or install {account.name}</button>}
+      {!running && account.installed && !(account.providerReady ?? account.usable) && <button type="button" className="quiet-button" disabled={starting} onClick={() => void act('install')}>Check or install {account.name}</button>}
+      {!running && job?.installedBinary && <button type="button" className="quiet-button" disabled={starting} onClick={() => void act('use-installed')}>Use installed tool</button>}
       {job?.message && <p role="status">{job.message}</p>}
       {running && <><button type="button" className="quiet-button" onClick={() => void act('cancel')}>Cancel setup</button>{url && <button type="button" className="quiet-button" onClick={() => void window.strata.openExternal?.(url)}>Open provider sign-in</button>}</>}
       {job?.output && <pre className="provider-setup-output">{job.output}</pre>}

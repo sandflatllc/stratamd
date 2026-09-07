@@ -1,3 +1,4 @@
+import { openDocsMenu } from './harness'
 import { expect, test, type TestInfo } from '@playwright/test'
 import { mkdir, readFile, readdir, realpath, rename } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
@@ -75,7 +76,9 @@ async function agentEdits(value: Scenario, engine: FakeEngine, threadId: string,
 
 async function closeTab(value: Scenario, choice?: 'Save' | 'Discard'): Promise<void> {
   const page = value.page!
-  await page.getByRole('button', { name: /Close tab/i }).first().click()
+  const path = (await page.evaluate(() => window.strata.getState())).activeDocument!.path
+  await openDocsMenu(page)
+  await page.getByRole('menu', { name: 'Open docs' }).getByRole('button', { name: `Close ${path.split('/').at(-1)}`, exact: true }).click()
   if (!choice) return
   const dialog = page.getByRole('dialog', { name: /Close .*\.md/i })
   await expect(dialog).toBeVisible()
@@ -85,38 +88,62 @@ async function closeTab(value: Scenario, choice?: 'Save' | 'Discard'): Promise<v
 
 async function reopen(value: Scenario): Promise<void> {
   await value.page!.evaluate((path) => window.strata.openDocument(path), value.file)
-  await expect(value.page!.getByText(basename(value.file), { exact: false }).first()).toBeVisible()
+  await expect.poll(async () => (await value.page!.evaluate(() => window.strata.getState())).activeDocument?.path).toBe(value.file)
 }
 
 test.describe('PRD §6.12 acceptance scenarios', () => {
   test('1. deliveries queued while the engine is down reach the thread in Send order', async ({}, testInfo) => {
     const { value, engine } = await engineScenario(testInfo)
     await value.launch()
-    await attachAll(value, [['t1', 'Agent A']])
-    engine.setOnline(false)
-    await expect(value.page!.getByRole('button', { name: 'Engine status' })).toHaveText(/Disconnected/)
+    // Preserve actual click targets if this rare Send-dialog failure recurs under load.
+    await value.page!.evaluate(() => {
+      const clicks: unknown[] = []
+      Object.assign(window, { __offlineSendClicks: clicks })
+      document.addEventListener('click', event => {
+        const target = event.target as HTMLElement
+        const dialog = document.querySelector('.send-composer')
+        clicks.push({ at: performance.now(), target: target.tagName, class: target.className,
+          text: target.textContent?.slice(0, 100), note: dialog?.querySelector('textarea')?.value,
+          pending: dialog?.querySelector('[role="tabpanel"]')?.getAttribute('aria-busy') })
+      }, true)
+    })
+    let completed = false
+    try {
+      await attachAll(value, [['t1', 'Agent A']])
+      engine.setOnline(false)
+      await expect(value.page!.getByRole('button', { name: 'Engine status' })).toHaveText(/Disconnected/)
 
-    const first = '# Scenario\n\nFirst user round.\n'
-    await setSource(value.page!, first)
-    await value.waitForBuffer(first)
-    await send(value.page!, { note: 'first note' })
+      const first = '# Scenario\n\nFirst user round.\n'
+      await setSource(value.page!, first)
+      await value.waitForBuffer(first)
+      await send(value.page!, { note: 'first note' })
 
-    const second = '# Scenario\n\nFirst user round.\n\nSecond user round.\n'
-    await setSource(value.page!, second)
-    await value.waitForBuffer(second)
-    await send(value.page!, { note: 'second note' })
-    await expect.poll(async () => value.page!.evaluate(async () => (await window.strata.getState()).activeDocument?.attachments[0]?.queuedSendCount)).toBe(2)
+      const second = '# Scenario\n\nFirst user round.\n\nSecond user round.\n'
+      await setSource(value.page!, second)
+      await value.waitForBuffer(second)
+      await send(value.page!, { note: 'second note' })
+      await expect.poll(async () => value.page!.evaluate(async () => (await window.strata.getState()).activeDocument?.attachments[0]?.queuedSendCount)).toBe(2)
 
-    engine.setOnline(true)
-    await expect.poll(() => uploadsFor(engine, 't1').length, { timeout: 15_000 }).toBe(3)
-    const [, firstDelivery, secondDelivery] = uploadsFor(engine, 't1')
-    expect(firstDelivery).toContain('- first note')
-    expect(firstDelivery).toContain('First user round.')
-    expect(firstDelivery).not.toContain('Second user round.')
-    expect(secondDelivery).toContain('- second note')
-    expect(secondDelivery).toContain('Second user round.')
-    const turns = engine.commands.filter((command) => command.type === 'thread.turn.start')
-    expect(new Set(turns.map((turn) => (turn.message as { messageId: string }).messageId)).size).toBe(3)
+      engine.setOnline(true)
+      await expect.poll(() => uploadsFor(engine, 't1').length, { timeout: 15_000 }).toBe(3)
+      const [, firstDelivery, secondDelivery] = uploadsFor(engine, 't1')
+      expect(firstDelivery).toContain('- first note')
+      expect(firstDelivery).toContain('First user round.')
+      expect(firstDelivery).not.toContain('Second user round.')
+      expect(secondDelivery).toContain('- second note')
+      expect(secondDelivery).toContain('Second user round.')
+      const turns = engine.commands.filter((command) => command.type === 'thread.turn.start')
+      expect(new Set(turns.map((turn) => (turn.message as { messageId: string }).messageId)).size).toBe(3)
+      completed = true
+    } finally {
+      if (!completed) {
+        await testInfo.attach('offline-send-state', { body: JSON.stringify(await value.page!.evaluate(async () => ({
+          clicks: (window as unknown as { __offlineSendClicks: unknown[] }).__offlineSendClicks,
+          document: (await window.strata.getState()).activeDocument
+        }))), contentType: 'application/json' })
+        await value.page!.screenshot({ path: testInfo.outputPath('offline-send.png') })
+      }
+    }
   })
 
   test('3. a mixed proposal confirms Revert and Keep preserves the user edit', async ({}, testInfo) => {
@@ -371,7 +398,6 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
 
     await closeTab(value)
     await value.stop()
-    await new Promise((resolveWait) => setTimeout(resolveWait, 250))
     await value.launch()
     engine.setOnline(true)
     await expect.poll(() => uploadsFor(engine, 't1').length, { timeout: 15_000 }).toBe(2)
@@ -388,7 +414,7 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     await attachAll(value, [['t1', 'Agent A'], ['t2', 'Agent B']])
     // A third thread, started from Projects, joins as Agent C.
     await value.page!.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
-    await value.page!.getByRole('button', { name: 'New thread', exact: true }).click()
+    await value.page!.getByRole('button', { name: 'New thread in Cockpit project', exact: true }).click()
     await value.page!.getByLabel('Message conversation').fill('Join this review.')
     await value.page!.getByLabel('Message conversation').press('Enter')
     await expect.poll(() => engine.commands.find((command) => command.type === 'thread.create')?.threadId).toBeTruthy()

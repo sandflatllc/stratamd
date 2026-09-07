@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { EngineSettings } from '../shared/contracts'
-import { isSettingsRecord, type EngineSettingsPatch } from '../shared/engine-settings'
+import { isSettingsRecord, refreshSettingsBase, type EngineSettingsPatch } from '../shared/engine-settings'
 
 export function mergeSettingsDisplay(base: unknown, patch: unknown): unknown {
   if (!isSettingsRecord(patch)) return patch
@@ -25,7 +25,7 @@ export function useEngineSettings() {
         const next = await window.strata.readEngineSettings()
         if (!alive || ticket !== revision.current || saving.current) return
         setCurrent(next)
-        if (!Object.keys(patchRef.current).length) base.current = next
+        base.current = refreshSettingsBase(base.current, next, patchRef.current) as EngineSettings
       } catch (error) { if (alive) setError(String(error)) }
     }
     void refresh()

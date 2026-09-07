@@ -16,7 +16,7 @@ const previewTabs = async (page: Page) => (await state(page)).preview.tabs
 
 async function openProjectPreview(page: Page) {
   await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
-  await page.getByRole('button', { name: 'Preview Cockpit project' }).click()
+  await page.getByRole('button', { name: 'Open browser for Cockpit project' }).click()
   const window = page.getByRole('region', { name: 'Cockpit project preview' })
   await expect(window).toBeVisible()
   return window
@@ -248,7 +248,7 @@ test('a page that navigated away refuses Send and keeps the draft', async ({}, t
     const card = page.locator('#preview-review-panel-annotations .visual-card-row')
     await expect(card.locator('.visual-status')).toHaveText('held')
     await card.getByRole('button', { name: 'Open', exact: true }).click()
-    dialog = page.getByRole('dialog', { name: 'Mark up the image' })
+    dialog = page.getByRole('dialog', { name: 'Mark up the page' })
     await expect(dialog).toBeVisible()
     await dialog.getByRole('button', { name: 'Send now' }).click()
     await expect(page.getByRole('alert')).toContainText('The page has moved on since you marked it')
@@ -308,4 +308,25 @@ test('Show me restores size and scroll and outlines the thing while the tab stil
     await site.close()
     await engine.close()
   }
+})
+
+test('annotation note and destination survive visiting a conversation and the toggle holds the same session', async ({}, testInfo) => {
+  const engine = await startEngine({ previewAutomation: true, pendingRequests: false })
+  const site = await startPreviewPage(), scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    const page = await scenario.launchEmpty()
+    await browserShared(page, engine)
+    const preview = await openProjectPreview(page)
+    await openAddress(page, preview, `${site.origin}/`, 'Clients · Mesa Office')
+    const dialog = await annotate(page, preview)
+    await dialog.getByRole('textbox', { name: 'Visual comment' }).fill('Keep this note through navigation.')
+    await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
+    await expect(page.getByRole('region', { name: 'Conversation' })).toBeVisible()
+    await openProjectPreview(page)
+    await expect(dialog.getByRole('textbox', { name: 'Visual comment' })).toHaveValue('Keep this note through navigation.')
+    await expect(dialog.locator('.visual-context')).toContainText('Live engine thread')
+    await preview.getByRole('button', { name: /^Annotat/ }).click()
+    await expect(dialog).toBeHidden()
+    await expect.poll(async () => (await state(page)).engine.projects[0]?.visualComments?.[0]?.draft?.text).toBe('Keep this note through navigation.')
+  } finally { await scenario.dispose(); await site.close(); await engine.close() }
 })

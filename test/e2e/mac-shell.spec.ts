@@ -1,3 +1,4 @@
+import { expectActiveDocument } from './harness'
 import { expect, test } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -22,7 +23,7 @@ test('an open-file event opens the document through the command path', async ({}
     app.emit('open-file', { preventDefault: () => undefined }, path)
   }, other)
 
-  await expect(page.getByText('finder-open.md', { exact: false }).first()).toBeVisible()
+  await expectActiveDocument(page, /finder-open\.md/)
   await expect(page.getByText('Delivered by open-file', { exact: false }).first()).toBeVisible()
 })
 

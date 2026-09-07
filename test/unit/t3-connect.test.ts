@@ -30,11 +30,31 @@ it('writes only the selected isolated login entry and removes it when disabled',
   const root = await mkdtemp(join(tmpdir(), 'strata-autostart-'))
   try {
     await setStartAtLogin(true, '/apps/Strata Folder/stratamd-app', 'linux', () => undefined, { XDG_CONFIG_HOME: root })
-    expect(await readFile(join(root, 'autostart/stratamd.desktop'), 'utf8')).toContain('Exec="/apps/Strata Folder/stratamd-app"')
+    expect(await readFile(join(root, 'autostart/stratamd.desktop'), 'utf8')).toContain('Exec="/apps/Strata Folder/stratamd-app" --ozone-platform=x11\n')
     await setStartAtLogin(false, '/unused', 'linux', () => undefined, { XDG_CONFIG_HOME: root })
     await expect(readFile(join(root, 'autostart/stratamd.desktop'))).rejects.toThrow()
     let enabled = false
     await setStartAtLogin(true, '/Applications/Strata.app', 'darwin', value => { enabled = value }, {})
     expect(enabled).toBe(true)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+it('isolates test login registration and leaves production entries untouched in development', async () => {
+  const { createLoginRegistration } = await import('../../src/main/start-at-login')
+  const root = await mkdtemp(join(tmpdir(), 'strata-login-adapter-'))
+  let calls = 0
+  const mac = { get: () => ({ openAtLogin: false }), set: () => { calls++ } }
+  try {
+    const options = { packaged: false, executable: '/apps/Strata', platform: 'darwin', mac }
+    await createLoginRegistration(options)(true)
+    expect(calls).toBe(0)
+    const file = join(root, 'test-login.json')
+    await createLoginRegistration({ ...options, packaged: true, testFile: file })(true)
+    expect(JSON.parse(await readFile(file, 'utf8')).enabled).toBe(true)
+    expect(calls).toBe(0)
+    await createLoginRegistration({ ...options, packaged: true, mac: { get: () => ({ openAtLogin: true, path: options.executable }), set: mac.set } })(true)
+    expect(calls).toBe(0)
+    await createLoginRegistration({ ...options, packaged: true })(true)
+    expect(calls).toBe(1)
   } finally { await rm(root, { recursive: true, force: true }) }
 })

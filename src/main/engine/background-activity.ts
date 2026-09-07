@@ -1,3 +1,4 @@
+import { subscribePreviewOwnerInput } from '../preview/owner-input'
 import { isDarwin } from '../../platform/runtime'
 import { app, BrowserWindow, powerMonitor } from 'electron'
 import { execFile } from 'node:child_process'
@@ -34,7 +35,7 @@ export function installEngineActivity(api: { readEngineSettings(): Promise<Engin
   let locked: EngineActivity['hostPower']['locked'] = 'unknown'
   let nextSample = 0, previousInterval = 0
   let host: EngineActivity['hostPower'] = { source: 'electron-main', idle: 'unknown', idleSeconds: null, locked, suspended, onBattery: 'unknown', lowPowerMode: 'unknown', thermalState: 'unknown', stale: true, updatedAt: new Date().toISOString() }
-  const listeners: Array<() => void> = []
+  const listeners: Array<() => void> = [subscribePreviewOwnerInput(() => { lastInput = Date.now() })]
   const timer = setInterval(() => void report(), 30000)
   timer.unref()
   async function report(force = false): Promise<void> {

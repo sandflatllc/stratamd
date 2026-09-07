@@ -1,3 +1,4 @@
+import { expectDocumentListed } from './harness'
 import { expect, test } from '@playwright/test'
 import { chmod, readFile, readdir, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -51,13 +52,13 @@ test('deleted while open keeps the tab and attachment, then Save recreates the e
     await rm(value.file)
     const banner = page.getByRole('status').filter({ hasText: /was deleted/i })
     await expect(banner).toContainText(/tab stays open; Save will recreate it/i, { timeout: 10_000 })
-    await expect(page.getByRole('tab', { name: /deleted\.md/i })).toBeVisible()
+    await expectDocumentListed(page, /deleted\.md/i)
     await expect(page.locator('.agents-panel .agent-row')).toContainText('Agent A')
 
     await save(page)
     expect(await readFile(value.file, 'utf8')).toBe(shadow)
     await expect(banner).toHaveCount(0)
-    await expect(page.getByRole('tab', { name: /deleted\.md/i })).toBeVisible()
+    await expectDocumentListed(page, /deleted\.md/i)
     await expect(page.locator('.agents-panel .agent-row')).toContainText('Agent A')
   } finally {
     await value.dispose()
