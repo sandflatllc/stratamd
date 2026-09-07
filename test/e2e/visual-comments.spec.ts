@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
-import { readdir } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { paintCommentSheet } from '../../src/shared/visual-comment-sheet'
 import { selectNavigationTab } from './harness'
 import { seededScenario, startEngine, type FakeEngine } from './cockpit-engine-harness'
 
@@ -133,23 +134,32 @@ test('2: the capacity line says what Send carries beside ordinary attachments', 
     await dialog.getByRole('button', { name: 'Hold' }).click()
     await expect(dialog).toBeHidden()
     await expect(conversation.locator('.conversation-attachment-preview')).toHaveCount(3)
-    await expect(conversation.locator('.conversation-capacity')).toHaveText('Send carries 3 files, 1 marked screenshot, and the context file · 5 of 8')
+    await expect(conversation.locator('.conversation-capacity')).toHaveText('Send carries 3 files and 1 marked screenshot · 4 of 8')
     // Setting the comment aside for this send keeps it held and drops it from the count.
     await conversation.getByRole('checkbox', { name: 'Include', exact: true }).uncheck()
     await expect(conversation.locator('.conversation-capacity')).toHaveText('Send carries 3 files · 3 of 8')
     await expect(conversation.locator('.conversation-visual-card .visual-status')).toHaveText('held')
     await conversation.getByRole('checkbox', { name: 'Include', exact: true }).check()
-    await expect(conversation.locator('.conversation-capacity')).toHaveText('Send carries 3 files, 1 marked screenshot, and the context file · 5 of 8')
-    // The composer Send carries the files, the marked screenshot, and the context file in one turn.
+    await expect(conversation.locator('.conversation-capacity')).toHaveText('Send carries 3 files and 1 marked screenshot · 4 of 8')
+    // The composer sends one image per visual comment, with exact matching details in the message.
     await conversation.getByRole('textbox', { name: 'Message conversation' }).fill('Both at once')
     const stop = conversation.getByRole('button', { name: 'Stop' })
     if (await stop.isVisible()) await stop.click()
     await conversation.getByRole('button', { name: 'Send', exact: true }).click()
     await expect.poll(() => engine.commands.filter((command) => command.type === 'thread.turn.start').length).toBe(1)
     const turn = engine.commands.find((command) => command.type === 'thread.turn.start')!.message as { text: string; attachments: Array<{ type: string; name: string }> }
-    expect(turn.text).toBe('Both at once')
-    expect(turn.attachments.map((attachment) => attachment.type)).toEqual(['file', 'file', 'file', 'image', 'file'])
+    expect(turn.text).toContain('Both at once')
+    expect(turn.text).toContain('Marked beside three files.')
+    expect(turn.attachments.map((attachment) => attachment.type)).toEqual(['file', 'file', 'file', 'image'])
     expect(turn.attachments[3]!.name).toMatch(/^visual-[0-9a-f]{8}-r1-1\.png$/)
+    const store = JSON.parse(await readFile(join(scenario.env.XDG_DATA_HOME!, 'stratamd', 'engine-visual-comments.json'), 'utf8'))
+    const records = Object.values(store.comments) as Array<{ revisions: Array<{ evidence: string[] }> }>
+    const exported = await readFile(join(scenario.env.XDG_DATA_HOME!, 'stratamd', 'visual-evidence', `${records[0]!.revisions[0]!.evidence[0]}.bin`))
+    expect(exported.readUInt32BE(16)).toBe(720) // 320 px screenshot plus a 400 px note column.
+    expect(exported.readUInt32BE(20)).toBeGreaterThanOrEqual(200)
+    await testInfo.attach('sent-comment-sheet', { body: exported, contentType: 'image/png' })
+    await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).engine.projects.flatMap(project => project.threads).flatMap(thread => thread.messages).some(message => message.role === 'user' && message.text === 'Both at once')).toBe(true)
+
     await expect(conversation.locator('.conversation-visual-card')).toHaveCount(0)
   } finally {
     await scenario.dispose()
@@ -173,9 +183,9 @@ test('3: Send now, a ready reply by revision, Looks right without a turn, Still 
     await expect(dialog).toBeHidden()
     await expect.poll(() => engine.commands.filter((command) => command.type === 'thread.turn.start').length).toBe(1)
     const first = engine.commands.find((command) => command.type === 'thread.turn.start')!.message as { text: string; attachments: Array<{ type: string; id: string }> }
-    expect(first.text).toBe('Visual comment: Region 1.')
-    expect(first.attachments.map((attachment) => attachment.type)).toEqual(['image', 'file'])
-    const context = engine.uploadsById.get(first.attachments[1]!.id)!
+    expect(first.text).toContain('Visual comment: Region 1.')
+    expect(first.attachments.map((attachment) => attachment.type)).toEqual(['image'])
+    const context = first.text
     expect(context).toContain('## Visual comments')
     expect(context).toContain('Move the button into the header row.')
     const id = /"id": "(v_[^"]+)"/.exec(context)![1]!
@@ -246,8 +256,9 @@ test('4: a failed Send stays retryable and retry sends the frozen revision, not 
     expect(engine.commands.filter((command) => command.type === 'thread.turn.start')).toHaveLength(0)
     await card.getByRole('button', { name: 'Retry' }).click()
     await expect.poll(() => engine.commands.filter((command) => command.type === 'thread.turn.start').length).toBe(1)
-    const turn = engine.commands.find((command) => command.type === 'thread.turn.start')!.message as { attachments: Array<{ id: string }> }
-    expect(engine.uploadsById.get(turn.attachments[1]!.id)).toContain('First wording.')
+    const turn = engine.commands.find((command) => command.type === 'thread.turn.start')!.message as { text: string; attachments: Array<{ id: string }> }
+    expect(turn.attachments).toHaveLength(1)
+    expect(turn.text).toContain('First wording.')
     await expect(card.locator('.visual-status')).toHaveText('sent')
   } finally {
     await scenario.dispose()
@@ -276,5 +287,34 @@ test('cancelling a pasted photo removes the attachment and survives reopening th
     await expect(page.locator('.conversation-attachment-preview')).toHaveCount(0)
     await expect(session(page)).toBeHidden()
     expect(engine.commands.filter(command => command.type === 'thread.turn.start')).toHaveLength(0)
+  } finally { await scenario.dispose(); await engine.close() }
+})
+
+
+test('comment sheets preserve screenshot pixels and grow for long notes below wide captures', async ({}, testInfo) => {
+  const engine = await startEngine({ pendingRequests: false })
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    const page = await scenario.launchEmpty()
+    const image = await page.evaluate(() => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 1769; canvas.height = 130
+      const ctx = canvas.getContext('2d')!
+      ctx.fillStyle = 'rgb(12, 24, 36)'; ctx.fillRect(0, 0, canvas.width, canvas.height)
+      return canvas.toDataURL('image/png')
+    })
+    const sheet = await page.evaluate(paintCommentSheet, { image, text: ('Round the corners without covering the screenshot.\n').repeat(15) + 'End of the comment.', labels: ['Region 1'], adjustments: [], requested: false })
+    expect(sheet.width).toBe(1769)
+    expect(sheet.height).toBeGreaterThan(700)
+    const pixels = await page.evaluate(async (sheet) => {
+      const img = new Image(); img.src = sheet.dataUrl; await img.decode()
+      const canvas = document.createElement('canvas'); canvas.width = sheet.width; canvas.height = sheet.height
+      const ctx = canvas.getContext('2d')!; ctx.drawImage(img, 0, 0)
+      return { screenshot: [...ctx.getImageData(100, 100, 1, 1).data], paper: [...ctx.getImageData(1, 140, 1, 1).data], bottomInk: [...ctx.getImageData(30, sheet.height - 90, 700, 60).data].filter((channel, index) => index % 4 !== 3 && channel < 100).length }
+    }, sheet)
+    expect(pixels.screenshot).toEqual([12, 24, 36, 255])
+    expect(pixels.paper).toEqual([245, 246, 248, 255])
+    expect(pixels.bottomInk).toBeGreaterThan(10)
+    await testInfo.attach('wide-comment-sheet', { body: Buffer.from(sheet.dataUrl.split(',')[1]!, 'base64'), contentType: 'image/png' })
   } finally { await scenario.dispose(); await engine.close() }
 })

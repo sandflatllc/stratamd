@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { renderAmbient, type AmbientIsland } from '../../src/renderer/components/AmbientDecor'
 import { AMBIENT_STYLES } from '../../src/shared/theme-keys'
 
-// Element counts per style and scale from docs/design/animations-handoff.md.
-const PAGE_COUNTS = { 'rising-motes': 10, 'aurora-drift': 3, starfield: 14, 'grid-drift': 1, 'glow-orbs': 5, 'shimmer-sweep': 1, 'breathing-tint': 1, none: 0 }
-const CARD_COUNTS = { 'rising-motes': 5, 'aurora-drift': 2, starfield: 7, 'grid-drift': 1, 'shimmer-sweep': 1, 'breathing-tint': 1, none: 0 }
+// CSS element counts from the handoff; the two canvas styles have no CSS elements.
+const PAGE_COUNTS = { 'rising-motes': 10, 'aurora-drift': 3, starfield: 14, 'dense-stars': 0, 'stars-and-smoke': 0, 'grid-drift': 1, 'glow-orbs': 5, 'shimmer-sweep': 1, 'breathing-tint': 1, none: 0 }
+const CARD_COUNTS = { 'rising-motes': 5, 'aurora-drift': 2, starfield: 7, 'dense-stars': 0, 'stars-and-smoke': 0, 'grid-drift': 1, 'shimmer-sweep': 1, 'breathing-tint': 1, none: 0 }
 const GLOW_ORB_COUNTS: Record<AmbientIsland, number> = { explorer: 3, editor: 6, changes: 2, annotations: 2, agents: 2 }
 
 describe('ambient factory', () => {

@@ -4,7 +4,7 @@ import type { EngineThreadView } from '../../src/shared/contracts'
 
 function thread(id: string, overrides: Partial<EngineThreadView> = {}): EngineThreadView {
   return {
-    id, projectId: 'p1', title: `Thread ${id}`, model: 'gpt-5.6', providerInstanceId: 'codex', effort: null, access: 'full-access', status: 'running', updatedAt: '2026-09-03T12:00:00.000Z',
+    id, projectId: 'p1', title: `Thread ${id}`, model: 'gpt-5.6', providerInstanceId: 'codex', effort: null, access: 'full-access', status: 'running', updatedAt: '2026-09-03T12:00:00.000Z', lastExchangeAt: '2026-09-03T12:00:00.000Z',
     unread: false, pendingApprovals: false, pendingUserInput: false, activeTurnId: 'turn-1', turnStartedAt: null, latestTurn: null, messages: [], activities: [], items: [], documents: [],
     pinnedAt: null, snoozedUntil: null, lifecycle: 'active', archived: false, attention: 0, pendingWork: 0,
     ...overrides,

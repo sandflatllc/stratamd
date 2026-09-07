@@ -117,11 +117,11 @@ export function ItemPanel({ annotation, visible, documentPath, onReply, onResolv
         <button type="button" className="popover-close" aria-label="Close thread" onClick={onClose}>×</button>
       </header>
       <ConversationHistory key={draftKey} className="thread-panel-scroll">
-        <p data-history-row><InlineMarkdown text={annotation.text} /></p>
+        <p data-history-row><InlineMarkdown text={annotation.text} links /></p>
         {[
           ...annotation.replies.map((item) => ({ time: item.createdAt ?? 0, node: <div className="reply" data-history-row style={{ borderColor: authorColor(item.author) }} key={item.id}>
             <strong style={{ color: authorColor(item.author) }}>{authorName(item.author)}<ItemTime time={item.createdAt} now={now} /></strong>
-            <span><InlineMarkdown text={item.text} /></span>
+            <span><InlineMarkdown text={item.text} links /></span>
           </div> })),
           ...(decision?.answers ?? []).map((answer) => ({ time: answer.answeredAt, node: <div className="reply decision-answer" data-history-row style={{ borderColor: USER_ANNOTATION_COLOR }} key={`answer-${answer.seq}`}>
             <strong style={{ color: USER_ANNOTATION_COLOR }}>you<ItemTime time={answer.answeredAt} now={now} /></strong>

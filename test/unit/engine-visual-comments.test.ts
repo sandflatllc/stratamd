@@ -5,10 +5,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { T3EngineClient } from '../../src/main/engine/client'
 import { fakeEngineServer } from './support/fake-engine-socket'
 
+// Engine persistence tests isolate bitmap rendering; the Electron suite exercises it.
+vi.mock('../../src/main/visual-comment-image', () => ({ composeCommentImage: vi.fn(async (bytes: Uint8Array) => ({ bytes, width: 400, height: 240 })) }))
+
 /**
  * The image comment loop (docs/plans/open/visual-review, phase 1): a staged
  * image becomes a held visual comment, Send freezes a revision and carries the
- * marked screenshot beside the context file, the reply names the revision,
+ * comment sheet with matching details in the message, the reply names the revision,
  * and Looks right and Still wrong work without a turn.
  */
 const at = '2026-09-05T12:00:00.000Z'
@@ -123,13 +126,13 @@ describe('visual comments through the engine client', () => {
     await instance.startTurn('t1', { ...turn, text: '', visual: [id] })
     expect(fake.commands).toHaveLength(1)
     const message = fake.commands[0]!.message as { messageId: string; text: string; attachments: Array<{ type: string; name: string; mimeType: string }> }
-    expect(message.text).toBe('Visual comment: Region 1.')
-    expect(message.attachments.map((attachment) => [attachment.type, attachment.mimeType])).toEqual([['image', 'image/png'], ['file', 'text/markdown']])
+    expect(message.text).toContain('Visual comment: Region 1.')
+    expect(message.attachments.map((attachment) => [attachment.type, attachment.mimeType])).toEqual([['image', 'image/png']])
     expect(message.attachments[0]!.name).toMatch(/^visual-[0-9a-f]{8}-r1-1\.png$/)
     // The marked version travels, not the clean capture, and the evidence store keeps both.
     expect([...fake.uploads[0]!.bytes]).toEqual([...marked])
-    expect((await readdir(join(directory, 'visual-evidence'))).filter((name) => name.endsWith('.bin'))).toHaveLength(2)
-    const context = new TextDecoder().decode(fake.uploads[1]!.bytes)
+    expect((await readdir(join(directory, 'visual-evidence'))).filter((name) => name.endsWith('.bin'))).toHaveLength(3)
+    const context = message.text
     const briefs = contextSection(context, 'Visual comments')
     expect(briefs).toHaveLength(1)
     expect(briefs[0]).toMatchObject({ id, revision: 1, text: 'The header labels drift left.', captures: [{ name: message.attachments[0]!.name, width: 1, height: 1 }] })
@@ -190,16 +193,16 @@ describe('visual comments through the engine client', () => {
     const fake = engine()
     const instance = await client(fake, directory)
     const { id } = await hold(instance, directory)
-    const files = await Promise.all(Array.from({ length: 7 }, async (_, index) => {
+    const files = await Promise.all(Array.from({ length: 8 }, async (_, index) => {
       const staged = await instance.stageAttachment({ name: `file-${index}.png`, mimeType: 'image/png', bytes: png })
       return { kind: 'image' as const, id: staged.id, name: `file-${index}.png`, mimeType: 'image/png', sizeBytes: staged.sizeBytes }
     }))
-    await expect(instance.startTurn('t1', { ...turn, text: 'Too much', visual: [id], attachments: files })).rejects.toThrow('That send would carry 9 attachments, 1 over the limit of 8: 7 files, 1 marked screenshot, and the context file. Remove a file, or send a visual comment on its own first.')
+    await expect(instance.startTurn('t1', { ...turn, text: 'Too much', visual: [id], attachments: files })).rejects.toThrow('That send would carry 9 attachments, 1 over the limit of 8: 8 files and 1 marked screenshot. Remove a file, or send a visual comment on its own first.')
     expect(fake.commands).toHaveLength(0)
     expect(fake.uploads).toHaveLength(0)
     expect(visual(instance)[0]!.status).toBe('held')
-    // Six files fit: six images, the marked screenshot, and the context file.
-    await instance.startTurn('t1', { ...turn, text: 'Fits', visual: [id], attachments: files.slice(0, 6) })
+    // Seven files fit beside the single comment sheet.
+    await instance.startTurn('t1', { ...turn, text: 'Fits', visual: [id], attachments: files.slice(0, 7) })
     expect((fake.commands[0]!.message as { attachments: unknown[] }).attachments).toHaveLength(8)
     await instance.shutdown()
   })
@@ -219,7 +222,7 @@ describe('visual comments through the engine client', () => {
     fake.failUploads(false)
     await Promise.all([instance.actVisualComment(id, 'retry'), instance.resumeAfterMaintenance()])
     expect(fake.commands).toHaveLength(1)
-    const context = new TextDecoder().decode(fake.uploads.find((upload) => upload.contentType === 'text/markdown')!.bytes)
+    const context = (fake.commands[0]!.message as { text: string }).text
     expect(context).toContain('The header labels drift left.')
     expect(context).not.toContain('Newer thought.')
     card = visual(instance)[0]!
@@ -297,8 +300,7 @@ describe('a comment on a running page (phase 3)', () => {
     const command = fake.commands.find((candidate) => candidate.type === 'thread.turn.start')!
     const attachments = (command.message as { attachments: Array<{ name: string }> }).attachments
     expect(attachments.map((attachment) => attachment.name).filter((name) => name.endsWith('.png'))).toHaveLength(2)
-    const context = fake.uploads.find((upload) => upload.name.endsWith('.md'))!
-    const brief = contextSection(Buffer.from(context.bytes).toString('utf8'), 'Visual comments')[0]
+    const brief = contextSection((command.message as { text: string }).text, 'Visual comments')[0]
     expect(brief.marks[0]).toMatchObject({ label: 'New client button', found: true, selector: 'button#new-client', sources: [{ file: 'src/pages/Clients.tsx', line: 41 }] })
     expect(brief.marks[1]).toMatchObject({ label: 'The end of the page.', found: false, selector: 'p#bottom' })
     expect(brief.captures.map((capture: { scroll?: { y: number } }) => capture.scroll?.y)).toEqual([0, 900])
@@ -326,9 +328,9 @@ describe('Then / now and adjustments (phase 4)', () => {
     await instance.startTurn('t1', { text: '', ...turn, visual: [id] })
     const command = fake.commands.find((candidate) => candidate.type === 'thread.turn.start')!
     const attachments = (command.message as { attachments: Array<{ name: string }> }).attachments
-    // The marked capture, the requested appearance, and the context file.
-    expect(attachments).toHaveLength(3)
-    const brief = contextSection(Buffer.from(fake.uploads.find((upload) => upload.name.endsWith('.md'))!.bytes).toString('utf8'), 'Visual comments')[0]
+    // The marked capture and requested appearance each carry their own comment column.
+    expect(attachments).toHaveLength(2)
+    const brief = contextSection((command.message as { text: string }).text, 'Visual comments')[0]
     expect(brief.adjustments).toEqual([{ mark: 'k1', property: 'font-size', value: '18px' }])
     expect(brief.captures.map((capture: { requested?: boolean }) => capture.requested ?? false)).toEqual([false, true])
     fake.acknowledge(String((command.message as { messageId: string }).messageId), 'Bigger, like this.')
@@ -349,7 +351,7 @@ describe('Then / now and adjustments (phase 4)', () => {
     // Each reply keeps its own comparison alongside the original captures.
     expect(visual(instance)[0]!.revisions[0]!.replies[0]!.comparison).toEqual(first)
     const files = (await readdir(join(directory, 'visual-evidence'))).filter((name) => name.endsWith('.bin'))
-    expect(files).toHaveLength(6)
+    expect(files).toHaveLength(8)
     await instance.shutdown()
   })
 })

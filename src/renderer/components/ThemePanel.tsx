@@ -13,6 +13,7 @@ import { AmbientDecor } from './AmbientDecor'
 
 interface ThemePanelProps {
   theme: ThemeView
+  zoom: number
   geometry: ThemePanelGeometry
   onGeometry(geometry: ThemePanelGeometry, commit: boolean): void
   onClose(): void
@@ -40,7 +41,7 @@ const GROUP_NOTES: Record<ThemeGroup, string> = {
   controls: 'Buttons, selections, and status colors.',
   changes: 'Added and removed text under review.',
   people: 'One color per author, so you can see who did what.',
-  visuals: 'The ordered palette for categorical document visuals.',
+  visuals: 'Table backgrounds, gradients, borders, and the chart series palette.',
   effects: 'The glows, motes, and stars behind everything.'
 }
 
@@ -48,7 +49,7 @@ function viewport(): { width: number; height: number } {
   return { width: window.innerWidth, height: window.innerHeight }
 }
 
-export function ThemePanel({ theme, geometry, onGeometry, onClose, onHighlight, onError }: ThemePanelProps) {
+export function ThemePanel({ theme, zoom, geometry, onGeometry, onClose, onHighlight, onError }: ThemePanelProps) {
   const active = theme.active
   const [fonts, setFonts] = useState<string[]>([...BUNDLED_FONTS])
   const [flash, setFlash] = useState<Set<string>>(new Set())
@@ -114,9 +115,15 @@ export function ThemePanel({ theme, geometry, onGeometry, onClose, onHighlight, 
       latest = clampThemePanel({ ...geometry, x: origin.panelX + next.clientX - origin.x, y: origin.panelY + next.clientY - origin.y }, viewport())
       onGeometry(latest, false)
     }
-    const finish = () => { window.removeEventListener('pointermove', move); onGeometry(latest, true) }
+    const finish = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', finish)
+      window.removeEventListener('pointercancel', finish)
+      onGeometry(latest, true)
+    }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', finish, { once: true })
+    window.addEventListener('pointercancel', finish, { once: true })
   }
 
   const startResize = (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -128,9 +135,15 @@ export function ThemePanel({ theme, geometry, onGeometry, onClose, onHighlight, 
       latest = clampThemePanel({ ...geometry, width: origin.width + next.clientX - origin.x, height: origin.height + next.clientY - origin.y }, viewport())
       onGeometry(latest, false)
     }
-    const finish = () => { window.removeEventListener('pointermove', move); onGeometry(latest, true) }
+    const finish = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', finish)
+      window.removeEventListener('pointercancel', finish)
+      onGeometry(latest, true)
+    }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', finish, { once: true })
+    window.addEventListener('pointercancel', finish, { once: true })
   }
 
   const moveByKey = (event: React.KeyboardEvent<HTMLElement>) => {
@@ -154,10 +167,10 @@ export function ThemePanel({ theme, geometry, onGeometry, onClose, onHighlight, 
   const locked = active.builtIn
   const revertable = !locked && snapshot.current !== null && JSON.stringify(snapshot.current.sparse) !== JSON.stringify(active.sparse)
 
-  const style: CSSProperties = { left: geometry.x, top: geometry.y, width: geometry.width, height: geometry.height }
+  const style: CSSProperties = { left: geometry.x, top: geometry.y, width: geometry.width, height: geometry.height, '--zoom': zoom } as CSSProperties
 
   return (
-    <div ref={root} className="theme-panel" role="dialog" aria-label="Theme" aria-modal="false" style={style}>
+    <div ref={root} className="theme-panel" data-pane="themePanel" role="dialog" aria-label="Theme" aria-modal="false" style={style}>
       <header className="theme-panel-header" onPointerDown={startDrag}>
         <button type="button" className="theme-panel-grip" aria-label="Move theme panel (arrow keys)" onKeyDown={moveByKey}>⋮⋮</button>
         {locked
@@ -194,7 +207,7 @@ export function ThemePanel({ theme, geometry, onGeometry, onClose, onHighlight, 
               <span className="disclosure">{open.has(group) ? '▾' : '▸'}</span> {GROUP_LABELS[group]}
             </button>
             {open.has(group) && <p className="theme-group-note">{GROUP_NOTES[group]}</p>}
-            {open.has(group) && THEME_KEYS.filter((entry) => entry.group === group).map((entry) => (
+            {open.has(group) && THEME_KEYS.filter((entry) => entry.group === group && (entry.key !== 'visuals.table-background-end' || active.values['visuals.table-style'] === 'gradient') && (entry.key !== 'effects.side-window-opacity' || active.values['effects.side-window-style'] === 'glass')).map((entry) => (
               <Row
                 key={entry.key}
                 entry={entry}
@@ -211,7 +224,12 @@ export function ThemePanel({ theme, geometry, onGeometry, onClose, onHighlight, 
           </section>
         ))}
       </div>
-      <button type="button" className="theme-panel-resize" aria-label="Resize theme panel" onPointerDown={startResize} />
+      <button type="button" className="theme-panel-resize" aria-label="Resize theme panel" title="Drag to resize. Arrow keys adjust width and height." onPointerDown={startResize} onKeyDown={(event) => {
+        const delta = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] }[event.key]
+        if (!delta) return
+        event.preventDefault()
+        onGeometry(clampThemePanel({ ...geometry, width: geometry.width + delta[0]!, height: geometry.height + delta[1]! }, viewport()), true)
+      }} />
     </div>
   )
 }
@@ -252,14 +270,14 @@ function Row({ entry, value, isSet, problem, locked, flash, fonts, onHover, onCh
       case 'style':
         return (
           <select id={id} value={String(value)} disabled={locked} aria-label={entry.label} onChange={(event) => onChange(entry.key, event.currentTarget.value)}>
-            {AMBIENT_STYLES.map((style) => <option key={style.id} value={style.id}>{style.label}</option>)}
+            {(entry.options ?? AMBIENT_STYLES).map((style) => <option key={style.id} value={style.id}>{style.label}</option>)}
           </select>
         )
       case 'range':
         return (
           <>
-            <input id={id} type="range" min={entry.min} max={entry.max} step={entry.step} value={Number(value)} disabled={locked} aria-label={entry.label} onInput={(event) => onChange(entry.key, Number(event.currentTarget.value), false)} onChange={(event) => onChange(entry.key, Number(event.currentTarget.value))} />
-            <code className="theme-hex">{Number(value).toFixed(2)}</code>
+            <input id={id} type="range" min={entry.min} max={entry.max} step={entry.step} value={Number(value)} disabled={locked} aria-label={entry.label} aria-valuetext={entry.unit === 'percent' ? `${Math.round(Number(value) * 100)}%` : undefined} onInput={(event) => onChange(entry.key, Number(event.currentTarget.value), false)} onChange={(event) => onChange(entry.key, Number(event.currentTarget.value))} />
+            <code className="theme-hex">{entry.unit === 'percent' ? `${Math.round(Number(value) * 100)}%` : Number(value).toFixed(2)}</code>
           </>
         )
     }
@@ -285,6 +303,7 @@ function ChromeStrip({ highlight }: { highlight: string | null }) {
   return (
     <div className="theme-chrome island" {...sample('surfaces-panel')}>
       <AmbientDecor variant="agents" />
+      <span className="theme-sample-chip theme-sample-transcript" {...sample('surfaces-transcript')} style={{ background: 'var(--surfaces-transcript)', border: '1px solid var(--surfaces-transcript-border)', color: 'var(--document-body)' }}><span {...sample('surfaces-transcript-shadow')}><span {...sample('surfaces-transcript-border')}>transcript</span></span></span>
       <span className="annotation-chip" {...sample('people-you')} style={{ color: 'var(--people-you)', background: 'color-mix(in srgb, var(--people-you) 20%, transparent)' }}>you</span>
       {[1, 2, 3, 4].map((slot) => <span className="agent-avatar" {...sample(`people-agent-${slot}`)} style={{ background: `var(--people-agent-${slot})`, color: `var(--people-agent-${slot}-text)` }} key={slot}>A{slot}</span>)}
       <span className="annotation-chip" {...sample('people-external')} style={{ color: 'var(--people-external)', background: 'color-mix(in srgb, var(--people-external) 25%, transparent)' }}>outside</span>

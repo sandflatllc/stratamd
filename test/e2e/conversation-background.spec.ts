@@ -41,13 +41,20 @@ test('conversations keep the panel background, with an inline side header and no
     const center = page.locator('.conversation-panel[data-placement="center"]')
     await expect(center).toBeVisible()
     await expect(editor).toHaveCSS('background-color', documentBackground)
-    // Transparent children let both the panel color and its ambient decoration show through.
+    // The transcript has its own opaque frame; the ambient layer stays outside it.
     await expect(center).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
-    await expect(center.locator('.conversation-messages')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+    await expect(center.locator('.conversation-messages')).toHaveCSS('background-color', 'rgb(21, 20, 26)')
     expect(await editor.locator('.ambient-layer').evaluate((element) => element.outerHTML)).toBe(documentAmbient)
     await expect(editor.locator('.ambient-layer')).toBeVisible()
     await expect(center.locator('> header')).toHaveCSS('border-bottom-width', '0px')
     await page.screenshot({ path: testInfo.outputPath('conversation-background.png') })
+
+    // The theme's Open choice restores the original transparent reading area.
+    await page.evaluate(async () => {
+      await window.strata.createTheme('Open conversation', 'strata-vivid')
+      await window.strata.setThemeValue('surfaces.transcript-style', 'open')
+    })
+    await expect(center.locator('.conversation-messages')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
 
     await page.locator('.app-shell').evaluate((element) => { (element as HTMLElement).dataset.motion = 'false' })
     await expect(editor.locator('.ambient-layer')).toBeHidden()

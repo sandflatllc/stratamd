@@ -42,6 +42,10 @@ export function clearDraft(key: string): void {
   memory.delete(engineStorageKey(key))
   try { engineStorage.removeItem(prefix + key) } catch { /* Storage may be unavailable. */ }
 }
+/** Sending consumes content and delivery IDs, but model settings outlive the message. */
+export function clearDraftContent(key: string, selection: ComposerSelection): boolean {
+  return writeDraft(key, { text: '', selection })
+}
 export function availableModels(engine: EngineView): EngineModelView[] {
   if (engine.models?.length) return engine.models
   const seen = new Set<string>()
@@ -59,9 +63,22 @@ export function defaultOptions(model?: EngineModelView): ModelOption[] {
     return value === undefined ? [] : [{ id: descriptor.id, value }]
   })
 }
-export function selectionForModel(model: EngineModelView, access: ComposerSelection['access']): ComposerSelection {
+export function selectionForModel(model: EngineModelView, access: ComposerSelection['access'], previous?: ComposerSelection): ComposerSelection {
   const options = defaultOptions(model)
-  return { model: model.slug, instanceId: model.instanceId, options, effort: String(options.find((option) => option.id === 'effort')?.value ?? '') || null, access }
+  if (previous?.instanceId === model.instanceId) {
+    for (const option of previous.options ?? []) {
+      const descriptor = model.options.find(descriptor => descriptor.id === option.id)
+      const supported = descriptor?.type === 'boolean' ? typeof option.value === 'boolean' : descriptor?.options?.some(value => value.id === option.value)
+      if (!supported) continue
+      const index = options.findIndex(value => value.id === option.id)
+      if (index === -1) options.push(option)
+      else options[index] = option
+    }
+  }
+  return { model: model.slug, instanceId: model.instanceId, options, effort: String(options.find((option) => option.id === 'effort' || option.id === 'reasoningEffort')?.value ?? '') || null, access }
+}
+export function rememberedSelection(projectId: string, instanceId: string): ComposerSelection | undefined {
+  try { return JSON.parse(engineStorage.getItem(`stratamd.conversation-account-defaults.v1:${projectId}:${instanceId}`) ?? 'null') ?? undefined } catch { return undefined }
 }
 export function initialSelection(engine: EngineView, projectId: string): ComposerSelection {
   const models = availableModels(engine)
@@ -80,12 +97,15 @@ export function initialSelection(engine: EngineView, projectId: string): Compose
   const result = selectionForModel(model, previous?.access ?? 'approval-required')
   if (model.instanceId === instanceId && model.slug === slug) {
     result.options = selected?.options ?? previous?.options ?? (previous?.effort ? [{ id: 'effort', value: previous.effort }] : result.options ?? [])
-    result.effort = String(result.options?.find((option) => option.id === 'effort')?.value ?? '') || null
+    result.effort = String(result.options?.find((option) => option.id === 'effort' || option.id === 'reasoningEffort')?.value ?? '') || null
   }
   return result
 }
 export function rememberSelection(projectId: string, selection: ComposerSelection): void {
-  try { engineStorage.setItem(`stratamd.conversation-defaults.v1:${projectId}`, JSON.stringify(selection)) } catch { /* Session selection still works. */ }
+  try {
+    engineStorage.setItem(`stratamd.conversation-defaults.v1:${projectId}`, JSON.stringify(selection))
+    if (selection.instanceId) engineStorage.setItem(`stratamd.conversation-account-defaults.v1:${projectId}:${selection.instanceId}`, JSON.stringify(selection))
+  } catch { /* Session selection still works. */ }
 }
 
 export interface NewConversationTarget { path: string | null; projectId?: string; comment?: CreateDraftRequest }

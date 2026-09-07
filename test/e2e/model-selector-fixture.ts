@@ -4,7 +4,8 @@ export function modelSelectorProviders() {
   const [gpt, claude] = DEFAULT_PROVIDERS as Array<Record<string, unknown>>
   const models = (base: Record<string, unknown>, entries: Array<[string, string]>) => {
     const original = (base.models as Array<Record<string, unknown>>)[0]!
-    return entries.map(([slug, name], index) => ({ ...original, slug, name, isDefault: index === 0 }))
+    const capabilities = original.capabilities as { optionDescriptors: Array<{ id: string }> }
+    return entries.map(([slug, name], index) => ({ ...original, slug, name, isDefault: index === 0, capabilities: { ...capabilities, optionDescriptors: capabilities.optionDescriptors.map(descriptor => base.driver === 'codex' && descriptor.id === 'effort' ? { ...descriptor, id: 'reasoningEffort' } : descriptor) } }))
   }
   const gptModels = models(gpt!, [['gpt-6-astra', 'GPT-6-Astra'], ['gpt-5.6-sol', 'GPT-5.6-Sol'], ['gpt-5.6', 'GPT-5.6']])
   const claudeModels = models(claude!, [['claude-fable-5-1', 'Claude Fable 5.1'], ['claude-opus-5', 'Claude Opus 5'], ['claude-sonnet-5', 'Claude Sonnet 5'], ['claude-fable-5', 'Claude Fable 5']])

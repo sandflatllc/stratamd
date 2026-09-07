@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DocumentView, HunkView } from '../../src/shared/contracts'
-import { activeAnnotations, activitySnapshot, agentActivity, agentActivityMessage, annotationCounts, attachmentStatusLine, bannerFor, bulkRevertGroups, changeGroups, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, explorerTree, filteredAnnotations, hasResolvedAnnotations, hasUnsavedCounted, hunkAction, hunkAuthor, hunkSnippet, leftWindowWidth, nextReviewTarget, pendingCount, previewTabIndex, rendererThemeStyle, reviewTargets, saveStateSentence, shouldAdoptPushed, sideWindowCeiling, spellingForSelection, tabsToClose, threadTargets, threadTime, timeAgoShort, projectForPath } from '../../src/renderer/model'
+import { activeAnnotations, activitySnapshot, agentActivity, agentActivityMessage, annotationCounts, attachmentStatusLine, bannerFor, bulkRevertGroups, changeGroups, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, explorerTree, filteredAnnotations, hasResolvedAnnotations, hasUnsavedCounted, hunkAction, hunkAuthor, hunkSnippet, leftWindowWidth, nextReviewTarget, overlayCoversPage, pendingCount, previewTabIndex, rendererThemeStyle, reviewTargets, saveStateSentence, shouldAdoptPushed, sideWindowCeiling, spellingForSelection, tabsToClose, threadTargets, threadTime, timeAgoShort, projectForPath } from '../../src/renderer/model'
 import { INFO_TOAST_MS, nextToast, toastLifetime } from '../../src/renderer/toasts'
 import { formatKeys, shortcutGroups } from '../../src/renderer/shortcuts'
 import { menuKeyTarget } from '../../src/renderer/components/PathContextMenu'
@@ -143,6 +143,7 @@ describe('renderer model', () => {
 
   it('clamps the theme panel into the viewport and defaults it bottom-right', () => {
     const viewport = { width: 1440, height: 940 }
+    expect(clampThemePanel({ x: 8, y: 8, width: 5000, height: 5000 }, viewport)).toEqual({ x: 8, y: 8, width: 1424, height: 924 })
     expect(clampThemePanel({ x: -1, y: -1, width: 360, height: 560 }, viewport)).toEqual({ x: 1054, y: 356, width: 360, height: 560 })
     expect(clampThemePanel({ x: 5000, y: 5000, width: 100, height: 5000 }, viewport)).toEqual({ x: 1132, y: 8, width: 300, height: 924 })
   })
@@ -414,5 +415,22 @@ describe('rail relative time and attachment status (plan 5.5, 5.6)', () => {
     expect(attachmentStatusLine({ state: 'running', queuedSendCount: 0 })).toBe('running')
     expect(attachmentStatusLine({ state: 'idle', queuedSendCount: 2 })).toBe('idle · 2 updates waiting for it')
     expect(attachmentStatusLine({ state: 'disconnected', queuedSendCount: 1 })).toBe('disconnected · 1 update waiting for it')
+  })
+})
+
+describe('overlayCoversPage', () => {
+  const hole = { x: 300, y: 100, width: 800, height: 600 }
+  it('hides the page for a modal anywhere, and for an overlay whose box meets the hole', () => {
+    expect(overlayCoversPage(hole, [{ box: { x: 0, y: 0, width: 200, height: 200 }, modal: true }])).toBe(true)
+    expect(overlayCoversPage(hole, [{ box: { x: 1000, y: 600, width: 300, height: 300 }, modal: false }])).toBe(true)
+    expect(overlayCoversPage(hole, [{ box: { x: 0, y: 0, width: 301, height: 101 }, modal: false }])).toBe(true)
+  })
+  it('leaves the page showing for a panel beside it, an overlay with no box, or no hole', () => {
+    expect(overlayCoversPage(hole, [{ box: { x: 0, y: 0, width: 300, height: 400 }, modal: false }])).toBe(false)
+    expect(overlayCoversPage(hole, [{ box: { x: 1100, y: 100, width: 300, height: 600 }, modal: false }])).toBe(false)
+    expect(overlayCoversPage(hole, [{ box: { x: 500, y: 300, width: 0, height: 0 }, modal: false }, { box: { x: 0, y: 0, width: 0, height: 0 }, modal: true }])).toBe(false)
+    expect(overlayCoversPage(null, [{ box: { x: 0, y: 0, width: 200, height: 200 }, modal: true }])).toBe(false)
+    expect(overlayCoversPage({ x: 0, y: 0, width: 0, height: 0 }, [{ box: { x: 0, y: 0, width: 200, height: 200 }, modal: false }])).toBe(false)
+    expect(overlayCoversPage(hole, [])).toBe(false)
   })
 })

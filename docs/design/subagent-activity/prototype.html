@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StrataMD · Subagent activity</title>
+<style>
+@font-face { font-family: Baloo; src: url('../../../node_modules/@fontsource/baloo-2/files/baloo-2-latin-500-normal.woff2') format('woff2'); font-weight: 500; }
+@font-face { font-family: Baloo; src: url('../../../node_modules/@fontsource/baloo-2/files/baloo-2-latin-600-normal.woff2') format('woff2'); font-weight: 600; }
+@font-face { font-family: Baloo; src: url('../../../node_modules/@fontsource/baloo-2/files/baloo-2-latin-700-normal.woff2') format('woff2'); font-weight: 700; }
+@font-face { font-family: Baloo; src: url('../../../node_modules/@fontsource/baloo-2/files/baloo-2-latin-800-normal.woff2') format('woff2'); font-weight: 800; }
+@font-face { font-family: Mono; src: url('../../../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2') format('woff2'); font-weight: 400; }
+@font-face { font-family: Mono; src: url('../../../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2') format('woff2'); font-weight: 500; }
+:root {
+  color-scheme: dark; font-family: Baloo, sans-serif; font-synthesis: none;
+  --bg: #0a0810; --panel: #15141a; --inset: #312a50; --tool: #1d1731; --line: #463c6e;
+  --text: #fff; --dim: #d8ddfd; --muted: #80fdff; --soft: #aaa1be;
+  --primary: #9b5cff; --highlight: #ff5c8a; --positive: #3dc97c; --warning: #ffb03a; --danger: #ff5c8a; --focus: #4f8dff;
+  --claude: #d97757; --overlay: #f4f0fe; --overlay-text: #14101f;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #101016; color: var(--text); }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+.caption { max-width: 1440px; margin: 22px auto 10px; font: 11px Mono, monospace; letter-spacing: .14em; text-transform: uppercase; color: #b39ccf; }
+.window { width: 1440px; height: 900px; margin: 0 auto 40px; position: relative; overflow: hidden; background: var(--bg); border: 1px solid #2a2436; }
+/* ambient sky, approximated */
+.sky { position: absolute; inset: 0; background:
+  radial-gradient(900px 520px at 78% 12%, #2a2452 0%, transparent 60%),
+  radial-gradient(700px 500px at 88% 70%, #3a2a5c 0%, transparent 62%),
+  radial-gradient(520px 360px at 12% 78%, #2c1d3d 0%, transparent 62%),
+  radial-gradient(1px 1px at 20% 30%, #fff 60%, transparent), radial-gradient(1px 1px at 63% 18%, #fff 60%, transparent), radial-gradient(1.5px 1.5px at 84% 44%, #fff 60%, transparent), radial-gradient(1px 1px at 40% 66%, #fff 60%, transparent), radial-gradient(1px 1px at 90% 88%, #fff 60%, transparent), radial-gradient(1.5px 1.5px at 30% 90%, #fff 60%, transparent), radial-gradient(1px 1px at 72% 80%, #fff 60%, transparent), radial-gradient(1px 1px at 8% 14%, #fff 60%, transparent), radial-gradient(1px 1px at 52% 40%, #fff 60%, transparent),
+  #0a0810; }
+/* top bar */
+.bar { position: absolute; top: 0; left: 0; right: 0; height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 12px; }
+.brand { height: 34px; padding: 0 12px 0 10px; border-radius: 18px; background: var(--overlay); color: var(--overlay-text); display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: 14px; }
+.brand i { width: 18px; height: 18px; border-radius: 50%; background: linear-gradient(135deg, #ff5c8a, #9b5cff); }
+.group { height: 30px; border: 1px solid #55406e; background: #211b2c; color: var(--muted); border-radius: 15px; display: flex; align-items: center; gap: 6px; padding: 0 9px; font-size: 12px; font-weight: 700; }
+.group b { min-width: 16px; height: 16px; border-radius: 8px; background: #a476ff; color: #21192c; font-size: 10px; display: inline-grid; place-items: center; padding: 0 4px; }
+.spacer { flex: 1; }
+.status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); }
+.status i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); box-shadow: 0 0 7px #3dc97c80; }
+.pending { font-size: 11px; color: #c4b6dc; }
+.start { height: 32px; padding: 0 14px; border-radius: 16px; background: #dfe7ff; color: #1b1731; font-weight: 800; font-size: 13px; }
+.wc { display: flex; gap: 2px; margin-left: 6px; padding-left: 8px; border-left: 1px solid #655272; }
+.wc span { width: 30px; height: 30px; display: grid; place-items: center; color: #c5bbd3; font-size: 13px; }
+/* projects panel */
+.projects { position: absolute; top: 60px; left: 12px; bottom: 12px; width: 356px; background: #15141ae6; border: 1px solid #2f2a47; border-radius: 22px; padding: 12px 10px; font-size: 14px; }
+.projects h3 { margin: 0 0 12px; text-align: center; font-size: 15px; font-weight: 800; }
+.projects .row { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; color: #d8d3e6; border-radius: 10px; font-weight: 600; white-space: nowrap; overflow: hidden; }
+.projects .row > span.t { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.projects .row.head { color: var(--text); font-weight: 800; margin-top: 6px; }
+.projects .row.sel { background: #2b2545; box-shadow: inset 0 0 0 1px #6f5ab8; }
+.projects .row small { margin-left: auto; color: #8b8994; font-size: 11px; font-weight: 500; }
+.projects .row .st { color: #7d7590; font-size: 12px; }
+.projects .row .st.on { color: #f4b3ff; }
+/* conversation panel */
+.conv { position: absolute; top: 60px; left: 380px; right: 12px; bottom: 12px; border-radius: 24px; background: #15141a99; border: 1px solid #2f2a4780; display: flex; flex-direction: column; overflow: hidden; }
+.conv > header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 14px; }
+.conv > header .ph { color: #cdb7ff; font-size: 14px; }
+.conv > header strong { font-weight: 800; }
+.conv > header strong span { color: #a99fba; font-weight: 500; }
+.conv > header strong i { color: #a99fba; font-style: normal; margin: 0 6px; }
+.find { margin-left: auto; height: 26px; width: 118px; border-radius: 13px; border: 1px solid #4b4262; background: #1d1731; color: #8b8994; font-size: 12px; display: flex; align-items: center; gap: 6px; padding: 0 9px; }
+.messages { flex: 1; overflow: hidden; padding: 6px 46px 0; display: flex; justify-content: center; align-items: flex-end; }
+.column { padding-bottom: 6px; }
+.column { width: 960px; font-size: 17px; line-height: 1.65; color: var(--text); }
+.user { margin: 8px 0 20px auto; width: 66%; background: #312a50cc; border-radius: 14px; padding: 12px 16px; font-size: 16px; line-height: 1.55; }
+.worked { display: flex; align-items: center; gap: 6px; height: 28px; color: var(--muted); font-size: 17px; border-bottom: 1px solid #ffffff1c; margin: 10px 4px 12px; }
+.worked em { font-style: normal; color: var(--muted); font-size: 15px; }
+.worked b { margin-left: auto; color: var(--danger); font-weight: 800; }
+.column p { margin: 0 4px 22px; }
+.files { margin: 0 4px 22px; border: 1px solid #ffffff2b; border-radius: 12px; padding: 10px 12px; font-size: 13px; }
+.files .top { display: flex; gap: 10px; align-items: center; font-weight: 800; }
+.files .top ins { color: #9c66ff; text-decoration: none; } .files .top del { color: #fe769d; text-decoration: none; }
+.files .top a { margin-left: auto; color: var(--muted); font-weight: 700; }
+.files .folders { color: #a99fba; font-size: 12px; margin: 6px 0; } .files .folders code { color: var(--dim); font: 12px Mono, monospace; }
+.files .chips { display: flex; gap: 8px; align-items: center; }
+.chip { border: 1px solid #4b4262; border-radius: 8px; padding: 2px 8px; font: 11px Mono, monospace; color: var(--dim); display: inline-flex; gap: 6px; align-items: center; }
+.chip i { font-style: normal; background: #4f8dff; color: #14101f; font-weight: 700; font-size: 9px; padding: 0 3px; border-radius: 3px; }
+.files .chips a { color: var(--muted); font-size: 12px; font-weight: 700; }
+.live { display: flex; align-items: center; gap: 8px; margin: 0 4px 16px; color: var(--muted); font-size: 17px; }
+.live .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--highlight); box-shadow: 0 0 8px #ff5c8a80; }
+/* composer */
+.dock { position: relative; width: 640px; margin: 0 auto 8px; padding-top: 22px; }
+.handle { position: absolute; left: 50%; top: 0; transform: translateX(-50%); width: 600px; height: 14px; border-radius: 7px 7px 0 0; background: #1d173199; border: 1px solid #3a3358; border-bottom: 0; display: grid; place-items: center; color: #8b8994; font-size: 10px; }
+.composer { border: 1px solid #4b4262; background: #15141a; border-radius: 16px; padding: 12px 12px 10px; box-shadow: 0 16px 40px -18px #000c; }
+.composer .ph { color: #8b8994; font-size: 13px; margin: 2px 2px 26px; }
+.composer .tools { display: flex; align-items: center; gap: 16px; font-size: 12px; color: var(--dim); }
+.composer .tools .c { color: var(--claude); font-size: 14px; }
+.composer .tools .send { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.composer .tools .send .plus { color: #c5bbd3; font-size: 16px; }
+.composer .tools .send .stop { width: 30px; height: 30px; border-radius: 50%; background: var(--danger); display: grid; place-items: center; }
+.composer .tools .send .stop i { width: 10px; height: 10px; background: #14101f; border-radius: 2px; }
+.cwd { text-align: center; color: #a99fba; font-size: 11px; margin-top: 8px; }
+.cwd code { font: 11px Mono, monospace; color: #c5bbd3; margin-left: 8px; }
+
+/* ===== Agent clusters: bot glyph ringed by up to six arcs, in the title row ===== */
+.clusters { margin-left: auto; display: flex; align-items: center; gap: 10px; height: 30px; }
+.clusters + .find { margin-left: 8px; }
+.cluster { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; }
+.cluster:hover { background: #ffffff10; }
+.cluster svg { width: 26px; height: 26px; display: block; }
+.cluster .bot { fill: none; stroke: #c4b0ff; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.cluster .eye { fill: #c4b0ff; }
+.cluster .seg { fill: none; stroke-width: 2.3; stroke-linecap: round; }
+.cluster .seg[data-state="working"] { stroke: var(--primary); animation: breathe 1.6s ease-in-out infinite; }
+.cluster .seg[data-state="done"] { stroke: #2fd6b6; }
+.cluster .seg[data-state="waiting"] { stroke: var(--warning); }
+.cluster .seg[data-state="failed"] { stroke: var(--danger); }
+@keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+.clusters-toggle { width: 22px; height: 30px; display: grid; place-items: center; color: #b9b0cc; font-size: 12px; }
+.clusters-toggle:hover { color: var(--text); }
+.clusters[data-collapsed] .cluster.summary .seg { stroke: var(--primary); animation: breathe 1.6s ease-in-out infinite; }
+/* legend */
+.big .cluster { width: 128px; height: 128px; } .big .cluster svg { width: 120px; height: 120px; }
+.big .cluster .bot { stroke-width: 1.6; } .big .cluster .seg { stroke-width: 2.6; }
+.legend .cluster-row { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--soft); position: relative; flex: none; }
+.dot[data-state="working"] { background: var(--primary); }
+.dot[data-state="done"] { background: #2fd6b6; }
+.dot[data-state="failed"] { background: var(--danger); }
+.dot[data-state="waiting"] { background: var(--warning); }
+/* modal filter row */
+.filters { display: flex; gap: 6px; padding: 0 20px 10px; }
+.filters button { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 10px; color: #a99fba; border: 1px solid transparent; }
+.filters button[aria-pressed="true"] { color: var(--text); background: #312a50; border-color: #4b4262; }
+.filters .sp { flex: 1; }
+.filters label { font-size: 12px; color: #a99fba; display: flex; align-items: center; gap: 6px; }
+.filters label i { width: 26px; height: 14px; border-radius: 7px; background: var(--primary); position: relative; display: inline-block; }
+.filters label i::after { content: ""; position: absolute; right: 2px; top: 2px; width: 10px; height: 10px; border-radius: 50%; background: #14101f; }
+.agent[data-focus] { background: #241e3b; box-shadow: inset 0 0 0 1px #6f5ab8; }
+/* ===== Modal ===== */
+.scrim { position: absolute; inset: 0; background: #0a081080; backdrop-filter: blur(3px); display: grid; place-items: center; }
+.modal { width: 760px; max-height: 720px; background: #15141a; border: 1px solid #4b4262; border-radius: 22px; box-shadow: 0 40px 100px -24px #000d; overflow: hidden; display: flex; flex-direction: column; }
+.modal header { display: flex; align-items: center; gap: 12px; padding: 18px 20px 12px; }
+.modal header h2 { margin: 0; font-size: 20px; font-weight: 800; }
+.modal header small { color: #a99fba; font-size: 13px; }
+.modal header .x { margin-left: auto; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #c5bbd3; font-size: 18px; }
+.modal header .x:hover { background: #ffffff14; }
+.strip { display: flex; gap: 10px; padding: 0 20px 14px; font-size: 12px; font-weight: 700; color: var(--dim); }
+.strip span { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; border-radius: 12px; background: #1d1731; border: 1px solid #3a3358; }
+.strip span .dot { width: 8px; height: 8px; animation: none; box-shadow: none; }
+.strip span .dot::after { display: none; }
+.tree { overflow: auto; padding: 4px 12px 6px; }
+.agent { display: grid; grid-template-columns: 22px 1fr auto; column-gap: 10px; align-items: start; padding: 10px 10px 10px 0; border-radius: 12px; position: relative; }
+.agent:hover { background: #1d1731; }
+.agent[data-depth="2"] { margin-left: 34px; } .agent[data-depth="3"] { margin-left: 68px; }
+.agent[data-depth="2"]::before, .agent[data-depth="3"]::before { content: ""; position: absolute; left: -22px; top: -8px; bottom: 50%; width: 14px; border-left: 1px solid #4b4262; border-bottom: 1px solid #4b4262; border-radius: 0 0 0 8px; }
+.agent .dot { margin: 6px 0 0 8px !important; width: 10px; height: 10px; }
+.agent .dot[data-depth][data-state="working"] { animation: ping 1.4s ease-out infinite; }
+.agent .dot[data-depth="2"][data-state="done"]::after, .agent .dot[data-depth="3"][data-state="done"]::after { display: block; }
+.agent .title { font-size: 15px; font-weight: 800; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.agent .title .lvl { font: 10px Mono, monospace; color: #7d7590; letter-spacing: .06em; }
+.tag { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 8px; background: #312a50; color: var(--dim); }
+.tag.model { display: inline-flex; gap: 5px; align-items: center; }
+.tag.model i { font-style: normal; color: var(--claude); font-size: 12px; }
+.agent .now { margin-top: 3px; font-size: 13px; color: #a99fba; display: flex; gap: 8px; align-items: baseline; }
+.agent .now b { color: var(--muted); font-weight: 700; }
+.agent .now code { font: 11px Mono, monospace; color: #c5bbd3; background: #1d1731; padding: 1px 5px; border-radius: 4px; }
+.agent .now.report { color: var(--dim); }
+.agent .now.error { color: var(--danger); }
+.agent .meta { text-align: right; font-size: 12px; color: #a99fba; font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1.5; }
+.agent .meta b { color: var(--dim); font-weight: 700; }
+.agent .actions { grid-column: 2 / 4; display: flex; gap: 14px; margin-top: 6px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.agent .actions button:hover { text-decoration: underline; }
+.section { display: flex; align-items: center; gap: 8px; padding: 10px 10px 6px; font-size: 12px; font-weight: 800; color: #a99fba; letter-spacing: .04em; text-transform: uppercase; }
+.section::after { content: ""; flex: 1; border-top: 1px solid #2f2a47; }
+.bg-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 8px; font-size: 13px; color: var(--dim); border-radius: 10px; }
+.bg-row:hover { background: #1d1731; }
+.bg-row .dot { width: 8px; height: 8px; }
+.bg-row small { margin-left: auto; color: #a99fba; font-variant-numeric: tabular-nums; }
+.modal footer { padding: 10px 20px 16px; font-size: 12px; color: #8b8994; border-top: 1px solid #2f2a47; display: flex; gap: 12px; align-items: center; }
+.modal footer span { margin-left: auto; color: #a99fba; }
+
+/* ===== Legend board ===== */
+.board { width: 1100px; margin: 0 auto 40px; background: #15141a; border: 1px solid #2f2a47; border-radius: 22px; padding: 28px 32px; }
+.board h2 { margin: 0 0 4px; font-size: 20px; }
+.board p { margin: 0 0 18px; color: #a99fba; font-size: 14px; }
+.legend { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 40px; }
+.legend .item { display: grid; grid-template-columns: 56px 1fr; align-items: center; gap: 14px; padding: 8px 0; border-bottom: 1px solid #2f2a47; font-size: 14px; }
+.legend .item .sw { display: flex; align-items: center; justify-content: center; height: 32px; }
+.legend .item .sw > .dot { transform: scale(1.8); margin: 0 !important; }
+.legend .item small { display: block; color: #a99fba; font-size: 12px; }
+.legend .item.wide { grid-column: 1 / -1; grid-template-columns: 1fr; }
+.legend .item.wide .sw { justify-content: flex-start; padding-left: 8px; }
+.legend .item.wide .dots { transform: scale(1.8); transform-origin: left center; }
+.transition { margin-top: 22px; display: flex; gap: 22px; align-items: center; flex-wrap: wrap; }
+.transition .arrow { color: #7d7590; font-size: 18px; }
+.transition .lbl { font-size: 12px; color: #a99fba; width: 100%; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const params = new URLSearchParams(location.search)
+const state = params.get('state') || 'clusters'
+
+const base = [
+  { id: 'a1', depth: 1, title: 'Audit unit/integration value', role: 'general-purpose', model: 'Opus 5', effort: 'High', state: 'done', elapsed: '7m 06s', tokens: '269k', tools: 40, report: 'Of 126 files, 31 assert nothing a type check would not catch. Timing is dominated by 9 files that boot Electron helpers.' },
+  { id: 'a2', depth: 1, title: 'Analyze e2e harness flakiness', role: 'general-purpose', model: 'Fable 5.1', effort: 'High', state: 'working', elapsed: '7m 34s', tokens: '182k', tools: 52, now: 'Check reduced-motion coverage and ambient layer gating', tool: 'Bash' },
+  { id: 'a2a', depth: 2, parent: 'a2', title: 'Read Known flakes table', role: 'Explore', model: 'Haiku 4.5', effort: 'Medium', state: 'done', elapsed: '48s', tokens: '31k', tools: 9, report: 'Twelve entries since 2026-08-20. Seven share one mechanism: focus stolen by a second Electron window on the same display.' },
+  { id: 'a2b', depth: 2, parent: 'a2', title: 'Time six-worker run', role: 'general-purpose', model: 'Opus 5', effort: 'High', state: 'working', elapsed: '3m 12s', tokens: '64k', tools: 17, now: 'Wait for Playwright run to finish', tool: 'Monitor' },
+  { id: 'a2b1', depth: 3, parent: 'a2b', title: 'Parse Playwright JSON report', role: 'Explore', model: 'Haiku 4.5', effort: 'Low', state: 'working', elapsed: '22s', tokens: '6k', tools: 3, now: 'Read test-results/report.json', tool: 'Read' },
+  { id: 'a3', depth: 1, title: 'Audit e2e spec value', role: 'general-purpose', model: 'Opus 5', effort: 'High', state: 'done', elapsed: '13m 38s', tokens: '291k', tools: 40, report: 'All 76 spec files read. 231 tests; 218 in the ordinary project at 3 workers.' },
+]
+// A research run: eight roots, thirty-four agents, four levels at the deepest.
+function many() {
+  const out = []; let n = 0
+  const titles = ['Survey prior art', 'Read vendor docs', 'Compare licence terms', 'Benchmark parsers', 'Trace call graph', 'Check CI history', 'Audit dependencies', 'Draft findings']
+  const states = ['done','done','working','done','working','done','failed','working','done','working','done','done','working','done']
+  titles.forEach((t, i) => {
+    const root = { id: `r${i}`, depth: 1, title: t, role: 'general-purpose', model: i % 3 ? 'Opus 5' : 'Fable 5.1', effort: 'High', state: states[n++ % states.length], elapsed: `${3 + i}m`, tokens: `${60 + i * 17}k`, tools: 12 + i * 3, now: 'Read sources', tool: 'Read', report: 'Report in transcript.' }
+    out.push(root)
+    const kids = [3, 2, 4, 1, 5, 2, 3, 2][i]
+    for (let k = 0; k < kids; k++) {
+      const c = { id: `r${i}c${k}`, parent: root.id, depth: 2, title: `${t}: part ${k + 1}`, role: 'Explore', model: 'Haiku 4.5', effort: 'Low', state: states[n++ % states.length], elapsed: `${40 + k * 9}s`, tokens: `${8 + k * 4}k`, tools: 4 + k, now: 'Grep for symbols', tool: 'Grep', report: 'Report in transcript.' }
+      out.push(c)
+      if (k === 0 && (i === 2 || i === 4)) {
+        const g = { id: `${c.id}g`, parent: c.id, depth: 3, title: `${t}: detail`, role: 'Explore', model: 'Haiku 4.5', effort: 'Low', state: 'working', elapsed: '12s', tokens: '3k', tools: 2, now: 'Read one file', tool: 'Read' }
+        out.push(g)
+        if (i === 4) out.push({ id: `${g.id}x`, parent: g.id, depth: 4, title: `${t}: sub-detail`, role: 'Explore', model: 'Haiku 4.5', effort: 'Low', state: 'working', elapsed: '4s', tokens: '1k', tools: 1, now: 'Read one file', tool: 'Read' })
+      }
+    }
+  })
+  return out
+}
+const finished = (list) => list.map(a => ({ ...a, state: a.state === 'working' ? 'done' : a.state, now: undefined, report: a.report || 'Finished. Report is in the transcript.' }))
+const withFailure = (list) => list.map(a => a.id === 'a2b' ? { ...a, state: 'failed', now: undefined, error: 'Agent terminated early: session limit reached, resets 1:10pm' } : a)
+const data = state === 'done' ? finished(base) : state === 'failed' ? withFailure(base) : (state === 'many' || state === 'modal-many') ? many() : base
+const counts = (list) => ({ working: list.filter(a => a.state === 'working').length, done: list.filter(a => a.state === 'done').length, failed: list.filter(a => a.state === 'failed').length })
+
+function dot(a) { return `<button class="dot" data-state="${a.state}" data-depth="${a.depth}" title="${a.title} · ${a.state}" aria-label="${a.title}, ${a.state}"></button>` }
+function families(list) {
+  const kids = (id) => list.filter(a => a.parent === id).flatMap(k => [k, ...kids(k.id)])
+  return list.filter(a => a.depth === 1).map(r => ({ root: r, all: [r, ...kids(r.id)] }))
+}
+/** Start order with each parent's children right after it, so a family fills adjacent slots. */
+function ordered(list) {
+  const out = []
+  const walk = (parent) => list.filter(a => (a.parent ?? null) === parent).forEach(a => { out.push(a); walk(a.id) })
+  walk(null); return out
+}
+const SLOTS = 6
+/** Arc for slot i of six, clockwise from the top. Depth shortens the dash: L1 40°, L2 26°, L3+ 14°. */
+function arc(i, depth, state, title) {
+  const span = depth === 1 ? 40 : depth === 2 ? 26 : 14
+  const centre = -90 + i * 60; const a0 = (centre - span / 2) * Math.PI / 180; const a1 = (centre + span / 2) * Math.PI / 180
+  const r = 11, c = 13
+  const x0 = c + r * Math.cos(a0), y0 = c + r * Math.sin(a0), x1 = c + r * Math.cos(a1), y1 = c + r * Math.sin(a1)
+  return `<path class="seg" data-state="${state}" d="M${x0.toFixed(2)} ${y0.toFixed(2)} A${r} ${r} 0 0 1 ${x1.toFixed(2)} ${y1.toFixed(2)}"><title>${title}</title></path>`
+}
+const BOT = `<g class="bot"><rect x="8.5" y="10.5" width="9" height="7.5" rx="2"/><path d="M13 10.5V7.5"/><circle cx="13" cy="6.8" r=".9" style="fill:#c4b0ff;stroke:none"/></g><circle class="eye" cx="11.2" cy="14.3" r=".9"/><circle class="eye" cx="14.8" cy="14.3" r=".9"/>`
+function cluster(agents, extra = '') {
+  return `<button class="cluster ${extra}" aria-label="${agents.length} agents"><svg viewBox="0 0 26 26">${BOT}${agents.map((a, i) => arc(i, a.depth, a.state, `${a.title} · L${a.depth} · ${a.state}`)).join('')}</svg></button>`
+}
+function clusters(list, collapsed = false) {
+  const seq = ordered(list); const groups = []
+  for (let i = 0; i < seq.length; i += SLOTS) groups.push(seq.slice(i, i + SLOTS))
+  if (collapsed) {
+    const working = list.some(a => a.state === 'working')
+    return `<span class="clusters" data-collapsed>${cluster(working ? [{ depth: 1, state: 'working', title: 'Agents working' }] : [], 'summary')}<button class="clusters-toggle" aria-expanded="false" title="Show agents">›</button></span>`
+  }
+  return `<span class="clusters">${groups.map(g => cluster(g)).join('')}<button class="clusters-toggle" aria-expanded="true" title="Hide agents">⌄</button></span>`
+}
+
+function agentRow(a, focus) {
+  const level = `L${a.depth}`
+  const now = a.state === 'working' ? `<div class="now"><b>Running</b> ${a.now} <code>${a.tool}</code></div>`
+    : a.state === 'failed' ? `<div class="now error">${a.error || 'Agent stopped with an error.'}</div>`
+    : `<div class="now report">${a.report}</div>`
+  const meta = a.state === 'working' ? `<b>${a.elapsed}</b> so far<br>${a.tokens} tokens · ${a.tools} tool uses` : `<b>${a.elapsed}</b><br>${a.tokens} tokens · ${a.tools} tool uses`
+  const actions = a.state === 'working' ? `<button>Show in transcript</button><button>Follow live</button>` : a.state === 'failed' ? `<button>Show in transcript</button><button>Copy error</button>` : `<button>Show in transcript</button><button>Open report</button>`
+  return `<div class="agent" data-depth="${Math.min(a.depth, 3)}" ${focus ? 'data-focus' : ''}>${dot(a)}<div><div class="title">${a.title}<span class="lvl">${level}</span><span class="tag">${a.role}</span><span class="tag model"><i>✱</i>${a.model}</span><span class="tag">${a.effort}</span></div>${now}</div><div class="meta">${meta}</div><div class="actions">${actions}</div></div>`
+}
+function modal(list, focusId) {
+  const c = counts(list); const depth = Math.max(...list.map(a => a.depth))
+  const tokens = list.length > 10 ? '2.4M' : '843k'
+  return `<div class="scrim"><section class="modal" role="dialog" aria-label="Agents">
+    <header><h2>Agents</h2><small>This turn · ${list.length} agents · started 14 minutes ago</small><button class="x" aria-label="Close">×</button></header>
+    <div class="strip"><span><span class="dot" data-state="working"></span>${c.working} working</span><span><span class="dot" data-state="done"></span>${c.done} done</span><span><span class="dot" data-state="failed"></span>${c.failed} failed</span><span>${tokens} tokens across agents</span><span>${depth} levels deep</span></div>
+    <div class="filters"><button aria-pressed="true">All</button><button>Working</button><button>Done</button><button>Failed</button><span class="sp"></span><label>Fold finished families <i></i></label></div>
+    <div class="tree">${list.map(a => agentRow(a, a.id === focusId)).join('')}
+      <div class="section">Background commands</div>
+      <div class="bg-row"><span class="dot" data-state="working"></span>Run experiment at six workers with reduced motion<small>2m 40s</small></div>
+      <div class="bg-row"><span class="dot" data-state="done"></span>Wait for experiment run, summarize, confirm edits reverted<small>4m 02s</small></div>
+    </div>
+    <footer>Level shows which agent issued the call. Agents you start sit at L1.<span>Esc closes · click any cluster to open here</span></footer>
+  </section></div>`
+}
+
+const transcript = `
+  <div class="user">The test suite still takes forever to be ran, the setup is flakey leading to multiple retrys and we have a bunch of tests that dont prove anything of value. I want you to really dig in to this and see what can be done to improve our test suite. You can use Opus sub agents for fact findings, Fable Subagents for highly complex or important areas.</div>
+  <div class="worked">Worked for 2m 55s <em>›</em><b>!</b></div>
+  <p>The managed project is skipped in this run because no stock bundle is supplied, which matches the README. Everything else I need depends on the agents and the run finishing, so I'll wait for their notifications.</p>
+  <div class="worked">Worked for 2m 31s <em>›</em></div>
+  <p>Everything I need is now in flight: the two Opus audits, the Fable harness analysis, and the six-worker timing run. I'll wait for their notifications.</p>
+  <div class="worked">Worked for 53s <em>›</em></div>
+  <p>Six workers is almost through with the same single deterministic failure and no load timeouts so far. Waiting on the final timing plus the two remaining agent reports.</p>
+  <div class="files"><div class="top">▸ 7 changed files <ins>+179</ins> <del>−46</del><a>Show files</a></div><div class="folders"><code>src</code> 5 files &nbsp; <code>test</code> 2 files</div><div class="chips"><span class="chip"><i>TS</i>visual-comments.ts</span><span class="chip"><i>TS</i>client.ts</span><span class="chip"><i>TS</i>visual-comment-image.ts</span><a>Show all 7 files</a></div></div>
+  <div class="worked">Worked for 4.9s <em>›</em></div>
+  <p>Six workers finished in 2.6 minutes against 3.6 at the current default, with the slowest test at 12 seconds and no load timeouts. The remaining inputs are the e2e value audit and the harness analysis, both still running, so I'll wait for them.</p>
+  ${state === 'done' ? '' : '<div class="live"><span class="pulse"></span>Working for 14m 12s</div>'}`
+
+function frame(list, opts = {}) {
+  return `<div class="window">
+    <div class="sky"></div>
+    <div class="bar"><span class="brand"><i></i>StrataMD ▾</span><span class="group">▤ <b>1</b> ▾</span><span class="group">▭ <b>13</b> ▾</span><span class="group">◍ <b>1</b> ▾</span><span class="spacer"></span><span class="status"><i></i>Connected</span><span class="pending">1 pending</span><span class="start">Start thread</span><span class="wc"><span>–</span><span>▢</span><span>×</span></span></div>
+    <aside class="projects"><h3>Projects</h3>
+      <div class="row head">⌄ StrataMD<small>● ⊕ +</small></div>
+      <div class="row">☆ <span class="t"><span class="st on">•</span> Redesign Star Animation</span><small>now</small></div>
+      <div class="row sel">☆ <span class="t">Test Suite Speed, Reliability, Value</span><small>now</small></div>
+      <div class="row">☆ <span class="t">Remembered Link Browser Choice</span><small>1h ago</small></div>
+      <div class="row head">⌄ Mesa<small>⊕ +</small></div>
+      <div class="row">☆ <span class="t">There is anew git repo called archify that is…</span><small>12h ago</small></div>
+      <div class="row">☆ <span class="t">Review Document Duplication</span><small>2d ago</small></div>
+      <div class="row head">⌄ Desktop<small>⊕ +</small></div>
+      <div class="row">★ <span class="t">I am curious what can be done to my system…</span><small>1h ago</small></div>
+      <div class="row head">⌄ Haru<small>⊕ +</small></div>
+      <div class="row">★ <span class="t">hit my session limit in this thread b6a1bf9f…</span><small>7h ago</small></div>
+      <div class="row">☆ <span class="t">can you take over the work this thread was…</span><small>9h ago</small></div>
+      <div class="row">☆ <span class="t">what is the best file format for a model to b…</span><small>11h ago</small></div>
+      <div class="row head">› Skills Dashboard<small>⊕ +</small></div>
+      <div class="row head">› File Explorer<small>⊕ +</small></div>
+      <div class="row head">› t3-strata<small>⊕ +</small></div>
+      <div class="row head">› Outcrop<small>⊕ +</small></div>
+      <div class="row head">› Open Design<small>⊕ +</small></div>
+      <div class="row head">⌄ Lodestone<small>● ⊕ +</small></div>
+      <div class="row">☆ <span class="t"><span class="st on">•</span> Rebuild App Launcher Path</span><small>19m ago</small></div>
+    </aside>
+    <section class="conv">
+      <header><span class="ph">◧</span><strong><span>StrataMD</span><i>/</i>Test Suite Speed, Reliability, Value</strong>${clusters(list, !!opts.hidden)}<span class="find">⌕ Find</span></header>
+      <div class="messages"><div class="column">${transcript}</div></div>
+      <div class="dock"><div class="handle">⌃</div>
+        <div class="composer"><div class="ph">Ask for changes, send follow-ups, or attach a file</div>
+          <div class="tools"><span><span class="c">✱</span> Fable 5.1 <small style="color:#a99fba">Claude sandflat</small> ⌄</span><span>High · 1M ⌄</span><span>Full access ⌄</span><span class="send"><span class="plus">+</span><span class="stop"><i></i></span></span></div></div>
+        <div class="cwd">▭ Current checkout <code>/home/dillonc/Projects/StrataMD</code></div></div>
+      ${opts.modal ? modal(list, opts.focus) : ''}
+    </section>
+  </div>`
+}
+
+function legend() {
+  const one = (s) => `<span class="dot" data-state="${s}"></span>`
+  const six = [
+    { depth: 1, state: 'working', title: 'Slot 1' }, { depth: 1, state: 'done', title: 'Slot 2' }, { depth: 1, state: 'waiting', title: 'Slot 3' }, { depth: 1, state: 'failed', title: 'Slot 4' }, { depth: 1, state: 'working', title: 'Slot 5' }, { depth: 1, state: 'done', title: 'Slot 6' }]
+  const depth = [
+    { depth: 1, state: 'working', title: 'L1' }, { depth: 2, state: 'working', title: 'L2' }, { depth: 3, state: 'working', title: 'L3' }, { depth: 2, state: 'done', title: 'L2 done' }, { depth: 1, state: 'done', title: 'L1 done' }]
+  const fam = ordered(base)
+  return `<section class="board"><h2>Cluster vocabulary</h2><p>One bot per cluster, one arc per agent, six arcs per cluster, a seventh agent starts the next cluster. Arcs fill clockwise from the top in start order, with a parent's children right after it. Colour is state. Arc length is depth: a level 1 agent fills its slot, level 2 is shorter, level 3 and deeper shorter still.</p>
+    <div class="legend">
+      <div class="item"><div class="sw">${one('working')}</div><div>Working<small>Grape, slow breathe.</small></div></div>
+      <div class="item"><div class="sw">${one('done')}</div><div>Done<small>Teal. Report is in the transcript and the modal.</small></div></div>
+      <div class="item"><div class="sw">${one('waiting')}</div><div>Waiting on you<small>Amber. Asked a question or needs an approval.</small></div></div>
+      <div class="item"><div class="sw">${one('failed')}</div><div>Failed<small>Pink. Error text in the modal. Stays until your next message.</small></div></div>
+      <div class="item wide"><div class="cluster-row big">${cluster(six)}${cluster(depth)}${cluster(fam)}${clusters(base, true).replace('class="clusters"', 'class="clusters big"')}</div><div style="margin-top:10px">Left to right<small>Six level 1 agents in every state. Then depth by arc length: L1, L2, L3, an L2 that finished, an L1 that finished. Then the six agents from the main mockup as they fall into slots: audit done, analysis working, its two children and a grandchild, the second audit done. Last, the collapsed form: one bot with a single breathing arc while anything works, and the chevron to expand.</small></div></div>
+      <div class="item wide"><div class="cluster-row">${clusters(many())}</div><div style="margin-top:10px">Thirty-four agents<small>Six clusters: five full and one with four. Each cluster is 30 pixels, so a research run with fifty agents takes nine clusters and about 360 pixels of title row, which is what the row has before it starts to crowd Find. Past that the clusters collapse to the summary bot and the modal carries the detail.</small></div></div>
+    </div>
+  </section>`
+}
+
+const root = document.getElementById('root')
+if (state === 'legend') root.innerHTML = legend()
+else root.innerHTML = frame(data, { modal: state.startsWith('modal'), focus: state === 'modal' ? 'a2b' : undefined, hidden: state === 'hidden' })
+</script>
+</body>
+</html>

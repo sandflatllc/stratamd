@@ -1,0 +1,37 @@
+{
+  "short": {
+    "asks": [
+      {"id": "S1", "quote": "Should md links that point at a file outside the project's workspace root still open in Strata, or should those fall through to the browser?"},
+      {"id": "S2", "quote": "And do you want the confirmation dialog for external links, or is that just friction?"},
+      {"id": "S3", "quote": "Pick one of these for the worktree question and I'll finish it in this change:", "kind": "decision"}
+    ],
+    "traps": [
+      {"id": "T1", "quote": "Sounds good?", "why": "rhetorical"},
+      {"id": "T2", "quote": "What happens on a relative link with `..` segments?", "why": "self-answered"},
+      {"id": "T3", "quote": "href?.startsWith(\"file:\")", "why": "code"}
+    ],
+    "optional": []
+  },
+  "long": {
+    "asks": [
+      {"id": "L1", "quote": "Do you want Strata to normalize these, for example always showing \"Explore: search for tests\" style labels, or should it show what the provider sent?"},
+      {"id": "L2", "quote": "Tell me which you'd rather see and I'll do that one.", "kind": "decision"},
+      {"id": "L3", "quote": "Is eight the right number, or would you rather it show everything and scroll?"},
+      {"id": "L4", "quote": "Is that enough, or do you want the error inline?"},
+      {"id": "L5", "quote": "Let me know if you'd rather I hold this until the link-opening change lands"}
+    ],
+    "traps": [
+      {"id": "T1", "quote": "## Why not a setting?", "why": "heading"},
+      {"id": "T2", "quote": "\"why does the strip show at all when there's only one subagent?\"", "why": "quoted owner"},
+      {"id": "T3", "quote": "Who wants a silent panel for forty seconds?", "why": "rhetorical"},
+      {"id": "T4", "quote": "Why does T3 do that?", "why": "self-answered"},
+      {"id": "T5", "quote": "// Is this the parent turn?", "why": "code"},
+      {"id": "T6", "quote": "You may want to look at those two themes and pick better colors, but nothing is blocked on it.", "why": "flag not ask"}
+    ],
+    "optional": [
+      {"id": "O1", "quote": "If you disagree, say so and I'll add it under Appearance.", "why": "conditional offer"},
+      {"id": "O2", "quote": "I can add it back if it's useful to you.", "why": "offer"},
+      {"id": "O3", "quote": "I think that's correct.", "why": "implicit confirmation"}
+    ]
+  }
+}

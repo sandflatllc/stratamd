@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
-import { availableModels, clearDraft, draftAttachmentIds, initialSelection, readDraft, rememberSelection, selectionForModel, writeDraft } from '../../src/renderer/conversationDrafts'
+import { availableModels, clearDraft, clearDraftContent, draftAttachmentIds, initialSelection, readDraft, rememberedSelection, rememberSelection, selectionForModel, writeDraft } from '../../src/renderer/conversationDrafts'
 import { setEngineStorageIdentity } from '../../src/renderer/engineStorage'
 import { EMPTY_VIEW } from '../../src/renderer/model'
 import type { EngineModelView, EngineView } from '../../src/shared/contracts'
@@ -30,6 +30,28 @@ it('a model change resets options to those of the new model', () => {
   const next = selectionForModel(codex, 'auto-accept-edits')
   expect(next.options).toEqual([{ id: 'effort', value: 'high' }])
   expect(next.access).toBe('auto-accept-edits')
+})
+it('sending clears content and delivery IDs but keeps settings through storage reload', () => {
+  const selection = { ...selectionForModel(codex, 'full-access'), options: [{ id: 'reasoningEffort', value: 'high' }] }
+  writeDraft('thread:sent', { text: 'Send this', selection, messageId: 'old-message', threadId: 'old-thread', attachments: [{ kind: 'text', name: 'note', text: 'bytes' }] })
+  expect(clearDraftContent('thread:sent', selection)).toBe(true)
+  const persisted = localStorage.getItem('stratamd.conversation-draft.v1:thread:sent')!
+  clearDraft('thread:sent')
+  localStorage.setItem('stratamd.conversation-draft.v1:thread:sent', persisted)
+  expect(readDraft('thread:sent')).toEqual({ text: '', selection })
+  localStorage.removeItem('stratamd.conversation-draft.v1:thread:sent')
+})
+it('preserves compatible model options and restores each account independently', () => {
+  const model: EngineModelView = { ...codex, options: [{ id: 'reasoningEffort', label: 'Reasoning', type: 'select', options: [{ id: 'medium', label: 'Medium', isDefault: true }, { id: 'high', label: 'High' }] }] }
+  const high = { ...selectionForModel(model, 'full-access'), effort: 'high', options: [{ id: 'reasoningEffort', value: 'high' }, { id: 'unsupported', value: true }] }
+  rememberSelection('a', high)
+  rememberSelection('a', selectionForModel({ ...model, instanceId: 'other' }, 'full-access'))
+  const same = selectionForModel(model, 'full-access', high)
+  expect(same).toMatchObject({ effort: 'high', options: [{ id: 'reasoningEffort', value: 'high' }] })
+  expect(selectionForModel({ ...model, slug: 'another-model' }, 'full-access', high).effort).toBe('high')
+  expect(selectionForModel(model, 'full-access', rememberedSelection('a', model.instanceId)).effort).toBe('high')
+  expect(selectionForModel({ ...model, instanceId: 'other' }, 'full-access', high).effort).toBe('medium')
+  expect(selectionForModel({ ...model, options: [{ ...model.options[0]!, options: [{ id: 'medium', label: 'Medium', isDefault: true }] }] }, 'full-access', high).effort).toBe('medium')
 })
 it('keeps drafts and partial-creation IDs separately and removes successful drafts', () => {
   writeDraft('unit:a', { text: 'Keep me', threadId: 'created' })

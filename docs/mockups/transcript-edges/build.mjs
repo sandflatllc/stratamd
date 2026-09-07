@@ -1,0 +1,12 @@
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { readFile, writeFile } from 'node:fs/promises';
+const { build } = createRequire(import.meta.resolve('vite'))('esbuild');
+const here = fileURLToPath(new URL('.', import.meta.url));
+const worker=await build({entryPoints:[here+'../../../src/renderer/ambient/cloud.worker.ts'],bundle:true,format:'iife',write:false});
+const app=await build({entryPoints:[here+'mockup-entry.js'],bundle:true,format:'iife',write:false,define:{CLOUD_WORKER_SOURCE:JSON.stringify(worker.outputFiles[0].text)}});
+const screenshot=await readFile(here+'screenshot.png');
+const css=(await readFile(here+'style.css','utf8')).replaceAll('url(screenshot.png)',`url(data:image/png;base64,${screenshot.toString('base64')})`);
+const template=await readFile(here+'template.html','utf8');
+const html=template.replace('<link rel="stylesheet" href="style.css">',()=>`<style>${css}</style>`).replace('<script type="module" src="mockup.js"></script>',()=>`<script>${app.outputFiles[0].text.replaceAll('</script','<\\/script')}</script>`);
+await writeFile(here+'index.html',html);

@@ -73,13 +73,12 @@ async function surfacePoint(page: Page, engine: FakeEngine, tabId: string, selec
 
 const visible = async (engine: FakeEngine, tabId: string) => ((await engine.automation('t1', 'status', {}, { tabId })).result as { visible: boolean }).visible
 
-/** The context file a turn carried, found among its uploads by its heading. */
+/** The exact visual matching data carried in the message alongside the image. */
 function contextOf(engine: FakeEngine, index = 0): string {
   const turns = engine.commands.filter((command) => command.type === 'thread.turn.start')
-  const turn = turns[index]!.message as { attachments: Array<{ id: string }> }
-  const context = turn.attachments.map((attachment) => engine.uploadsById.get(attachment.id) ?? '').find((text) => text.includes('# Conversation context'))
-  if (!context) throw new Error('The turn carried no context file')
-  return context
+  const turn = turns[index]!.message as { text: string }
+  expect(turn.text).toContain('## Visual comments')
+  return turn.text
 }
 
 test('Annotate captures the frame and hides the view, Mark names things from the page with a found check, a box over nothing stays a region, and a live clock sends', async ({}, testInfo) => {
@@ -127,7 +126,7 @@ test('Annotate captures the frame and hides the view, Mark names things from the
     await expect(dialog).toBeHidden()
     await expect.poll(() => engine.commands.filter((command) => command.type === 'thread.turn.start').length).toBe(1)
     const turn = engine.commands.find((command) => command.type === 'thread.turn.start')!.message as { attachments: Array<{ id: string }> }
-    expect(turn.attachments).toHaveLength(2)
+    expect(turn.attachments).toHaveLength(1)
     const context = contextOf(engine)
     expect(context).toContain('New client button')
     expect(context).toContain('src/pages/Clients.tsx')
@@ -174,7 +173,7 @@ test('marking after a scroll takes a second capture at the new position, and Sen
     await expect(dialog).toBeHidden()
     await expect.poll(() => engine.commands.filter((command) => command.type === 'thread.turn.start').length).toBe(1)
     const turn = engine.commands.find((command) => command.type === 'thread.turn.start')!.message as { attachments: Array<{ id: string }> }
-    expect(turn.attachments).toHaveLength(3)
+    expect(turn.attachments).toHaveLength(2)
     const context = contextOf(engine)
     const scrolls = [...context.matchAll(/"scroll": \{\s*"x": \d+,\s*"y": (\d+)/g)].map((match) => Number(match[1]))
     expect(scrolls).toHaveLength(2)

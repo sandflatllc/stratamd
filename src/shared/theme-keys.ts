@@ -16,6 +16,8 @@ export const AMBIENT_STYLES = [
   { id: 'rising-motes', label: 'Rising motes' },
   { id: 'aurora-drift', label: 'Aurora drift' },
   { id: 'starfield', label: 'Starfield' },
+  { id: 'dense-stars', label: 'Dense stars' },
+  { id: 'stars-and-smoke', label: 'Stars + smoke' },
   { id: 'grid-drift', label: 'Grid drift' },
   { id: 'glow-orbs', label: 'Glow orbs' },
   { id: 'shimmer-sweep', label: 'Shimmer sweep' },
@@ -23,6 +25,13 @@ export const AMBIENT_STYLES = [
   { id: 'none', label: 'None' }
 ] as const
 export type AmbientStyle = (typeof AMBIENT_STYLES)[number]['id']
+
+export const SIDE_WINDOW_STYLES = [
+  { id: 'animation', label: 'Animation' },
+  { id: 'glass', label: 'Animation behind glass' },
+  { id: 'background', label: 'Solid background' }
+] as const
+export type SideWindowStyle = (typeof SIDE_WINDOW_STYLES)[number]['id']
 
 /** User theme files written from now on carry this marker. */
 export const THEME_SCHEMA_VERSION = 3
@@ -42,6 +51,9 @@ export interface ThemeKeyEntry {
   readonly min?: number
   readonly max?: number
   readonly step?: number
+  readonly unit?: 'percent'
+  /** Closed choices for a style row; ambient styles are the default. */
+  readonly options?: readonly { id: string; label: string }[]
 }
 
 const color = (key: string, label: string, description: string): ThemeKeyEntry => ({
@@ -60,12 +72,17 @@ export const THEME_KEYS: readonly ThemeKeyEntry[] = Object.freeze([
 
   color('surfaces.window', 'Window background', 'The window itself, behind all panels'),
   color('surfaces.panel', 'Panel background', 'Explorer, editor, right rail, dialogs, theme panel, Conversation, and ordinary menus'),
-  color('surfaces.inset', 'Inset and hover background', 'Hovered rows, chips, table header cells, notices, and nested panel areas'),
+  color('surfaces.inset', 'Inset and hover background', 'Hovered interface rows, chips, notices, and nested panel areas'),
   color('surfaces.user-message', 'User message background', 'Your message boxes in the conversation transcript'),
   color('surfaces.tool-call', 'Tool call background', 'Tool call rows, their output, and changed-file cards in the conversation transcript'),
-  color('surfaces.field', 'Text field background', 'Annotation, reply, send, rename, and other text-entry fields'),
+  color('surfaces.field', 'Text field background', 'The full chat input box, including its model controls, plus annotation, reply, send, rename, and other text-entry fields'),
   color('surfaces.code', 'Code and preview background', 'Boxes behind code, source previews, image placeholders, and delivery previews'),
-  color('surfaces.border', 'Borders and rules', 'Panel borders, input borders, dividers, tables, scrollbars, and horizontal rules'),
+  color('surfaces.border', 'Borders and rules', 'Panel borders, input borders, dividers, scrollbars, and horizontal rules'),
+  { key: 'surfaces.transcript-style', group: 'surfaces', variable: '--surfaces-transcript-style', label: 'Transcript layout', description: 'Wrap the conversation in an opaque panel, or leave it open over the background', kind: 'style', sample: 'surfaces-transcript', options: [{ id: 'panel', label: 'Opaque panel' }, { id: 'open', label: 'Open' }] },
+  color('surfaces.transcript', 'Transcript background', 'The opaque reading panel around conversation messages, separate from the composer'),
+  color('surfaces.transcript-border', 'Transcript border', 'The edge of the conversation reading panel'),
+  { key: 'surfaces.transcript-shadow-style', group: 'surfaces', variable: '--surfaces-transcript-shadow-style', label: 'Transcript shadow', description: 'Add a soft drop shadow around the opaque transcript panel; has no effect with Open layout', kind: 'style', sample: 'surfaces-transcript-shadow', options: [{ id: 'none', label: 'None' }, { id: 'drop-shadow', label: 'Drop shadow' }] },
+  color('surfaces.transcript-shadow', 'Transcript shadow color', 'The drop shadow around the opaque transcript panel, separate from its background and border'),
   color('surfaces.overlay', 'Popover and toast background', 'The selection menu, active tab, and toasts; their text color is chosen automatically'),
 
   color('interface.primary', 'Titles and active labels', 'Panel headings, active labels, menu text, and other prominent app text'),
@@ -101,6 +118,14 @@ export const THEME_KEYS: readonly ThemeKeyEntry[] = Object.freeze([
   color('people.agent-4', 'Fourth attached agent', 'The fourth attached agent; later agents repeat from the first'),
   color('people.external', 'Outside changes', 'Edits made outside StrataMD, and annotations whose text was removed'),
 
+  { key: 'visuals.table-style', group: 'visuals', variable: '--visuals-table-style', label: 'Table background style', description: 'A solid first color or a diagonal gradient between both table background colors', kind: 'style', sample: 'visuals-table-background', options: [{ id: 'solid', label: 'Solid' }, { id: 'gradient', label: 'Gradient' }] },
+  color('visuals.table-background', 'Table background color 1', 'The table background in solid mode, or the first color of its gradient'),
+  color('visuals.table-background-end', 'Table background color 2', 'The second color of the table gradient; both colors are fully opaque'),
+  color('visuals.table-toolbar', 'Table toolbar background', 'The background behind the table title, view buttons, and expanded tools'),
+  color('visuals.table-header', 'Column header background', 'Table column headers and labels in Focus row view'),
+  color('visuals.table-border', 'Table borders and row lines', 'Table edges and row separators, using this exact color'),
+  color('visuals.table-hover', 'Row hover background', 'The background of a table row under the pointer'),
+
   color('visuals.category-1', 'Chart series 1', 'First categorical series in registered charts'),
   color('visuals.category-2', 'Chart series 2', 'Second categorical series in registered charts'),
   color('visuals.category-3', 'Chart series 3', 'Third categorical series in registered charts'),
@@ -108,14 +133,16 @@ export const THEME_KEYS: readonly ThemeKeyEntry[] = Object.freeze([
   color('visuals.category-5', 'Chart series 5', 'Fifth categorical series in registered charts'),
   color('visuals.category-6', 'Chart series 6', 'Sixth categorical series in registered charts'),
 
-  color('effects.primary', 'Main effect color', 'The page glow, grids, shimmers, breathing tints, the biggest glows, and some motes and stars'),
-  color('effects.secondary', 'Supporting effect color', 'The second aurora band, a supporting glow, and some motes and stars'),
-  color('effects.tertiary', 'Third effect color', 'The third aurora band, a third glow, and some motes and stars'),
-  color('effects.detail-1', 'Small effect color 1', 'One set of small motes and stars'),
-  color('effects.detail-2', 'Small effect color 2', 'A second set of small motes and stars, and the small explorer glow'),
+  color('effects.primary', 'Main effect color', 'The page glow, grids, shimmers, breathing tints, the biggest glows, the main nebula cloud color, and some motes and stars'),
+  color('effects.secondary', 'Supporting effect color', 'The second aurora band, a supporting glow, the second nebula cloud color, and some motes and stars'),
+  color('effects.tertiary', 'Third effect color', 'The third aurora band, a third glow, the third nebula cloud color, and some motes and stars'),
+  color('effects.detail-1', 'Small effect color 1', 'One set of small motes and stars, and small nebula wisps'),
+  color('effects.detail-2', 'Small effect color 2', 'A second set of small motes and stars, nebula highlights, and the small explorer glow'),
 
   { key: 'effects.background-style', group: 'effects', variable: '--effects-background-style', label: 'Effect behind the app', description: `Animation behind the whole app: ${AMBIENT_STYLES.map((style) => style.id).join(', ')}`, kind: 'style', sample: 'effects-background' },
   { key: 'effects.panel-style', group: 'effects', variable: '--effects-panel-style', label: 'Effect inside panels', description: `Animation inside each panel: ${AMBIENT_STYLES.map((style) => style.id).join(', ')}`, kind: 'style', sample: 'effects-panels' },
+  { key: 'effects.side-window-style', group: 'effects', variable: '--effects-side-window-style', label: 'Side windows', description: 'One setting for the left sidebar and every right-side window. Uses the panel animation selected above; the center window keeps its animation.', kind: 'style', options: SIDE_WINDOW_STYLES, sample: 'effects-side-windows' },
+  { key: 'effects.side-window-opacity', group: 'effects', variable: '--effects-side-window-opacity', label: 'Side-window glass opacity', description: 'How much the Panel background covers the animation behind the glass: 0% is clear, 100% is solid. Applies to all side windows.', kind: 'range', min: 0, max: 1, step: 0.01, unit: 'percent', sample: 'effects-side-windows' },
   { key: 'effects.intensity', group: 'effects', variable: '--effects-intensity', label: 'Effect visibility', description: 'How visible the effects are, 0 to 2', kind: 'range', min: 0, max: 2, step: 0.05, sample: 'effects-background' },
   { key: 'effects.speed', group: 'effects', variable: '--effects-speed', label: 'Effect speed', description: 'How fast the effects move, 0.25 to 2', kind: 'range', min: 0.25, max: 2, step: 0.05, sample: 'effects-background' }
 ])
@@ -180,10 +207,12 @@ export function normalizeThemeValue(entry: ThemeKeyEntry, value: unknown): { val
     }
     case 'font':
       return typeof value === 'string' && value.trim() ? { value: value.trim() } : { value: fallback, problem: 'not a font family name' }
-    case 'style':
-      return typeof value === 'string' && AMBIENT_STYLES.some((style) => style.id === value)
+    case 'style': {
+      const options = entry.options ?? AMBIENT_STYLES
+      return typeof value === 'string' && options.some((style) => style.id === value)
         ? { value }
-        : { value: fallback, problem: `not one of ${AMBIENT_STYLES.map((style) => style.id).join(', ')}` }
+        : { value: fallback, problem: `not one of ${options.map((style) => style.id).join(', ')}` }
+    }
     case 'range': {
       if (typeof value !== 'number' || !Number.isFinite(value)) return { value: fallback, problem: `not a number between ${entry.min} and ${entry.max}` }
       return { value: Math.min(entry.max!, Math.max(entry.min!, value)) }

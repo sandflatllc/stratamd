@@ -8,7 +8,7 @@ import { gfm } from 'micromark-extension-gfm'
 // typography tokens through `.conversation-prose`. The parser is the same one
 // the editor and rail snippets use, so a message and a document agree on what a
 // construct means. Nothing here fetches: images become their alt text and links
-// are plain anchors that main's navigation guard routes to the system browser.
+// are anchors handled by the shell's shared web link picker.
 
 export interface MessageNode {
   type: string

@@ -7,7 +7,7 @@ const now = Date.parse('2026-09-04T12:00:00.000Z')
 function thread(id: string, overrides: Partial<EngineThreadView> = {}): EngineThreadView {
   return {
     id, projectId: 'p1', title: id, model: 'gpt-5.6', providerInstanceId: 'codex', effort: null, access: 'full-access', status: 'idle',
-    updatedAt: '2026-09-04T10:00:00.000Z', unread: false, pendingApprovals: false, pendingUserInput: false, activeTurnId: null, turnStartedAt: null, latestTurn: null,
+    updatedAt: '2026-09-04T10:00:00.000Z', lastExchangeAt: '2026-09-04T10:00:00.000Z', unread: false, pendingApprovals: false, pendingUserInput: false, activeTurnId: null, turnStartedAt: null, latestTurn: null,
     messages: [], activities: [], items: [], documents: [], pinnedAt: null, snoozedUntil: null, lifecycle: 'active', archived: false, attention: 0, pendingWork: 0,
     ...overrides,
   }
@@ -31,13 +31,26 @@ describe('projects rail', () => {
 
   it('sorts favorites first and exempts all of them from the non-favorite preview cap', () => {
     const threads = sortProjectFolderThreads([
-      thread('ordinary-new', { updatedAt: '2026-09-04T11:00:00.000Z' }),
-      thread('favorite-old', { pinnedAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' }),
-      thread('favorite-new', { pinnedAt: '2026-09-02T00:00:00.000Z', updatedAt: '2026-09-03T00:00:00.000Z' }),
-      thread('ordinary-old', { updatedAt: '2026-09-02T00:00:00.000Z' }),
+      thread('ordinary-new', { lastExchangeAt: '2026-09-04T11:00:00.000Z' }),
+      thread('favorite-old', { pinnedAt: '2026-09-01T00:00:00.000Z', lastExchangeAt: '2026-09-01T00:00:00.000Z' }),
+      thread('favorite-new', { pinnedAt: '2026-09-02T00:00:00.000Z', lastExchangeAt: '2026-09-03T00:00:00.000Z' }),
+      thread('ordinary-old', { lastExchangeAt: '2026-09-02T00:00:00.000Z' }),
     ])
     expect(threads.map((entry) => entry.id)).toEqual(['favorite-new', 'favorite-old', 'ordinary-new', 'ordinary-old'])
     expect(previewProjectFolderThreads(threads, 1).threads.map((entry) => entry.id)).toEqual(['favorite-new', 'favorite-old', 'ordinary-new'])
+  })
+
+  it('orders Recent and Oldest by the last hand-off, so mid-turn updates never move a row', () => {
+    const working = thread('working', { status: 'running', lastExchangeAt: '2026-09-04T09:00:00.000Z', updatedAt: '2026-09-04T11:59:00.000Z' })
+    const finished = thread('finished', { lastExchangeAt: '2026-09-04T10:30:00.000Z', updatedAt: '2026-09-04T10:30:00.000Z' })
+    const sent = thread('sent', { status: 'running', lastExchangeAt: '2026-09-04T11:00:00.000Z', updatedAt: '2026-09-04T11:58:00.000Z' })
+    expect(sortProjectFolderThreads([working, finished, sent], 'recent').map((entry) => entry.id)).toEqual(['sent', 'finished', 'working'])
+    expect(sortProjectFolderThreads([working, finished, sent], 'oldest').map((entry) => entry.id)).toEqual(['working', 'finished', 'sent'])
+    const view = buildProjectsRail([project([
+      thread('a', { lifecycle: 'settled', lastExchangeAt: '2026-09-04T08:00:00.000Z', updatedAt: '2026-09-04T11:59:00.000Z' }),
+      thread('b', { lifecycle: 'settled', lastExchangeAt: '2026-09-04T09:00:00.000Z', updatedAt: '2026-09-04T08:00:00.000Z' }),
+    ])], { nowMs: now, sort: 'recent' })
+    expect(view.settled.map((entry) => entry.thread.id)).toEqual(['b', 'a'])
   })
 
   it('resolves one state per row in T3 precedence with unread before monitoring', () => {

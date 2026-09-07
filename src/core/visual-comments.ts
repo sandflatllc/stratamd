@@ -259,12 +259,45 @@ export function visualSendSummary(comments: ReadonlyArray<{ text: string; marks:
   return `${comments.length} visual comments.`
 }
 
+/** Exact matching data accompanies the image as message text, never another file.
+ * The owner sees the comment sheet; the transcript omits this generated appendix. */
+const VISUAL_CONTEXT_MARKER = '\n\n<!-- strata-visual-context -->\n'
+export function appendVisualContext(text: string, briefs: readonly VisualBrief[]): string {
+  return briefs.length ? `${text}${VISUAL_CONTEXT_MARKER}## Visual comments\n\n\`\`\`json\n${JSON.stringify(briefs, null, 2)}\n\`\`\`\n` : text
+}
+export function visibleVisualMessage(text: string): string {
+  const at = text.lastIndexOf(VISUAL_CONTEXT_MARKER)
+  if (at < 0) return text
+  const appendix = text.slice(at + VISUAL_CONTEXT_MARKER.length)
+  const match = /^## Visual comments\n\n`{3}json\n([\s\S]*)\n`{3}\n$/.exec(appendix)
+  if (!match) return text
+  try {
+    const briefs: unknown = JSON.parse(match[1]!)
+    if (Array.isArray(briefs) && briefs.length && briefs.every(brief => typeof brief?.id === 'string' && brief.id.startsWith(VISUAL_ID_PREFIX) && typeof brief.revision === 'number' && Array.isArray(brief.captures))) return text.slice(0, at)
+  } catch { /* Ordinary user text is never truncated when the appendix is invalid. */ }
+  return text
+}
+
+/** Select the same capture set in the composer budget and the send path. */
+export function visualCaptureIds(comment: {
+  captures: readonly { id: string; requested?: boolean }[]
+  draft?: { marks: readonly { captureId: string }[]; strokes: readonly { captureId: string }[]; adjustments: readonly unknown[]; requestedCaptureId?: string } | null
+}): string[] {
+  const draft = comment.draft
+  if (!draft) return []
+  const marked = [...new Set([...draft.marks, ...draft.strokes].map(mark => mark.captureId))]
+  return [...new Set([
+    ...(marked.length ? marked : comment.captures.filter(capture => !capture.requested).slice(0, 1).map(capture => capture.id)),
+    ...(draft.adjustments.length && draft.requestedCaptureId ? [draft.requestedCaptureId] : []),
+  ])]
+}
+
 // ---- Delivery budget
 
 export interface SendCapacityInput {
   /** Ordinary composer attachments, text and image. */
   files: number
-  /** Marked screenshots the selected visual comments carry, after identical bytes collapse. */
+  /** Comment sheets the selected visual comments carry, one per capture per comment. */
   visualImages: number
   visualComments: number
   contextFile: boolean
@@ -301,7 +334,7 @@ export function sendCapacity(input: SendCapacityInput): SendCapacity {
 
 // ---- The brief the agent reads
 
-/** One visual comment as the conversation context file carries it. Selective: marked evidence, page context, identity, not every ancestor. */
+/** One visual comment carried in the message appendix. Selective: marked evidence, page context, identity, not every ancestor. */
 export interface VisualBrief {
   id: string
   revision: number

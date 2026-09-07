@@ -1,3 +1,4 @@
+import type { ComposeCommentImage } from '../visual-comment-image'
 import { effectiveProviderInstances, mergeEngineSettings, mergeProviderEdit, type EngineSettingsEdit, type ProviderEdit, type EngineSupport, type EngineActivity, isSettingsRecord } from '../../shared/engine-settings'
 import { ConnectionOperations } from './connection-operations'
 import { connectionDirectory, connectionIdentity } from './identity'
@@ -59,7 +60,7 @@ import { postedMessageItems } from '../../core/items'
 import { inferredMessageItems } from '../../core/inference'
 import { pngSize, VisualEvidenceStore } from './visual-evidence'
 import { assertVisualCommentsWritable, emptyVisualCommentsStore, readVisualCommentsStore, referencedEvidence, writeVisualCommentsStore, type VisualCommentsStore } from './visual-comments'
-import { isVisualCommentId, revisionForReply, sendCapacity, visualAttachmentName, visualBrief, visualCommentView, visualRepliesIn, visualSendSummary, type VisualCapture, type VisualCommentRecord, type VisualRevision } from '../../core/visual-comments'
+import { appendVisualContext, visibleVisualMessage, visualCaptureIds, isVisualCommentId, revisionForReply, sendCapacity, visualAttachmentName, visualBrief, visualCommentView, visualRepliesIn, visualSendSummary, type VisualCapture, type VisualCommentRecord, type VisualRevision } from '../../core/visual-comments'
 import { visualImageUrl } from '../../shared/visual-urls'
 import { readEngineIdentity } from './identity'
 import { z } from 'zod'
@@ -118,6 +119,7 @@ export interface PreviewHostBridge {
 }
 
 export interface EngineClientOptions {
+  composeCommentImage?: ComposeCommentImage
   dataDirectory: string
   reserveLocalSetup?: () => void
   localSetupBusy?: () => boolean
@@ -284,6 +286,18 @@ function effortOf(thread: T3ShellSnapshot['threads'][number]): string | null {
   return typeof value === 'string' ? value : null
 }
 
+/**
+ * The latest hand-off on a thread: the owner's send, or the finished turn's completion, whichever is later; creation
+ * when neither has happened. A running turn's stamps are ignored, so streaming, tool calls, and approval waits never
+ * move the thread under Recent.
+ */
+function lastExchangeOf(thread: T3ShellSnapshot['threads'][number]): string {
+  const latest = thread.latestTurn && typeof thread.latestTurn === 'object' ? thread.latestTurn as Record<string, unknown> : null
+  const completedAt = latest && latest.state !== 'running' && typeof latest.completedAt === 'string' ? latest.completedAt : null
+  const candidates = [thread.createdAt, thread.latestUserMessageAt, completedAt].filter((stamp): stamp is string => typeof stamp === 'string' && Number.isFinite(Date.parse(stamp)))
+  return candidates.reduce((best, stamp) => Date.parse(stamp) > Date.parse(best) ? stamp : best, thread.createdAt)
+}
+
 function statusOf(thread: T3ShellSnapshot['threads'][number]): EngineThreadView['status'] {
   return thread.session?.status ?? 'idle'
 }
@@ -300,6 +314,7 @@ export class T3EngineClient implements EngineReadClient {
   #accountsPath: string
   #conversationsPath: string
   #staged: StagedAttachmentStore
+  readonly #composeCommentImage: ComposeCommentImage
   #evidence: VisualEvidenceStore
   #visualMutations: Promise<unknown> = Promise.resolve()
   #deliveries = new Map<string, Promise<void>>()
@@ -370,6 +385,7 @@ export class T3EngineClient implements EngineReadClient {
   #previewEnvironmentId: string | null = null
 
   constructor(options: EngineClientOptions) {
+    this.#composeCommentImage = options.composeCommentImage ?? (async (bytes, note) => (await import('../visual-comment-image')).composeCommentImage(bytes, note))
     this.#dataDirectory = options.dataDirectory
     this.#fetch = options.fetch ?? globalThis.fetch
     this.#now = options.now ?? Date.now
@@ -475,7 +491,7 @@ export class T3EngineClient implements EngineReadClient {
         const messages = detailThread?.id === thread.id ? detailThread.messages.map((message) => ({
           id: message.id,
           role: message.role,
-          text: message.text,
+          text: message.role === 'user' ? visibleVisualMessage(message.text) : message.text,
           turnId: message.turnId,
           streaming: message.streaming,
           createdAt: message.createdAt,
@@ -514,6 +530,7 @@ export class T3EngineClient implements EngineReadClient {
           access: thread.runtimeMode,
           status: statusOf(thread),
           updatedAt: thread.updatedAt,
+          lastExchangeAt: lastExchangeOf(thread),
           unread: visited !== undefined && Date.parse(thread.updatedAt) > visited && thread.id !== this.#reading.activeThreadId,
           pinnedAt: thread.pinnedAt ?? null,
           snoozedUntil: thread.snoozedUntil ?? null,
@@ -832,6 +849,8 @@ export class T3EngineClient implements EngineReadClient {
       if (comment.projectId !== thread.projectId) throw new Error(`Visual comment ${id} belongs to another project`)
       return comment
     })
+    const budget = sendCapacity({ files: userAttachments.length, visualImages: visualDrafts.reduce((count, comment) => count + visualCaptureIds(comment).length, 0), visualComments: visualDrafts.length, contextFile: Boolean(queued || comments.length || outcomes.length) })
+    if (visualDrafts.length && budget.refusal) throw new Error(budget.refusal)
     // A page comment re-checks its marks immediately before Send: refused, with the draft kept, only when the page was
     // replaced or a marked thing is gone; anything else on a live page sends.
     for (const comment of visualDrafts) {
@@ -840,43 +859,45 @@ export class T3EngineClient implements EngineReadClient {
       if (check.refusal) throw new Error(check.refusal)
       for (const mark of comment.draft!.marks) if (mark.id in check.found) mark.found = check.found[mark.id]!
     }
-    const evidenceNames = new Map<string, string>()
     const visualAttachments: PreparedAttachment[] = []
     const frozen: Array<{ comment: VisualCommentRecord; revision: VisualRevision; names: Map<string, string> }> = []
     for (const comment of visualDrafts) {
       const draft = comment.draft!
-      const referenced = [...new Set([...draft.marks.map((mark) => mark.captureId), ...draft.strokes.map((stroke) => stroke.captureId)])]
       // The requested appearance rides along as a reference when the draft carries adjustments.
       if (draft.adjustments.length && !draft.requestedCaptureId) throw new Error(`Visual comment ${comment.id} needs a current requested image. Reopen it to refresh the adjustments.`)
-      const requested = draft.adjustments.length && draft.requestedCaptureId ? [draft.requestedCaptureId] : []
-      const captureIds = [...(referenced.length ? referenced : comment.captures.filter((capture) => !capture.requested).slice(0, 1).map((capture) => capture.id)), ...requested]
+      const captureIds = visualCaptureIds(comment)
       const number = comment.revisions.length + 1
       const names = new Map<string, string>()
+      const sentEvidence: string[] = []
       for (const [index, captureId] of captureIds.entries()) {
         const capture = comment.captures.find((candidate) => candidate.id === captureId)
         if (!capture) throw new Error(`Visual comment ${comment.id} lost a capture. Open it and mark again.`)
         const evidenceId = capture.markedId ?? capture.id
-        let name = evidenceNames.get(evidenceId)
-        if (!name) {
-          const meta = await this.#evidence.meta(evidenceId)
-          if (!meta || !await this.#evidence.exists(evidenceId)) throw new MissingEvidenceError(visualAttachmentName(comment.id, number, index))
-          if (meta.sizeBytes > 10 * 1024 * 1024) throw new Error(`Image ${visualAttachmentName(comment.id, number, index)} exceeds the 10 MiB limit. Use a smaller capture.`)
-          name = visualAttachmentName(comment.id, number, index)
-          evidenceNames.set(evidenceId, name)
-          visualAttachments.push({ kind: 'evidence', id: evidenceId, name, mimeType: meta.mimeType, sizeBytes: meta.sizeBytes })
-        }
+        const source = await this.#evidence.read(evidenceId)
+        const name = visualAttachmentName(comment.id, number, index)
+        if (!source) throw new MissingEvidenceError(name)
+        const sheet = await this.#composeCommentImage(source.bytes, {
+          text: draft.text,
+          labels: draft.marks.filter(mark => mark.captureId === captureId || capture.requested).map(mark => mark.label),
+          adjustments: draft.adjustments.map(change => `${draft.marks.find(mark => mark.id === change.markId)?.label ?? 'Marked area'}: ${change.label}`),
+          requested: Boolean(capture.requested),
+        })
+        if (sheet.bytes.byteLength > 10 * 1024 * 1024) throw new Error(`Image ${name} exceeds the 10 MiB limit. Use a smaller capture or split the comment.`)
+        const stored = await this.#evidence.put({ ...sheet, mimeType: 'image/png' })
+        sentEvidence.push(stored.id)
+        visualAttachments.push({ kind: 'evidence', id: stored.id, name, mimeType: stored.mimeType, sizeBytes: stored.sizeBytes })
         names.set(captureId, name)
       }
       const revision: VisualRevision = {
         number, text: draft.text, marks: draft.marks.map((mark) => ({ ...mark })), strokes: draft.strokes.map((stroke) => ({ ...stroke, points: [...stroke.points] })), adjustments: draft.adjustments.map((adjustment) => ({ ...adjustment })),
-        destination: { threadId, engine: comment.engine }, captures: captureIds, evidence: captureIds.map((captureId) => evidenceNames.get(comment.captures.find((capture) => capture.id === captureId)!.markedId ?? captureId) ? (comment.captures.find((capture) => capture.id === captureId)!.markedId ?? captureId) : captureId),
+        destination: { threadId, engine: comment.engine }, captures: captureIds, evidence: sentEvidence,
         deliveryId: messageId, sentAt: this.#now(), state: 'sending', replies: [],
       }
       frozen.push({ comment, revision, names })
     }
     const text = input.text.trim() || (frozen.length ? visualSendSummary(frozen.map(({ revision }) => revision)) : queued ? `Replies to ${Object.keys(queued).length} item${Object.keys(queued).length === 1 ? '' : 's'}.` : comments.length ? `Comments on ${comments.length} passages.` : userAttachments.length ? attachmentSummary(userAttachments) : outcomes.length ? 'Conversation outcomes.' : '')
     if (!text) throw new Error('Write a message or queue a reply, or attach a file before sending')
-    const contextNeeded = Boolean(queued || comments.length || outcomes.length || frozen.length)
+    const contextNeeded = Boolean(queued || comments.length || outcomes.length)
     // T3 refuses a turn with more than eight attachments. The context file keeps its place; the owner's files must make room (§6.0).
     // A selection over capacity stays intact and is refused by name; nothing is trimmed or split across turns.
     if (frozen.length) {
@@ -885,7 +906,7 @@ export class T3EngineClient implements EngineReadClient {
     } else if (userAttachments.length + (contextNeeded ? 1 : 0) > MAX_ATTACHMENTS) throw new Error(attachmentLimitMessage(contextNeeded ? 1 : 0))
     for (const attachment of userAttachments) if (attachment.kind === 'image' && !(await this.#staged.exists(attachment.id))) throw new Error(`Attachment ${attachment.name} is no longer staged. Attach it again.`)
     const briefs = frozen.map(({ comment, revision, names }) => visualBrief(comment, revision, names))
-    const contextFile: PreparedAttachment | undefined = contextNeeded ? { kind: 'text', name: `conversation-${messageId}.md`, text: renderConversationDelivery(input.context ?? conversationDelivery(threadId, messageId, comments, queued ?? {}, messages, outcomes, briefs)) } : undefined
+    const contextFile: PreparedAttachment | undefined = contextNeeded ? { kind: 'text', name: `conversation-${messageId}.md`, text: renderConversationDelivery(input.context ?? conversationDelivery(threadId, messageId, comments, queued ?? {}, messages, outcomes)) } : undefined
     const attachmentInputs: PreparedAttachment[] = [
       ...userAttachments.map((attachment): PreparedAttachment => attachment.kind === 'image' ? { kind: 'image', id: attachment.id, name: attachment.name, mimeType: attachment.mimeType, sizeBytes: attachment.sizeBytes } : { kind: 'text', name: attachment.name, text: attachment.text }),
       ...visualAttachments,
@@ -896,8 +917,8 @@ export class T3EngineClient implements EngineReadClient {
     const command = turnStartCommand.parse({
       ...(workspace ? { bootstrap: { prepareWorktree: { projectCwd: this.#shell!.projects.find(project => project.id === thread.projectId)!.workspaceRoot, baseBranch: workspace.baseBranch, branch: `t3/${randomUUID().replaceAll('-', '').slice(0, 8)}`, startFromOrigin: workspace.startFromOrigin }, runSetupScript: true } } : {}),
       type: 'thread.turn.start', commandId: input.commandId ?? `strata-${messageId}`, threadId, createdAt: new Date(this.#now()).toISOString(),
-      message: { messageId, role: 'user', text, attachments: [] },
-      modelSelection: { instanceId, model: input.model, options: input.options ?? turnOptions(input, thread) },
+      message: { messageId, role: 'user', text: appendVisualContext(text, briefs), attachments: [] },
+      modelSelection: { instanceId, model: input.model, options: input.options ?? turnOptions(input, thread, this.#models.find(model => model.instanceId === instanceId && model.slug === input.model)) },
       runtimeMode: input.access, interactionMode: thread.interactionMode,
     })
     const current = state ?? emptyConversationState()
@@ -1986,7 +2007,23 @@ export class T3EngineClient implements EngineReadClient {
   async #postCommandPaused(command: unknown): Promise<void> {
     if (!this.#credential) throw new Error('No engine is paired')
     const turn = command as { type?: string; threadId?: string; bootstrap?: unknown }
-    if (turn.type === 'thread.turn.start') await this.#cancelUsage()
+    if (turn.type === 'thread.turn.start') {
+      await this.#cancelUsage()
+      // Like T3's composer, save the conversation settings before the turn.
+      // This also covers persisted retries, which bypass startTurn's preparation.
+      const requested = turnStartCommand.parse(command)
+      const current = this.#shell?.threads.find(thread => thread.id === requested.threadId)?.modelSelection
+      if (requested.modelSelection && JSON.stringify(current) !== JSON.stringify(requested.modelSelection)) {
+        try {
+          await this.#postCommandPaused(threadMetaUpdateCommand.parse({
+            type: 'thread.meta.update', commandId: `${requested.commandId}:settings`, threadId: requested.threadId,
+            modelSelection: requested.modelSelection,
+          }))
+        } catch (error) {
+          throw new Error(`Could not save model settings for thread ${requested.threadId}. Your message was not sent. ${error instanceof Error ? error.message : String(error)}`)
+        }
+      }
+    }
     if (turn.type === 'thread.turn.start' && turn.bootstrap) {
       // T3's HTTP handler dispatches directly to the engine. Worktree preparation
       // lives in the socket handler and may include a remote fetch.
@@ -2456,9 +2493,11 @@ function publicOptions(options: Array<{ id: string; value?: unknown }> | undefin
 }
 
 /** Document deliveries carry effort separately; keep context and other saved model options. */
-function turnOptions(input: ConversationInput, thread: T3ShellSnapshot['threads'][number]): ModelOption[] {
+function turnOptions(input: ConversationInput, thread: T3ShellSnapshot['threads'][number], model?: EngineModelView): ModelOption[] {
   const previous = input.model === thread.modelSelection.model ? publicOptions(thread.modelSelection.options) : []
-  const effort = previous.find((option) => option.id === 'effort')?.value ?? null
-  if (effort === input.effort) return previous
-  return [...previous.filter((option) => option.id !== 'effort'), ...(input.effort ? [{ id: 'effort', value: input.effort }] : [])]
+  const isEffort = (option: { id: string }) => option.id === 'effort' || option.id === 'reasoningEffort'
+  const effortId = model?.options.find(isEffort)?.id ?? thread.modelSelection.options?.find(isEffort)?.id ?? 'effort'
+  const efforts = previous.filter(isEffort)
+  if (efforts.length === 1 && efforts[0]!.id === effortId && efforts[0]!.value === input.effort) return previous
+  return [...previous.filter(option => !isEffort(option)), ...(input.effort ? [{ id: effortId, value: input.effort }] : [])]
 }

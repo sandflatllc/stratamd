@@ -90,6 +90,39 @@ describe('T3 engine read client', () => {
     expect(thread().latestTurn).toEqual({ id: 'turn-1', state: 'interrupted', startedAt: '2026-09-03T12:00:01.000Z', completedAt: '2026-09-03T12:00:48.000Z' })
     expect(thread().turnStartedAt).toBe('2026-09-03T12:00:01.000Z')
     expect(thread().messages[0]).toMatchObject({ id: 'm1', createdAt: at, updatedAt: '2026-09-03T12:00:46.000Z' })
+    expect(thread().lastExchangeAt).toBe('2026-09-03T12:00:48.000Z')
+    await client.shutdown()
+  })
+
+  it('holds the last hand-off stamp at the send while a turn runs and moves it only when the turn finishes', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'strata-engine-exchange-'))
+    const server = liveServer()
+    const sentAt = '2026-09-03T12:05:00.000Z'
+    const snapshot = shell('Working', 'running', {
+      latestUserMessageAt: sentAt, updatedAt: '2026-09-03T12:09:30.000Z',
+      latestTurn: { turnId: 'turn-1', state: 'running', requestedAt: sentAt, startedAt: '2026-09-03T12:05:01.000Z', completedAt: null, assistantMessageId: null },
+    })
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+      if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(snapshot)
+      return Response.json(detail())
+    }) as typeof globalThis.fetch
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
+    await client.pair('http://engine.test', 'code')
+    const thread = () => client.view().projects[0]!.threads[0]!
+    expect(thread().updatedAt).toBe('2026-09-03T12:09:30.000Z')
+    expect(thread().lastExchangeAt).toBe(sentAt)
+    const finished = shell('Working', 'idle', {
+      latestUserMessageAt: sentAt, updatedAt: '2026-09-03T12:12:00.000Z',
+      latestTurn: { turnId: 'turn-1', state: 'completed', requestedAt: sentAt, startedAt: '2026-09-03T12:05:01.000Z', completedAt: '2026-09-03T12:11:00.000Z', assistantMessageId: 'm1' },
+    })
+    server.push('orchestration.subscribeShell', [{ kind: 'thread-upserted', sequence: 5, thread: finished.threads[0] }])
+    await vi.waitFor(() => expect(thread().lastExchangeAt).toBe('2026-09-03T12:11:00.000Z'))
+    const fresh = shell('New', 'idle', { latestUserMessageAt: null, latestTurn: null, createdAt: '2026-09-03T12:20:00.000Z', updatedAt: '2026-09-03T12:21:00.000Z' })
+    server.push('orchestration.subscribeShell', [{ kind: 'thread-upserted', sequence: 6, thread: fresh.threads[0] }])
+    await vi.waitFor(() => expect(thread().lastExchangeAt).toBe('2026-09-03T12:20:00.000Z'))
     await client.shutdown()
   })
 
@@ -224,20 +257,65 @@ describe('T3 engine read client', () => {
     await client.actOnThread('t1', 'settle')
 
     expect(commands.map((command) => command.type)).toEqual([
-      'thread.turn.start', 'thread.approval.respond', 'thread.user-input.respond', 'thread.turn.interrupt', 'thread.settle',
+      'thread.meta.update', 'thread.turn.start', 'thread.approval.respond', 'thread.user-input.respond', 'thread.turn.interrupt', 'thread.settle',
     ])
-    expect(commands[0]).toMatchObject({
+    expect(commands[0]).toMatchObject({ type: 'thread.meta.update', threadId: 't1', modelSelection: { options: [{ id: 'effort', value: 'high' }] } })
+    expect(commands[1]).toMatchObject({
       threadId: 't1', message: { role: 'user', text: 'Continue the work', attachments: [] },
       modelSelection: { instanceId: 'codex-main', model: 'gpt-5.6', options: [{ id: 'effort', value: 'high' }] },
       runtimeMode: 'full-access', interactionMode: 'default',
     })
-    expect(commands[1]).toMatchObject({ requestId: 'approval-1', decision: 'accept' })
-    expect(commands[2]).toMatchObject({ requestId: 'input-1', answers: { choice: 'Ship it' } })
-    expect(commands[3]).toMatchObject({ turnId: 'turn-1' })
-    expect(commands[4]).toMatchObject({ threadId: 't1' })
+    expect(commands[2]).toMatchObject({ requestId: 'approval-1', decision: 'accept' })
+    expect(commands[3]).toMatchObject({ requestId: 'input-1', answers: { choice: 'Ship it' } })
+    expect(commands[4]).toMatchObject({ turnId: 'turn-1' })
+    expect(commands[5]).toMatchObject({ threadId: 't1' })
     for (const command of commands) expect(command).toMatchObject({ commandId: expect.any(String) })
-    for (const command of commands.slice(0, 4)) expect(command).toMatchObject({ createdAt: at })
+    for (const command of commands.slice(1, 5)) expect(command).toMatchObject({ createdAt: at })
     await client.shutdown()
+  })
+
+  it('saves Codex effort before sending and retries refused settings with stable IDs after restart', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'strata-engine-effort-'))
+    const server = liveServer()
+    let selected = { instanceId: 'codex-main', model: 'gpt-5.6', options: [{ id: 'reasoningEffort', value: 'medium' }] }
+    let refuseSettings = true
+    const commands: Array<Record<string, unknown>> = []
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+      if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket', expiresAt: at })
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(shell('Effort', 'idle', { modelSelection: selected }))
+      if (url.endsWith('/api/orchestration/dispatch')) {
+        const command = JSON.parse(String(init?.body))
+        commands.push(command)
+        if (command.type === 'thread.meta.update') {
+          if (refuseSettings) return Response.json({ error: 'refused' }, { status: 400 })
+          selected = command.modelSelection
+          server.push('orchestration.subscribeShell', [{ kind: 'thread-upserted', sequence: commands.length + 5, thread: shell('Effort', 'idle', { modelSelection: selected }).threads[0] }])
+        } else expect(command.modelSelection.options).toEqual(selected.options)
+        return Response.json({ sequence: commands.length + 5 })
+      }
+      return Response.json({ ...detail(), thread: { ...detail().thread, messages: [] } })
+    }) as typeof globalThis.fetch
+    const first = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
+    await first.pair('http://engine.test', 'code')
+    const input = { text: 'Keep High', model: 'gpt-5.6', effort: 'high', options: [{ id: 'reasoningEffort', value: 'high' }], access: 'full-access' as const, messageId: 'effort-message', commandId: 'effort-command' }
+    await expect(first.startTurn('t1', input)).rejects.toThrow('Could not save model settings for thread t1. Your message was not sent.')
+    expect(commands.map(command => command.type)).toEqual(['thread.meta.update'])
+    await first.shutdown()
+    refuseSettings = false
+    const second = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
+    try {
+      await second.initialize()
+      await vi.waitFor(() => expect(commands.some(command => command.type === 'thread.turn.start')).toBe(true))
+      expect(commands[1]).toEqual(commands[0])
+      expect(commands.find(command => command.type === 'thread.turn.start')).toMatchObject({ commandId: 'effort-command', modelSelection: selected, message: { messageId: 'effort-message', text: 'Keep High' } })
+      expect(selected.options).toEqual([{ id: 'reasoningEffort', value: 'high' }])
+      // Document deliveries pass effort separately. They must update Codex's
+      // canonical option, without leaving a conflicting legacy `effort` entry.
+      await second.startTurn('t1', { text: 'Use Medium now', model: 'gpt-5.6', effort: 'medium', access: 'full-access', messageId: 'next-effort' })
+      expect(selected.options).toEqual([{ id: 'reasoningEffort', value: 'medium' }])
+    } finally { await second.shutdown() }
   })
 
   it('reuses a persisted command id until the matching message is visible after restart', async () => {
@@ -429,7 +507,7 @@ it.each([false, true])('retries socket worktree preparation, reusing an already 
   const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
   try {
     await client.pair('http://engine.test', 'code')
-    const input = { text: 'Start isolated', model: 'gpt-5.6', effort: null, access: 'full-access' as const, messageId: 'worktree-message', workspace: { kind: 'worktree' as const, baseBranch: 'develop', startFromOrigin: false } }
+    const input = { text: 'Start isolated', model: 'gpt-5.6', effort: 'medium', access: 'full-access' as const, messageId: 'worktree-message', workspace: { kind: 'worktree' as const, baseBranch: 'develop', startFromOrigin: false } }
     await expect(client.startTurn('t1', input)).rejects.toThrow()
     const pending = JSON.parse(await readFile(join(directory, 'engine-conversations.json'), 'utf8'))
     expect(pending.threads.t1.prepared[0].command.bootstrap).toMatchObject({ prepareWorktree: { projectCwd: '/work/strata', baseBranch: 'develop', branch: expect.stringMatching(/^t3\/[a-f0-9]{8}$/), startFromOrigin: false }, runSetupScript: true })

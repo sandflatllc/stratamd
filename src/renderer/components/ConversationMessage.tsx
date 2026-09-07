@@ -76,6 +76,6 @@ export const ConversationMessage = memo(function ConversationMessage({ message, 
     }
   }, [target, mounted])
   return <div ref={row} className="conversation-rich-message" style={mounted && height !== undefined ? { minHeight: height } : undefined} data-rich-mounted={mounted || undefined}>
-    {mounted ? <div ref={host} className="prosemirror-host" data-prosemirror-host /> : height !== undefined ? <div style={{ height }} aria-label="Offscreen answer" /> : <MessageMarkdown text={source} />}
+    {mounted ? <div ref={host} className="prosemirror-host" data-prosemirror-host data-document-path={root ? `${root}/.conversation.md` : undefined} /> : height !== undefined ? <div style={{ height }} aria-label="Offscreen answer" /> : <MessageMarkdown text={source} />}
   </div>
 })

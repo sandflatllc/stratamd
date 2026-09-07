@@ -23,7 +23,7 @@ import type {
 } from '../shared/contracts'
 import type { CSSProperties } from 'react'
 import { sameJson } from '../shared/view-sync'
-import { AMBIENT_STYLES, BUILT_IN_THEME_ID, BUILT_IN_THEME_NAME, contrastingText, DEFAULT_THEME_VALUES, mixHex, THEME_KEYS, type AmbientStyle } from '../shared/theme-keys'
+import { AMBIENT_STYLES, BUILT_IN_THEME_ID, BUILT_IN_THEME_NAME, contrastingText, DEFAULT_THEME_VALUES, mixHex, THEME_KEYS, SIDE_WINDOW_STYLES, type SideWindowStyle, type AmbientStyle } from '../shared/theme-keys'
 import { familyLabel, modelFamily } from '../shared/modelSelection'
 
 /** The agent's plain name for a thread: its model family (Claude, GPT), never a file or a slug. */
@@ -47,7 +47,7 @@ export const PANEL_LIMITS = {
   documentMeasure: [620, 1600]
 } as const satisfies Record<NumericPanelKey, readonly [number, number]>
 
-export const THEME_PANEL_LIMITS = { minWidth: 300, maxWidth: 900, minHeight: 320, maxHeight: 1600 } as const
+export const THEME_PANEL_LIMITS = { minWidth: 300, maxWidth: 20_000, minHeight: 320, maxHeight: 20_000 } as const
 
 /** The editor never drops below this width because a side window grew; the side window yields instead. */
 export const EDITOR_FLOOR = 240
@@ -142,7 +142,7 @@ export const EMPTY_VIEW: AppView = {
       annotationComposer: { width: 330, height: -1 },
       sendComposer: { width: 680, height: -1 }
     },
-    zoom: { explorer: 1, editor: 1, rightRail: 1, composer: 1 },
+    zoom: { explorer: 1, editor: 1, rightRail: 1, composer: 1, themePanel: 1 },
     theme: {
       active: { id: BUILT_IN_THEME_ID, name: BUILT_IN_THEME_NAME, builtIn: true, missing: false, path: null, sparse: { name: BUILT_IN_THEME_NAME }, values: { ...DEFAULT_THEME_VALUES }, problems: [] },
       available: [{ id: BUILT_IN_THEME_ID, name: BUILT_IN_THEME_NAME, builtIn: true, broken: false, missing: false, problems: [] }],
@@ -216,6 +216,9 @@ export function rendererThemeStyle(theme: ThemeView): CSSProperties {
   }
   for (const key of CONTRAST_KEYS) style[`--${key.replace('.', '-')}-text`] = contrastingText(String(value(key)))
   const selection = mixHex(String(value('controls.selected')), String(value('surfaces.panel')), 0.55)
+  style['--visuals-table-fill'] = value('visuals.table-style') === 'solid'
+    ? 'var(--visuals-table-background)'
+    : 'linear-gradient(145deg, var(--visuals-table-background), var(--visuals-table-background-end))'
   style['--selection-background'] = selection
   style['--selection-text'] = contrastingText(selection)
   return style as CSSProperties
@@ -225,10 +228,14 @@ function ambientStyle(value: unknown, fallback: AmbientStyle): AmbientStyle {
   return AMBIENT_STYLES.some((style) => style.id === value) ? (value as AmbientStyle) : fallback
 }
 
-export function ambientStyles(theme: ThemeView): { background: AmbientStyle; windows: AmbientStyle } {
+export function ambientStyles(theme: ThemeView): { background: AmbientStyle; windows: AmbientStyle; sideWindows: SideWindowStyle; sideWindowOpacity: number } {
+  const sideWindows = theme.active.values['effects.side-window-style']
+  const opacity = theme.active.values['effects.side-window-opacity']
   return {
     background: ambientStyle(theme.active.values['effects.background-style'], 'rising-motes'),
-    windows: ambientStyle(theme.active.values['effects.panel-style'], 'glow-orbs')
+    windows: ambientStyle(theme.active.values['effects.panel-style'], 'glow-orbs'),
+    sideWindows: SIDE_WINDOW_STYLES.some(style => style.id === sideWindows) ? sideWindows as SideWindowStyle : 'animation',
+    sideWindowOpacity: typeof opacity === 'number' && Number.isFinite(opacity) ? Math.max(0, Math.min(1, opacity)) : .55
   }
 }
 
@@ -240,6 +247,24 @@ export function clampThemePanel(geometry: ThemePanelGeometry, viewport: { width:
   const x = Math.round(Math.max(8, Math.min(viewport.width - width - 8, geometry.x < 0 ? defaultX : geometry.x)))
   const y = Math.round(Math.max(8, Math.min(viewport.height - height - 8, geometry.y < 0 ? defaultY : geometry.y)))
   return { x, y, width, height }
+}
+
+/** A box on screen in CSS pixels. */
+export interface ScreenBox { x: number; y: number; width: number; height: number }
+
+/**
+ * Whether one of Strata's overlays covers the page in the preview hole. A modal
+ * always does, since it blocks the whole window; any other open overlay does
+ * only when its box meets the hole. An overlay with no box (hidden, or not
+ * laid out) covers nothing, and nothing covers a missing or empty hole.
+ */
+export function overlayCoversPage(hole: ScreenBox | null, overlays: ReadonlyArray<{ box: ScreenBox; modal: boolean }>): boolean {
+  if (!hole || hole.width <= 0 || hole.height <= 0) return false
+  return overlays.some(({ box, modal }) => {
+    if (box.width <= 0 || box.height <= 0) return false
+    if (modal) return true
+    return box.x < hole.x + hole.width && box.x + box.width > hole.x && box.y < hole.y + hole.height && box.y + box.height > hole.y
+  })
 }
 
 export function clampPanelSize(key: NumericPanelKey, value: number): number {

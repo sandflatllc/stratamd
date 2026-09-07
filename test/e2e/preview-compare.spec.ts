@@ -217,7 +217,7 @@ test('a Then / now taken after an adjustment session shows no change until the c
     const sent = (await visualComments(page)).find((comment) => comment.status === 'sent')!
     // The requested appearance travelled as a reference beside the marked capture.
     const turn = engine.commands.find((command) => command.type === 'thread.turn.start')!.message as { attachments: Array<{ id: string }> }
-    expect(turn.attachments).toHaveLength(3)
+    expect(turn.attachments).toHaveLength(2)
     // Nothing changed in the code: the comparison shows the same picture twice.
     agentReplies(engine, sent.id, 1, 'Looking at it now.', true)
     await page.getByRole('region', { name: 'Preview review' }).getByRole('tab', { name: /^Items/ }).click()

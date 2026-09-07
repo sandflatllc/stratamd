@@ -10,25 +10,20 @@ const managedTag = /@managed/
 
 // Ordinary tests run in parallel at the test level, each worker on its own X
 // display (test/e2e/display.ts), so windows never steal focus from one
-// another. On the 16-core workstation six workers ran the suite in 1:45
-// against 2:06 at four with no test slower than 16 s (three runs each,
-// 2026-09-05); eight had pushed tests past their 30-second timeout on a
-// shared display in 2026-09-02. Public-repo CI runners have four cores. A Mac
-// has one desktop, one focus, and one clipboard, so it runs one worker in
-// total and the override does not apply. Concurrent full runs in separate
-// worktrees reproduced load timeouts on 2026-09-05, so the default became four;
-// the required eight-worker stress check remains an explicit override.
-// The stock-engine recovery check performs three runtime transitions. Four
-// concurrent UI workers pushed it past its 30-second budget in two full runs
-// on September 6; it finished in about 18 seconds after those workers ended.
-// Keep three ordinary workers beside the managed/clipboard slot.
+// another. Six ordinary workers on a Linux workstation is fixed; it is not a
+// default to tune. Load timeouts mean another suite run is sharing the box or
+// a test is defective, and the fix goes there (AGENTS.md). Public-repo CI
+// runners have four cores and run two. A Mac has one desktop, one focus, and
+// one clipboard, so it runs one worker in total. STRATAMD_E2E_WORKERS exists
+// for the eight-worker stress pass and for measurements, never as a way down.
 const macHost = process.platform === 'darwin'
+export const ORDINARY_WORKERS = 6
 function ordinaryWorkerCount(): number {
   if (macHost) return 1
   const override = process.env.STRATAMD_E2E_WORKERS
-  if (override === undefined || override === '') return process.env.CI ? 2 : 3
+  if (override === undefined || override === '') return process.env.CI ? 2 : ORDINARY_WORKERS
   if (!/^[1-9]\d*$/.test(override)) {
-    throw new Error(`STRATAMD_E2E_WORKERS must be a positive integer such as 4; got ${JSON.stringify(override)}`)
+    throw new Error(`STRATAMD_E2E_WORKERS must be a positive integer such as 8; got ${JSON.stringify(override)}`)
   }
   return Number(override)
 }

@@ -23,7 +23,7 @@ const view: AppView = {
       annotationComposer: { width: 330, height: -1 },
       sendComposer: { width: 680, height: -1 }
     },
-    zoom: { explorer: 1, editor: 1, rightRail: 1, composer: 1 },
+    zoom: { explorer: 1, editor: 1, rightRail: 1, composer: 1, themePanel: 1 },
     theme: {
       active: { id: 'strata-vivid', name: 'Strata Vivid', builtIn: true, missing: false, path: null, sparse: { name: 'Strata Vivid' }, values: {}, problems: [] },
       available: [],
@@ -140,7 +140,8 @@ function fakeApi(): StrataApi {
     forgetDocument: vi.fn(async () => undefined),
     updateSettings: vi.fn(async () => undefined),
     resolveLocalImage: vi.fn(async () => null),
-    resolveLocalMarkdown: vi.fn(async () => null)
+    resolveLocalMarkdown: vi.fn(async () => null),
+    resolveLocalLink: vi.fn(async () => ({ kind: 'html' as const, path: '/tmp/a.html', url: 'file:///tmp/a.html' }))
   }
 }
 

@@ -45,6 +45,7 @@ export interface ZoomSettings {
   readonly editor: number
   readonly rightRail: number
   readonly composer: number
+  readonly themePanel: number
 }
 
 export const ZOOM_MIN = 0.5
@@ -88,7 +89,7 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
     annotationComposer: Object.freeze({ width: 330, height: -1 }),
     sendComposer: Object.freeze({ width: 680, height: -1 }),
   }),
-  zoom: Object.freeze({ explorer: 1, editor: 1, rightRail: 1, composer: 1 }),
+  zoom: Object.freeze({ explorer: 1, editor: 1, rightRail: 1, composer: 1, themePanel: 1 }),
   engine: Object.freeze({ mode: 'managed', keepRunning: true, startAtLogin: false }),
   ambientMotion: true,
 })
@@ -189,8 +190,8 @@ export function normalizeSettings(value: unknown): Settings {
       themePanel: {
         x: numberInRange(themePanelValue.x, -1, -1, 20_000),
         y: numberInRange(themePanelValue.y, -1, -1, 20_000),
-        width: numberInRange(themePanelValue.width, 360, 300, 900),
-        height: numberInRange(themePanelValue.height, 560, 320, 1600),
+        width: numberInRange(themePanelValue.width, 360, 300, 20_000),
+        height: numberInRange(themePanelValue.height, 560, 320, 20_000),
       },
       annotationComposer: panelSize(panelValue.annotationComposer, DEFAULT_SETTINGS.panels.annotationComposer, 330, 900),
       sendComposer: panelSize(panelValue.sendComposer, DEFAULT_SETTINGS.panels.sendComposer, 460, 1600),
@@ -200,6 +201,7 @@ export function normalizeSettings(value: unknown): Settings {
       editor: normalizeZoom(zoomValue.editor),
       rightRail: normalizeZoom(zoomValue.rightRail),
       composer: normalizeZoom(zoomValue.composer),
+      themePanel: normalizeZoom(zoomValue.themePanel),
     },
     engine: { mode: isRecord(value.engine) && value.engine.mode === 'external' ? 'external' : 'managed', keepRunning: !isRecord(value.engine) || value.engine.keepRunning !== false, startAtLogin: isRecord(value.engine) && value.engine.startAtLogin === true, ...(isRecord(value.engine) && value.engine.lan === true ? { lan: true } : {}), ...(isRecord(value.engine) && value.engine.tailscale === true ? { tailscale: true } : {}), ...(isRecord(value.engine) && typeof value.engine.tailscalePort === 'number' ? { tailscalePort: Math.round(numberInRange(value.engine.tailscalePort, 443, 1, 65535)) } : {}) },
     ambientMotion: typeof value.ambientMotion === 'boolean'

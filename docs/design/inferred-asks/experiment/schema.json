@@ -1,0 +1,1 @@
+{"type":"object","properties":{"asks":{"type":"array","items":{"type":"object","properties":{"quote":{"type":"string"},"question":{"type":"string"}},"required":["quote","question"],"additionalProperties":false}}},"required":["asks"],"additionalProperties":false}

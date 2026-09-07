@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { dirname } from 'node:path'
-import { Scenario, switchToDocument } from './harness'
+import { openAppMenu, Scenario, switchToDocument } from './harness'
 import { seededScenario, startEngine, type FakeEngine } from './cockpit-engine-harness'
 import { startPreviewPage } from './preview-page'
 
@@ -139,6 +139,58 @@ test('a page keeps its state while a document is centered, and a Strata dialog h
     await expect(page.getByRole('dialog', { name: /Engine/ })).toBeHidden()
     await expect.poll(async () => (await engine.automation('t1', 'status', {}, { tabId })).result).toMatchObject({ visible: true })
     await expect.poll(focused).toBe(true)
+  } finally {
+    await scenario.dispose()
+    await site.close()
+    await engine.close()
+  }
+})
+
+test('a panel beside the page leaves it showing; dragged over the page it hides it, and closing it brings the page back', async ({}, testInfo) => {
+  test.setTimeout(45_000)
+  const engine = await startEngine({ previewAutomation: true, pendingRequests: false })
+  const site = await startPreviewPage()
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    // A wide left window, and the theme panel remembered over it, clear of the page.
+    await scenario.writeSettings({ panels: { explorerWidth: 480, themePanel: { x: 8, y: 120, width: 300, height: 320 } } })
+    const page = await scenario.launchEmpty()
+    await browserShared(page, engine)
+    const window = await openProjectPreview(page)
+    const tabId = await openAddress(page, window, `${site.origin}/`, 'Clients · Mesa Office')
+    const visible = async () => ((await engine.automation('t1', 'status', {}, { tabId })).result as { visible: boolean }).visible
+    await expect.poll(visible).toBe(true)
+
+    // Theme opens its sample document too; the web views menu brings the page back with the panel still open.
+    await openAppMenu(page)
+    await page.getByRole('menuitem', { name: 'Theme', exact: true }).click()
+    const panel = page.getByRole('dialog', { name: 'Theme' })
+    await expect(panel).toBeVisible()
+    await page.getByRole('button', { name: 'Web views menu' }).click()
+    await page.getByRole('menu', { name: 'Open web views' }).getByRole('menuitem', { name: /^Cockpit project · Clients · Mesa Office/ }).click()
+    await expect(window).toBeVisible()
+    const hole = (await page.locator('.preview-hole').boundingBox())!
+    const beside = (await panel.boundingBox())!
+    expect(beside.x + beside.width).toBeLessThan(hole.x)
+    await expect.poll(visible).toBe(true)
+
+    // Dragged onto the page, the panel would sit beneath the native view, so the page hides.
+    const grip = panel.locator('.theme-panel-grip')
+    const box = (await grip.boundingBox())!
+    const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    const to = { x: hole.x + hole.width / 2, y: hole.y + hole.height / 2 }
+    await grip.dispatchEvent('pointerdown', { pointerId: 1, isPrimary: true, clientX: from.x, clientY: from.y, button: 0 })
+    await page.evaluate(({ x, y }) => {
+      globalThis.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, isPrimary: true, clientX: x, clientY: y, bubbles: true }))
+      globalThis.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, isPrimary: true, clientX: x, clientY: y, bubbles: true }))
+    }, to)
+    await expect.poll(async () => Math.round((await panel.boundingBox())?.x ?? -1)).toBeGreaterThan(Math.round(hole.x))
+    await expect.poll(visible).toBe(false)
+
+    // Closing the panel brings the page back.
+    await panel.getByText('Close', { exact: true }).click()
+    await expect(panel).toHaveCount(0)
+    await expect.poll(visible).toBe(true)
   } finally {
     await scenario.dispose()
     await site.close()

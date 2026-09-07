@@ -64,7 +64,7 @@ describe('view sync protocol', () => {
 
     const settingsOnly = makeView({
       activeDocument: synced.view.activeDocument,
-      settings: { ...synced.view.settings, zoom: { explorer: 1, editor: 1.5, rightRail: 1, composer: 1 } },
+      settings: { ...synced.view.settings, zoom: { explorer: 1, editor: 1.5, rightRail: 1, composer: 1, themePanel: 1 } },
     })
     synced = roundTrip(synced, settingsOnly, 5)
   })

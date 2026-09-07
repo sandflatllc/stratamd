@@ -121,6 +121,7 @@ export const IPC = {
   resolveLocalImage: 'strata:resolve-local-image',
   resolveLocalMarkdown: 'strata:resolve-local-markdown',
   openExternal: 'strata:open-external',
+  resolveLocalLink: 'strata:resolve-local-link',
   flashWindow: 'strata:flash-window',
   createFile: 'strata:create-file',
   renameFile: 'strata:rename-file',

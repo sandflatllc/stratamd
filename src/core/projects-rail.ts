@@ -55,9 +55,10 @@ export function classifyProjectThread(thread: Pick<EngineThreadView, 'snoozedUnt
   return thread.lifecycle === 'settled' ? 'settled' : 'active'
 }
 
+/** Recent and Oldest order by the last hand-off (send or finished reply), never by mid-turn activity. */
 function compare(sort: ProjectThreadSort, a: EngineThreadView, b: EngineThreadView): number {
   if (sort === 'title') return a.title.localeCompare(b.title)
-  const delta = Date.parse(a.updatedAt) - Date.parse(b.updatedAt)
+  const delta = Date.parse(a.lastExchangeAt) - Date.parse(b.lastExchangeAt)
   return sort === 'oldest' ? delta : -delta
 }
 

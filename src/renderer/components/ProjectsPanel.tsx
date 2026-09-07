@@ -15,6 +15,8 @@ interface ProjectsPanelProps {
   onAddProject(input: { title: string; workspaceRoot: string }): void
   onAction(threadId: string, action: 'archive' | 'settle' | 'unsettle' | 'delete'): void
   onUpdate(threadId: string, change: EngineThreadChange): void
+  /** Copies a thread id through the main process; the renderer's own clipboard API is denied by the permission handler. */
+  onCopyThreadId(threadId: string): void
   onOpenEngine?(): void
   onOpenAccounts?(): void
   /** Opens the project's preview window (docs/plans/open/visual-review, phase 2). */
@@ -118,12 +120,12 @@ function ThreadRow({ thread, projectName, active, attached, nowMs, shelf, renami
     <ThreadIndicator thread={thread} state={state} />
     {renaming ? <RenameInput thread={thread} onUpdate={(_id, change) => onUpdate(change)} onDone={onDoneRenaming} /> : <button type="button" className="project-thread-open" aria-label={`Open ${thread.title}`} onClick={onOpen} onDoubleClick={(event) => { event.preventDefault(); onRename() }}><span className={thread.unread ? 'unread' : undefined}>{thread.title}</span></button>}
     <span className="project-thread-marks">{attached && <i className="attached-mark" aria-label="Attached" title="Attached">⌁</i>}{thread.pendingWork > 0 && <b aria-label={`${thread.pendingWork} pending work`}>{thread.pendingWork}</b>}</span>
-    <time dateTime={thread.updatedAt}>{relativeTime(thread.updatedAt, nowMs)}</time>
+    <time dateTime={thread.lastExchangeAt}>{relativeTime(thread.lastExchangeAt, nowMs)}</time>
     {shelf ? <button type="button" className="project-thread-restore" onClick={() => shelf === 'snoozed' ? onUpdate({ snoozedUntil: null }) : onAction('unsettle')}>Restore</button> : <button type="button" className="project-thread-settle" aria-label={`Settle ${thread.title}`} onClick={() => onAction('settle')}>✓</button>}
   </div>
 }
 
-function ThreadMenu({ thread, x, y, nowMs, onClose, onRename, onUpdate, onAction }: { thread: EngineThreadView; x: number; y: number; nowMs: number; onClose(): void; onRename(): void; onUpdate(change: EngineThreadChange): void; onAction(action: 'archive' | 'settle' | 'unsettle' | 'delete'): void }) {
+function ThreadMenu({ thread, x, y, nowMs, onClose, onRename, onUpdate, onAction, onCopyId }: { thread: EngineThreadView; x: number; y: number; nowMs: number; onClose(): void; onRename(): void; onUpdate(change: EngineThreadChange): void; onAction(action: 'archive' | 'settle' | 'unsettle' | 'delete'): void; onCopyId(): void }) {
   const run = (action: () => void) => { action(); onClose() }
   return <div className="project-thread-menu" role="menu" aria-label={`Actions for ${thread.title}`} style={{ left: x, top: y }} onMouseDown={(event) => event.stopPropagation()}>
     <button type="button" role="menuitem" onClick={() => run(() => onUpdate({ pinned: thread.pinnedAt === null }))}>{thread.pinnedAt ? 'Unpin' : 'Pin'}</button>
@@ -131,7 +133,7 @@ function ThreadMenu({ thread, x, y, nowMs, onClose, onRename, onUpdate, onAction
     {thread.lifecycle === 'snoozed' ? <button type="button" role="menuitem" onClick={() => run(() => onUpdate({ snoozedUntil: null }))}>Unsnooze</button> : <><span className="project-menu-label">Snooze</span>{([['hour', 'An hour'], ['tomorrow', 'Tomorrow'], ['week', 'Next week']] as const).map(([choice, label]) => <button type="button" role="menuitem" className="project-menu-nested" key={choice} onClick={() => run(() => onUpdate({ snoozedUntil: snoozeUntil(choice, nowMs) }))}>{label}</button>)}</>}
     <button type="button" role="menuitem" onClick={() => run(() => onAction(thread.lifecycle === 'settled' ? 'unsettle' : 'settle'))}>{thread.lifecycle === 'settled' ? 'Unsettle' : 'Settle'}</button>
     <button type="button" role="menuitem" onClick={() => run(() => onUpdate({ unread: true }))}>Mark unread</button>
-    <button type="button" role="menuitem" onClick={() => run(() => void navigator.clipboard.writeText(thread.id))}>Copy Thread ID</button>
+    <button type="button" role="menuitem" onClick={() => run(onCopyId)}>Copy Thread ID</button>
     <button type="button" role="menuitem" onClick={() => run(() => onAction('archive'))}>Archive</button>
     <button type="button" role="menuitem" className="destructive" onClick={() => run(() => onAction('delete'))}>Delete</button>
   </div>
@@ -147,7 +149,7 @@ function Shelf({ label, entries, activeThreadId, expanded, visibleCount, nowMs, 
   </section>
 }
 
-export function ProjectsPanel({ engine, query, onOpenThread, onBeginRename, onReconnect, onNewThread, onAddProject, onAction, onUpdate, onOpenEngine, onOpenPreview, attachedThreadIds = new Set(), now = Date.now }: ProjectsPanelProps) {
+export function ProjectsPanel({ engine, query, onOpenThread, onBeginRename, onReconnect, onNewThread, onAddProject, onAction, onUpdate, onCopyThreadId, onOpenEngine, onOpenPreview, attachedThreadIds = new Set(), now = Date.now }: ProjectsPanelProps) {
   const [sort, setSort] = useState<ProjectThreadSort>('recent')
   const [preferences, setPreferences] = useState<FolderPreferences>(readPreferences)
   const [order, setOrder] = useState<string[]>(readOrder)
@@ -260,6 +262,6 @@ export function ProjectsPanel({ engine, query, onOpenThread, onBeginRename, onRe
     </div>
     <Shelf label="Snoozed" entries={filtered.snoozed} activeThreadId={engine.activeThreadId} expanded={shelves.snoozed || Boolean(normalizedQuery)} visibleCount={shelfCounts.snoozed} nowMs={nowMs} renamingId={renamingId} attachedThreadIds={attachedThreadIds} onToggle={() => setShelves((value) => ({ ...value, snoozed: !value.snoozed }))} onMore={() => setShelfCounts((value) => ({ ...value, snoozed: value.snoozed + 5 }))} onRename={beginRename} onDoneRenaming={() => setRenamingId(null)} onOpenThread={onOpenThread} onMenu={openMenu} onUpdate={onUpdate} onAction={(id) => onAction(id, 'unsettle')} />
     <Shelf label="Settled" entries={filtered.settled} activeThreadId={engine.activeThreadId} expanded={shelves.settled || Boolean(normalizedQuery)} visibleCount={shelfCounts.settled} nowMs={nowMs} renamingId={renamingId} attachedThreadIds={attachedThreadIds} onToggle={() => setShelves((value) => ({ ...value, settled: !value.settled }))} onMore={() => setShelfCounts((value) => ({ ...value, settled: value.settled + 5 }))} onRename={beginRename} onDoneRenaming={() => setRenamingId(null)} onOpenThread={onOpenThread} onMenu={openMenu} onUpdate={onUpdate} onAction={(id) => onAction(id, 'unsettle')} />
-    {menu && <ThreadMenu thread={menu.thread} x={menu.x} y={menu.y} nowMs={nowMs} onClose={() => setMenu(null)} onRename={() => beginRename(menu.thread.id)} onUpdate={(change) => onUpdate(menu.thread.id, change)} onAction={(action) => onAction(menu.thread.id, action)} />}
+    {menu && <ThreadMenu thread={menu.thread} x={menu.x} y={menu.y} nowMs={nowMs} onClose={() => setMenu(null)} onRename={() => beginRename(menu.thread.id)} onUpdate={(change) => onUpdate(menu.thread.id, change)} onAction={(action) => onAction(menu.thread.id, action)} onCopyId={() => onCopyThreadId(menu.thread.id)} />}
   </div>
 }

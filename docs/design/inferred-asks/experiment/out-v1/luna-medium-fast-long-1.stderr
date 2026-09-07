@@ -1,0 +1,84 @@
+OpenAI Codex v0.153.4
+--------
+workdir: /home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment
+model: gpt-5.6-luna
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: medium
+reasoning summaries: none
+session id: 01a07a73-dd16-78c0-b251-2a48954a4af3
+--------
+user
+You are reading one reply written by a coding agent to the owner of a project. Find every place where the agent needs something from the owner before it can proceed: a question the owner must answer, a decision the owner must make, or a preference only the owner can state.
+
+Do not include rhetorical questions, questions the agent answers itself, section headings phrased as questions, questions quoted from the owner's earlier words, or anything inside code.
+
+Return JSON with one key, asks, an array. Each ask has:
+- quote: the exact verbatim text from the reply where the ask is made. Copy it character for character as one contiguous span of at most two sentences.
+- question: a short self-contained question of at most 20 words that the owner can answer without rereading the reply.
+- kind: "question" or "decision". Use decision when the agent lays out concrete alternatives.
+- options: short labels for the alternatives when kind is decision, otherwise an empty array.
+
+Return an empty asks array when the reply needs nothing from the owner.
+
+Reply:
+
+Here's where the subagent activity work landed after today's pass, and the places where I need your call before I go further.
+
+## What changed
+
+The Conversation panel now shows a collapsible activity strip under any agent message that spawned subagents. Each row is one subagent: its label, the tool it's currently in, elapsed time, and a status dot. Rows stream in as T3 reports them, so you see a subagent appear the moment it starts rather than when it finishes. When the parent turn completes, the strip collapses to a one-line summary with counts.
+
+The strip reads from the same turn events the trace already uses, so there's no new subscription and nothing new persisted. Reconnecting after an engine restart rebuilds the strip from the turn's event history, and I verified that with the disconnect test.
+
+I also fixed the bug you mentioned last week where the trace would jump to the top when a subagent finished. The cause was the list re-keying on completion order instead of start order. That's covered by a new unit test.
+
+## Why not a setting?
+
+You asked earlier, "why does the strip show at all when there's only one subagent?" I went back and forth on that. My reasoning for keeping it: a single subagent is the case where the owner is most likely to wonder what the agent is doing, because the main message goes quiet. Who wants a silent panel for forty seconds? So the strip shows for one or more. If that turns out to be noise in practice, it's a one-line threshold change.
+
+I did not add a preference for it. Every preference is a thing to test in both states, and the PRD says defaults should be right without a toggle. If you disagree, say so and I'll add it under Appearance.
+
+## Open items I can't settle alone
+
+The first is naming. T3 sends a subagent's label as whatever the provider chose, which for Codex is often a bare model name and for Claude is a short task description. Right now the strip shows the raw label. Do you want Strata to normalize these, for example always showing "Explore: search for tests" style labels, or should it show what the provider sent? Normalizing means guessing at provider conventions, and those change with every release.
+
+The second is where the strip lives once the turn is done. At the moment it stays under the message, collapsed. The alternative is moving finished activity into the Trace drawer so the conversation stays clean. I lean toward keeping it under the message, since that's where you'd look when reading the reply later, but this is the kind of thing you have stronger instincts on than I do. Tell me which you'd rather see and I'll do that one.
+
+The third is a limit. A turn that fans out twenty subagents produces a twenty-row strip. I capped it at eight visible rows with a "and 12 more" line, and the drawer shows all of them. Is eight the right number, or would you rather it show everything and scroll?
+
+## Things I'd like to confirm
+
+- I'm treating a subagent that errors as finished, with a red dot, and not surfacing its error text in the strip. The error is in the trace. Is that enough, or do you want the error inline?
+- The elapsed timer stops when T3 reports completion, not when the parent turn ends. That means a subagent that finished early keeps showing its own short time. I think that's correct.
+- The strip doesn't show token usage per subagent. T3 does report it, so it's available. I left it out because the usage panel already totals it and per-row numbers made the strip busy. I can add it back if it's useful to you.
+
+## The status dot
+
+The dot colors come from the theme's status tokens, so custom themes get them for free. The states are running, done, error, and interrupted. Interrupted uses the same warning color as a stopped turn.
+
+One thing I want to flag rather than ask about. The theme test that checks every token is used will now fail for any bundled theme that doesn't define the status tokens. Two of the bundled themes were missing them, so I added the tokens with reasonable values. You may want to look at those two themes and pick better colors, but nothing is blocked on it.
+
+## Implementation notes
+
+The strip is a new component that takes the turn's subagent events and renders rows. It doesn't touch the message renderer. The collapse state is per message and lives in renderer state only, so it resets on reload. Persisting it seemed like more than the feature deserved.
+
+There's a small helper that groups events by subagent id and derives the current tool and elapsed time. The tricky part was handling events that arrive out of order after a reconnect, which happens because T3 replays history in storage order rather than time order. The helper sorts by timestamp before deriving. Why does T3 do that? Because its event log is append-only per thread and a reconnect replays from the persisted cursor, so ordering is whatever the write order was.
+
+```ts
+// Is this the parent turn? If so, skip it; the strip only shows children.
+const rows = events.filter(event => event.parentId !== null)
+```
+
+## What's next
+
+Once you've answered the naming and placement questions I'll finish the e2e test, which currently only covers the streaming case. Then I'll update the PRD conformance table for the new scenario.
+
+Let me know if you'd rather I hold this until the link-opening change lands, since both touch the Conversation panel and there's a small merge risk in the message component.
+
+2026-09-07T06:00:09.457797Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when AuthRequired(AuthRequiredError { www_authenticate_header: "Bearer realm=\"A1 Gallery MCP\" resource_metadata=\"https://www.a1.gallery/.well-known/oauth-protected-resource\"" })
+codex
+{"asks":[{"quote":"If you disagree, say so and I'll add it under Appearance.","question":"Should the activity strip have an Appearance preference?","kind":"decision","options":["Keep no preference","Add Appearance toggle"]},{"quote":"Do you want Strata to normalize these, for example always showing \"Explore: search for tests\" style labels, or should it show what the provider sent?","question":"Should Strata normalize subagent labels or display provider-supplied labels?","kind":"decision","options":["Normalize labels","Show provider labels"]},{"quote":"Tell me which you'd rather see and I'll do that one.","question":"Should finished activity stay under messages or move into the Trace drawer?","kind":"decision","options":["Keep under message","Move to Trace drawer"]},{"quote":"Is eight the right number, or would you rather it show everything and scroll?","question":"Should the strip show eight rows or all rows with scrolling?","kind":"decision","options":["Eight visible rows","Show all with scrolling"]},{"quote":"I'm treating a subagent that errors as finished, with a red dot, and not surfacing its error text in the strip. The error is in the trace. Is that enough, or do you want the error inline?","question":"Should subagent errors remain only in Trace or appear inline in the activity strip?","kind":"decision","options":["Trace only","Show inline"]},{"quote":"The elapsed timer stops when T3 reports completion, not when the parent turn ends. That means a subagent that finished early keeps showing its own short time. I think that's correct.","question":"Should elapsed timers stop at each subagent's completion?","kind":"question","options":[]},{"quote":"The strip doesn't show token usage per subagent. T3 does report it, so it's available. I left it out because the usage panel already totals it and per-row numbers made the strip busy. I can add it back if it's useful to you.","question":"Should each subagent row include token usage?","kind":"decision","options":["Leave out","Show per-row usage"]},{"quote":"Let me know if you'd rather I hold this until the link-opening change lands, since both touch the Conversation panel and there's a small merge risk in the message component.","question":"Should this work wait until the link-opening change lands?","kind":"decision","options":["Continue now","Hold until link change"]}]}
+tokens used
+2,519

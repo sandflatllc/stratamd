@@ -96,6 +96,7 @@ const api: StrataApi & { openDroppedFiles(files: File[]): Promise<void>; viewSyn
   updateEngineThread: (threadId, change) => invoke<void>(IPC.updateEngineThread, threadId, change),
   setTerminalDefault: (driver, selection) => invoke<void>(IPC.setTerminalDefault, driver, selection),
   openExternal: (url) => invoke<void>(IPC.openExternal, url),
+  resolveLocalLink: input => invoke(IPC.resolveLocalLink, input),
   readEngineUsage: window => invoke(IPC.readEngineUsage, window),
   engineRecovery: request => invoke(IPC.engineRecovery, request),
   computer: request => invoke(IPC.computer, request),

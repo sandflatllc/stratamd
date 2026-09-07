@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom'
 import { readDraft } from '../conversationDrafts'
+import { InlineMarkdown } from '../inlineMarkdown'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { claimEscape, isEscapeClaimed } from '../escape'
 import type { ConversationInput, DraftKind, EngineThreadView, HeadingReference, VisualCommentView } from '../../shared/contracts'
@@ -84,6 +85,7 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   useEffect(() => {
     const dismissOutside = (event: PointerEvent) => {
       if (!discussionState.current.open || discussionState.current.editing || discussionRoot.current?.contains(event.target as Node)) return
+      if (event.target instanceof Element && event.target.closest('.web-link-picker')) return
       setDiscussion(null)
     }
     const dismissKey = (event: KeyboardEvent) => {
@@ -157,8 +159,8 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   const ownerComment = activeComment && isOwnerComment(activeComment)
   const discussionView = activeComment ? createPortal(<section ref={discussionRoot} style={recordPosition} className="conversation-discussion" role="dialog" aria-label={ownerComment ? 'Saved comment' : 'Passage discussion'}>
     <header><small>{ownerComment ? activeComment.state === 'held' ? 'Held comment' : activeComment.state === 'pending' ? 'Sending comment' : 'Sent comment' : 'Agent item'}</small><button type="button" className="popover-close" aria-label="Close comment" onClick={() => setDiscussion(null)}>×</button></header>
-    <blockquote>{activeComment.selection}</blockquote><p>{activeComment.text}</p>
-    {activeComment.replies.length > 0 && <details><summary>Earlier replies</summary>{activeComment.replies.map((reply, index) => <p key={index}><strong>{reply.author === 'agent' ? 'Agent' : 'You'}</strong> {reply.text}</p>)}</details>}
+    <blockquote>{activeComment.selection}</blockquote><p><InlineMarkdown text={activeComment.text} links /></p>
+    {activeComment.replies.length > 0 && <details><summary>Earlier replies</summary>{activeComment.replies.map((reply, index) => <p key={index}><strong>{reply.author === 'agent' ? 'Agent' : 'You'}</strong> <InlineMarkdown text={reply.text} links /></p>)}</details>}
     {!resolveMessageAnchor(activeComment, thread?.messages.find(message => message.id === activeComment.anchor.message)) && <p>Original passage unavailable</p>}
     <button type="button" onClick={() => open(activeComment.id)}>Jump to passage</button>
     {!ownerComment && <button type="button" onClick={() => focusReply(activeComment.id)}>Answer</button>}

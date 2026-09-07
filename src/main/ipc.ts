@@ -1,3 +1,4 @@
+import { isLocalPage } from './local-link'
 import { recoveryRequest } from '../shared/engine-recovery'
 import { computerRequest } from '../shared/computer'
 import { providerSetupRequest } from '../shared/provider-setup'
@@ -180,7 +181,8 @@ const settingsSchema = z.object({
     explorer: z.number().positive().finite(),
     editor: z.number().positive().finite(),
     rightRail: z.number().positive().finite(),
-    composer: z.number().positive().finite()
+    composer: z.number().positive().finite(),
+    themePanel: z.number().positive().finite().optional()
   }).strict().optional()
 }).strict()
 
@@ -341,6 +343,7 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.resolveLocalImage]: z.tuple([pathSchema, z.string().min(1).max(16_384)]),
   [IPC.resolveLocalMarkdown]: z.tuple([pathSchema, z.string().min(1).max(16_384)]),
   [IPC.openExternal]: z.tuple([z.string().url().max(16_384)]),
+  [IPC.resolveLocalLink]: z.tuple([z.object({ projectId: idSchema.nullable(), href: z.string().min(1).max(16_384) }).strict()]),
   [IPC.addDictionaryWord]: z.tuple([z.string().min(1).max(512)]),
   [IPC.flashWindow]: z.tuple([]),
   [IPC.createFile]: z.tuple([pathSchema, z.string().min(1).max(255).optional()]),
@@ -544,6 +547,7 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.resolveLocalImage]: (documentPath: string, source: string) => options.api.resolveLocalImage(documentPath, source),
     [IPC.resolveLocalMarkdown]: (documentPath: string, source: string) => options.api.resolveLocalMarkdown(documentPath, source),
     [IPC.openExternal]: (url: string) => openExternal(url),
+    [IPC.resolveLocalLink]: (input: { projectId: string | null; href: string }) => options.api.resolveLocalLink(input),
     [IPC.addDictionaryWord]: (word: string) => { options.renderer.session.addWordToSpellCheckerDictionary(word) },
     [IPC.flashWindow]: () => flashWindow(),
     [IPC.createFile]: async (directory: string, name?: string) => {
@@ -634,7 +638,8 @@ export function isAllowedExternalUrl(url: string): boolean {
 }
 
 export async function openExternalUrl(url: string): Promise<void> {
-  if (!isAllowedExternalUrl(url)) throw new Error('Only http, https, and mailto links can be opened externally')
+  // A local page from a reply opens in the default browser too, once main has seen the file.
+  if (!isAllowedExternalUrl(url) && !(await isLocalPage(url))) throw new Error('Only http, https, mailto, and local .html links can be opened externally')
   // Imported lazily: this module also loads under vitest, where the electron
   // runtime is unavailable and tests inject their own openExternal.
   const { shell } = await import('electron')

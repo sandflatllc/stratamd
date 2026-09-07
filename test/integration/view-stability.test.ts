@@ -29,7 +29,7 @@ describe('published view stability', () => {
     const { app, path, store } = await fixture()
     const first = await app.getState()
 
-    await app.updateSettings({ zoom: { explorer: 1, editor: 1.2, rightRail: 1, composer: 1 } })
+    await app.updateSettings({ zoom: { explorer: 1, editor: 1.2, rightRail: 1, composer: 1, themePanel: 1 } })
     const afterSettings = await app.getState()
     expect(afterSettings.settings.zoom.editor).toBe(1.2)
     expect(afterSettings.settings).not.toBe(first.settings)

@@ -13,12 +13,14 @@ export interface InlineSegment {
   code: boolean
   strike: boolean
   link: boolean
+  href?: string
 }
 
 interface InlineNode {
   type: string
   value?: string
   alt?: string | null
+  url?: string
   children?: InlineNode[]
 }
 
@@ -28,6 +30,7 @@ interface Marks {
   code: boolean
   strike: boolean
   link: boolean
+  href?: string
 }
 
 const PLAIN: Marks = { bold: false, italic: false, code: false, strike: false, link: false }
@@ -51,6 +54,8 @@ function collect(nodes: readonly InlineNode[], marks: Marks, out: InlineSegment[
         collect(node.children ?? [], { ...marks, strike: true }, out)
         break
       case 'link':
+        collect(node.children ?? [], { ...marks, link: true, ...(node.url && /^https?:\/\//i.test(node.url) ? { href: node.url } : {}) }, out)
+        break
       case 'linkReference':
         collect(node.children ?? [], { ...marks, link: true }, out)
         break
@@ -85,7 +90,7 @@ export function inlineSegments(markdown: string): InlineSegment[] {
   return out.filter((segment) => segment.text.length > 0)
 }
 
-export function InlineMarkdown({ text }: { text: string }) {
+export function InlineMarkdown({ text, links = false }: { text: string; links?: boolean }) {
   return (
     <>
       {inlineSegments(text).map((segment, index) => {
@@ -94,7 +99,7 @@ export function InlineMarkdown({ text }: { text: string }) {
         if (segment.bold) node = <strong>{node}</strong>
         if (segment.italic) node = <em>{node}</em>
         if (segment.strike) node = <s>{node}</s>
-        if (segment.link) node = <u>{node}</u>
+        if (segment.link) node = links && segment.href ? <a href={segment.href}>{node}</a> : <u>{node}</u>
         return <span key={index}>{node}</span>
       })}
     </>

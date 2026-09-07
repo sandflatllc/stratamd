@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Strata · Transcript edges</title>
+<link rel="stylesheet" href="style.css">
+<body>
+<header><div><span class="eyebrow">STRATA / VISUAL STUDY</span><h1>Where the transcript meets the sky</h1></div><button id="motion" aria-pressed="false">Pause sky</button></header>
+<nav aria-label="Edge treatments" id="presets"></nav>
+<section class="toolbar" aria-label="Adjust treatment">
+  <label>Edge width <input id="width" type="range" min="2" max="40" value="8"><output id="width-value">8 px</output></label>
+  <label>Strength <input id="strength" type="range" min="0" max="100" value="55"><output id="strength-value">55%</output></label>
+  <label>View <select id="view"><option value="full">Full screenshot</option><option value="bottom">Bottom edge · 2×</option><option value="left">Left corner · 2×</option><option value="right">Right corner · 2×</option></select></label>
+  <button id="compare" aria-pressed="false">Compare with hard edge</button>
+</section>
+<main>
+  <div class="viewport" id="viewport"><div class="scene" id="scene">
+    <canvas id="sky" aria-label="Strata's nebula background"></canvas>
+    <div class="panel-shell"><div class="glass"></div><div class="panel"></div><div class="rim"></div></div>
+    <div class="composer-tab"></div><div class="composer"></div><div class="checkout"></div>
+  </div><span class="badge" id="badge">Narrow feather</span><div id="loading">Loading Strata's nebula…</div></div>
+  <footer><div><h2 id="title">Narrow feather</h2><p id="description"></p></div><p class="note">Your screenshot's transcript and composer over Strata's live nebula. Edge widths are measured at the original screenshot size. The sky's framing differs from the capture.</p></footer>
+</main>
+<script type="module" src="mockup.js"></script>
+</body>
+</html>

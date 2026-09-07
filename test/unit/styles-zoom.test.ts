@@ -33,7 +33,7 @@ function definedVariables(): Set<string> {
 }
 
 /** Rules in the pane-scoped cockpit families: the left window, the center conversation, the right rail's Documents. */
-const SCOPED = /^\s*(?:\.(?:conversation|turn-|project|engine-empty|thread-picker|rail-tab|folder-row|file-row|panel-heading))/
+const SCOPED = /^\s*(?:\.(?:theme-|conversation|turn-|project|engine-empty|thread-picker|rail-tab|folder-row|file-row|panel-heading))/
 
 function rules(): Array<{ selector: string; body: string; line: number }> {
   const out: Array<{ selector: string; body: string; line: number }> = []

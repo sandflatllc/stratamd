@@ -13,6 +13,11 @@ export class ConversationHistory extends Component<Props, Record<string, never>,
   private lastScrollTop = 0
   private remember = () => { this.position = this.capturePosition(); this.lastScrollTop = this.viewport.current!.scrollTop }
 
+  isAtBottom = () => {
+    const viewport = this.viewport.current
+    return Boolean(viewport && viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= 24)
+  }
+
   scrollToBottom = () => {
     this.spacer.current!.style.height = '0px'
     this.viewport.current!.scrollTop = this.viewport.current!.scrollHeight

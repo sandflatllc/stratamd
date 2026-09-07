@@ -31,10 +31,12 @@ Levels three through six are "Smaller headings". Below is level four:
 
 > A block quote. Its text and the bar on its left use **Quotes and list markers**.
 
-| Tables | use Borders and rules for lines |
+| Tables | use Table borders and row lines under Charts and data |
 |---|---|
-| Header cells | sit on the Inset and hover background with Table heading text |
-| Body cells | use Paragraph text |
+| Header cells | sit on Column header background with Table heading text |
+| Body cells | use Paragraph text over Table background color 1, or a gradient to Table background color 2 |
+| Table toolbar | uses Table toolbar background |
+| Hovered rows | use Row hover background |
 
 \`\`\`
 A code block. The text is Code text, the box is the Code and preview
@@ -47,5 +49,5 @@ The line below is a horizontal rule, drawn in Borders and rules.
 
 Timestamps in the panels use **Fine print and timestamps**; panel headings use **Titles and active labels**; dialog paragraphs and change rows use **Interface body text**; file rows and quiet controls use **Secondary interface text**.
 
-What you cannot see here: the panels around this document use the **Panel background** on the **Window background**; hovered rows and chips use the **Inset and hover background**; what you type into goes on the **Text field background**; the menu that appears when you select text uses the **Popover and toast background**. Conversation messages use **User message background** and tool calls use **Tool call background**. Your annotations are **Your changes** and each attached agent has its own color. The glows and motes behind everything come from the five effect colors in Decoration and motion.
+What you cannot see here: the panels around this document use the **Panel background** on the **Window background**; hovered rows and chips use the **Inset and hover background**; what you type into goes on the **Text field background**; the menu that appears when you select text uses the **Popover and toast background**. **Transcript layout** selects an opaque panel or an open conversation. The panel uses **Transcript background** and **Transcript border**. **Transcript shadow** adds an optional drop shadow in **Transcript shadow color**. Conversation messages use **User message background** and tool calls use **Tool call background**. Your annotations are **Your changes** and each attached agent has its own color. The glows and motes behind everything come from the five effect colors in Decoration and motion. **Side windows** gives all side windows animation, animation behind glass, or a solid background. **Side-window glass opacity** adjusts the glass from clear to solid without changing the center window.
 `

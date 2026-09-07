@@ -109,6 +109,7 @@ export function pageName(url: string, title: string): string {
   if (clean) return clean
   try {
     const parsed = new URL(url)
+    if (parsed.protocol === 'file:') return decodeURIComponent(parsed.pathname.split('/').pop() ?? '') || parsed.pathname
     const path = parsed.pathname === '/' ? '' : parsed.pathname
     return `${parsed.host}${path}` || 'New tab'
   } catch { return url || 'New tab' }

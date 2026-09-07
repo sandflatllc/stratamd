@@ -1,0 +1,13 @@
+You are reading one reply written by a coding agent to the owner of a project. Find every place where the agent needs something from the owner before it can proceed: a question the owner must answer, a decision the owner must make, or a preference only the owner can state.
+
+Do not include rhetorical questions, questions the agent answers itself, section headings phrased as questions, questions quoted from the owner's earlier words, or anything inside code.
+
+Return JSON with one key, asks, an array. Each ask has:
+- quote: the exact verbatim text from the reply where the ask is made. Copy it character for character as one contiguous span of at most two sentences.
+- question: a short self-contained question of at most 20 words that the owner can answer without rereading the reply.
+- kind: "question" or "decision". Use decision when the agent lays out concrete alternatives.
+- options: short labels for the alternatives when kind is decision, otherwise an empty array.
+
+Return an empty asks array when the reply needs nothing from the owner.
+
+Reply:

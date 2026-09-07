@@ -28,6 +28,8 @@ describe('theme tokens', () => {
       // The vendored terminal renders ANSI colors and converts supplied theme RGB
       // values to canvas colors. TerminalDrawer supplies base and selection colors.
       if (path.startsWith('src/renderer/terminal/ghostty/')) continue
+      // Exported comment sheets keep fixed high-contrast ink/paper independently of the app theme.
+      if (path === 'src/shared/visual-comment-sheet.ts') continue
       if (path.endsWith('styles.css') || path.endsWith('theme-keys.ts') || path.endsWith('bundled-themes.ts')) continue
       const text = readFileSync(path, 'utf8')
       for (const line of text.split('\n')) if (LITERAL.test(line) && !line.includes('THEME_KEYS') && !/^\s*\/\//.test(line)) offenders.push(`${path}: ${line.trim().slice(0, 100)}`)

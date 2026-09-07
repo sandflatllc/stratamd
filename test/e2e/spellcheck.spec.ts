@@ -109,6 +109,9 @@ test('right-click corrects a misspelling through the annotate menu and learns ne
 
     // A section highlight never grows the column, even over that misspelling.
     await selectVisualEditorRange(page, 'beta', 'delta')
+    // The DOM selection must reach the editor and mount its menu before a
+    // native right-click can decide whether to retain it or select one word.
+    await expect(menu).toBeVisible()
     const inSelection = await wordPoint(page, 'occured')
     await page.mouse.click(inSelection.x, inSelection.y, { button: 'right' })
     await expect(menu).toBeVisible()

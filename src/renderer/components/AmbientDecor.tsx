@@ -1,9 +1,10 @@
 import { createContext, useContext, type CSSProperties } from 'react'
-import type { AmbientStyle } from '../../shared/theme-keys'
+import type { AmbientStyle, SideWindowStyle } from '../../shared/theme-keys'
+import { ClusteredSky } from './ClusteredSky'
 
 // The ambient animation system from docs/design/animations-handoff.md.
 // Two independent layers, page scale (behind the whole app) and card scale (inside
-// each island), each one of eight styles. Every element, placement, size, opacity,
+// each island), each selecting a theme-owned style. Every element, placement, size, opacity,
 // duration, and delay below is the handoff's; colors come from the theme's five
 // `effects` slots so a theme recolors the animation without owning any of its
 // geometry. Only transform, opacity, and background-position animate; blurs are
@@ -93,7 +94,8 @@ const wash = (): AmbientElement => ({
 
 // ---- Page scale, per the handoff's "Variants — background scale".
 
-const PAGE: Record<AmbientStyle, () => AmbientElement[]> = {
+type ElementStyle = Exclude<AmbientStyle, 'dense-stars' | 'stars-and-smoke'>
+const PAGE: Record<ElementStyle, () => AmbientElement[]> = {
   'rising-motes': () => [
     wash(),
     dot(9, 'tertiary', 0.4, { bottom: -20, left: 9 }, 'ambient-rise', 26),
@@ -194,7 +196,7 @@ const CARD_GLOW_ORBS: Record<AmbientIsland, AmbientElement[]> = {
   ]
 }
 
-const CARD: Record<AmbientStyle, (island: AmbientIsland) => AmbientElement[]> = {
+const CARD: Record<ElementStyle, (island: AmbientIsland) => AmbientElement[]> = {
   'rising-motes': (island) => {
     const { duration, delay } = stagger(island)
     return [
@@ -260,15 +262,18 @@ const CARD: Record<AmbientStyle, (island: AmbientIsland) => AmbientElement[]> = 
 
 /** The handoff's `renderAmbient(style, scale)`: the element tree for one layer. */
 export function renderAmbient(style: AmbientStyle, scale: AmbientScale, island: AmbientIsland = 'editor'): AmbientElement[] {
+  if (style === 'dense-stars' || style === 'stars-and-smoke') return []
   return scale === 'page' ? PAGE[style]() : CARD[style](island)
 }
 
 export interface AmbientChoice {
   readonly background: AmbientStyle
   readonly windows: AmbientStyle
+  readonly sideWindows: SideWindowStyle
+  readonly sideWindowOpacity: number
 }
 
-export const AmbientContext = createContext<AmbientChoice>({ background: 'rising-motes', windows: 'glow-orbs' })
+export const AmbientContext = createContext<AmbientChoice>({ background: 'rising-motes', windows: 'glow-orbs', sideWindows: 'animation', sideWindowOpacity: .55 })
 
 function Layer({ elements, className }: { elements: AmbientElement[]; className: string }) {
   return (
@@ -285,11 +290,23 @@ function Layer({ elements, className }: { elements: AmbientElement[]; className:
 /** The page-scale layer, directly inside the app shell behind all content. */
 export function AmbientBackground() {
   const { background } = useContext(AmbientContext)
-  return <Layer className={`ambient-page ambient-page-${background}`} elements={renderAmbient(background, 'page')} />
+  const className = `ambient-page ambient-page-${background}`
+  if (background === 'dense-stars' || background === 'stars-and-smoke') return <ClusteredSky className={className} smoke={background === 'stars-and-smoke'} />
+  return <Layer className={className} elements={renderAmbient(background, 'page')} />
 }
 
 /** The card-scale layer inside one island. */
 export function AmbientDecor({ variant }: { variant: AmbientIsland }) {
-  const { windows } = useContext(AmbientContext)
-  return <Layer className={`ambient-layer ambient-layer-${variant} ambient-layer-${windows}`} elements={renderAmbient(windows, 'card', variant)} />
+  const { windows, sideWindows, sideWindowOpacity } = useContext(AmbientContext)
+  const className = `ambient-layer ambient-layer-${variant} ambient-layer-${windows}`
+  const layer = windows === 'dense-stars' || windows === 'stars-and-smoke'
+    ? <ClusteredSky className={className} smoke={windows === 'stars-and-smoke'} />
+    : <Layer className={className} elements={renderAmbient(windows, 'card', variant)} />
+  if (variant === 'editor') return layer
+  // A solid side window has no animation mounted, including fully opaque glass.
+  const covered = sideWindows === 'background' || (sideWindows === 'glass' && sideWindowOpacity >= 1)
+  return <>
+    {!covered && layer}
+    <div className="ambient-side-treatment" data-style={sideWindows} data-solid={covered} aria-hidden="true" />
+  </>
 }

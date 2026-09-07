@@ -1,3 +1,4 @@
+import { isLocalPage, isLocalPageSync } from '../local-link'
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -289,8 +290,8 @@ export class PreviewHost {
       runtime.console.push({ level: typeof level === 'number' ? (['verbose', 'info', 'warning', 'error'][level] ?? 'info') : String(level ?? 'info'), text: details.message.slice(0, 2_000), timestamp: new Date(this.#now()).toISOString() })
       if (runtime.console.length > 200) runtime.console.splice(0, runtime.console.length - 200)
     })
-    // Only http and https pages; anything else the page tries to reach is refused.
-    contents.on('will-navigate', (event, url) => { if (!/^https?:/i.test(url)) event.preventDefault() })
+    // Http and https pages, and local .html files a reply linked; anything else the page tries to reach is refused.
+    contents.on('will-navigate', (event, url) => { if (!allowedGuestUrl(url)) event.preventDefault() })
     contents.setWindowOpenHandler((details) => {
       const disposition = guestWindowDisposition(details)
       const tab = this.#model.get(id)
@@ -321,8 +322,8 @@ export class PreviewHost {
     runtime.popups.add(popup)
     popup.once('closed', () => runtime.popups.delete(popup))
     const contents = popup.webContents
-    contents.on('will-navigate', (event, url) => { if (!/^https?:/i.test(url)) event.preventDefault() })
-    contents.on('will-redirect', (event, url) => { if (!/^https?:/i.test(url)) event.preventDefault() })
+    contents.on('will-navigate', (event, url) => { if (!allowedGuestUrl(url)) event.preventDefault() })
+    contents.on('will-redirect', (event, url) => { if (!allowedGuestUrl(url)) event.preventDefault() })
     contents.setWindowOpenHandler(details => guestWindowDisposition(details) === 'deny' ? { action: 'deny' } : { action: 'allow', overrideBrowserWindowOptions: { parent: popup, webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true } } })
     contents.on('did-create-window', child => this.#wirePopup(child, runtime))
     contents.on('before-input-event', () => { reportPreviewOwnerInput(); this.#options.ownerActivity?.() })
@@ -347,12 +348,7 @@ export class PreviewHost {
   async openOwnerTab(input: { projectId: string; url?: string }): Promise<string> {
     const project = this.#options.resolveProject(input.projectId)
     if (!project) throw new Error(`Project was not found: ${input.projectId}`)
-    let url = ''
-    if (input.url) {
-      const resolved = resolvePreviewAddress(input.url)
-      if ('error' in resolved) throw new Error(resolved.error)
-      url = resolved.url
-    }
+    const url = input.url ? await resolveOpenableAddress(input.url) : ''
     const tab = this.#create({ projectId: input.projectId, workingFolder: project.workspaceRoot, kind: 'owner', threadId: null, url })
     if (url) void this.#runtimes.get(tab.id)!.view.webContents.loadURL(url).catch(() => undefined)
     this.#schedulePersist()
@@ -375,11 +371,10 @@ export class PreviewHost {
     if (!runtime || !tab) throw new Error('That tab is closed')
     const contents = runtime.view.webContents
     if ('url' in navigation) {
-      const resolved = resolvePreviewAddress(navigation.url)
-      if ('error' in resolved) throw new Error(resolved.error)
-      this.#model.update(id, { url: resolved.url, openedUrl: tab.url ? tab.openedUrl : resolved.url, error: null })
+      const url = await resolveOpenableAddress(navigation.url)
+      this.#model.update(id, { url, openedUrl: tab.url ? tab.openedUrl : url, error: null })
       this.#publish()
-      await contents.loadURL(resolved.url).catch((error: unknown) => { if (!/ERR_ABORTED/.test(String(error))) throw error })
+      await contents.loadURL(url).catch((error: unknown) => { if (!/ERR_ABORTED/.test(String(error))) throw error })
       return
     }
     if (navigation.action === 'back' && contents.navigationHistory.canGoBack()) contents.navigationHistory.goBack()
@@ -557,7 +552,7 @@ export class PreviewHost {
     const contents = view.webContents
     contents.setBackgroundThrottling(false)
     contents.setWindowOpenHandler(() => ({ action: 'deny' }))
-    contents.on('will-navigate', (event, url) => { if (!/^https?:/i.test(url)) event.preventDefault() })
+    contents.on('will-navigate', (event, url) => { if (!allowedGuestUrl(url)) event.preventDefault() })
     try {
       this.#attachHidden(view)
       view.setBounds({ x: 0, y: 0, width: input.viewport.width, height: input.viewport.height })
@@ -906,4 +901,20 @@ export class PreviewHost {
     const tab = this.#model.get(tabId)
     return tab ? pageName(tab.url, tab.title) : 'a closed tab'
   }
+}
+
+/** Web pages and existing local .html files are the only addresses a preview tab loads. */
+function allowedGuestUrl(url: string): boolean {
+  return /^https?:/i.test(url) || isLocalPageSync(url)
+}
+
+async function resolveOpenableAddress(input: string): Promise<string> {
+  const raw = input.trim()
+  if (/^file:/i.test(raw)) {
+    if (await isLocalPage(raw)) return raw
+    throw new Error(`${raw} is not a .html file on this computer, so the preview cannot show it`)
+  }
+  const resolved = resolvePreviewAddress(raw)
+  if ('error' in resolved) throw new Error(resolved.error)
+  return resolved.url
 }

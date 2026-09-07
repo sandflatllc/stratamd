@@ -416,6 +416,26 @@ test('cockpit parity: Projects renders folders, shelves, hover Settle, and the T
   }
 })
 
+test('Copy Thread ID puts the thread id on the system clipboard', { tag: '@clipboard' }, async ({}, testInfo) => {
+  const engine = await startEngine({ projectsParity: true })
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    const page = await scenario.launch()
+    await scenario.app!.evaluate(({ clipboard }) => clipboard.writeText('sentinel'))
+    await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
+    const projects = page.locator('.projects-panel')
+    await projects.getByRole('button', { name: 'Open Live engine thread' }).click({ button: 'right' })
+    const menu = page.getByRole('menu', { name: 'Actions for Live engine thread' })
+    await menu.getByRole('menuitem', { name: 'Copy Thread ID' }).click()
+    await expect(menu).toBeHidden()
+    await expect.poll(() => scenario.app!.evaluate(({ clipboard }) => clipboard.readText())).toBe('t1')
+    await expect(page.getByRole('status')).toContainText('Thread ID copied.')
+  } finally {
+    await scenario.dispose()
+    await engine.close()
+  }
+})
+
 test('conversation zoom: the side conversation follows the left window and the center conversation follows the editor, and messages render as blocks', async ({}, testInfo) => {
   const engine = await startEngine()
   const scenario = await seededScenario(testInfo, engine.origin)

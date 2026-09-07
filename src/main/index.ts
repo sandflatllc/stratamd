@@ -1,3 +1,4 @@
+import { isAppRootNavigation } from './local-link'
 import { assertSupportedPlatform } from '../platform/runtime'
 import { createLoginRegistration } from './start-at-login'
 import { installEngineActivity } from './engine/background-activity'
@@ -379,9 +380,11 @@ export function hardenWindow(window: BrowserWindow, openExternal = openExternalU
     return { action: 'deny' }
   })
   window.webContents.on('will-navigate', (event, url) => {
-    // The crash card recovers with location.reload(); navigation within the
-    // app's own origin stays allowed, everything else is denied as before.
-    if (url.startsWith(`app://${APP_HOST}/`)) return
+    // The crash card recovers with location.reload(), so the app's own root
+    // page stays allowed. Any other app path is a file that does not exist:
+    // a relative link a reply wrote would otherwise replace the whole window
+    // with "Not found". Everything else is denied as before.
+    if (isAppRootNavigation(url, APP_HOST)) return
     event.preventDefault()
     if (isAllowedExternalUrl(url)) void openExternal(url).catch(() => undefined)
   })

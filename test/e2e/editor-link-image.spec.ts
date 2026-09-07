@@ -27,7 +27,9 @@ test('Ctrl+K adds a link to the selection, edits an existing link, and the Image
 
     // A caret inside an existing link edits that link, prefilled.
     await page.getByText('old link').click()
+    await expect(page.getByRole('dialog', { name: 'Open web link', exact: true })).toBeVisible()
     await page.keyboard.press(primaryKey('k'))
+    await expect(page.getByRole('dialog', { name: 'Open web link', exact: true })).toHaveCount(0)
     const editLink = page.getByRole('dialog', { name: 'Edit link' })
     await expect(editLink).toBeVisible()
     await expect(editLink.getByRole('textbox', { name: 'Address' })).toHaveValue('https://old.example')

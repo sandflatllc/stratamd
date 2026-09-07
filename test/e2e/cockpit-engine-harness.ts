@@ -33,6 +33,32 @@ export interface FakeEngineOptions {
   liveness?: Partial<Record<'t1' | 't2', 'working' | 'monitoring'>>
   /** Accepts Strata as a preview automation host and lets a test send it browser requests (docs/plans/open/visual-review, phase 2). Off by default, so shell baselines never show Browser shared. */
   previewAutomation?: boolean
+  /** Seeds `t1`'s running turn with seven subagents across two clusters, one of them nested, plus one background command (§6.9 Agents). */
+  agentTasks?: boolean
+}
+
+/** T3's `task.*` shapes for seven Claude subagents and a background command, as recorded from t3 0.0.38. */
+function agentTaskActivities(at: string): unknown[] {
+  const agent = (id: string, title: string, model: string, toolUseId: string) => ({ taskId: id, taskType: 'local_agent', agentKind: 'agent', title, role: 'general-purpose', model, effort: 'high', toolUseId })
+  const stamp = (offset: number) => new Date(Date.parse(at) + offset * 1_000).toISOString()
+  const spawn = (index: number, id: string, title: string, model: string, main = true) => [
+    ...(main ? [{ id: `call-${id}`, tone: 'tool', kind: 'tool.started', summary: 'Started agent', payload: { itemType: 'collab_agent_tool_call', toolCallId: `toolu-${id}`, status: 'inProgress' }, turnId: 'turn-1', createdAt: stamp(index * 10) }] : []),
+    { id: `task-${id}-start`, tone: 'info', kind: 'task.started', summary: 'local_agent task started', payload: agent(id, title, model, main ? `toolu-${id}` : `inner-${id}`), turnId: 'turn-1', createdAt: stamp(index * 10 + 1) },
+  ]
+  return [
+    ...spawn(0, 'ag1', 'Audit unit test value', 'claude-opus-5'),
+    ...spawn(1, 'ag2', 'Analyze e2e harness flakiness', 'claude-fable-5-1'),
+    ...spawn(2, 'ag3', 'Read the Known flakes table', 'claude-haiku-4-5-20251001', false),
+    ...spawn(3, 'ag4', 'Survey prior art', 'claude-opus-5'),
+    ...spawn(4, 'ag5', 'Audit e2e spec value', 'claude-opus-5'),
+    ...spawn(5, 'ag6', 'Time the six-worker run', 'claude-opus-5'),
+    ...spawn(6, 'ag7', 'Draft findings', 'claude-fable-5-1'),
+    { id: 'task-bash-start', tone: 'info', kind: 'task.started', summary: 'local_bash task started', payload: { taskId: 'bash1', taskType: 'local_bash', agentKind: 'background', title: 'Run the experiment at six workers', model: 'claude-fable-5-1', effort: 'high', toolUseId: 'toolu-bash1' }, turnId: 'turn-1', createdAt: stamp(70) },
+    { id: 'task-ag2-progress', tone: 'info', kind: 'task.progress', summary: 'Task progress', payload: { ...agent('ag2', 'Analyze e2e harness flakiness', 'claude-fable-5-1', 'toolu-ag2'), detail: 'Running Check reduced-motion coverage', lastToolName: 'Bash', usage: { total_tokens: 181_901, tool_uses: 52, duration_ms: 454_792 } }, turnId: 'turn-1', createdAt: stamp(80) },
+    { id: 'task-ag1-complete', tone: 'info', kind: 'task.completed', summary: 'Task completed', payload: { ...agent('ag1', 'Audit unit test value', 'claude-opus-5', 'toolu-ag1'), status: 'completed', summary: 'Of 126 files, 31 assert nothing a type check would not catch.', usage: { total_tokens: 269_338, tool_uses: 40, duration_ms: 426_526 } }, turnId: 'turn-1', createdAt: stamp(90) },
+    { id: 'task-ag4-complete', tone: 'error', kind: 'task.completed', summary: 'Task completed', payload: { ...agent('ag4', 'Survey prior art', 'claude-opus-5', 'toolu-ag4'), status: 'failed', summary: 'Agent terminated early due to an API error: session limit reached', error: 'Agent terminated early due to an API error: session limit reached' }, turnId: 'turn-1', createdAt: stamp(100) },
+    { id: 'task-ag5-complete', tone: 'info', kind: 'task.completed', summary: 'Task completed', payload: { ...agent('ag5', 'Audit e2e spec value', 'claude-opus-5', 'toolu-ag5'), status: 'completed', summary: 'All 76 spec files read.', usage: { total_tokens: 290_705, tool_uses: 40, duration_ms: 818_714 } }, turnId: 'turn-1', createdAt: stamp(110) },
+  ]
 }
 
 const usageAt = '2026-09-03T11:59:00.000Z'
@@ -92,6 +118,7 @@ export interface FakeEngine {
   rpcRequests: Array<{ tag: string; payload: unknown }>
   /** Offline refuses HTTP and drops every socket, as a stopped server would; online again accepts new connections. */
   failNextTurn(): void
+  failNextModelSettings(): void
   setOnline(value: boolean): void
   setMessage(value: string): void
   setWorkspaceRoot(value: string): void
@@ -142,10 +169,11 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   const uploadRequests: FakeEngine['uploadRequests'] = []
   let uploadCount = 0
   let rejectNextTurn = false
+  let rejectNextModelSettings = false
   const createdThreads: CreatedThread[] = []
   const createdProjects: CreatedProject[] = []
   /** Pin, snooze, and rename state per thread, as T3 would project it (§5.2). */
-  const threadMeta = new Map<string, { pinnedAt?: string | null; snoozedUntil?: string | null; settledOverride?: 'settled' | 'unsettled' | null; archivedAt?: string | null; title?: string; backgroundLiveness?: 'working' | 'monitoring' | null }>()
+  const threadMeta = new Map<string, { pinnedAt?: string | null; snoozedUntil?: string | null; settledOverride?: 'settled' | 'unsettled' | null; archivedAt?: string | null; title?: string; modelSelection?: unknown; backgroundLiveness?: 'working' | 'monitoring' | null }>()
   for (const [id, title] of Object.entries(options.titles ?? {})) if (title) threadMeta.set(id, { title })
   for (const [id, liveness] of Object.entries(options.liveness ?? {})) if (liveness) threadMeta.set(id, { ...threadMeta.get(id), backgroundLiveness: liveness })
   if (options.projectsParity) {
@@ -159,7 +187,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   const postedMessages = (threadId: string) => posted.get(threadId) ?? []
   const withMeta = <T extends { id: string; title: string }>(thread: T): T & { pinnedAt: string | null; snoozedUntil: string | null; settledOverride: 'settled' | 'unsettled' | null; archivedAt: string | null; backgroundLiveness: 'working' | 'monitoring' | null } => {
     const meta = threadMeta.get(thread.id)
-    return { ...thread, title: meta?.title ?? thread.title, pinnedAt: meta?.pinnedAt ?? null, snoozedUntil: meta?.snoozedUntil ?? null, settledOverride: meta?.settledOverride ?? null, archivedAt: meta?.archivedAt ?? null, backgroundLiveness: meta?.backgroundLiveness ?? null }
+    return { ...thread, ...(meta?.modelSelection ? { modelSelection: meta.modelSelection } : {}), title: meta?.title ?? thread.title, pinnedAt: meta?.pinnedAt ?? null, snoozedUntil: meta?.snoozedUntil ?? null, settledOverride: meta?.settledOverride ?? null, archivedAt: meta?.archivedAt ?? null, backgroundLiveness: meta?.backgroundLiveness ?? null }
   }
   let workspaceRoot = options.workspaceRoot ?? '/tmp/cockpit'
   let providers = options.providers ?? DEFAULT_PROVIDERS
@@ -214,6 +242,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       ...(approvalOpen ? [{ id: 'a1', tone: 'approval', kind: 'approval.requested', summary: 'Command approval requested', payload: { requestId: 'approval-1', detail: 'Run the cockpit verification?' }, turnId: 'turn-1', createdAt: at }] : [{ id: 'a2', tone: 'approval', kind: 'approval.resolved', summary: 'Approval resolved', payload: { requestId: 'approval-1' }, turnId: 'turn-1', createdAt: at }]),
       ...(inputOpen ? [{ id: 'u1', tone: 'info', kind: 'user-input.requested', summary: 'User input requested', payload: { requestId: 'input-1', questions: [{ id: 'release', question: 'Which release?', options: [{ label: 'Version one' }] }] }, turnId: 'turn-1', createdAt: at }] : [{ id: 'u2', tone: 'info', kind: 'user-input.resolved', summary: 'User input submitted', payload: { requestId: 'input-1' }, turnId: 'turn-1', createdAt: at }]),
       { id: 'tool-1', tone: 'tool', kind: 'tool.completed', summary: 'Updated cockpit files', payload: {}, turnId: 'turn-1', createdAt: at },
+      ...(options.agentTasks ? agentTaskActivities(at) : []),
     ]
     const longMessages = options.longHistory && threadId === 't1' ? Array.from({ length: 100 }, (_, index) => [
       { id: `history-user-${index}`, role: 'user', text: `Request ${index + 1}`, attachments: [], turnId: `history-turn-${index}`, streaming: false, createdAt: at, updatedAt: at },
@@ -321,6 +350,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
         // T3 applies a command once per commandId; a retry after a dropped connection is a no-op.
         if (typeof command.commandId === 'string' && commands.some((known) => known.commandId === command.commandId)) { response.end(JSON.stringify({ sequence })); return }
         if (command.type === 'thread.turn.start' && rejectNextTurn) { rejectNextTurn = false; response.statusCode = 400; response.end(JSON.stringify({ error: 'Test refusal' })); return }
+        if (command.type === 'thread.meta.update' && command.modelSelection && rejectNextModelSettings) { rejectNextModelSettings = false; response.statusCode = 400; response.end(JSON.stringify({ error: 'Settings refusal' })); return }
         commands.push(command)
         if (command.type === 'thread.turn.start') status = 'running'
         if (command.type === 'thread.turn.interrupt') stop()
@@ -337,7 +367,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
         if (command.type === 'thread.settle') threadMeta.set(threadId, { ...meta, settledOverride: 'settled' })
         if (command.type === 'thread.unsettle') threadMeta.set(threadId, { ...meta, settledOverride: 'unsettled' })
         if (command.type === 'thread.archive') threadMeta.set(threadId, { ...meta, archivedAt: new Date().toISOString() })
-        if (command.type === 'thread.meta.update' && typeof command.title === 'string') threadMeta.set(threadId, { ...meta, title: command.title })
+        if (command.type === 'thread.meta.update') threadMeta.set(threadId, { ...meta, ...(typeof command.title === 'string' ? { title: command.title } : {}), ...(command.modelSelection ? { modelSelection: command.modelSelection } : {}) })
         broadcast()
         response.end(JSON.stringify({ sequence }))
       })
@@ -448,6 +478,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     setMessage: (value) => { message = value; broadcast() },
     setWorkspaceRoot: (value) => { workspaceRoot = value; broadcast() },
     failNextTurn: () => { rejectNextTurn = true },
+    failNextModelSettings: () => { rejectNextModelSettings = true },
     setSettings: (patch) => { settings = { ...settings, ...patch }; providerInstances = settings.providerInstances as typeof providerInstances },
     setProviders: (value) => { providers = value; broadcast() },
     finish: () => { stop(); broadcast() },

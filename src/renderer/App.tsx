@@ -2,6 +2,8 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { UsageDialog } from './components/UsageDialog'
 import { TerminalDrawer } from './components/TerminalDrawer'
 import { useWindowState } from './useWindowState'
+import { useWebLinkPicker } from './useWebLinkPicker'
+import { useLinkContextMenu } from './useLinkContextMenu'
 import type { WindowAction } from '../shared/contracts'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import type { ItemView, AnnotationContext, AnnotationKind, AnnotationView, AppView, AttachmentView, BufferOrigin, CreateDraftRequest, DocumentTabView, DocumentView, HoldVisualCommentInput, VisualAdjustmentView, VisualCaptureView, VisualMarkView, VisualPageCapture, VisualPointView, VisualRectView, HunkView, NavigationTab, PaneId, PanelSize, PaneZoom, PanelSizes, PreviewNavigation, PreviewViewportRequest, QuickSendRequest, RedoResult, ReviewTab, SendPreviewRequest, TableViewState, ThemePanelGeometry, UndoResult, VisualDestinationView, WalkthroughAction } from '../shared/contracts'
@@ -38,7 +40,7 @@ import { Conversation } from './components/Conversation'
 import { EngineDialog } from './components/EngineDialog'
 import { NewConversation } from './components/NewConversation'
 import { AccountsDialog } from './components/AccountsDialog'
-import { activitySnapshot, agentActivity, agentActivityMessage, ambientStyles, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, hasUnsavedCounted, isZoomed, leftWindowWidth, nextReviewTarget, PANEL_LIMITS, pendingCount, projectForPath, rendererThemeStyle, reviewTargets, shouldAdoptPushed, sideWindowCeiling, stepZoom, tabsToClose, threadTargets, type ActivitySnapshot, type NumericPanelKey, type ReviewTarget } from './model'
+import { activitySnapshot, agentActivity, agentActivityMessage, ambientStyles, clampPanelSize, clampThemePanel, currentAnnotation, cycleTab, EMPTY_VIEW, hasUnsavedCounted, isZoomed, leftWindowWidth, overlayCoversPage, nextReviewTarget, PANEL_LIMITS, pendingCount, projectForPath, rendererThemeStyle, reviewTargets, shouldAdoptPushed, sideWindowCeiling, stepZoom, tabsToClose, threadTargets, type ActivitySnapshot, type ScreenBox, type NumericPanelKey, type ReviewTarget } from './model'
 import { flushPendingBuffer, peekPendingBuffer, setPendingBuffer } from './pendingBuffer'
 import { nextToast, type ToastAction, type ToastState } from './toasts'
 import { consumeDocumentLaunch, readWorkspace, writeWorkspace } from './workspaceState'
@@ -308,12 +310,12 @@ export function App({ createEditor }: AppProps) {
     const current = zoomRef.current
     applyZoom({ ...current, [pane]: stepZoom(current[pane], direction) })
   }, [applyZoom])
-  const resetZoom = useCallback(() => applyZoom({ explorer: 1, editor: 1, rightRail: 1, composer: 1 }, true), [applyZoom])
+  const resetZoom = useCallback(() => applyZoom({ explorer: 1, editor: 1, rightRail: 1, composer: 1, themePanel: 1 }, true), [applyZoom])
 
   useEffect(() => {
     const paneOf = (target: EventTarget | null): PaneId | null => {
       const pane = target instanceof Element ? target.closest<HTMLElement>('[data-pane]')?.dataset.pane : undefined
-      return pane === 'explorer' || pane === 'editor' || pane === 'rightRail' || pane === 'composer' ? pane : null
+      return pane === 'explorer' || pane === 'editor' || pane === 'rightRail' || pane === 'composer' || pane === 'themePanel' ? pane : null
     }
     const over = (event: PointerEvent) => { hoveredPane.current = paneOf(event.target) }
     // One zoom step per wheel notch (about 100 units at deltaMode 0). Trackpads deliver many small
@@ -364,6 +366,7 @@ export function App({ createEditor }: AppProps) {
   const themePanel = themeOpen && (
     <ThemePanel
       theme={view.settings.theme}
+      zoom={zoom.themePanel}
       geometry={clampThemePanel(panelSizes.themePanel, { width: window.innerWidth, height: window.innerHeight })}
       onGeometry={updateThemePanel}
       onClose={() => { setThemeOpen(false); setThemeHighlight(null) }}
@@ -451,6 +454,7 @@ export function App({ createEditor }: AppProps) {
   const runConversation = {
     ...(document ? { onDocumentContext: () => setComposer(true) } : {}),
     onReconnect: reconnectEngine,
+    onCopyText: (text: string) => void perform(() => window.strata.copyText(text), 'Message copied.'),
     onStart: (threadId: string, input: Parameters<typeof window.strata.startConversationTurn>[1]) => window.strata.startConversationTurn(threadId, input),
     onStop: (threadId: string) => void perform(() => window.strata.stopConversationTurn(threadId), 'Stop requested.'),
     onApproval: (threadId: string, requestId: string, decision: 'accept' | 'decline') => void perform(() => window.strata.answerEngineApproval(threadId, requestId, decision)),
@@ -577,23 +581,38 @@ export function App({ createEditor }: AppProps) {
     const tab = previewTabs.find((candidate) => candidate.id === reveal.tabId)
     if (tab) setPreviews((current) => current.includes(tab.projectId) ? current : [...current, tab.projectId])
   }, [view.preview.reveal])
-  // The overlay layer reports one boolean: while any overlay is open the page hides beneath it.
+  // The overlay layer reports one boolean: while a modal is open, or an overlay sits over the page's hole, the page hides beneath it.
+  // A panel or popover elsewhere in the shell leaves the page showing.
   const overlayReported = useRef<boolean | null>(null)
   useEffect(() => {
     const selector = '[role="dialog"], [aria-modal="true"], .modal-backdrop, .visual-session, .theme-panel, [role="menu"], :popover-open, .drop-overlay'
+    const boxOf = (element: Element): ScreenBox => { const rect = element.getBoundingClientRect(); return { x: rect.left, y: rect.top, width: rect.width, height: rect.height } }
+    const modal = (element: Element) => element.getAttribute('aria-modal') === 'true' || element.classList.contains('modal-backdrop')
     let frame = 0
     const check = () => {
       frame = 0
-      const open = globalThis.document.querySelector(selector) !== null
+      const hole = globalThis.document.querySelector('.preview-hole')
+      const overlays = [...globalThis.document.querySelectorAll(selector)].map((element) => ({ box: boxOf(element), modal: modal(element) }))
+      const open = overlayCoversPage(hole ? boxOf(hole) : null, overlays)
       if (overlayReported.current === open) return
       overlayReported.current = open
       void window.strata.reportOverlay(open).catch(() => undefined)
     }
     const schedule = () => { if (frame === 0) frame = window.requestAnimationFrame(check) }
     const observer = new MutationObserver(schedule)
-    observer.observe(globalThis.document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open', 'popover', 'hidden', 'role', 'class'] })
+    // Style joins the list because a dragged panel moves through its inline style; a popover closing fires toggle without any mutation.
+    observer.observe(globalThis.document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open', 'popover', 'hidden', 'role', 'class', 'style'] })
+    globalThis.document.addEventListener('toggle', schedule, true)
+    window.addEventListener('resize', schedule)
+    window.addEventListener('scroll', schedule, true)
     check()
-    return () => { observer.disconnect(); if (frame) window.cancelAnimationFrame(frame) }
+    return () => {
+      observer.disconnect()
+      globalThis.document.removeEventListener('toggle', schedule, true)
+      window.removeEventListener('resize', schedule)
+      window.removeEventListener('scroll', schedule, true)
+      if (frame) window.cancelAnimationFrame(frame)
+    }
   }, [])
   const previewPills = previewProjectIds.map((projectId) => {
     const project = view.engine.projects.find((candidate) => candidate.id === projectId)!
@@ -684,7 +703,7 @@ export function App({ createEditor }: AppProps) {
   const conversationTabViews = conversationTabs.flatMap((id) => { const thread = engineThreads.find((candidate) => candidate.id === id); return thread && thread.lifecycle !== 'settled' ? [{ id, name: thread.title, attention: thread.attention, active: centerConversationId === id }] : [] })
   if (documentPicker) conversationTabViews.push({ id: '__new__', name: 'New thread', attention: 0, active: centerConversationId === '__new__' })
   const topBarConversations = { conversationTabs: conversationTabViews, onOpenConversationTab: (id: string) => void perform(async () => { if (id === '__new__') { if (documentPicker?.path) await window.strata.openDocument(documentPicker.path); setPreviewCentered(null); setConversationCentered(true); return }; await window.strata.openConversation(id); showCenterConversation(id) }), onCloseConversation: closeConversationTab }
-  const projectsNode = <ProjectsPanel query={projectQuery} engine={view.engine} onReconnect={reconnectEngine} onOpenThread={openEngineThread} onBeginRename={cancelEngineNavigation} onNewThread={beginNewConversation} onOpenPreview={openPreview} onAddProject={(input) => void perform(() => window.strata.createEngineProject(input), 'Project added.')} onAction={(id, action) => void perform(() => window.strata.actOnEngineThread(id, action))} onUpdate={(id, change) => void perform(() => window.strata.updateEngineThread(id, change))} onOpenEngine={() => setEngineDialog(true)} onOpenAccounts={openAccounts} attachedThreadIds={new Set(document?.attachments.map((attachment) => attachment.agent.id) ?? [])} />
+  const projectsNode = <ProjectsPanel query={projectQuery} engine={view.engine} onReconnect={reconnectEngine} onOpenThread={openEngineThread} onBeginRename={cancelEngineNavigation} onNewThread={beginNewConversation} onOpenPreview={openPreview} onAddProject={(input) => void perform(() => window.strata.createEngineProject(input), 'Project added.')} onAction={(id, action) => void perform(() => window.strata.actOnEngineThread(id, action))} onUpdate={(id, change) => void perform(() => window.strata.updateEngineThread(id, change))} onCopyThreadId={(id) => void perform(() => window.strata.copyText(id), 'Thread ID copied.')} onOpenEngine={() => setEngineDialog(true)} onOpenAccounts={openAccounts} attachedThreadIds={new Set(document?.attachments.map((attachment) => attachment.agent.id) ?? [])} />
   const conversationItems = document?.items ?? []
   const itemActions = document ? {
     items: conversationItems,
@@ -1004,7 +1023,35 @@ export function App({ createEditor }: AppProps) {
 
   const terminalProject = view.engine.projects.find(project => project.threads.some(thread => thread.id === centerConversationId)) ?? (document ? projectForPath(view.engine, document.path) : null) ?? view.engine.projects[0]
   const terminalThread = terminalProject?.threads.find(thread => thread.id === centerConversationId)
-  const terminalNode = terminalOpen ? <TerminalDrawer target={terminalProject ? { threadId: terminalThread?.id ?? `strata-project-${terminalProject.id}`, terminalId: 'term-1' } : null} cwd={terminalThread?.worktreePath ?? terminalProject?.workspaceRoot ?? ''} engineState={view.engine.state} themeKey={view.settings.theme} onClose={() => setTerminalOpen(false)} /> : null
+  const linkEngine = useRef(view.engine.identity)
+  useLayoutEffect(() => { linkEngine.current = view.engine.identity }, [view.engine.identity])
+  const webLinks = useWebLinkPicker({
+    scope: view.engine.identity ?? null,
+    projectFor: origin => {
+      const documentProject = document ? projectForPath(view.engine, document.path)?.id : null
+      if (origin?.closest('.terminal-drawer')) return terminalProject?.id ?? null
+      if (origin?.closest('.thread-panel') && documentProject) return documentProject
+      if (origin?.closest('.conversation-panel, .conversation-discussion')) return activeThreadProject?.id ?? null
+      return documentProject ?? activeThreadProject?.id ?? view.engine.projects[0]?.id ?? null
+    },
+    openInternal: async (url, projectId) => {
+      const identity = view.engine.identity
+      const id = await window.strata.openPreviewTab({ projectId, url })
+      if (linkEngine.current !== identity) return
+      setActivePreviewTabs(current => ({ ...current, [projectId]: id }))
+      showPreview(projectId)
+      if (activeThreadProject?.id === projectId) setPreviewNavigationTab('conversation')
+    },
+    onError: report,
+  })
+  const linkMenu = useLinkContextMenu({
+    documentFor: origin => {
+      if (origin.closest('.conversation-panel, .conversation-discussion')) return activeThreadProject?.workspaceRoot ? `${activeThreadProject.workspaceRoot}/.conversation.md` : ''
+      return document?.path ?? ''
+    },
+    onCopy: (text, notice) => void perform(() => window.strata.copyText(text), notice),
+  })
+  const terminalNode = terminalOpen ? <TerminalDrawer target={terminalProject ? { threadId: terminalThread?.id ?? `strata-project-${terminalProject.id}`, terminalId: 'term-1' } : null} cwd={terminalThread?.worktreePath ?? terminalProject?.workspaceRoot ?? ''} engineState={view.engine.state} themeKey={view.settings.theme} onOpenLink={(url, event) => webLinks.activate(url, event, terminalProject?.id ?? null)} onClose={() => setTerminalOpen(false)} /> : null
   const fileDialogs = (
     <>
       {fileDialog?.kind === 'new' && <FileNameDialog title="New file" action="Create" initial="untitled.md" onCancel={() => setFileDialog(null)} onConfirm={confirmFileDialog} />}
@@ -1013,7 +1060,7 @@ export function App({ createEditor }: AppProps) {
   )
   if (!ready) return <div className="boot-screen"><StrataIcon /><span>Opening StrataMD…</span></div>
   if (!document) return (
-    <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell empty-shell" data-new-conversation={Boolean(documentPicker && conversationCentered)} style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={enterFiles} onDragOver={overFiles} onDragLeave={leaveFiles} onDrop={dropFiles}>
+    <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell empty-shell" data-new-conversation={Boolean(documentPicker && conversationCentered)} style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-transcript-style={view.settings.theme.active.values['surfaces.transcript-style'] ?? 'panel'} data-transcript-shadow={view.settings.theme.active.values['surfaces.transcript-shadow-style'] ?? 'none'} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={enterFiles} onDragOver={overFiles} onDragLeave={leaveFiles} onDrop={dropFiles}>
       <AmbientBackground /><TopBar windowState={windowState} onWindowAction={onWindowAction} tabs={view.tabs} canSend={false} hasAgents={false} pending={0} pendingUnsaved={false} onOpenTab={(path) => { setConversationCentered(false); setPreviewCentered(null); void perform(() => window.strata.openDocument(path)) }} onCloseTab={setClosingTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onOpenFile={openFile} onSend={() => undefined} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} engine={view.engine} onOpenEngine={() => setEngineDialog(true)} onOpenSettings={openSettings} onOpenAccounts={openAccounts} onToggleTerminal={() => setTerminalOpen(open => !open)} onOpenUsage={openUsage} {...topBarConversations} {...topBarPreviews} />
       <div className="workspace">
         <div data-pane="explorer" style={{ width: leftWidth, flex: 'none', '--zoom': zoom.explorer } as CSSProperties}><Boundary region="explorer"><NavigationRail projectQuery={projectQuery} onProjectQueryChange={setProjectQuery} selected={previewShown ? previewNavigationTab : 'projects'} documentOpen={false} previewOpen={Boolean(previewShown)} projects={projectsNode} conversation={sideConversation} contents={null} conversationCount={activeEngineThread?.attention ?? 0} onSelect={selectLeftTab} /></Boundary></div>
@@ -1030,6 +1077,8 @@ export function App({ createEditor }: AppProps) {
       {accountsDialogNode}
       {usageDialogNode}
       {themePanel}
+      {webLinks.picker}
+      {linkMenu.menu}
       {fileDialogs}
       {visualPanelNode}
       {visualSessionNode}
@@ -1045,7 +1094,7 @@ export function App({ createEditor }: AppProps) {
   ).then(() => setDetaching(null))
 
   return (
-    <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell" data-new-conversation={Boolean(documentPicker && conversationCentered)} style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={enterFiles} onDragOver={overFiles} onDragLeave={leaveFiles} onDrop={dropFiles}>
+    <AmbientContext.Provider value={ambientStyles(view.settings.theme)}><div className="app-shell" data-new-conversation={Boolean(documentPicker && conversationCentered)} style={rendererThemeStyle(view.settings.theme)} data-theme-highlight={themeHighlight ?? undefined} data-transcript-style={view.settings.theme.active.values['surfaces.transcript-style'] ?? 'panel'} data-transcript-shadow={view.settings.theme.active.values['surfaces.transcript-shadow-style'] ?? 'none'} data-motion={view.settings.animatedBackground} data-ambient-background={ambientStyles(view.settings.theme).background} data-ambient-windows={ambientStyles(view.settings.theme).windows} data-dragging={dragging} onDragEnter={enterFiles} onDragOver={overFiles} onDragLeave={leaveFiles} onDrop={dropFiles}>
       <AmbientBackground />
       <TopBar windowState={windowState} onWindowAction={onWindowAction} tabs={view.tabs} canSend={document.canSend || document.recipients.some((recipient) => !recipient.attached)} hasAgents={document.recipients.length > 0} pending={pendingCount(document)} pendingUnsaved={hasUnsavedCounted(document)} onOpenTab={(path) => { setConversationCentered(false); setPreviewCentered(null); void perform(() => window.strata.openDocument(path)) }} onCloseTab={closeTab} onCopyPath={(path) => void perform(() => window.strata.copyText(path), 'Path copied.')} onCloseOthers={(path) => closeTabs('others', path)} onCloseAll={() => closeTabs('all', '')} onCloseSaved={() => closeTabs('saved', '')} onOpenFile={openFile} onSend={() => void perform(openComposer)} zoomed={isZoomed(zoom)} onResetZoom={resetZoom} onOpenTheme={openTheme} engine={view.engine} onOpenEngine={() => setEngineDialog(true)} onOpenSettings={openSettings} onOpenAccounts={openAccounts} onToggleTerminal={() => setTerminalOpen(open => !open)} onOpenUsage={openUsage} onStartThread={() => void perform(openComposer)} {...topBarConversations} {...topBarPreviews} />
       <div className="workspace">
@@ -1079,6 +1128,8 @@ export function App({ createEditor }: AppProps) {
       {accountsDialogNode}
       {usageDialogNode}
       {themePanel}
+      {webLinks.picker}
+      {linkMenu.menu}
       {fileDialogs}
       {visualPanelNode}
       {visualSessionNode}

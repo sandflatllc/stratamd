@@ -1,13 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import type { ConversationInput, EngineView, EngineThreadView, VisualCommentView } from '../../shared/contracts'
-import { sendCapacity } from '../../core/visual-comments'
+import type { ConversationInput, EngineView, EngineThreadView, EngineModelView, VisualCommentView } from '../../shared/contracts'
+import { sendCapacity, visualCaptureIds } from '../../core/visual-comments'
 import { VisualCommentCard } from './VisualCommentCard'
 import { continuationScope, modelDesignation, permitsSelection } from '../../shared/modelSelection'
 import { ProviderGlyph } from './ProviderGlyph'
 import { ContextWindowMeter } from './ContextWindowMeter'
 import { FolderIcon, FolderGit2Icon, GitBranchIcon } from '../icons/lucide'
 import { ModelPicker } from './ModelPicker'
-import { availableModels, clearDraft, readDraft, rememberSelection, selectionForModel, writeDraft, type ComposerSelection, type DraftAttachment } from '../conversationDrafts'
+import { availableModels, clearDraftContent, readDraft, rememberedSelection, rememberSelection, selectionForModel, writeDraft, type ComposerSelection, type DraftAttachment } from '../conversationDrafts'
 import { acceptFiles, classifyFile, SUPPORTED_IMAGE_TYPES } from '../../core/composer-attachments'
 
 const PICKER_ACCEPT = ['text/*', '.md', '.markdown', '.json', '.csv', '.ts', '.tsx', '.js', '.py', ...SUPPORTED_IMAGE_TYPES].join(',')
@@ -75,10 +75,9 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
   /** Held visual comments the owner set aside for this Send; they stay held. */
   const [excludedVisual, setExcludedVisual] = useState<string[]>([])
   const includedVisual = visualComments.filter((comment) => !excludedVisual.includes(comment.id))
-  // Each included comment carries one marked screenshot per capture its marks or strokes sit on; the same capture travels once.
-  const visualCaptures = new Set(includedVisual.flatMap((comment) => { const referenced = [...new Set([...(comment.draft?.marks ?? []).map((mark) => mark.captureId), ...(comment.draft?.strokes ?? []).map((stroke) => stroke.captureId)])]; return referenced.length ? referenced : comment.captures.slice(0, 1).map((capture) => capture.id) }))
-  const contextFile = reservedAttachments === 1 || includedVisual.length > 0
-  const capacity = sendCapacity({ files: attachments.length, visualImages: visualCaptures.size, visualComments: includedVisual.length, contextFile })
+  const visualImages = includedVisual.reduce((count, comment) => count + visualCaptureIds(comment).length, 0)
+  const contextFile = reservedAttachments === 1
+  const capacity = sendCapacity({ files: attachments.length, visualImages, visualComments: includedVisual.length, contextFile })
   const [menu, setMenu] = useState<'models' | 'options' | 'access' | null>(null)
   const [busy, setBusy] = useState(false)
   const sending = useRef(false)
@@ -111,10 +110,19 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
   const valid = engine.state === 'connected' && !!projectId && !!model && account?.usable !== false
   const persist = (nextText: string, nextSelection: ComposerSelection, nextAttachments: DraftAttachment[]) => setUnsaved(!writeDraft(draftKey, { ...readDraft(draftKey), text: nextText, selection: nextSelection, ...(nextAttachments.length ? { attachments: nextAttachments } : { attachments: undefined }) }))
   const choose = (next: ComposerSelection) => { setSelection(next); rememberSelection(projectId, next); persist(text, next, latestAttachments.current) }
+  const chooseOption = (id: string, value: string | boolean) => {
+    const effort = id === 'effort' || id === 'reasoningEffort'
+    const options = (selection.options ?? []).filter(option => option.id !== id && !(effort && (option.id === 'effort' || option.id === 'reasoningEffort')))
+    choose({ ...selection, ...(effort ? { effort: String(value) } : {}), options: [...options, { id, value }] })
+  }
+  const chooseModel = (next: EngineModelView) => {
+    rememberSelection(projectId, selection)
+    choose(selectionForModel(next, selection.access, next.instanceId === selection.instanceId ? selection : rememberedSelection(projectId, next.instanceId)))
+  }
   /** Pasted and picked files share one path: accept, stage images with the main process, keep text inline, then save the draft. */
   const stageFiles = async (files: File[], pasted: boolean) => {
     if (canSendContext) { setError('The first turn from a document carries the document; attach files on the next turn.'); return }
-    const { accepted, refusal } = acceptFiles(latestAttachments.current.length + visualCaptures.size, files, contextFile ? 1 : 0, { pasted })
+    const { accepted, refusal } = acceptFiles(latestAttachments.current.length + visualImages, files, contextFile ? 1 : 0, { pasted })
     if (refusal) setError(refusal)
     let opened = false
     for (const entry of accepted) {
@@ -199,7 +207,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
       const outgoing = attachments.map(({ thumbnail: _thumbnail, ...attachment }) => attachment)
       await onSend({ ...selection, messageId, commandId: `strata-${messageId}`, text: text.trim(), ...(outgoing.length ? { attachments: outgoing } : {}), ...(includedVisual.length ? { visual: includedVisual.map((comment) => comment.id) } : {}) })
       // The preparation owns the staged images now; clearing the list must not discard them.
-      clearDraft(draftKey); setText(''); setAttachments([]); setUnsaved(false)
+      setUnsaved(!clearDraftContent(draftKey, selection)); setText(''); setAttachments([])
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'The message could not be sent. Try again.') }
     finally { sending.current = false; setBusy(false) }
   }
@@ -231,13 +239,13 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
       <div className="chat-controls">
         <div className="chat-control"><button type="button" className="chat-pill" aria-label="Choose model and account" aria-expanded={menu === 'models'} disabled={busy} onClick={() => setMenu(menu === 'models' ? null : 'models')} title={model?.name ?? model?.accountName}>{model ? <><ProviderGlyph driver={model.driver} />{modelDesignation(model)}</> : (selection.model || 'Choose model')}<small>{model?.accountName}</small><span aria-hidden="true">⌄</span></button>
           {menu === 'models' && <div ref={popup} popover="manual" className="chat-menu chat-model-menu" aria-label="Models and accounts" role="region">
-            <ModelPicker models={models} accounts={engine.accounts} selection={selection} scope={scope} onSelect={(next, close) => { choose(selectionForModel(next, selection.access)); if (close) { setMenu(null); input.current?.focus() } }} />
+            <ModelPicker models={models} accounts={engine.accounts} selection={selection} scope={scope} onSelect={(next, close) => { chooseModel(next); if (close) { setMenu(null); input.current?.focus() } }} />
           </div>}
         </div>
         <div className="chat-control"><button type="button" className="chat-pill" aria-label={fastMode ? 'Thinking and context, super speed on' : 'Thinking and context'} aria-expanded={menu === 'options'} disabled={busy} onClick={() => setMenu(menu === 'options' ? null : 'options')}>{optionSummary}{fastMode && <svg className="chat-fast-mode" viewBox="0 0 24 24" role="img" aria-label="Super speed"><title>Super speed</title><path d="M13 2 3 14h8l-1 8 11-12h-8l1-8Z" /></svg>}<span aria-hidden="true">⌄</span></button>
           {menu === 'options' && <div ref={popup} popover="manual" className="chat-menu chat-options-menu" role="region" aria-label="Model options">
             {descriptors.length === 0 && <p>This engine reports no adjustable options for this model.</p>}
-            {descriptors.map((descriptor) => <fieldset key={descriptor.id}><legend>{descriptor.label}</legend>{descriptor.type === 'boolean' ? <label><input type="checkbox" checked={selection.options?.find((option) => option.id === descriptor.id)?.value === true} onChange={(event) => choose({ ...selection, options: [...(selection.options ?? []).filter((option) => option.id !== descriptor.id), { id: descriptor.id, value: event.target.checked }] })} />{descriptor.label}</label> : descriptor.options?.map((option) => <button type="button" key={option.id} aria-pressed={selection.options?.find((value) => value.id === descriptor.id)?.value === option.id} onClick={() => choose({ ...selection, ...(descriptor.id === 'effort' ? { effort: option.id } : {}), options: [...(selection.options ?? []).filter((value) => value.id !== descriptor.id), { id: descriptor.id, value: option.id }] })}>{option.label}{option.isDefault && <small>Default</small>}{option.description && <span className="chat-option-description">{option.description}</span>}</button>)}</fieldset>)}
+            {descriptors.map((descriptor) => <fieldset key={descriptor.id}><legend>{descriptor.label}</legend>{descriptor.type === 'boolean' ? <label><input type="checkbox" checked={selection.options?.find((option) => option.id === descriptor.id)?.value === true} onChange={(event) => chooseOption(descriptor.id, event.target.checked)} />{descriptor.label}</label> : descriptor.options?.map((option) => <button type="button" key={option.id} aria-pressed={selection.options?.find((value) => value.id === descriptor.id)?.value === option.id} onClick={() => chooseOption(descriptor.id, option.id)}>{option.label}{option.isDefault && <small>Default</small>}{option.description && <span className="chat-option-description">{option.description}</span>}</button>)}</fieldset>)}
           </div>}
         </div>
         <div className="chat-control"><button type="button" className="chat-pill" aria-label="Conversation access" aria-expanded={menu === 'access'} disabled={busy} onClick={() => setMenu(menu === 'access' ? null : 'access')}>{access[1]}<span aria-hidden="true">⌄</span></button>

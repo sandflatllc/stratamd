@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { EngineView, TerminalTarget } from '../../shared/contracts'
 import { GhosttyTerminalSurface } from '../terminal/ghostty/surface'
 import type { GhosttyTheme } from '../terminal/ghostty/core'
@@ -18,9 +18,12 @@ function terminalTheme(element: HTMLElement): GhosttyTheme {
   return { foreground: color('--text'), background: color('--card'), cursor: color('--text'), selectionBackground: `color-mix(in srgb, ${style.getPropertyValue('--controls-selected')} 40%, transparent)` }
 }
 
-export function TerminalDrawer({ target, cwd, engineState, themeKey, onClose }: {
-  target: TerminalTarget | null; cwd: string; engineState: EngineView['state']; themeKey: unknown; onClose(): void
+export function TerminalDrawer({ target, cwd, engineState, themeKey, onOpenLink, onClose }: {
+  target: TerminalTarget | null; cwd: string; engineState: EngineView['state']; themeKey: unknown; onOpenLink(url: string, event: MouseEvent): void; onClose(): void
 }) {
+  const openLink = useRef(onOpenLink)
+  const clickedLink = useRef<string | null>(null)
+  useLayoutEffect(() => { openLink.current = onOpenLink }, [onOpenLink])
   const mount = useRef<HTMLDivElement>(null)
   const surface = useRef<GhosttyTerminalSurface | null>(null)
   const [error, setError] = useState('')
@@ -57,7 +60,9 @@ export function TerminalDrawer({ target, cwd, engineState, themeKey, onClose }: 
       onResize: (cols, rows) => { if (active && attached) void window.strata.resizeEngineTerminal({ ...terminal, cols, rows }).catch(fail) },
       onSelectionChange: () => undefined,
       beforeKey: event => !(hasPrimaryModifier(event) && event.code === 'Backquote'),
-      onLinkActivate: text => { if (/^https?:\/\//i.test(text)) void window.strata.openExternal?.(text).catch(fail) },
+      // Ghostty recognizes links on pointerup; the following click supplies
+      // the browser's native double-click count to the shared picker.
+      onLinkActivate: text => { clickedLink.current = text },
     }).then(async created => {
       if (!active) { created.dispose(); return }
       surface.current = created
@@ -73,7 +78,11 @@ export function TerminalDrawer({ target, cwd, engineState, themeKey, onClose }: 
   }, [threadId, terminalId, cwd, engineState, retry])
   useEffect(() => { if (mount.current) surface.current?.setTheme(terminalTheme(mount.current)) }, [themeKey])
   const unavailable = !target ? 'Add a project to open its terminal.' : engineState !== 'connected' ? 'Connect the engine to use its terminal.' : ''
-  return <section className="island terminal-drawer" aria-label="Terminal">
+  return <section className="island terminal-drawer" aria-label="Terminal" onPointerDownCapture={() => { clickedLink.current = null }} onClick={event => {
+    const url = clickedLink.current
+    clickedLink.current = null
+    if (url) openLink.current(url, event.nativeEvent)
+  }}>
     <header><TerminalIcon /><strong>Terminal</strong><span>{label}</span><span className="terminal-cwd" title={cwd}>{cwd}</span><span className="terminal-status">{status}</span><button type="button" className="icon-button" aria-label="Close terminal" onClick={onClose}><XIcon /></button></header>
     {(error || unavailable) && <div className="terminal-notice" role={error ? 'alert' : 'status'}>{error || unavailable}{error && <button type="button" onClick={() => setRetry(value => value + 1)}>Reconnect terminal</button>}</div>}
     <div className="terminal-surface" ref={mount} />

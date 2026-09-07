@@ -16,6 +16,8 @@ The owner approved [the frameless-window mockup](./frameless-window/prototype.ht
 
 [Implementation screenshots](./frameless-window/captures/implementation/) cover the normal and 960-pixel layouts in Strata Vivid and in Paper and Strata (two themes retired on 2026-09-04), plus the logo menu. These are real Electron captures; the original browser mockup remains the approved design reference. Window behavior and close semantics are specified in PRD section 6.9.
 
+**Agent clusters (2026-09-06).** [`subagent-activity/prototype.html`](./subagent-activity/prototype.html) is the approved reference for the subagent indicator in the conversation header: bot glyphs ringed by up to six state-coloured arcs, one per agent, with depth as arc length, and the Agents dialog behind a click. Its README maps each element to the T3 task activity field that feeds it.
+
 ## Fidelity
 **High-fidelity.** Colors, typography, spacing, radii, and motion are final. Recreate pixel-perfectly with Tailwind utilities (extend the theme with the tokens below).
 

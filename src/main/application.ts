@@ -1,3 +1,4 @@
+import { resolveLocalLink } from './local-link'
 import { captureStrataEngine, restoreStrataEngine, documentBinding } from './engine/strata-backup'
 import { hostname, networkInterfaces } from 'node:os'
 import { readTailscale, readServeEndpoint } from './engine/tailscale'
@@ -40,6 +41,7 @@ import type {
   TableViewState,
   WalkthroughAction,
   HeadingReference,
+  LocalLinkTarget,
   LocalMarkdownPreview,
   VisualPageCapture,
   VisualPageProposal,
@@ -2611,6 +2613,11 @@ export class StrataApplication implements StrataApi {
     } catch {
       return null
     }
+  }
+
+  async resolveLocalLink(input: { projectId: string | null; href: string }): Promise<LocalLinkTarget> {
+    const project = input.projectId ? this.#engine.view().projects.find((candidate) => candidate.id === input.projectId) : null
+    return resolveLocalLink(input.href, project?.workspaceRoot ?? null)
   }
 
   async resolveLocalMarkdown(documentPath: string, source: string): Promise<LocalMarkdownPreview | null> {

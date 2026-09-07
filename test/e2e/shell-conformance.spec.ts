@@ -112,7 +112,7 @@ test('per-pane text zoom follows the hovered pane, resets from one button, and p
       } catch {
         return null
       }
-    }).toEqual({ explorer: 1.2, editor: 1.1, rightRail: 0.9, composer: 1 })
+    }).toEqual({ explorer: 1.2, editor: 1.1, rightRail: 0.9, composer: 1, themePanel: 1 })
 
     await value.stop()
     const restarted = await value.launch()
@@ -121,7 +121,7 @@ test('per-pane text zoom follows the hovered pane, resets from one button, and p
     await restarted.getByRole('menuitem', { name: 'Reset zoom' }).click()
     await expect.poll(() => restarted.locator('[data-pane="explorer"]').evaluate((element) => getComputedStyle(element).getPropertyValue('--zoom').trim())).toBe('1')
     await expect(restarted.getByRole('menuitem', { name: 'Reset zoom' })).toBeHidden()
-    await expect.poll(async () => JSON.parse(await readFile(settingsPath, 'utf8')).zoom).toEqual({ explorer: 1, editor: 1, rightRail: 1, composer: 1 })
+    await expect.poll(async () => JSON.parse(await readFile(settingsPath, 'utf8')).zoom).toEqual({ explorer: 1, editor: 1, rightRail: 1, composer: 1, themePanel: 1 })
   } finally {
     await value.dispose()
   }

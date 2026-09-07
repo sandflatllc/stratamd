@@ -39,11 +39,11 @@ describe('settings', () => {
 
   it('clamps per-pane zoom to 0.5–2.0 in tenth steps and defaults missing panes to 1', async () => {
     const settings = normalizeSettings({ zoom: { explorer: 9, editor: 0.01, rightRail: 1.2499 } })
-    expect(settings.zoom).toEqual({ explorer: 2, editor: 0.5, rightRail: 1.2, composer: 1 })
-    expect(normalizeSettings({ zoom: { editor: 'big' } }).zoom).toEqual({ explorer: 1, editor: 1, rightRail: 1, composer: 1 })
+    expect(settings.zoom).toEqual({ explorer: 2, editor: 0.5, rightRail: 1.2, composer: 1, themePanel: 1 })
+    expect(normalizeSettings({ zoom: { editor: 'big' } }).zoom).toEqual({ explorer: 1, editor: 1, rightRail: 1, composer: 1, themePanel: 1 })
     const store = new SettingsStore({ configDirectory: await temporaryDirectory() })
     const updated = await store.update({ zoom: { editor: 1.3 } })
-    expect(updated.zoom).toEqual({ explorer: 1, editor: 1.3, rightRail: 1, composer: 1 })
+    expect(updated.zoom).toEqual({ explorer: 1, editor: 1.3, rightRail: 1, composer: 1, themePanel: 1 })
   })
 
   it('migrates flat version-zero panels and constrains handoff ranges', () => {

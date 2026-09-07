@@ -1,0 +1,80 @@
+import { expect, test } from '@playwright/test'
+import { seededScenario, startEngine } from './cockpit-engine-harness'
+import { modelSelectorProviders } from './model-selector-fixture'
+
+test('High survives sending, conversation navigation, restart, and model/account changes', async ({}, testInfo) => {
+  const engine = await startEngine({ providers: modelSelectorProviders(), pendingRequests: false })
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    let page = await scenario.launch()
+    await page.getByRole('tab', { name: 'Projects', exact: true }).click()
+    await page.getByRole('button', { name: 'Open Live engine thread', exact: true }).click()
+    await page.getByRole('button', { name: 'Thinking and context', exact: true }).click()
+    await page.getByRole('region', { name: 'Model options' }).getByRole('button', { name: 'High', exact: true }).click()
+    await page.keyboard.press('Escape')
+    await page.getByLabel('Message conversation').fill('Keep my effort choice.')
+    await page.getByLabel('Message conversation').press('Enter')
+    await expect(page.getByLabel('Message conversation')).toHaveValue('')
+    const sent = engine.commands.find(command => command.type === 'thread.turn.start')!
+    const settings = engine.commands.find(command => command.type === 'thread.meta.update')!
+    expect(settings).toMatchObject({ threadId: 't1', modelSelection: { options: [{ id: 'reasoningEffort', value: 'high' }] } })
+    expect(engine.commands.indexOf(settings)).toBeLessThan(engine.commands.indexOf(sent))
+    expect(sent.modelSelection).toEqual(settings.modelSelection)
+    await expect(page.getByRole('button', { name: 'Thinking and context', exact: true })).toHaveText('High⌄')
+    await page.getByRole('tab', { name: 'Projects', exact: true }).click()
+    await page.getByRole('button', { name: 'Open Second engine thread', exact: true }).click()
+    await page.getByRole('tab', { name: 'Projects', exact: true }).click()
+    await page.getByRole('button', { name: 'Open Live engine thread', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Thinking and context', exact: true })).toHaveText('High⌄')
+
+    await scenario.stop()
+    page = await scenario.launch()
+    await page.getByRole('tab', { name: 'Projects', exact: true }).click()
+    await page.getByRole('button', { name: 'Open Live engine thread', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Thinking and context', exact: true })).toHaveText('High⌄')
+    // Removing the local draft proves the engine saved High too.
+    await page.evaluate(() => localStorage.removeItem('stratamd.conversation-draft.v1:thread:t1'))
+    await page.reload()
+    await expect(page.getByRole('button', { name: 'Thinking and context', exact: true })).toHaveText('High⌄')
+    await page.getByRole('button', { name: 'Choose model and account' }).click()
+    const picker = page.getByRole('region', { name: 'Models and accounts' })
+    await picker.getByRole('button', { name: 'Use GPT-6-Astra' }).click()
+    await expect(page.getByRole('button', { name: 'Thinking and context', exact: true })).toHaveText('High⌄')
+    await page.getByRole('button', { name: 'Choose model and account' }).click()
+    await picker.getByLabel('Subscription', { exact: true }).selectOption('gpt-personal')
+    await picker.getByRole('button', { name: 'Use GPT-6-Astra' }).click()
+    await expect(page.getByRole('button', { name: 'Thinking and context', exact: true })).toHaveText('Medium⌄')
+    await page.getByRole('button', { name: 'Choose model and account' }).click()
+    await picker.getByLabel('Subscription', { exact: true }).selectOption('codex')
+    await picker.getByRole('button', { name: 'Use GPT-6-Astra' }).click()
+    await expect(page.getByRole('button', { name: 'Thinking and context', exact: true })).toHaveText('High⌄')
+    await page.getByLabel('Message conversation').fill('Still High.')
+    await page.getByLabel('Message conversation').press('Enter')
+    await expect.poll(() => engine.commands.filter(command => command.type === 'thread.turn.start').length).toBe(2)
+    expect(engine.commands.filter(command => command.type === 'thread.turn.start').at(-1)).toMatchObject({ modelSelection: { model: 'gpt-6-astra', options: [{ id: 'reasoningEffort', value: 'high' }] } })
+  } finally { await scenario.dispose(); await engine.close() }
+})
+
+test('a refused effort save keeps the message and High for retry', async ({}, testInfo) => {
+  const engine = await startEngine({ providers: modelSelectorProviders(), pendingRequests: false })
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    const page = await scenario.launch()
+    await page.getByRole('tab', { name: 'Projects', exact: true }).click()
+    await page.getByRole('button', { name: 'Open Live engine thread', exact: true }).click()
+    await page.getByRole('button', { name: 'Thinking and context', exact: true }).click()
+    await page.getByRole('region', { name: 'Model options' }).getByRole('button', { name: 'High', exact: true }).click()
+    await page.keyboard.press('Escape')
+    engine.failNextModelSettings()
+    await page.getByLabel('Message conversation').fill('Save High before sending.')
+    await page.getByLabel('Message conversation').press('Enter')
+    await expect(page.getByRole('alert')).toContainText('Could not save model settings for thread t1')
+    expect(engine.commands.some(command => command.type === 'thread.turn.start')).toBe(false)
+    await expect(page.getByLabel('Message conversation')).toHaveValue('Save High before sending.')
+    await expect(page.getByRole('button', { name: 'Thinking and context', exact: true })).toHaveText('High⌄')
+    await page.getByLabel('Message conversation').press('Enter')
+    await expect(page.getByLabel('Message conversation')).toHaveValue('')
+    expect(engine.commands.filter(command => command.type === 'thread.turn.start')).toHaveLength(1)
+    expect(engine.commands.find(command => command.type === 'thread.turn.start')).toMatchObject({ modelSelection: { options: [{ id: 'reasoningEffort', value: 'high' }] } })
+  } finally { await scenario.dispose(); await engine.close() }
+})

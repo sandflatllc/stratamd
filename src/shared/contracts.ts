@@ -283,6 +283,12 @@ export interface EngineThreadView {
   access: 'approval-required' | 'auto-accept-edits' | 'auto' | 'full-access'
   status: 'idle' | 'starting' | 'running' | 'ready' | 'interrupted' | 'stopped' | 'error'
   updatedAt: string
+  /**
+   * When the thread last changed hands: the owner's latest send or the latest turn's completion, whichever is
+   * later, and creation before either. Mid-turn activity, streaming, and waits leave it alone, so Recent order
+   * and the row's time hold still while an agent works (§6.9).
+   */
+  lastExchangeAt: string
   unread: boolean
   pendingApprovals: boolean
   pendingUserInput: boolean
@@ -625,6 +631,14 @@ export interface ReadingState {
   foldedHeadings: HeadingReference[]
 }
 
+export interface LocalLinkTarget {
+  kind: 'html' | 'markdown'
+  /** The real path of the file. */
+  path: string
+  /** A `file:` URL for the page, with the link's query and fragment kept. */
+  url: string
+}
+
 export interface LocalMarkdownPreview {
   path: string
   source: string
@@ -765,7 +779,7 @@ export interface ThemeView {
   externalRevision: number
 }
 
-export type PaneId = 'explorer' | 'editor' | 'rightRail' | 'composer'
+export type PaneId = 'explorer' | 'editor' | 'rightRail' | 'composer' | 'themePanel'
 export type PaneZoom = Record<PaneId, number>
 
 export interface AppSettingsView {
@@ -1039,6 +1053,8 @@ export interface StrataApi {
 
   /** Renderer bridge to the system browser. */
   openExternal?(url: string): Promise<void>
+  /** A local .html or Markdown link from a reply, resolved to a file that exists; relative links resolve against the project folder. */
+  resolveLocalLink(input: { projectId: string | null; href: string }): Promise<LocalLinkTarget>
   getState(): Promise<AppView>
   subscribe(listener: (state: AppView) => void): () => void
   pairEngine(request: PairEngineRequest): Promise<void>

@@ -82,3 +82,23 @@ describe('the brief and the view', () => {
     expect(view.summary).toBe('1 thing marked')
   })
 })
+
+describe('visual comment sheets and message details', () => {
+  it('keeps exact details for the agent without exposing the generated appendix in the transcript', async () => {
+    const { appendVisualContext, visibleVisualMessage } = await import('../../src/core/visual-comments')
+    const record = comment()
+    const brief = visualBrief(record, revision(1), new Map())
+    const text = appendVisualContext('Please fix this.', [brief])
+    expect(text).toContain(JSON.stringify(brief.id))
+    expect(visibleVisualMessage(text)).toBe('Please fix this.')
+    expect(visibleVisualMessage('An ordinary <!-- strata-visual-context --> comment')).toBe('An ordinary <!-- strata-visual-context --> comment')
+    expect(visibleVisualMessage('Keep\n\n<!-- strata-visual-context -->\n## Visual comments\n\n```json\ninvalid\n```\n')).toContain('invalid')
+  })
+
+  it('counts requested appearances and keeps one image per capture within each comment', async () => {
+    const { visualCaptureIds } = await import('../../src/core/visual-comments')
+    expect(visualCaptureIds({ captures: [{ id: 'clean' }, { id: 'requested', requested: true }], draft: { marks: [{ captureId: 'clean' }, { captureId: 'clean' }], strokes: [{ captureId: 'clean' }], adjustments: [{}], requestedCaptureId: 'requested' } })).toEqual(['clean', 'requested'])
+    expect(sendCapacity({ files: 7, visualImages: 1, visualComments: 1, contextFile: false }).refusal).toBeUndefined()
+    expect(sendCapacity({ files: 7, visualImages: 1, visualComments: 1, contextFile: true }).refusal).toBeDefined()
+  })
+})

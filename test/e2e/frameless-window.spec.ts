@@ -11,7 +11,7 @@ test('the logo groups secondary actions without account notifications', async ({
   const engine = await startEngine({ providers: [{ instanceId: 'codex', driver: 'codex', displayName: 'Codex', enabled: true, installed: true, status: 'ready', version: '1.0.0', checkedAt: '2026-09-04T12:00:00.000Z', auth: { status: 'unauthenticated', type: 'chatgpt', label: 'Pro' }, models: [] }] })
   try {
     value = await seededScenario(testInfo, engine.origin, '# Window design\n\nThe logo menu keeps secondary actions together.\n', 'window-design.md')
-    await value.writeSettings({ animatedBackground: false, theme: 'strata-vivid', zoom: { explorer: 1, editor: 1.1, rightRail: 1, composer: 1 } })
+    await value.writeSettings({ animatedBackground: false, theme: 'strata-vivid', zoom: { explorer: 1, editor: 1.1, rightRail: 1, composer: 1, themePanel: 1 } })
     const page = await value.launch()
     await expect(page.getByRole('button', { name: 'StrataMD menu' })).toHaveAttribute('title', 'StrataMD menu')
     await expect(page.locator('.app-menu-trigger .attention-dot')).toHaveCount(0)

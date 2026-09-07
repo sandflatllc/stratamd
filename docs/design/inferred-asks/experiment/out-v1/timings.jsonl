@@ -1,0 +1,16 @@
+{"tag":"sol-low-fast","doc":"short","run":1,"ms":7406,"exit":0}
+{"tag":"luna-medium-fast","doc":"short","run":1,"ms":9959,"exit":0}
+{"tag":"sol-medium-fast","doc":"short","run":1,"ms":12989,"exit":0}
+{"tag":"sol-low-fast","doc":"short","run":2,"ms":8984,"exit":0}
+{"tag":"luna-low-fast","doc":"short","run":1,"ms":8132,"exit":0}
+{"tag":"luna-medium-fast","doc":"short","run":2,"ms":9816,"exit":0}
+{"tag":"luna-low-fast","doc":"short","run":2,"ms":8175,"exit":0}
+{"tag":"sol-medium-fast","doc":"short","run":2,"ms":11561,"exit":0}
+{"tag":"luna-medium-fast","doc":"long","run":1,"ms":16590,"exit":0}
+{"tag":"luna-low-fast","doc":"long","run":1,"ms":11714,"exit":0}
+{"tag":"sol-low-fast","doc":"long","run":1,"ms":20299,"exit":0}
+{"tag":"sol-medium-fast","doc":"long","run":1,"ms":16200,"exit":0}
+{"tag":"luna-low-fast","doc":"long","run":2,"ms":13053,"exit":0}
+{"tag":"sol-low-fast","doc":"long","run":2,"ms":17696,"exit":0}
+{"tag":"luna-medium-fast","doc":"long","run":2,"ms":22747,"exit":0}
+{"tag":"sol-medium-fast","doc":"long","run":2,"ms":18154,"exit":0}
