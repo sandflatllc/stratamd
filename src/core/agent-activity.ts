@@ -91,8 +91,10 @@ function isBackgroundTask(payload: Record<string, unknown>): boolean {
 function stateOf(status: string | null, tone: EngineActivityView['tone'], ended: boolean): AgentRunState {
   const value = normalized(status)
   if (tone === 'error' || ['failed', 'error', 'errored'].includes(value)) return 'failed'
-  if (['completed', 'complete', 'succeeded', 'success', 'stopped', 'cancelled', 'canceled', 'killed'].includes(value)) return 'done'
-  if (['idle', 'waiting', 'blocked', 'paused', 'needs input', 'input required'].includes(value)) return 'waiting'
+  // T3's `idle` is a Codex agent that finished its turn and is parked; the owner reads that as done, not as a
+  // question for them. `interrupted` is the owner's stop and arrives with no endedAt.
+  if (['completed', 'complete', 'succeeded', 'success', 'stopped', 'cancelled', 'canceled', 'killed', 'idle', 'interrupted'].includes(value)) return 'done'
+  if (['waiting', 'blocked', 'paused', 'needs input', 'input required'].includes(value)) return 'waiting'
   if (ended) return 'done'
   return 'working'
 }
@@ -130,11 +132,13 @@ function usageOf(payload: Record<string, unknown>): { durationMs: number | null;
 }
 
 /**
- * One run per task, in spawn order. Depth comes from Codex's `agentPath`
- * when present. Otherwise a spawn whose tool call is not one of the main
- * thread's own calls, arriving while another run is working, belongs to
- * the shallowest working run, newest first among equals: agents fan out
- * far more often than they chain. Anything else sits at level 1.
+ * One run per task, in spawn order. Depth comes from Codex's `agentPath` or
+ * T3's `parentAgentId` when present. Otherwise, in a turn where the thread
+ * reports its own Agent calls, a spawn whose tool call is not one of them,
+ * arriving while another run is working, belongs to the shallowest working
+ * run, newest first among equals: agents fan out far more often than they
+ * chain. T3 sometimes reports no Agent call rows for a whole turn; nothing
+ * is inferred there and every spawn sits at level 1 with its depth unknown.
  */
 export function deriveAgentRuns(activities: readonly EngineActivityView[]): AgentRun[] {
   const mainToolCalls = new Set<string>()
@@ -144,6 +148,12 @@ export function deriveAgentRuns(activities: readonly EngineActivityView[]): Agen
     const id = text(payload?.toolCallId) ?? text(record(payload?.data)?.toolCallId)
     if (id) mainToolCalls.add(id)
   }
+  const reportsAgentCalls = activities.some((activity) => {
+    if (!activity.kind.startsWith('task.')) return false
+    const payload = record(activity.payload)
+    const toolUseId = payload && isAgentTask(payload) ? text(payload.toolUseId) : null
+    return toolUseId !== null && mainToolCalls.has(toolUseId)
+  })
   const runs = new Map<string, Working>()
   const order: string[] = []
   for (const activity of activities) {
@@ -167,18 +177,26 @@ export function deriveAgentRuns(activities: readonly EngineActivityView[]): Agen
         durationMs: null, tokens: null, toolUses: null, lastToolName: null, detail: null, summary: null, error: null,
         parentId: null, depth: 1, depthKnown: false,
       }
+      const parentAgent = text(payload.parentAgentId)
       if (agentPath) {
         const segments = agentPath.split('/').filter(Boolean)
         run.depth = Math.max(1, segments.length - 1)
         run.depthKnown = true
         const parentPath = `/${segments.slice(0, -1).join('/')}`
         run.parentId = order.map((id) => runs.get(id)!).find((candidate) => candidate.agentPath === parentPath)?.run.id ?? null
-      } else if (!(toolUseId && mainToolCalls.has(toolUseId))) {
+      } else if (parentAgent && runs.has(parentAgent)) {
+        const parent = runs.get(parentAgent)!.run
+        run.parentId = parent.id
+        run.depth = parent.depth + 1
+        run.depthKnown = true
+      } else if (toolUseId && mainToolCalls.has(toolUseId)) {
+        run.depthKnown = true
+      } else if (reportsAgentCalls && toolUseId) {
         const working = order.map((id) => runs.get(id)!.run).filter((candidate) => candidate.state === 'working')
         const shallowest = Math.min(...working.map((candidate) => candidate.depth))
         const parent = working.filter((candidate) => candidate.depth === shallowest).at(-1)
-        if (parent && toolUseId) { run.parentId = parent.id; run.depth = parent.depth + 1 }
-      } else run.depthKnown = true
+        if (parent) { run.parentId = parent.id; run.depth = parent.depth + 1 }
+      }
       working = { run, agentPath }
       runs.set(taskId, working)
       order.push(taskId)
@@ -207,6 +225,8 @@ export function deriveAgentRuns(activities: readonly EngineActivityView[]): Agen
       run.status = status ?? run.status
       run.state = stateOf(run.status, activity.tone, ended)
       if (run.state === 'failed' && !run.error) run.error = text(payload.summary) ?? text(payload.detail)
+      // A status that settles the run without an endedAt (Codex idle, interrupted) still marks when it stopped.
+      if ((run.state === 'done' || run.state === 'failed') && !run.endedAt) run.endedAt = activity.createdAt
     }
   }
   return order.map((id) => runs.get(id)!.run)
@@ -274,11 +294,16 @@ export function formatTokenCount(tokens: number): string {
   return String(tokens)
 }
 
-/** Elapsed time for a run: T3's reported duration, else the span of its activities, else since it started. */
+/**
+ * Elapsed time for a run. A finished run reports T3's duration, else the span of its activities. A live run keeps
+ * counting from the clock; T3's duration on a progress row is a snapshot that would otherwise freeze between rows.
+ */
 export function agentRunElapsedMs(run: Pick<AgentRun, 'durationMs' | 'startedAt' | 'endedAt' | 'state'>, now: number): number | null {
-  if (run.durationMs !== null) return run.durationMs
+  const live = run.state === 'working' || run.state === 'waiting'
+  if (run.durationMs !== null && !live) return run.durationMs
   const started = Date.parse(run.startedAt)
-  if (Number.isNaN(started)) return null
+  if (Number.isNaN(started)) return live ? run.durationMs : null
+  if (live) return Math.max(run.durationMs ?? 0, now - started, 0)
   if (run.endedAt) { const ended = Date.parse(run.endedAt); return Number.isNaN(ended) ? null : Math.max(0, ended - started) }
-  return run.state === 'working' || run.state === 'waiting' ? Math.max(0, now - started) : null
+  return null
 }

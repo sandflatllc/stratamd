@@ -63,12 +63,14 @@ describe('the brief and the view', () => {
     expect(brief.marks[0]).toMatchObject({ label: 'Region 1', capture: 'visual-1-r1-1.png', rect: mark.rect, role: 'button', name: 'Save', selector: 'button.save' })
     expect(brief.strokes).toEqual([{ tool: 'arrow', capture: 'visual-1-r1-1.png', from: { x: 1, y: 2 }, to: { x: 3, y: 4 } }])
     expect(brief.adjustments).toEqual([{ mark: 'k1', property: 'font-size', value: '18px' }])
-    const rendered = renderConversationDelivery({ deliveryId: 'd1', threadId: 't1', annotations: [], replies: [], blocks: [], outcomes: [], visual: [brief] })
-    expect(rendered).toContain('## Visual comments')
-    expect(rendered).not.toContain('"ready":true')
-    expect(rendered).not.toContain('Answer owner passage feedback')
-    expect(rendered).not.toContain('Do the requested change')
-    expect(rendered).toContain('visual-1-r1-1.png')
+    // Briefs travel in the message text; the context file never carries a visual section.
+    const rendered = renderConversationDelivery({ deliveryId: 'd1', threadId: 't1', annotations: [], replies: [], blocks: [], outcomes: [] })
+    expect(rendered).not.toContain('## Visual comments')
+    const appendix = JSON.stringify([brief])
+    expect(appendix).not.toContain('"ready":true')
+    expect(appendix).not.toContain('Answer owner passage feedback')
+    expect(appendix).not.toContain('Do the requested change')
+    expect(appendix).toContain('visual-1-r1-1.png')
   })
 
   it('keeps mark identity available for editing and names the status in plain words', () => {

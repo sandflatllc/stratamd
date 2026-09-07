@@ -27,6 +27,7 @@ describe('linkCopyTarget', () => {
     expect(linkCopyTarget('mailto:a@b.c', doc)).toEqual({ kind: 'other', address: 'mailto:a@b.c' })
     expect(linkCopyTarget('#heading', doc)).toEqual({ kind: 'other', address: '#heading' })
     expect(linkCopyTarget('   ', doc)).toBeNull()
+    expect(linkCopyTarget('file://server/share/x.html', doc)).toEqual({ kind: 'file', path: null, written: 'file://server/share/x.html' })
   })
 })
 

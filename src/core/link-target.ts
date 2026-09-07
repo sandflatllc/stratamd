@@ -32,6 +32,8 @@ export function linkCopyTarget(href: string, documentPath: string): LinkCopyTarg
   if (/^file:/i.test(written)) {
     try {
       const url = new URL(written)
+      // A file URL naming another host is not a path on this computer; only the written form copies.
+      if (url.host && url.host !== 'localhost') return { kind: 'file', path: null, written }
       return { kind: 'file', path: normalizePosixPath(decode(url.pathname)), written }
     } catch { return { kind: 'file', path: null, written } }
   }

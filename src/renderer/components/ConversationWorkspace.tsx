@@ -100,7 +100,7 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   useEffect(() => {
     const dismissOutside = (event: PointerEvent) => {
       if (!discussionState.current.open || discussionState.current.editing || discussionRoot.current?.contains(event.target as Node)) return
-      if (event.target instanceof Element && event.target.closest('.web-link-picker')) return
+      if (event.target instanceof Element && event.target.closest('.web-link-picker, .link-context-menu')) return
       setDiscussion(null)
     }
     const dismissKey = (event: KeyboardEvent) => {

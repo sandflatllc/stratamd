@@ -539,6 +539,9 @@ export interface AccountView {
   parked: boolean
   session: UsageWindowView | null
   weekly: UsageWindowView | null
+  modelWindows?: Array<UsageWindowView & { model: string }>
+  usageProblem?: string | null
+  usageRefreshing?: boolean
   /** When the shown usage was measured; null when never. */
   measuredAt: string | null
   /** True when the usage came from the engine on this connection, false when it is Strata's persisted measurement. */
@@ -1057,7 +1060,7 @@ export interface StrataApi {
   /** Renderer bridge to the system browser. */
   openExternal?(url: string): Promise<void>
   /** A local .html or Markdown link from a reply, resolved to a file that exists; relative links resolve against the project folder. */
-  resolveLocalLink(input: { projectId: string | null; href: string }): Promise<LocalLinkTarget>
+  resolveLocalLink(input: { projectId: string | null; href: string; documentPath?: string }): Promise<LocalLinkTarget>
   getState(): Promise<AppView>
   subscribe(listener: (state: AppView) => void): () => void
   pairEngine(request: PairEngineRequest): Promise<void>

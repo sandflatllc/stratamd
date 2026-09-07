@@ -49,7 +49,19 @@ try {
         if (account?.email && request.email.toLowerCase() !== account.email.toLowerCase()) throw new Error('Account identity changed')
       }
       const usage = await query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true })
-      if (usage.rate_limits_available) result = { session: window(usage.rate_limits?.five_hour?.utilization, usage.rate_limits?.five_hour?.resets_at), weekly: window(usage.rate_limits?.seven_day?.utilization, usage.rate_limits?.seven_day?.resets_at), planLabel: usage.subscription_type, applicable: true, measuredAt }
+      if (usage.rate_limits_available) {
+        const limits = usage.rate_limits
+        const scoped = limits?.model_scoped ?? limits?.limits?.filter(value => value.kind === 'weekly_scoped' && value.scope?.model?.display_name && !value.scope?.surface).map(value => ({ display_name: value.scope.model.display_name, utilization: value.percent, resets_at: value.resets_at })) ?? []
+        const modelWindows = scoped.flatMap(value => {
+          const reading = window(value.utilization, value.resets_at)
+          return reading && typeof value.display_name === 'string' && value.display_name.trim() ? [{ ...reading, model: value.display_name }] : []
+        })
+        for (const [key, model] of [['seven_day_opus', 'Opus'], ['seven_day_sonnet', 'Sonnet']]) {
+          const reading = window(limits?.[key]?.utilization, limits?.[key]?.resets_at)
+          if (reading && !modelWindows.some(value => value.model.toLowerCase() === model.toLowerCase())) modelWindows.push({ ...reading, model })
+        }
+        result = { session: window(limits?.five_hour?.utilization, limits?.five_hour?.resets_at), weekly: window(limits?.seven_day?.utilization, limits?.seven_day?.resets_at), modelWindows, planLabel: usage.subscription_type, applicable: true, measuredAt }
+      }
     } finally { query.close(); release?.() }
   }
   process.stdout.write(JSON.stringify(result) + '\n')

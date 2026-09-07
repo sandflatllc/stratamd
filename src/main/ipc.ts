@@ -343,7 +343,7 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.resolveLocalImage]: z.tuple([pathSchema, z.string().min(1).max(16_384)]),
   [IPC.resolveLocalMarkdown]: z.tuple([pathSchema, z.string().min(1).max(16_384)]),
   [IPC.openExternal]: z.tuple([z.string().url().max(16_384)]),
-  [IPC.resolveLocalLink]: z.tuple([z.object({ projectId: idSchema.nullable(), href: z.string().min(1).max(16_384) }).strict()]),
+  [IPC.resolveLocalLink]: z.tuple([z.object({ projectId: idSchema.nullable(), href: z.string().min(1).max(16_384), documentPath: pathSchema.optional() }).strict()]),
   [IPC.addDictionaryWord]: z.tuple([z.string().min(1).max(512)]),
   [IPC.flashWindow]: z.tuple([]),
   [IPC.createFile]: z.tuple([pathSchema, z.string().min(1).max(255).optional()]),
@@ -547,7 +547,7 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.resolveLocalImage]: (documentPath: string, source: string) => options.api.resolveLocalImage(documentPath, source),
     [IPC.resolveLocalMarkdown]: (documentPath: string, source: string) => options.api.resolveLocalMarkdown(documentPath, source),
     [IPC.openExternal]: (url: string) => openExternal(url),
-    [IPC.resolveLocalLink]: (input: { projectId: string | null; href: string }) => options.api.resolveLocalLink(input),
+    [IPC.resolveLocalLink]: (input: { projectId: string | null; href: string; documentPath?: string }) => options.api.resolveLocalLink(input),
     [IPC.addDictionaryWord]: (word: string) => { options.renderer.session.addWordToSpellCheckerDictionary(word) },
     [IPC.flashWindow]: () => flashWindow(),
     [IPC.createFile]: async (directory: string, name?: string) => {

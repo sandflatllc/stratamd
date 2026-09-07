@@ -48,7 +48,8 @@ export function AgentClusters({ runs, collapsed, onToggle, onOpen, maxClusters =
   if (runs.length === 0) return null
   const clusters = clusterAgentRuns(runs)
   const summary = summarizeAgentRuns(runs)
-  const folded = collapsed || clusters.length > maxClusters
+  const forced = clusters.length > maxClusters
+  const folded = collapsed || forced
   const summaryLabel = `${summary.total} ${summary.total === 1 ? 'agent' : 'agents'}: ${(['working', 'waiting', 'failed', 'done'] as const).filter((state) => summary[state] > 0).map((state) => `${summary[state]} ${STATE_LABEL[state]}`).join(', ')}`
   return <div className="conversation-agents" data-collapsed={folded || undefined} data-working={summary.working > 0 || undefined} role="group" aria-label="Agents in this turn">
     {folded
@@ -61,9 +62,10 @@ export function AgentClusters({ runs, collapsed, onToggle, onOpen, maxClusters =
           <svg viewBox="0 0 26 26"><Bot />{cluster.map((run, index) => <path className="conversation-agent-arc" key={run.id} data-state={run.state} data-depth={Math.min(run.depth, 3)} d={arcPath(index, run.depth)}><title>{`${run.title} · level ${run.depth} · ${STATE_LABEL[run.state]}`}</title></path>)}</svg>
         </button>
       })}
-    <button type="button" className="conversation-agents-toggle" aria-expanded={!collapsed} aria-label={collapsed ? 'Show agent clusters' : 'Hide agent clusters'} title={collapsed ? 'Show agent clusters' : 'Hide agent clusters'} onClick={onToggle}>
+    {/* Past the placement's cap the row folds on its own and the chevron would change nothing; it stays only to clear a saved fold. */}
+    {(!forced || collapsed) && <button type="button" className="conversation-agents-toggle" aria-expanded={!collapsed} aria-label={collapsed ? 'Show agent clusters' : 'Hide agent clusters'} title={collapsed ? 'Show agent clusters' : 'Hide agent clusters'} onClick={onToggle}>
       <svg viewBox="0 0 12 12" aria-hidden="true">{collapsed ? <path d="M4 2.5 7.5 6 4 9.5" /> : <path d="M2.5 4.5 6 8l3.5-3.5" />}</svg>
-    </button>
+    </button>}
   </div>
 }
 
@@ -98,13 +100,15 @@ function AgentRow({ run, now, focused, onShow }: { run: AgentRun; now: number; f
   </article>
 }
 
-export function AgentsDialog({ runs, background, focus, now, onClose, onShow }: {
+export function AgentsDialog({ runs, background, focus, now, onClose, onShow, canShow = () => true }: {
   runs: readonly AgentRun[]
   background: readonly BackgroundTask[]
   focus?: string | undefined
   now: number
   onClose(): void
   onShow?(run: AgentRun): void
+  /** Whether the transcript holds a row for the run; Show in transcript is offered only then. */
+  canShow?(run: AgentRun): boolean
 }) {
   const dialogRef = useRef<HTMLElement>(null)
   const [filter, setFilter] = useState<Filter>('all')
@@ -129,11 +133,11 @@ export function AgentsDialog({ runs, background, focus, now, onClose, onShow }: 
         <span>{summary.depth} {summary.depth === 1 ? 'level' : 'levels'} deep</span>
       </div>
       <div className="conversation-agents-filters" role="group" aria-label="Show">
-        {(['all', 'working', 'done', 'failed'] as const).map((value) => <button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{value === 'all' ? 'All' : value[0]!.toUpperCase() + value.slice(1)}</button>)}
+        {(['all', 'working', 'waiting', 'done', 'failed'] as const).map((value) => <button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{value === 'all' ? 'All' : value[0]!.toUpperCase() + value.slice(1)}</button>)}
       </div>
       <div className="conversation-agents-list">
         {shown.length === 0 && <p className="conversation-agents-empty">No agents are {filter} in this turn.</p>}
-        {shown.map((run) => <AgentRow key={run.id} run={run} now={now} focused={run.id === focus} {...(onShow ? { onShow } : {})} />)}
+        {shown.map((run) => <AgentRow key={run.id} run={run} now={now} focused={run.id === focus} {...(onShow && canShow(run) ? { onShow } : {})} />)}
         {background.length > 0 && <>
           <h3 className="conversation-agents-section">Background commands</h3>
           {background.map((task) => {

@@ -247,6 +247,9 @@ test('10 accounts: external usage is unavailable, parking from the top bar, and 
     // Opening Accounts probes the engine for fresh usage (§5.13) before reading its configuration.
     await expect.poll(() => engine.rpcRequests.map((request) => request.tag)).toContain('server.refreshProviders')
     expect(engine.rpcRequests.map((request) => request.tag)).toContain('server.getConfig')
+    const refreshCount = engine.rpcRequests.filter(request => request.tag === 'server.refreshProviders').length
+    await modal.getByRole('button', { name: 'Refresh', exact: true }).click()
+    await expect.poll(() => engine.rpcRequests.filter(request => request.tag === 'server.refreshProviders').length).toBeGreaterThan(refreshCount)
     await modal.getByRole('button', { name: 'Park Codex work' }).click()
     await expect(modal.getByTestId('account-state-codex')).toHaveText('Parked')
     await modal.getByRole('button', { name: 'Close' }).click()

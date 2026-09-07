@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { atomicWriteFile, isRecord, PRIVATE_FILE_MODE } from '../storage'
-import { deriveAccountState, resolveNewThreadInstance, type AccountProvider, type UsageWindow } from '../../core/accountState'
+import { accountForModel, deriveAccountState, resolveNewThreadInstance, type AccountProvider, type AccountUsage, type ModelUsageWindow, type UsageWindow } from '../../core/accountState'
 import type { AccountView } from '../../shared/contracts'
 import type { T3ServerConfigSlice } from './t3-contract'
 
@@ -25,6 +25,7 @@ export interface AccountMeasurement {
   accountKey?: string
   session: UsageWindow | null
   weekly: UsageWindow | null
+  modelWindows?: ModelUsageWindow[]
   planLabel?: string
   applicable: boolean
   measuredAt: string
@@ -45,7 +46,7 @@ export interface EngineProviderInstance {
   unavailableReason?: string
   message?: string
   auth: { status: string; type?: string; label?: string; email?: string }
-  usage?: { session: UsageWindow | null; weekly: UsageWindow | null; planLabel?: string; applicable: boolean } | undefined
+  usage?: AccountUsage | undefined
 }
 
 /** Narrows `server.getConfig` to the instances Accounts shows; the home path comes from the instance settings when the owner set one. */
@@ -75,7 +76,7 @@ export function emptyAccountsStore(): AccountsStore {
 
 function window(value: unknown): UsageWindow | null {
   if (!isRecord(value)) return null
-  if (typeof value.usedPercent !== 'number' || typeof value.measuredAt !== 'string') return null
+  if (typeof value.usedPercent !== 'number' || !Number.isFinite(value.usedPercent) || typeof value.measuredAt !== 'string') return null
   return { usedPercent: value.usedPercent, resetsAt: typeof value.resetsAt === 'string' ? value.resetsAt : null, measuredAt: value.measuredAt }
 }
 
@@ -88,6 +89,7 @@ export function normalizeAccountsStore(value: unknown): AccountsStore {
       if (!isRecord(raw) || typeof raw.measuredAt !== 'string') continue
       store.measurements[instanceId] = {
         ...(typeof raw.accountKey === 'string' ? { accountKey: raw.accountKey } : {}),
+        modelWindows: Array.isArray(raw.modelWindows) ? raw.modelWindows.flatMap(value => { const reading = window(value); return reading && isRecord(value) && typeof value.model === 'string' && value.model.trim() ? [{ ...reading, model: value.model }] : [] }) : [],
         session: window(raw.session), weekly: window(raw.weekly), applicable: raw.applicable !== false, measuredAt: raw.measuredAt,
         ...(typeof raw.planLabel === 'string' ? { planLabel: raw.planLabel } : {}),
       }
@@ -130,6 +132,7 @@ export function recordMeasurements(store: AccountsStore, providers: readonly Eng
     if (!provider.usage) continue
     const next: AccountMeasurement = {
       accountKey: measurementAccountKey(provider),
+      modelWindows: provider.usage.modelWindows ?? [],
       session: provider.usage.session, weekly: provider.usage.weekly, applicable: provider.usage.applicable, measuredAt: nowIso,
       ...(provider.usage.planLabel ? { planLabel: provider.usage.planLabel } : {}),
     }
@@ -149,7 +152,7 @@ function measurementFor(instance: EngineProviderInstance, store: AccountsStore):
 
 function providerFor(instance: EngineProviderInstance, store: AccountsStore): AccountProvider {
   const measurement = measurementFor(instance, store)
-  const usage = instance.usage ?? (measurement ? { session: measurement.session, weekly: measurement.weekly, applicable: measurement.applicable, ...(measurement.planLabel ? { planLabel: measurement.planLabel } : {}) } : undefined)
+  const usage = instance.usage ?? (measurement ? { modelWindows: measurement.modelWindows ?? [], session: measurement.session, weekly: measurement.weekly, applicable: measurement.applicable, ...(measurement.planLabel ? { planLabel: measurement.planLabel } : {}) } : undefined)
   return {
     instanceId: instance.instanceId, driver: instance.driver, enabled: instance.enabled, status: instance.status,
     ...(instance.availability ? { availability: instance.availability } : {}),
@@ -186,6 +189,7 @@ export function accountViews(store: AccountsStore, providers: readonly EnginePro
       parked,
       session: provider.usage?.session ?? null,
       weekly: provider.usage?.weekly ?? null,
+      modelWindows: provider.usage?.modelWindows ?? [],
       measuredAt: instance.usage ? nowIso(nowMs) : measurement?.measuredAt ?? null,
       live: instance.usage !== undefined,
     }
@@ -201,9 +205,10 @@ function nowIso(nowMs: number): string {
  * instance; otherwise the fork's ordering picks the least loaded usable
  * account, sticking with the last choice while it stays usable.
  */
-export function chooseInstance(store: AccountsStore, accounts: readonly AccountView[], explicitInstanceId: string | null, driver: string | null = null): string | null {
+export function chooseInstance(store: AccountsStore, accounts: readonly AccountView[], explicitInstanceId: string | null, driver: string | null = null, model = '', nowMs = Date.now()): string | null {
   const candidates = accounts
     .filter((account) => driver === null || account.driver === driver)
+    .map(account => model ? accountForModel(account, model, nowMs) : account)
     .map((account) => ({ instanceId: account.instanceId, derived: { state: account.state, usable: account.usable, tier: account.state === 'ready' && account.pressure !== null ? 0 as const : account.state === 'ready' ? 1 as const : 2 as const, limitedUntil: account.limitedUntil, pressure: account.pressure, reason: account.reason } }))
   return resolveNewThreadInstance({
     candidates,
@@ -225,7 +230,7 @@ export function terminalShimTargets(store: AccountsStore, accounts: readonly Acc
   for (const [driver, shim] of Object.entries(drivers)) {
     const selection = store.terminalDefaults[driver] ?? null
     if (selection === null) continue
-    const instanceId = selection === 'auto' ? chooseInstance(store, accounts, null, driver) : selection
+    const instanceId = selection === 'auto' ? chooseInstance(store, accounts, null, driver, driver === 'claudeAgent' ? 'fable' : '') : selection
     const account = accounts.find((candidate) => candidate.instanceId === instanceId && candidate.driver === driver)
     if (!account?.homePath) continue
     targets.push({ name: shim.command, command: shim.command, homeVariable: shim.homeVariable, home: account.homePath })

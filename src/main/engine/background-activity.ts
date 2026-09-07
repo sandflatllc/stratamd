@@ -1,3 +1,4 @@
+import { COMMENT_COMPOSER_TITLE } from '../visual-comment-image'
 import { subscribePreviewOwnerInput } from '../preview/owner-input'
 import { isDarwin } from '../../platform/runtime'
 import { app, BrowserWindow, powerMonitor } from 'electron'
@@ -60,6 +61,8 @@ export function installEngineActivity(api: { readEngineSettings(): Promise<Engin
     } catch { /* Power reporting is optional; it cannot block the editor or engine. */ } finally { running = false; if (requested && !disposed) void report() }
   }
   const bindWindow = (window: BrowserWindow) => {
+    // The hidden comment-sheet composer is not the owner's window; its close is not their input.
+    if (window.getTitle() === COMMENT_COMPOSER_TITLE) return
     const changed = () => { lastInput = Date.now(); void report(true) }
     const input = () => { lastInput = Date.now() }
     const emitter: NodeJS.EventEmitter = window

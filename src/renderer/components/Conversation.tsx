@@ -268,10 +268,22 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
     [{ id: turn.id, running: Boolean(thread && (thread.status === 'running' || thread.status === 'starting') && (thread.activeTurnId !== null ? thread.activeTurnId === turn.turnId : index === turns.length - 1)), finished: thread?.activeTurnId !== turn.turnId }],
     turn.messages.map(message => ({ ...message, turnId: turn.id })),
   )), [turns, thread?.status, thread?.activeTurnId])
-  /** Agents belong to the newest turn: they appear on the first spawn and clear when the next message starts a turn. */
-  const latestTurnActivities = turns.at(-1)?.activities ?? []
+  /**
+   * Agents belong to the newest turn: they appear on the first spawn and clear when the next message starts a turn.
+   * T3 leaves many task rows without a turn id; after the turn settles they land in trailing turn-less groups, so the
+   * newest turn with an id anchors the set and every later group's rows (its own late completions) join it.
+   */
+  const latestTurnActivities = useMemo(() => {
+    const anchor = turns.findLastIndex((turn) => turn.turnId !== null)
+    return anchor < 0 ? [] : turns.slice(anchor).flatMap((turn) => turn.activities)
+  }, [turns])
   const agentRuns = useMemo(() => deriveAgentRuns(latestTurnActivities), [latestTurnActivities])
   const backgroundTasks = useMemo(() => deriveBackgroundTasks(latestTurnActivities), [latestTurnActivities])
+  /** Runs whose spawn row exists in the transcript; workflow members arrive as progress rows only and have none. */
+  const shownInTranscript = useMemo(() => {
+    const entryIds = new Set(workGroups.flatMap((group) => group.entries.map((entry) => entry.id)))
+    return new Set(agentRuns.filter((run) => run.activityIds.some((id) => entryIds.has(id))).map((run) => run.id))
+  }, [workGroups, agentRuns])
   useEffect(() => {
     if (!agentRuns.some((run) => run.state === 'working' || run.state === 'waiting')) return
     const timer = window.setInterval(() => setNow(Date.now()), 1_000)
@@ -283,8 +295,8 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
     const group = workGroups.find((candidate) => candidate.entries.some((entry) => run.activityIds.includes(entry.id)))
     const entry = group?.entries.find((candidate) => run.activityIds.includes(candidate.id))
     const turn = group ? turns.find((candidate) => candidate.id === group.turnId) : undefined
-    setAgentsDialog(null)
     if (!group || !entry || !turn) return
+    setAgentsDialog(null)
     setExpandedTurns((value) => ({ ...value, [turn.turnId ?? turn.id]: true }))
     setExpandedWork((value) => ({ ...value, [group.id]: true }))
     requestAnimationFrame(() => {
@@ -317,7 +329,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
       </div>
     </header>
     {passage && <div className="conversation-passage">{passage}</div>}
-    {agentsDialog && createPortal(<AgentsDialog runs={agentRuns} background={backgroundTasks} focus={agentsDialog.focus} now={now} onClose={() => setAgentsDialog(null)} onShow={showAgentInTranscript} />, document.querySelector('.app-shell') ?? document.body)}
+    {agentsDialog && createPortal(<AgentsDialog runs={agentRuns} background={backgroundTasks} focus={agentsDialog.focus} now={now} onClose={() => setAgentsDialog(null)} onShow={showAgentInTranscript} canShow={(run) => shownInTranscript.has(run.id)} />, document.querySelector('.app-shell') ?? document.body)}
     <div className="conversation-reading-area">
     <ConversationHistory ref={history} active={visible} target={workspace.target} streaming={running} messages={thread.messages.map(message => message.id)} identity={{ engine: engine.server ?? '', thread: thread.id, placement, project: selected.root ?? '' }} onNavigation={workspace.onNavigation} key={`history:${thread.id}`} className="conversation-messages">
       {placement === 'center' && onDocumentMeasure && <div className="conversation-measure" style={{ width: `min(${documentMeasure}px, 100%)` }}><Resizer axis="vertical" label="Resize conversation measure" value={documentMeasure} min={620} max={1600} onChange={(value) => onDocumentMeasure(value, false)} onCommit={(value) => onDocumentMeasure(value, true)} /></div>}

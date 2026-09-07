@@ -184,7 +184,7 @@ Conversation navigation gate, 2026-09-05: verified in an isolated checkout of da
 | Provider-specific fields, model order/custom IDs, favorites and hidden models | `test/e2e/provider-settings-fields.spec.ts`; `test/e2e/provider-setup.spec.ts` |
 | Stock-server persistence after restart, secret redaction and host policy | `test/integration/managed-settings.test.ts` with `STRATAMD_ENGINE_BUNDLE` |
 | Official provider jobs, existing-tool preference and cancellation | `test/unit/provider-setup-jobs.test.ts`; successful new-account sign-in needs the owner's provider authorization |
-| Local usage normalization, identity check, cancellation, cached limits and Auto; external usage unavailable | `test/unit/local-usage.test.ts`; `test/unit/engine-accounts.test.ts`; `test/e2e/cockpit-engine.spec.ts` scenario 10; Linux stock-server reading in the bundled-server phase 3 report. macOS Keychain proof remains blocked by device availability. |
+| Local usage normalization and home expansion, model-specific limits, freshness and failed refreshes, identity check, cancellation, cached limits and model-aware Auto; external usage unavailable | `test/unit/local-usage.test.ts`; `test/unit/account-state.test.ts`; `test/unit/accounts-dialog.test.ts`; `test/unit/engine-accounts.test.ts`; `test/e2e/cockpit-engine.spec.ts` scenario 10; Linux stock-server reading in the bundled-server phase 3 report. macOS Keychain proof remains blocked by device availability. |
 
 | Bundled connection requirement | Evidence |
 | --- | --- |
