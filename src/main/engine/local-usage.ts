@@ -1,14 +1,19 @@
 import { spawn } from 'node:child_process'
 import { access } from 'node:fs/promises'
 import { constants } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import type { EngineSettings } from '../../shared/contracts'
 import type { AccountMeasurement, EngineProviderInstance } from './accounts'
 import { isSettingsRecord } from '../../shared/engine-settings'
 
 export interface LocalRuntimeContext { executable: string; directory: string; baseDirectory: string }
+export function resolveProviderHome(path: string, cwd: string): string {
+  const value = path.trim()
+  return value === '~' ? homedir() : value.startsWith('~/') ? resolve(homedir(), value.slice(2)) : resolve(cwd, value)
+}
 export async function findProviderExecutable(binary: string, cwd: string, searchPath = process.env.PATH ?? ''): Promise<string | null> {
-  const candidates = binary.includes('/') ? [isAbsolute(binary) ? binary : resolve(cwd, binary)] : searchPath.split(':').filter(Boolean).map(path => join(path, binary))
+  const candidates = binary.includes('/') ? [isAbsolute(binary) ? binary : resolveProviderHome(binary, cwd)] : searchPath.split(':').filter(Boolean).map(path => join(path, binary))
   for (const path of candidates) { try { await access(path, constants.X_OK); return path } catch { /* Try the next configured search directory. */ } }
   return null
 }
@@ -22,7 +27,7 @@ export async function measureLocalUsage(context: LocalRuntimeContext | null, hel
   const searchPath = `${dirname(context.executable)}:${process.env.PATH ?? ''}`
   const binary = await findProviderExecutable(typeof config.binaryPath === 'string' && config.binaryPath.trim() ? config.binaryPath : provider.driver === 'codex' ? 'codex' : 'claude', context.baseDirectory, searchPath)
   if (!binary || signal.aborted) return null
-  const env = { ...process.env, PATH: searchPath, ...(home ? { [provider.driver === 'codex' ? 'CODEX_HOME' : 'CLAUDE_CONFIG_DIR']: home } : {}) }
+  const env = { ...process.env, PATH: searchPath, ...(home?.trim() ? { [provider.driver === 'codex' ? 'CODEX_HOME' : 'CLAUDE_CONFIG_DIR']: resolveProviderHome(home, context.baseDirectory) } : {}) }
   return new Promise(resolveReading => {
     const child = spawn(context.executable, [helper], { cwd: context.baseDirectory, env, detached: true, stdio: ['pipe', 'pipe', 'pipe'] })
     let output = '', done = false
@@ -40,7 +45,8 @@ export async function measureLocalUsage(context: LocalRuntimeContext | null, hel
         const value: unknown = JSON.parse(output)
         if (!isSettingsRecord(value) || typeof value.measuredAt !== 'string') { finish(null); return }
         const validWindow = (window: unknown) => window === null || isSettingsRecord(window) && typeof window.usedPercent === 'number' && Number.isFinite(window.usedPercent) && typeof window.measuredAt === 'string' && (window.resetsAt === null || typeof window.resetsAt === 'string')
-        finish(validWindow(value.session) && validWindow(value.weekly) ? value as unknown as AccountMeasurement : null)
+        const validModels = value.modelWindows === undefined || Array.isArray(value.modelWindows) && value.modelWindows.every(window => isSettingsRecord(window) && typeof window.model === 'string' && window.model.trim() && validWindow(window))
+        finish(validWindow(value.session) && validWindow(value.weekly) && validModels ? value as unknown as AccountMeasurement : null)
       } catch { finish(null) }
     })
     child.stdin.on('error', () => undefined)

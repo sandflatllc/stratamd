@@ -57,7 +57,7 @@ describe('accounts (§5.13)', () => {
     await first.pair('http://engine.test', 'code')
     const measured = first.view().accounts.find((account) => account.instanceId === 'codex-work')!
     expect(measured).toMatchObject({ state: 'limited', usable: false, limitedUntil: resetsAt, live: false, pressure: 100, plan: 'Pro' })
-    expect(first.view().accounts.find((account) => account.instanceId === 'claude-main')).toMatchObject({ state: 'ready', usable: true })
+    expect(first.view().accounts.find((account) => account.instanceId === 'claude-main')).toMatchObject({ state: 'stale', usable: true })
     await first.shutdown()
     expect((await stat(join(directory, 'engine-accounts.json'))).mode & 0o777).toBe(0o600)
 
@@ -75,7 +75,7 @@ describe('accounts (§5.13)', () => {
     expect(options.find((option) => option.instanceId === 'claude-main')).toEqual({ instanceId: 'claude-main', label: 'Claude', disabled: false })
 
     // Auto skips the limited account; an explicit pick of it is refused.
-    await second.createThread({ projectId: 'p1', title: 'Auto', model: 'gpt-5.6', effort: null, access: 'full-access' })
+    await second.createThread({ projectId: 'p1', title: 'Auto', model: 'claude-fable-5-1', effort: null, access: 'full-access' })
     expect(commands.at(-1)).toMatchObject({ type: 'thread.create', modelSelection: { instanceId: 'claude-main' } })
     await expect(second.createThread({ projectId: 'p1', title: 'Explicit', model: 'gpt-5.6', effort: null, access: 'full-access', instanceId: 'codex-work' })).rejects.toThrow(/Codex work cannot take a thread/)
 
@@ -187,5 +187,49 @@ it('cancels its Codex reader when another client starts a turn', async () => {
     server.push('orchestration.subscribeShell', [{ kind: 'thread-upserted', sequence: 2, thread: { ...thread, session: { ...thread.session, status: 'running', activeTurnId: 'from-phone' } } }])
     await expect.poll(() => cancelled).toBe(true)
     expect(client.view().projects[0]?.threads[0]?.status).toBe('running')
+  } finally { await client.shutdown() }
+})
+
+it('persists Fable limits, routes Auto within the model family, and permits another Claude model on a Fable-limited account', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'strata-fable-routing-'))
+  const providers = [provider('codex-work', 'codex'), provider('claude-full', 'claudeAgent'), provider('claude-ready', 'claudeAgent')]
+  const server = fakeEngineServer(tag => tag === 'server.getConfig' ? { providers } : tag.startsWith('orchestration.subscribe') ? [{ kind: 'synchronized' }] : null)
+  const commands: Array<Record<string, unknown>> = []
+  const client = new T3EngineClient({ dataDirectory: directory, now: () => nowMs, localUsageAvailable: () => true, fetch: fetchFor(shell(), commands, server), webSocket: server.WebSocket,
+    measureUsage: async p => ({ session: { usedPercent: 0, resetsAt: null, measuredAt: at }, weekly: { usedPercent: p.instanceId === 'claude-ready' ? 60 : 20, resetsAt: null, measuredAt: at }, modelWindows: p.driver === 'claudeAgent' ? [{ model: 'Fable', usedPercent: p.instanceId === 'claude-full' ? 100 : 39, resetsAt: '2026-09-04T00:00:00Z', measuredAt: at }] : [], applicable: true, measuredAt: at }) })
+  try {
+    await client.pair('http://engine.test', 'code')
+    await vi.waitFor(() => expect(client.view().accounts.every(account => !account.usageRefreshing)).toBe(true))
+    expect(client.view().autoInstanceIds?.claudeAgent).toBe('claude-ready')
+    await expect(client.createThread({ projectId: 'p1', title: 'Blocked', model: 'claude-fable-5-1', instanceId: 'claude-full', effort: null, access: 'full-access' })).rejects.toThrow('Fable limit reached')
+    expect(commands).toHaveLength(0)
+    await client.createThread({ projectId: 'p1', title: 'Auto Fable', model: 'claude-fable-5-1', effort: null, access: 'full-access' })
+    expect(commands.at(-1)).toMatchObject({ modelSelection: { instanceId: 'claude-ready' } })
+    await client.createThread({ projectId: 'p1', title: 'Sonnet still works', model: 'claude-sonnet-5', instanceId: 'claude-full', effort: null, access: 'full-access' })
+    expect(commands.at(-1)).toMatchObject({ modelSelection: { instanceId: 'claude-full' } })
+    await expect(client.startTurn(String(commands.at(-1)!.threadId), { text: 'Switch to Fable', model: 'claude-fable-5-1', instanceId: 'claude-full', effort: null, access: 'full-access' })).rejects.toThrow('Fable limit reached')
+    const { readAccountsStore } = await import('../../src/main/engine/accounts')
+    expect((await readAccountsStore(join(directory, 'engine-accounts.json'))).measurements['claude-full']?.modelWindows).toMatchObject([{ model: 'Fable', usedPercent: 100 }])
+  } finally { await client.shutdown() }
+})
+
+it('explicit Refresh bypasses disabled polling and exposes failed readings without replacing their timestamps', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'strata-refresh-usage-'))
+  const server = fakeEngineServer(tag => tag === 'server.getConfig' ? { providers: [provider('claude', 'claudeAgent')], settings: { providerHealthRefreshInterval: 0 } } : tag.startsWith('orchestration.subscribe') ? [{ kind: 'synchronized' }] : null)
+  let fail = false
+  const measureUsage = vi.fn(async () => fail ? null : ({ session: { usedPercent: 14, resetsAt: null, measuredAt: at }, weekly: null, applicable: true, measuredAt: at }))
+  const client = new T3EngineClient({ dataDirectory: directory, now: () => nowMs, localUsageAvailable: () => true, fetch: fetchFor(shell()), webSocket: server.WebSocket, measureUsage })
+  try {
+    await client.pair('http://engine.test', 'code')
+    expect(measureUsage).not.toHaveBeenCalled()
+    await client.refreshAccounts()
+    await vi.waitFor(() => expect(client.view().accounts[0]).toMatchObject({ measuredAt: at, usageRefreshing: false }))
+    fail = true
+    await client.refreshAccounts()
+    await vi.waitFor(() => expect(client.view().accounts[0]?.usageProblem).toContain('could not be refreshed'))
+    expect(client.view().accounts[0]).toMatchObject({ state: 'stale', measuredAt: at, session: { usedPercent: 14 } })
+    fail = false
+    await client.refreshAccounts()
+    await vi.waitFor(() => expect(client.view().accounts[0]).toMatchObject({ state: 'ready', usageProblem: null, usageRefreshing: false }))
   } finally { await client.shutdown() }
 })
