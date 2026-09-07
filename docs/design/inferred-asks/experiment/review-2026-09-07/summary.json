@@ -1,0 +1,205 @@
+{
+  "baseline": {
+    "calls": 24,
+    "hits": 36,
+    "expected": 36,
+    "extras": 14,
+    "misses": 0,
+    "precision": 0.72,
+    "recall": 1.0,
+    "exact_set": 15,
+    "invalid_quotes": 0,
+    "median": 7.022929881000891,
+    "mean": 7.312292714209131,
+    "max": 11.590920775000995,
+    "failures": 0
+  },
+  "revised": {
+    "calls": 24,
+    "hits": 35,
+    "expected": 36,
+    "extras": 0,
+    "misses": 1,
+    "precision": 1.0,
+    "recall": 0.9722222222222222,
+    "exact_set": 23,
+    "invalid_quotes": 0,
+    "median": 6.3248656159958045,
+    "mean": 6.8483617110826644,
+    "max": 14.08344501999818,
+    "failures": 0
+  },
+  "pairs": [
+    {
+      "case": "real-complete",
+      "repeat": 1,
+      "baseline": 5.991544652002631,
+      "revised": 8.018261099001393,
+      "delta": 2.026716446998762
+    },
+    {
+      "case": "adjacent-repeated",
+      "repeat": 1,
+      "baseline": 8.04748184500204,
+      "revised": 5.6938455420022365,
+      "delta": -2.353636302999803
+    },
+    {
+      "case": "real-plan-offer",
+      "repeat": 1,
+      "baseline": 6.246924013998068,
+      "revised": 6.506254715997784,
+      "delta": 0.25933070199971553
+    },
+    {
+      "case": "answered-and-quoted",
+      "repeat": 1,
+      "baseline": 5.397428772004787,
+      "revised": 5.391414853002061,
+      "delta": -0.006013919002725743
+    },
+    {
+      "case": "original-long",
+      "repeat": 1,
+      "baseline": 11.590920775000995,
+      "revised": 9.663622400003078,
+      "delta": -1.9272983749979176
+    },
+    {
+      "case": "nonblocking",
+      "repeat": 1,
+      "baseline": 7.056422356996336,
+      "revised": 5.736360035996768,
+      "delta": -1.3200623209995683
+    },
+    {
+      "case": "real-two-decisions",
+      "repeat": 1,
+      "baseline": 8.221157330997812,
+      "revised": 6.787082840004587,
+      "delta": -1.4340744909932255
+    },
+    {
+      "case": "mixed-explicit",
+      "repeat": 1,
+      "baseline": 6.989437405005447,
+      "revised": 5.422996179993788,
+      "delta": -1.5664412250116584
+    },
+    {
+      "case": "offers-only",
+      "repeat": 1,
+      "baseline": 8.526672148000216,
+      "revised": 5.371440248003637,
+      "delta": -3.155231899996579
+    },
+    {
+      "case": "original-short",
+      "repeat": 1,
+      "baseline": 7.874773802002892,
+      "revised": 8.026030772001832,
+      "delta": 0.1512569699989399
+    },
+    {
+      "case": "context-options",
+      "repeat": 1,
+      "baseline": 6.824250796998967,
+      "revised": 6.326771547996032,
+      "delta": -0.49747924900293583
+    },
+    {
+      "case": "real-implicit-decision",
+      "repeat": 1,
+      "baseline": 9.376890561004984,
+      "revised": 7.474463334001484,
+      "delta": -1.9024272270034999
+    },
+    {
+      "case": "real-complete",
+      "repeat": 2,
+      "baseline": 6.623701742995763,
+      "revised": 4.771159856994927,
+      "delta": -1.8525418860008358
+    },
+    {
+      "case": "adjacent-repeated",
+      "repeat": 2,
+      "baseline": 6.824488547004876,
+      "revised": 5.3214927049994,
+      "delta": -1.5029958420054754
+    },
+    {
+      "case": "real-plan-offer",
+      "repeat": 2,
+      "baseline": 5.178341956998338,
+      "revised": 5.573002279998036,
+      "delta": 0.3946603229996981
+    },
+    {
+      "case": "answered-and-quoted",
+      "repeat": 2,
+      "baseline": 4.720699518999027,
+      "revised": 6.3229596839955775,
+      "delta": 1.6022601649965509
+    },
+    {
+      "case": "original-long",
+      "repeat": 2,
+      "baseline": 10.878712568999617,
+      "revised": 14.08344501999818,
+      "delta": 3.204732450998563
+    },
+    {
+      "case": "nonblocking",
+      "repeat": 2,
+      "baseline": 6.323271440000099,
+      "revised": 7.3248523350048345,
+      "delta": 1.0015808950047358
+    },
+    {
+      "case": "real-two-decisions",
+      "repeat": 2,
+      "baseline": 8.626002959994366,
+      "revised": 5.722186995000811,
+      "delta": -2.903815964993555
+    },
+    {
+      "case": "mixed-explicit",
+      "repeat": 2,
+      "baseline": 6.073372987004404,
+      "revised": 5.922394397995959,
+      "delta": -0.15097858900844585
+    },
+    {
+      "case": "offers-only",
+      "repeat": 2,
+      "baseline": 7.62480575999507,
+      "revised": 6.0725194010010455,
+      "delta": -1.5522863589940243
+    },
+    {
+      "case": "original-short",
+      "repeat": 2,
+      "baseline": 7.626081910006178,
+      "revised": 7.8255051659944,
+      "delta": 0.19942325598822208
+    },
+    {
+      "case": "context-options",
+      "repeat": 2,
+      "baseline": 5.675002020005195,
+      "revised": 7.675776258998667,
+      "delta": 2.000774238993472
+    },
+    {
+      "case": "real-implicit-decision",
+      "repeat": 2,
+      "baseline": 7.176639270001033,
+      "revised": 7.326843397997436,
+      "delta": 0.15020412799640326
+    }
+  ],
+  "paired_mean_delta": -0.4639310031264661,
+  "paired_median_delta": -0.32422891900569084,
+  "revised_faster_pairs": 14
+}

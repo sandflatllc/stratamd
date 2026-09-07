@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"01a07ca6-7823-7ee3-943c-50500b4ee662"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"{\"asks\":[{\"quote\":\"Please choose whether errors appear inline or in the status bar.\",\"question\":\"Should errors appear inline or in the status bar?\"},{\"quote\":\"Also, would you prefer the label 'Questions' or 'Needs your input'?\",\"question\":\"Should the label be 'Questions' or 'Needs your input'?\"}]}"}}
+{"type":"turn.completed","usage":{"input_tokens":20729,"cached_input_tokens":20224,"cache_write_input_tokens":0,"output_tokens":139,"reasoning_output_tokens":59}}

@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"01a07ca4-90f5-7b02-8e00-ecb4e0a2406a"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"{\"asks\":[{\"quote\":\"If you disagree, say so and I'll move it into the Trace drawer.\",\"question\":\"Do you disagree with keeping finished work collapsed under the reply?\"}]}"}}
+{"type":"turn.completed","usage":{"input_tokens":20669,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":352,"reasoning_output_tokens":303}}

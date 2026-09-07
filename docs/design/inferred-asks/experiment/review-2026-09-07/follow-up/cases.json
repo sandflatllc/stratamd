@@ -1,0 +1,104 @@
+[
+  {
+    "id": "original-short",
+    "text": "I moved the link handling into the main process so every click goes through one place. Local Markdown links now open in a Strata tab, and anything outside the workspace root opens in the system browser after a confirmation.\n\nTwo things I couldn't settle on my own. Should md links that point at a file outside the project's workspace root still open in Strata, or should those fall through to the browser? And do you want the confirmation dialog for external links, or is that just friction?\n\nThe rest is mechanical. The renderer asks the main process whether a target is local, and main answers with a kind. I also fixed a bug where `href?.startsWith(\"file:\")` threw on null hrefs. Sounds good?\n\nFor the tests, I added three cases. What happens on a relative link with `..` segments? It resolves against the document's directory, then gets fenced against the workspace root, so it can't escape. That's covered by the third case.\n\nPick one of these for the worktree question and I'll finish it in this change:\n1. Treat a thread's worktree as inside the fence.\n2. Keep the fence at the workspace root only.\n3. Make it a setting.\n",
+    "expected": [
+      {
+        "id": "original-short-1",
+        "anchor": "Should md links that point at a file outside the project's workspace root still open in Strata, or should those fall through to the browser?",
+        "meaning": "Outside-workspace Markdown links: Strata or browser."
+      },
+      {
+        "id": "original-short-2",
+        "anchor": "And do you want the confirmation dialog for external links, or is that just friction?",
+        "meaning": "Whether to confirm external links."
+      },
+      {
+        "id": "original-short-3",
+        "anchor": "Pick one of these for the worktree question and I'll finish it in this change:",
+        "meaning": "Worktree fence: include worktree, workspace only, or setting."
+      }
+    ],
+    "origin": "synthetic",
+    "notes": "Original test retained. A row is self-contained only if the worktree choices are recoverable from the question."
+  },
+  {
+    "id": "original-long",
+    "text": "Here's where the subagent activity work landed after today's pass, and the places where I need your call before I go further.\n\n## What changed\n\nThe Conversation panel now shows a collapsible activity strip under any agent message that spawned subagents. Each row is one subagent: its label, the tool it's currently in, elapsed time, and a status dot. Rows stream in as T3 reports them, so you see a subagent appear the moment it starts rather than when it finishes. When the parent turn completes, the strip collapses to a one-line summary with counts.\n\nThe strip reads from the same turn events the trace already uses, so there's no new subscription and nothing new persisted. Reconnecting after an engine restart rebuilds the strip from the turn's event history, and I verified that with the disconnect test.\n\nI also fixed the bug you mentioned last week where the trace would jump to the top when a subagent finished. The cause was the list re-keying on completion order instead of start order. That's covered by a new unit test.\n\n## Why not a setting?\n\nYou asked earlier, \"why does the strip show at all when there's only one subagent?\" I went back and forth on that. My reasoning for keeping it: a single subagent is the case where the owner is most likely to wonder what the agent is doing, because the main message goes quiet. Who wants a silent panel for forty seconds? So the strip shows for one or more. If that turns out to be noise in practice, it's a one-line threshold change.\n\nI did not add a preference for it. Every preference is a thing to test in both states, and the PRD says defaults should be right without a toggle. If you disagree, say so and I'll add it under Appearance.\n\n## Open items I can't settle alone\n\nThe first is naming. T3 sends a subagent's label as whatever the provider chose, which for Codex is often a bare model name and for Claude is a short task description. Right now the strip shows the raw label. Do you want Strata to normalize these, for example always showing \"Explore: search for tests\" style labels, or should it show what the provider sent? Normalizing means guessing at provider conventions, and those change with every release.\n\nThe second is where the strip lives once the turn is done. At the moment it stays under the message, collapsed. The alternative is moving finished activity into the Trace drawer so the conversation stays clean. I lean toward keeping it under the message, since that's where you'd look when reading the reply later, but this is the kind of thing you have stronger instincts on than I do. Tell me which you'd rather see and I'll do that one.\n\nThe third is a limit. A turn that fans out twenty subagents produces a twenty-row strip. I capped it at eight visible rows with a \"and 12 more\" line, and the drawer shows all of them. Is eight the right number, or would you rather it show everything and scroll?\n\n## Things I'd like to confirm\n\n- I'm treating a subagent that errors as finished, with a red dot, and not surfacing its error text in the strip. The error is in the trace. Is that enough, or do you want the error inline?\n- The elapsed timer stops when T3 reports completion, not when the parent turn ends. That means a subagent that finished early keeps showing its own short time. I think that's correct.\n- The strip doesn't show token usage per subagent. T3 does report it, so it's available. I left it out because the usage panel already totals it and per-row numbers made the strip busy. I can add it back if it's useful to you.\n\n## The status dot\n\nThe dot colors come from the theme's status tokens, so custom themes get them for free. The states are running, done, error, and interrupted. Interrupted uses the same warning color as a stopped turn.\n\nOne thing I want to flag rather than ask about. The theme test that checks every token is used will now fail for any bundled theme that doesn't define the status tokens. Two of the bundled themes were missing them, so I added the tokens with reasonable values. You may want to look at those two themes and pick better colors, but nothing is blocked on it.\n\n## Implementation notes\n\nThe strip is a new component that takes the turn's subagent events and renders rows. It doesn't touch the message renderer. The collapse state is per message and lives in renderer state only, so it resets on reload. Persisting it seemed like more than the feature deserved.\n\nThere's a small helper that groups events by subagent id and derives the current tool and elapsed time. The tricky part was handling events that arrive out of order after a reconnect, which happens because T3 replays history in storage order rather than time order. The helper sorts by timestamp before deriving. Why does T3 do that? Because its event log is append-only per thread and a reconnect replays from the persisted cursor, so ordering is whatever the write order was.\n\n```ts\n// Is this the parent turn? If so, skip it; the strip only shows children.\nconst rows = events.filter(event => event.parentId !== null)\n```\n\n## What's next\n\nOnce you've answered the naming and placement questions I'll finish the e2e test, which currently only covers the streaming case. Then I'll update the PRD conformance table for the new scenario.\n\nLet me know if you'd rather I hold this until the link-opening change lands, since both touch the Conversation panel and there's a small merge risk in the message component.\n",
+    "expected": [
+      {
+        "id": "original-long-1",
+        "anchor": "Do you want Strata to normalize these, for example always showing \"Explore: search for tests\" style labels, or should it show what the provider sent?",
+        "meaning": "Normalize subagent labels or use provider labels."
+      },
+      {
+        "id": "original-long-2",
+        "anchor": "Tell me which you'd rather see and I'll do that one.",
+        "meaning": "Finished activity under message or Trace drawer."
+      },
+      {
+        "id": "original-long-3",
+        "anchor": "Is eight the right number, or would you rather it show everything and scroll?",
+        "meaning": "Eight visible rows or all rows with scrolling."
+      },
+      {
+        "id": "original-long-4",
+        "anchor": "Is that enough, or do you want the error inline?",
+        "meaning": "Subagent error in trace or inline."
+      }
+    ],
+    "origin": "synthetic",
+    "notes": "Policy change declared before running: optional objection to shipping order and optional offers are excluded; I think that is correct is not a request."
+  },
+  {
+    "id": "context-options",
+    "text": "The reminder rule needs your call. For paid accounts with an overdue invoice but an active billing dispute, should reminders pause until the dispute closes, while reminders for accounts without a dispute continue every seven days?\n\nFor the export format, pick one:\n1. One Markdown file per conversation, with images beside it.\n2. One combined Markdown file, with images beside it.\n3. A ZIP containing the conversations and their images.\n\nI recommend the ZIP for sharing. I can implement whichever you choose.",
+    "expected": [
+      {
+        "id": "context-options-1",
+        "anchor": "For paid accounts with an overdue invoice but an active billing dispute, should reminders pause until the dispute closes, while reminders for accounts without a dispute continue every seven days?",
+        "meaning": "Preserve paid/overdue/active-dispute conditions, pause until close, non-dispute seven-day reminders."
+      },
+      {
+        "id": "context-options-2",
+        "anchor": "For the export format, pick one:",
+        "meaning": "Export choice: separate Markdown, combined Markdown, or ZIP; retain images."
+      }
+    ],
+    "origin": "synthetic",
+    "notes": ""
+  },
+  {
+    "id": "real-plan-offer",
+    "text": "**Found it.** The transcript unloads and reloads every answer's rich editor as you scroll, and the row heights change when that happens. That is where both the jumps and the choppiness come from. Nothing in the repo was changed; the temporary probe spec I ran is deleted.\n\n**What you notice**\n\n- Scrolling up, the content under your eyes jumps, sometimes by thousands of pixels.\n- Jumping to a message (Latest response, a history marker, an agent row) can land you in the middle of the previous answer instead.\n- Scrolling feels choppy, worst near large answers and screenshots.\n\n**Mechanism**\n\nEach assistant message only mounts its real editor when it comes within 600px of the viewport, and it unmounts again when it leaves (`src/renderer/components/ConversationMessage.tsx`). Before its first mount, the row is a lightweight Markdown stand-in with different spacing, and images are rendered as their alt text. So the first time a row comes near, it grows a lot. I measured this in a seeded thread built from your actual attachment screenshots:\n\n| Row | Stand-in height | After editor mounts |\n| --- | --- | --- |\n| Long answer with tables and code | 2768 px | 6618 px |\n| Answer with three screenshots | 776 px | 1155 px |\n\nThe history component tries to hold your place by picking the first row that touches the top of the viewport and scrolling by however much that row moved. Two ways that fails:\n\n1. **The growing row is the anchor.** When a row taller than the viewport mounts while it's partially visible (a fast flick outruns the 600px margin, or a jump lands next to it), its top doesn't move, so nothing is compensated and the content inside reflows under you. The jump-to-message case is exactly this: messages carry a 70px scroll margin, so the row above the target still touches the viewport top, becomes the anchor, grows by 3850px, and pushes the target off screen. I reproduced that in a screenshot.\n2. **Compensation is itself a jump.** When the growing row is above the anchor, the fix is a programmatic scroll of up to 3850px mid-gesture. Chromium cancels the in-flight smooth wheel animation when script sets the scroll position, so each of these lands as a stutter. I can't measure that part headlessly, but the writes are confirmed: five of them, 379 to 3850px each, in one pass up the thread.\n\nThe choppiness has a second, plain cost. Every re-entry rebuilds a full ProseMirror editor and re-decodes the images, and your screenshots are 1.3 to 2 MB PNGs at up to 3439\u00d71440. Mounting three large answers at once was an 81ms main-thread task in the probe, so a flick through a long thread stacks several of those.\n\n**Ruled out:** the 400px editor minimum and its slide animation (overridden for conversations), sticky rows, and the per-frame scroll listeners (history, navigator, editor headings), which are all cheap.\n\n**Recommended fix**\n\nStop rows from ever changing height once they're near the reader. Keep an editor mounted after its first creation instead of unmounting it, and cache the measured height per message keyed by column width so reopening the thread starts correct. Pre-mount rows outward from the visible area during idle time, so first-mount growth happens before you can reach it. For navigation jumps, mount the target and its neighbors, wait for their sizes to settle, then scroll. Reserving image dimensions up front would remove the remaining post-decode growth.\n\nWant me to write that up as a plan file before touching code?",
+    "expected": [
+      {
+        "id": "real-plan-offer-1",
+        "anchor": "Want me to write that up as a plan file before touching code?",
+        "meaning": "Whether to write a transcript scrolling fix plan before code."
+      }
+    ],
+    "origin": "real StrataMD reply",
+    "notes": "Unedited completed assistant message; source message assistant:d06112e9-f3f7-44ec-9047-b384398e0bfa"
+  },
+  {
+    "id": "heldout-direct-offer",
+    "text": "The reconnect fix is complete, and I can move on to cleanup. Would you like a short screen recording of the reconnect behavior? This is optional and does not block cleanup. I can also write release notes later if they become useful.",
+    "expected": [
+      {
+        "id": "heldout-direct-offer-1",
+        "anchor": "Would you like a short screen recording of the reconnect behavior?",
+        "meaning": "Whether the owner wants a short recording of reconnect behavior."
+      }
+    ],
+    "origin": "new synthetic follow-up case",
+    "notes": "Written and labeled after the main comparison began, before any follow-up calls."
+  },
+  {
+    "id": "heldout-declarative-offer",
+    "text": "The export tests pass. I can make a short screen recording of the export flow if that would be useful later. I recommend keeping the current format. If you disagree, say so and I'll change it. I'll continue the remaining checks with the current format.",
+    "expected": [],
+    "origin": "new synthetic follow-up case",
+    "notes": "Written and labeled after the main comparison began, before any follow-up calls."
+  }
+]

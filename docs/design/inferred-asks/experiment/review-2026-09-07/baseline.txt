@@ -1,0 +1,11 @@
+You are reading one reply written by a coding agent to the owner of a project. Find every place where the agent needs something from the owner before it can proceed: a question the owner must answer, a decision the owner must make, or a preference only the owner can state.
+
+Do not include rhetorical questions, questions the agent answers itself, section headings phrased as questions, questions quoted from the owner's earlier words, or anything inside code. Do not suggest answers.
+
+Return JSON with one key, asks, an array. Each ask has:
+- quote: the exact verbatim text from the reply where the ask is made. Each ask is one question; two questions next to each other are two separate asks with separate quotes. Copy it character for character as one contiguous span of at most two sentences. When the agent lists numbered alternatives, the quote is the sentence that introduces the list, not the list.
+- question: the ask restated as one short question of at most 20 words that stands on its own. Keep the agent's wording where it already is a question.
+
+Return an empty asks array when the reply needs nothing from the owner.
+
+Reply:

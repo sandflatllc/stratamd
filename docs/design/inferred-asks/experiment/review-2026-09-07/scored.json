@@ -1,0 +1,3365 @@
+[
+  {
+    "id": "real-complete-revised-1",
+    "case": "real-complete",
+    "variant": "revised",
+    "repeat": 1,
+    "seconds": 8.018261099001393,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:10:44.614658+00:00",
+    "prompt_sha256": "eb012eb80175c0c0993c34688f3b58205c5a07a1d4eea4e26df9f05016b38cbf",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/real-complete-revised-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 21376,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 178,
+        "reasoning_output_tokens": 162
+      }
+    ],
+    "tool_items": [],
+    "asks": 0,
+    "expected": 0,
+    "hits": 0,
+    "misses": [],
+    "extras": 0,
+    "rows": []
+  },
+  {
+    "id": "real-complete-baseline-1",
+    "case": "real-complete",
+    "variant": "baseline",
+    "repeat": 1,
+    "seconds": 5.991544652002631,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:10:50.606674+00:00",
+    "prompt_sha256": "3172b29eb52a31473c5bcc3a2967d77c21b9b0440061c7cd88c0a8a54f2276a9",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/real-complete-baseline-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 21105,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 51,
+        "reasoning_output_tokens": 35
+      }
+    ],
+    "tool_items": [],
+    "asks": 0,
+    "expected": 0,
+    "hits": 0,
+    "misses": [],
+    "extras": 0,
+    "rows": []
+  },
+  {
+    "id": "adjacent-repeated-baseline-1",
+    "case": "adjacent-repeated",
+    "variant": "baseline",
+    "repeat": 1,
+    "seconds": 8.04748184500204,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:10:58.654936+00:00",
+    "prompt_sha256": "c59c0497f92182fb1e3b9abb9a8134dbc6feaa9edca54fcf0e7d8ea33043ac44",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/adjacent-repeated-baseline-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20624,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 269,
+        "reasoning_output_tokens": 185
+      }
+    ],
+    "tool_items": [],
+    "asks": 3,
+    "expected": 2,
+    "hits": 2,
+    "misses": [],
+    "extras": 1,
+    "rows": [
+      {
+        "quote": "Should links expire after seven days?",
+        "question": "Should shared links expire after seven days?",
+        "target": "adjacent-repeated-1",
+        "candidate_targets": [
+          "adjacent-repeated-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 7,
+        "manual_review": {}
+      },
+      {
+        "quote": "Should recipients need an account?",
+        "question": "Should recipients need an account?",
+        "target": "adjacent-repeated-2",
+        "candidate_targets": [
+          "adjacent-repeated-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 5,
+        "manual_review": {}
+      },
+      {
+        "quote": "To repeat the first question, should shared links expire after seven days?",
+        "question": "Should shared links expire after seven days?",
+        "target": null,
+        "candidate_targets": [],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 7,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "adjacent-repeated-revised-1",
+    "case": "adjacent-repeated",
+    "variant": "revised",
+    "repeat": 1,
+    "seconds": 5.6938455420022365,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:11:04.349671+00:00",
+    "prompt_sha256": "b36ff2b7d6462330c082545b50c2eee00ac4caff8902852234c684b2bcb45ebe",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/adjacent-repeated-revised-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20705,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 80,
+        "reasoning_output_tokens": 20
+      }
+    ],
+    "tool_items": [],
+    "asks": 2,
+    "expected": 2,
+    "hits": 2,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "Should links expire after seven days?",
+        "question": "Should shared links expire after seven days?",
+        "target": "adjacent-repeated-1",
+        "candidate_targets": [
+          "adjacent-repeated-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 7,
+        "manual_review": {}
+      },
+      {
+        "quote": "Should recipients need an account?",
+        "question": "Should recipients need an account to access shared links?",
+        "target": "adjacent-repeated-2",
+        "candidate_targets": [
+          "adjacent-repeated-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 9,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "real-plan-offer-revised-1",
+    "case": "real-plan-offer",
+    "variant": "revised",
+    "repeat": 1,
+    "seconds": 6.506254715997784,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:11:10.856573+00:00",
+    "prompt_sha256": "f2aa396e2cb7008932fb61d463ae7fd4e16637a1ff4c9dd09d508bad71d49d7e",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/real-plan-offer-revised-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 21618,
+        "cached_input_tokens": 9984,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 95,
+        "reasoning_output_tokens": 43
+      }
+    ],
+    "tool_items": [],
+    "asks": 1,
+    "expected": 1,
+    "hits": 1,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "Want me to write that up as a plan file before touching code?",
+        "question": "Should the agent write the recommended fix as a plan file before modifying code?",
+        "target": "real-plan-offer-1",
+        "candidate_targets": [
+          "real-plan-offer-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 14,
+        "manual_review": {
+          "standalone_issue": "The recommended fix does not identify transcript scrolling when this question is read alone."
+        }
+      }
+    ]
+  },
+  {
+    "id": "real-plan-offer-baseline-1",
+    "case": "real-plan-offer",
+    "variant": "baseline",
+    "repeat": 1,
+    "seconds": 6.246924013998068,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:11:17.104095+00:00",
+    "prompt_sha256": "09617952d079497bc665c124f3e94fde361e72913c4c765f165dc5e04b66acc3",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/real-plan-offer-baseline-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 21347,
+        "cached_input_tokens": 9984,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 88,
+        "reasoning_output_tokens": 36
+      }
+    ],
+    "tool_items": [],
+    "asks": 1,
+    "expected": 1,
+    "hits": 1,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "Want me to write that up as a plan file before touching code?",
+        "question": "Should I write the recommended fix up as a plan file before touching code?",
+        "target": "real-plan-offer-1",
+        "candidate_targets": [
+          "real-plan-offer-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 14,
+        "manual_review": {
+          "standalone_issue": "The recommended fix does not identify transcript scrolling when this question is read alone."
+        }
+      }
+    ]
+  },
+  {
+    "id": "answered-and-quoted-baseline-1",
+    "case": "answered-and-quoted",
+    "variant": "baseline",
+    "repeat": 1,
+    "seconds": 5.397428772004787,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:11:22.502026+00:00",
+    "prompt_sha256": "ddaebcb7855b026d1fe4f6fbf646b0d56537b90368d6e5631f0221843a68d53f",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/answered-and-quoted-baseline-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20873,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 42,
+        "reasoning_output_tokens": 26
+      }
+    ],
+    "tool_items": [],
+    "asks": 0,
+    "expected": 0,
+    "hits": 0,
+    "misses": [],
+    "extras": 0,
+    "rows": []
+  },
+  {
+    "id": "answered-and-quoted-revised-1",
+    "case": "answered-and-quoted",
+    "variant": "revised",
+    "repeat": 1,
+    "seconds": 5.391414853002061,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:11:27.893902+00:00",
+    "prompt_sha256": "738b36789774333a6045a259209da72fc7e646cc706c055700d3b9af71cf08f2",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/answered-and-quoted-revised-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20764,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 58,
+        "reasoning_output_tokens": 42
+      }
+    ],
+    "tool_items": [],
+    "asks": 0,
+    "expected": 0,
+    "hits": 0,
+    "misses": [],
+    "extras": 0,
+    "rows": []
+  },
+  {
+    "id": "original-long-revised-1",
+    "case": "original-long",
+    "variant": "revised",
+    "repeat": 1,
+    "seconds": 9.663622400003078,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:11:37.557936+00:00",
+    "prompt_sha256": "933b030aa583a4c77d171e27c034dd301fce82792fe2fe5893a8d714b347da02",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/original-long-revised-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 21983,
+        "cached_input_tokens": 15104,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 378,
+        "reasoning_output_tokens": 189
+      }
+    ],
+    "tool_items": [],
+    "asks": 4,
+    "expected": 4,
+    "hits": 4,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "Do you want Strata to normalize these, for example always showing \"Explore: search for tests\" style labels, or should it show what the provider sent?",
+        "question": "Should Strata normalize subagent labels into a consistent style, or display the labels supplied by each provider?",
+        "target": "original-long-1",
+        "candidate_targets": [
+          "original-long-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 17,
+        "manual_review": {}
+      },
+      {
+        "quote": "The alternative is moving finished activity into the Trace drawer so the conversation stays clean.",
+        "question": "Should finished activity remain collapsed under the message, or move into the Trace drawer?",
+        "target": "original-long-2",
+        "candidate_targets": [],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 14,
+        "manual_review": {
+          "target": "original-long-2",
+          "anchor_issue": "The request was correctly identified, but the quote marks a descriptive alternative instead of the sentence asking the owner to choose. Count as a selection hit and an anchor-quality defect.",
+          "review_basis": "Question explicitly names finished activity under the message versus Trace drawer, matching the frozen expected meaning."
+        }
+      },
+      {
+        "quote": "Is eight the right number, or would you rather it show everything and scroll?",
+        "question": "Should the activity strip show at most eight rows, or show all rows with scrolling?",
+        "target": "original-long-3",
+        "candidate_targets": [
+          "original-long-3"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 15,
+        "manual_review": {}
+      },
+      {
+        "quote": "Is that enough, or do you want the error inline?",
+        "question": "Should subagent errors remain only in the trace, or also appear inline in the activity strip?",
+        "target": "original-long-4",
+        "candidate_targets": [
+          "original-long-4"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 16,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "original-long-baseline-1",
+    "case": "original-long",
+    "variant": "baseline",
+    "repeat": 1,
+    "seconds": 11.590920775000995,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:11:49.149670+00:00",
+    "prompt_sha256": "b0006ca8388504eeab5072edee35042baf3b0335db2d67db6c8047ba7854452d",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/original-long-baseline-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 21902,
+        "cached_input_tokens": 9984,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 560,
+        "reasoning_output_tokens": 285
+      }
+    ],
+    "tool_items": [],
+    "asks": 7,
+    "expected": 4,
+    "hits": 4,
+    "misses": [],
+    "extras": 3,
+    "rows": [
+      {
+        "quote": "If you disagree, say so and I'll add it under Appearance.",
+        "question": "Do you disagree with omitting a preference for the activity strip?",
+        "target": null,
+        "candidate_targets": [],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 11,
+        "manual_review": {}
+      },
+      {
+        "quote": "Do you want Strata to normalize these, for example always showing \"Explore: search for tests\" style labels, or should it show what the provider sent?",
+        "question": "Should Strata normalize subagent labels or show provider-supplied labels?",
+        "target": "original-long-1",
+        "candidate_targets": [
+          "original-long-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 9,
+        "manual_review": {}
+      },
+      {
+        "quote": "Tell me which you'd rather see and I'll do that one.",
+        "question": "Should finished activity remain under the message or move into the Trace drawer?",
+        "target": "original-long-2",
+        "candidate_targets": [
+          "original-long-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 13,
+        "manual_review": {}
+      },
+      {
+        "quote": "Is eight the right number, or would you rather it show everything and scroll?",
+        "question": "Should the strip show eight rows or all rows with scrolling?",
+        "target": "original-long-3",
+        "candidate_targets": [
+          "original-long-3"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 11,
+        "manual_review": {}
+      },
+      {
+        "quote": "Is that enough, or do you want the error inline?",
+        "question": "Should subagent errors appear inline or only in the trace?",
+        "target": "original-long-4",
+        "candidate_targets": [
+          "original-long-4"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 10,
+        "manual_review": {}
+      },
+      {
+        "quote": "I can add it back if it's useful to you.",
+        "question": "Do you want per-subagent token usage added to the strip?",
+        "target": null,
+        "candidate_targets": [],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 10,
+        "manual_review": {}
+      },
+      {
+        "quote": "Let me know if you'd rather I hold this until the link-opening change lands, since both touch the Conversation panel and there's a small merge risk in the message component.",
+        "question": "Should I hold this work until the link-opening change lands?",
+        "target": null,
+        "candidate_targets": [],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 10,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "nonblocking-baseline-1",
+    "case": "nonblocking",
+    "variant": "baseline",
+    "repeat": 1,
+    "seconds": 7.056422356996336,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:11:56.206570+00:00",
+    "prompt_sha256": "858b159eb5c17662c4e497be6924547d5cd02e752e29c7eecc5afc92e6ccc0b1",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/nonblocking-baseline-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20648,
+        "cached_input_tokens": 9984,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 129,
+        "reasoning_output_tokens": 47
+      }
+    ],
+    "tool_items": [],
+    "asks": 2,
+    "expected": 2,
+    "hits": 2,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "Please choose whether errors appear inline or in the status bar.",
+        "question": "Should errors appear inline or in the status bar?",
+        "target": "nonblocking-1",
+        "candidate_targets": [
+          "nonblocking-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 9,
+        "manual_review": {}
+      },
+      {
+        "quote": "Also, would you prefer the label 'Questions' or 'Needs your input'?",
+        "question": "Which label do you prefer: 'Questions' or 'Needs your input'?",
+        "target": "nonblocking-2",
+        "candidate_targets": [
+          "nonblocking-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 10,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "nonblocking-revised-1",
+    "case": "nonblocking",
+    "variant": "revised",
+    "repeat": 1,
+    "seconds": 5.736360035996768,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:12:01.943404+00:00",
+    "prompt_sha256": "1e62e11d6e29251582cd9f81033e039b96583076792a4bede115a2906b1886e2",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/nonblocking-revised-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20729,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 100,
+        "reasoning_output_tokens": 18
+      }
+    ],
+    "tool_items": [],
+    "asks": 2,
+    "expected": 2,
+    "hits": 2,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "Please choose whether errors appear inline or in the status bar.",
+        "question": "Should errors appear inline or in the status bar?",
+        "target": "nonblocking-1",
+        "candidate_targets": [
+          "nonblocking-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 9,
+        "manual_review": {}
+      },
+      {
+        "quote": "Also, would you prefer the label 'Questions' or 'Needs your input'?",
+        "question": "Which label should be used: 'Questions' or 'Needs your input'?",
+        "target": "nonblocking-2",
+        "candidate_targets": [
+          "nonblocking-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 10,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "real-two-decisions-revised-1",
+    "case": "real-two-decisions",
+    "variant": "revised",
+    "repeat": 1,
+    "seconds": 6.787082840004587,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:12:08.730975+00:00",
+    "prompt_sha256": "e4a6821f0d33eb76e506242979f15890a24dde0efc600f5059535482f90f065c",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/real-two-decisions-revised-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20820,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 111,
+        "reasoning_output_tokens": 31
+      }
+    ],
+    "tool_items": [],
+    "asks": 2,
+    "expected": 2,
+    "hits": 2,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "Where does the icon go when a reply had no tool calls?",
+        "question": "Where should the icon appear when a reply contains no tool calls?",
+        "target": "real-two-decisions-1",
+        "candidate_targets": [
+          "real-two-decisions-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 12,
+        "manual_review": {}
+      },
+      {
+        "quote": "What happens to replies that finished while Strata was closed?",
+        "question": "How should Strata handle replies that finished while it was closed?",
+        "target": "real-two-decisions-2",
+        "candidate_targets": [
+          "real-two-decisions-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 11,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "real-two-decisions-baseline-1",
+    "case": "real-two-decisions",
+    "variant": "baseline",
+    "repeat": 1,
+    "seconds": 8.221157330997812,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:12:16.952700+00:00",
+    "prompt_sha256": "0bc44b2612fe35ecef84869a44ff941bdc4bfba1f6fe629407a87c04dac16ed9",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/real-two-decisions-baseline-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20929,
+        "cached_input_tokens": 15104,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 204,
+        "reasoning_output_tokens": 120
+      }
+    ],
+    "tool_items": [],
+    "asks": 2,
+    "expected": 2,
+    "hits": 2,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "**Where does the icon go when a reply had no tool calls?**",
+        "question": "Where should the icon go when a reply has no tool calls?",
+        "target": "real-two-decisions-1",
+        "candidate_targets": [
+          "real-two-decisions-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 12,
+        "manual_review": {}
+      },
+      {
+        "quote": "**What happens to replies that finished while Strata was closed?**",
+        "question": "What should happen to replies that finished while Strata was closed?",
+        "target": "real-two-decisions-2",
+        "candidate_targets": [
+          "real-two-decisions-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 11,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "mixed-explicit-baseline-1",
+    "case": "mixed-explicit",
+    "variant": "baseline",
+    "repeat": 1,
+    "seconds": 6.989437405005447,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:12:23.942577+00:00",
+    "prompt_sha256": "0d1b445266fafd822b6bf2c9cc481c6ac8e93451ace0986beb54bcb8fde0e636",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/mixed-explicit-baseline-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20645,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 117,
+        "reasoning_output_tokens": 51
+      }
+    ],
+    "tool_items": [],
+    "asks": 2,
+    "expected": 1,
+    "hits": 1,
+    "misses": [],
+    "extras": 1,
+    "rows": [
+      {
+        "quote": "Should the export include resolved comments?",
+        "question": "Should the export include resolved comments?",
+        "target": null,
+        "candidate_targets": [],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 6,
+        "manual_review": {}
+      },
+      {
+        "quote": "One additional preference: should the exported comments show full names or initials?",
+        "question": "Should exported comments show full names or initials?",
+        "target": "mixed-explicit-1",
+        "candidate_targets": [
+          "mixed-explicit-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 8,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "mixed-explicit-revised-1",
+    "case": "mixed-explicit",
+    "variant": "revised",
+    "repeat": 1,
+    "seconds": 5.422996179993788,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:12:29.366168+00:00",
+    "prompt_sha256": "454313690f665d0632cb43e1628789ead7d89f51eb9d5334595fcfd35cdcdd73",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/mixed-explicit-revised-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20726,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 76,
+        "reasoning_output_tokens": 30
+      }
+    ],
+    "tool_items": [],
+    "asks": 1,
+    "expected": 1,
+    "hits": 1,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "One additional preference: should the exported comments show full names or initials?",
+        "question": "Should exported comments show full names or initials?",
+        "target": "mixed-explicit-1",
+        "candidate_targets": [
+          "mixed-explicit-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 8,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "offers-only-revised-1",
+    "case": "offers-only",
+    "variant": "revised",
+    "repeat": 1,
+    "seconds": 5.371440248003637,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:12:34.737980+00:00",
+    "prompt_sha256": "776b6b8f01734d48cbd27ed8a1ca8e0ec856ba41cf9417de6dd7a5eec7032277",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/offers-only-revised-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20750,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 81,
+        "reasoning_output_tokens": 65
+      }
+    ],
+    "tool_items": [],
+    "asks": 0,
+    "expected": 0,
+    "hits": 0,
+    "misses": [],
+    "extras": 0,
+    "rows": []
+  },
+  {
+    "id": "offers-only-baseline-1",
+    "case": "offers-only",
+    "variant": "baseline",
+    "repeat": 1,
+    "seconds": 8.526672148000216,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:12:43.265069+00:00",
+    "prompt_sha256": "b5726ffb755b5d7d0640d75346b271595c5b5d66ce23ebe98146afca58e8dc33",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/offers-only-baseline-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20669,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 352,
+        "reasoning_output_tokens": 303
+      }
+    ],
+    "tool_items": [],
+    "asks": 1,
+    "expected": 0,
+    "hits": 0,
+    "misses": [],
+    "extras": 1,
+    "rows": [
+      {
+        "quote": "If you disagree, say so and I'll move it into the Trace drawer.",
+        "question": "Do you disagree with keeping finished work collapsed under the reply?",
+        "target": null,
+        "candidate_targets": [],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 11,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "original-short-baseline-1",
+    "case": "original-short",
+    "variant": "baseline",
+    "repeat": 1,
+    "seconds": 7.874773802002892,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:12:51.140252+00:00",
+    "prompt_sha256": "35cfb5cb796b760e8d14e9a161f47306390a7ac28210c202c66b74469dc345c9",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/original-short-baseline-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20816,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 285,
+        "reasoning_output_tokens": 154
+      }
+    ],
+    "tool_items": [],
+    "asks": 3,
+    "expected": 3,
+    "hits": 3,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "Should md links that point at a file outside the project's workspace root still open in Strata, or should those fall through to the browser?",
+        "question": "Should Markdown links outside the workspace root open in Strata or the browser?",
+        "target": "original-short-1",
+        "candidate_targets": [
+          "original-short-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 13,
+        "manual_review": {}
+      },
+      {
+        "quote": "And do you want the confirmation dialog for external links, or is that just friction?",
+        "question": "Do you want a confirmation dialog for external links?",
+        "target": "original-short-2",
+        "candidate_targets": [
+          "original-short-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 9,
+        "manual_review": {}
+      },
+      {
+        "quote": "Pick one of these for the worktree question and I'll finish it in this change:",
+        "question": "Which worktree fence option should I implement?",
+        "target": "original-short-3",
+        "candidate_targets": [
+          "original-short-3"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 7,
+        "manual_review": {
+          "standalone_issue": "The worktree row omits all three alternatives, so the row alone does not support the intended choice."
+        }
+      }
+    ]
+  },
+  {
+    "id": "original-short-revised-1",
+    "case": "original-short",
+    "variant": "revised",
+    "repeat": 1,
+    "seconds": 8.026030772001832,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:12:59.166708+00:00",
+    "prompt_sha256": "84ef198169a042c25d665ed18a76017c8873c30ecb23520ced97f9012c9c8216",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/original-short-revised-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20897,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 259,
+        "reasoning_output_tokens": 113
+      }
+    ],
+    "tool_items": [],
+    "asks": 3,
+    "expected": 3,
+    "hits": 3,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "Should md links that point at a file outside the project's workspace root still open in Strata, or should those fall through to the browser?",
+        "question": "Should Markdown links to files outside the project workspace open in Strata or in the system browser?",
+        "target": "original-short-1",
+        "candidate_targets": [
+          "original-short-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 17,
+        "manual_review": {}
+      },
+      {
+        "quote": "And do you want the confirmation dialog for external links, or is that just friction?",
+        "question": "Should external links show a confirmation dialog?",
+        "target": "original-short-2",
+        "candidate_targets": [
+          "original-short-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 7,
+        "manual_review": {}
+      },
+      {
+        "quote": "Pick one of these for the worktree question and I'll finish it in this change:",
+        "question": "Which worktree boundary should the implementation use: inside the fence, workspace root only, or a configurable setting?",
+        "target": "original-short-3",
+        "candidate_targets": [
+          "original-short-3"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 17,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "context-options-revised-1",
+    "case": "context-options",
+    "variant": "revised",
+    "repeat": 1,
+    "seconds": 6.326771547996032,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:13:05.493854+00:00",
+    "prompt_sha256": "18da764e962cb24f8809a93d5d3bf7959230cfc93d549b46077c1ce26b9f2c9f",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/context-options-revised-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20752,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 152,
+        "reasoning_output_tokens": 33
+      }
+    ],
+    "tool_items": [],
+    "asks": 2,
+    "expected": 2,
+    "hits": 2,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "For paid accounts with an overdue invoice but an active billing dispute, should reminders pause until the dispute closes, while reminders for accounts without a dispute continue every seven days?",
+        "question": "Should overdue-invoice reminders pause for accounts with active billing disputes while undisputed accounts continue receiving reminders every seven days?",
+        "target": "context-options-1",
+        "candidate_targets": [
+          "context-options-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 19,
+        "manual_review": {
+          "meaning_issue": "Drops the paid-account restriction. The revised question does retain seven-day reminders for undisputed accounts."
+        }
+      },
+      {
+        "quote": "For the export format, pick one:",
+        "question": "Which export format should be used: one Markdown file per conversation, one combined Markdown file, or a ZIP containing conversations and images?",
+        "target": "context-options-2",
+        "candidate_targets": [
+          "context-options-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 22,
+        "manual_review": {
+          "meaning_issue": "Names all three formats but drops images beside the Markdown files for the first two options."
+        }
+      }
+    ]
+  },
+  {
+    "id": "context-options-baseline-1",
+    "case": "context-options",
+    "variant": "baseline",
+    "repeat": 1,
+    "seconds": 6.824250796998967,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:13:12.318473+00:00",
+    "prompt_sha256": "21db8a4d3066ab75e1314f2f6df053b2cfa4dc02d7892e70d00fd841d547479d",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/context-options-baseline-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20671,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 96,
+        "reasoning_output_tokens": 0
+      }
+    ],
+    "tool_items": [],
+    "asks": 2,
+    "expected": 2,
+    "hits": 2,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "The reminder rule needs your call. For paid accounts with an overdue invoice but an active billing dispute, should reminders pause until the dispute closes, while reminders for accounts without a dispute continue every seven days?",
+        "question": "Should reminders pause during active billing disputes for paid accounts with overdue invoices?",
+        "target": "context-options-1",
+        "candidate_targets": [
+          "context-options-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 13,
+        "manual_review": {
+          "meaning_issue": "Drops the request to continue reminders every seven days for accounts without disputes."
+        }
+      },
+      {
+        "quote": "For the export format, pick one:",
+        "question": "Which export format do you choose?",
+        "target": "context-options-2",
+        "candidate_targets": [
+          "context-options-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 6,
+        "manual_review": {
+          "standalone_issue": "Export format row supplies none of the three available formats or image arrangements."
+        }
+      }
+    ]
+  },
+  {
+    "id": "real-implicit-decision-baseline-1",
+    "case": "real-implicit-decision",
+    "variant": "baseline",
+    "repeat": 1,
+    "seconds": 9.376890561004984,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:13:21.695770+00:00",
+    "prompt_sha256": "d67d0ab71b334301ba9fe8cf60713ddbb43afa3dfb49dbde596d2aff8eaad11e",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/real-implicit-decision-baseline-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 21256,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 421,
+        "reasoning_output_tokens": 280
+      }
+    ],
+    "tool_items": [],
+    "asks": 1,
+    "expected": 1,
+    "hits": 1,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "The one call left for you is whether to keep the restated question at all. It exists because a raw quote like \"Tell me which you'd rather see and I'll do that one\" is meaningless on its own in the Items panel, while the restated version, \"Should finished activity stay under the message or move to the Trace drawer?\", is answerable from the panel. If you'd rather the panel only ever show the agent's own words, I drop that field too and the panel shows the quote.",
+        "question": "Should the panel keep the restated question or show only the agent’s original quote?",
+        "target": "real-implicit-decision-1",
+        "candidate_targets": [
+          "real-implicit-decision-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 14,
+        "manual_review": {
+          "anchor_issue": "Quotes the entire three-sentence paragraph, including illustrative questions, rather than the direct request sentence. Violates the baseline two-sentence maximum."
+        }
+      }
+    ]
+  },
+  {
+    "id": "real-implicit-decision-revised-1",
+    "case": "real-implicit-decision",
+    "variant": "revised",
+    "repeat": 1,
+    "seconds": 7.474463334001484,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:13:29.170682+00:00",
+    "prompt_sha256": "3eb447e945181f34a4c721af01f980c52cf9db476b7af00e2f48553cd1f4a7df",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/real-implicit-decision-revised-1.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 21337,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 229,
+        "reasoning_output_tokens": 176
+      }
+    ],
+    "tool_items": [],
+    "asks": 1,
+    "expected": 1,
+    "hits": 1,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "The one call left for you is whether to keep the restated question at all.",
+        "question": "Should the product keep the restated question field in the Items panel?",
+        "target": "real-implicit-decision-1",
+        "candidate_targets": [
+          "real-implicit-decision-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 12,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "real-complete-baseline-2",
+    "case": "real-complete",
+    "variant": "baseline",
+    "repeat": 2,
+    "seconds": 6.623701742995763,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:13:35.794800+00:00",
+    "prompt_sha256": "3172b29eb52a31473c5bcc3a2967d77c21b9b0440061c7cd88c0a8a54f2276a9",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/real-complete-baseline-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 21105,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 58,
+        "reasoning_output_tokens": 42
+      }
+    ],
+    "tool_items": [],
+    "asks": 0,
+    "expected": 0,
+    "hits": 0,
+    "misses": [],
+    "extras": 0,
+    "rows": []
+  },
+  {
+    "id": "real-complete-revised-2",
+    "case": "real-complete",
+    "variant": "revised",
+    "repeat": 2,
+    "seconds": 4.771159856994927,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:13:40.566385+00:00",
+    "prompt_sha256": "eb012eb80175c0c0993c34688f3b58205c5a07a1d4eea4e26df9f05016b38cbf",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/real-complete-revised-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 21186,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 59,
+        "reasoning_output_tokens": 43
+      }
+    ],
+    "tool_items": [],
+    "asks": 0,
+    "expected": 0,
+    "hits": 0,
+    "misses": [],
+    "extras": 0,
+    "rows": []
+  },
+  {
+    "id": "adjacent-repeated-revised-2",
+    "case": "adjacent-repeated",
+    "variant": "revised",
+    "repeat": 2,
+    "seconds": 5.3214927049994,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:13:45.888294+00:00",
+    "prompt_sha256": "b36ff2b7d6462330c082545b50c2eee00ac4caff8902852234c684b2bcb45ebe",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/adjacent-repeated-revised-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20705,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 83,
+        "reasoning_output_tokens": 23
+      }
+    ],
+    "tool_items": [],
+    "asks": 2,
+    "expected": 2,
+    "hits": 2,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "Should links expire after seven days?",
+        "question": "Should shared links expire after seven days?",
+        "target": "adjacent-repeated-1",
+        "candidate_targets": [
+          "adjacent-repeated-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 7,
+        "manual_review": {}
+      },
+      {
+        "quote": "Should recipients need an account?",
+        "question": "Should recipients need an account to access shared links?",
+        "target": "adjacent-repeated-2",
+        "candidate_targets": [
+          "adjacent-repeated-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 9,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "adjacent-repeated-baseline-2",
+    "case": "adjacent-repeated",
+    "variant": "baseline",
+    "repeat": 2,
+    "seconds": 6.824488547004876,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:13:52.713203+00:00",
+    "prompt_sha256": "c59c0497f92182fb1e3b9abb9a8134dbc6feaa9edca54fcf0e7d8ea33043ac44",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/adjacent-repeated-baseline-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20624,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 196,
+        "reasoning_output_tokens": 112
+      }
+    ],
+    "tool_items": [],
+    "asks": 3,
+    "expected": 2,
+    "hits": 2,
+    "misses": [],
+    "extras": 1,
+    "rows": [
+      {
+        "quote": "Should links expire after seven days?",
+        "question": "Should shared links expire after seven days?",
+        "target": "adjacent-repeated-1",
+        "candidate_targets": [
+          "adjacent-repeated-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 7,
+        "manual_review": {}
+      },
+      {
+        "quote": "Should recipients need an account?",
+        "question": "Should recipients need an account?",
+        "target": "adjacent-repeated-2",
+        "candidate_targets": [
+          "adjacent-repeated-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 5,
+        "manual_review": {}
+      },
+      {
+        "quote": "To repeat the first question, should shared links expire after seven days?",
+        "question": "Should shared links expire after seven days?",
+        "target": null,
+        "candidate_targets": [],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 7,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "real-plan-offer-baseline-2",
+    "case": "real-plan-offer",
+    "variant": "baseline",
+    "repeat": 2,
+    "seconds": 5.178341956998338,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:13:57.892003+00:00",
+    "prompt_sha256": "09617952d079497bc665c124f3e94fde361e72913c4c765f165dc5e04b66acc3",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/real-plan-offer-baseline-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 21347,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 82,
+        "reasoning_output_tokens": 31
+      }
+    ],
+    "tool_items": [],
+    "asks": 1,
+    "expected": 1,
+    "hits": 1,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "Want me to write that up as a plan file before touching code?",
+        "question": "Should I write the recommended fix as a plan file before changing code?",
+        "target": "real-plan-offer-1",
+        "candidate_targets": [
+          "real-plan-offer-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 13,
+        "manual_review": {
+          "standalone_issue": "The recommended fix does not identify transcript scrolling when this question is read alone."
+        }
+      }
+    ]
+  },
+  {
+    "id": "real-plan-offer-revised-2",
+    "case": "real-plan-offer",
+    "variant": "revised",
+    "repeat": 2,
+    "seconds": 5.573002279998036,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:14:03.465430+00:00",
+    "prompt_sha256": "f2aa396e2cb7008932fb61d463ae7fd4e16637a1ff4c9dd09d508bad71d49d7e",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/real-plan-offer-revised-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 21428,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 105,
+        "reasoning_output_tokens": 89
+      }
+    ],
+    "tool_items": [],
+    "asks": 0,
+    "expected": 1,
+    "hits": 0,
+    "misses": [
+      "real-plan-offer-1"
+    ],
+    "extras": 0,
+    "rows": []
+  },
+  {
+    "id": "answered-and-quoted-revised-2",
+    "case": "answered-and-quoted",
+    "variant": "revised",
+    "repeat": 2,
+    "seconds": 6.3229596839955775,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:14:09.788802+00:00",
+    "prompt_sha256": "738b36789774333a6045a259209da72fc7e646cc706c055700d3b9af71cf08f2",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/answered-and-quoted-revised-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20764,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 67,
+        "reasoning_output_tokens": 51
+      }
+    ],
+    "tool_items": [],
+    "asks": 0,
+    "expected": 0,
+    "hits": 0,
+    "misses": [],
+    "extras": 0,
+    "rows": []
+  },
+  {
+    "id": "answered-and-quoted-baseline-2",
+    "case": "answered-and-quoted",
+    "variant": "baseline",
+    "repeat": 2,
+    "seconds": 4.720699518999027,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:14:14.509894+00:00",
+    "prompt_sha256": "ddaebcb7855b026d1fe4f6fbf646b0d56537b90368d6e5631f0221843a68d53f",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/answered-and-quoted-baseline-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20683,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 14,
+        "reasoning_output_tokens": 0
+      }
+    ],
+    "tool_items": [],
+    "asks": 0,
+    "expected": 0,
+    "hits": 0,
+    "misses": [],
+    "extras": 0,
+    "rows": []
+  },
+  {
+    "id": "original-long-baseline-2",
+    "case": "original-long",
+    "variant": "baseline",
+    "repeat": 2,
+    "seconds": 10.878712568999617,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:14:25.389012+00:00",
+    "prompt_sha256": "b0006ca8388504eeab5072edee35042baf3b0335db2d67db6c8047ba7854452d",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/original-long-baseline-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 21712,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 532,
+        "reasoning_output_tokens": 258
+      }
+    ],
+    "tool_items": [],
+    "asks": 7,
+    "expected": 4,
+    "hits": 4,
+    "misses": [],
+    "extras": 3,
+    "rows": [
+      {
+        "quote": "If you disagree, say so and I'll add it under Appearance.",
+        "question": "Do you want a preference to control whether the activity strip appears?",
+        "target": null,
+        "candidate_targets": [],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 12,
+        "manual_review": {}
+      },
+      {
+        "quote": "Do you want Strata to normalize these, for example always showing \"Explore: search for tests\" style labels, or should it show what the provider sent?",
+        "question": "Should Strata normalize subagent labels or show provider-supplied labels?",
+        "target": "original-long-1",
+        "candidate_targets": [
+          "original-long-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 9,
+        "manual_review": {}
+      },
+      {
+        "quote": "Tell me which you'd rather see and I'll do that one.",
+        "question": "Should finished activity remain under the message or move into the Trace drawer?",
+        "target": "original-long-2",
+        "candidate_targets": [
+          "original-long-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 13,
+        "manual_review": {}
+      },
+      {
+        "quote": "Is eight the right number, or would you rather it show everything and scroll?",
+        "question": "Should the strip show eight rows or all rows with scrolling?",
+        "target": "original-long-3",
+        "candidate_targets": [
+          "original-long-3"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 11,
+        "manual_review": {}
+      },
+      {
+        "quote": "Is that enough, or do you want the error inline?",
+        "question": "Should subagent errors appear inline in the activity strip?",
+        "target": "original-long-4",
+        "candidate_targets": [
+          "original-long-4"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 9,
+        "manual_review": {}
+      },
+      {
+        "quote": "I can add it back if it's useful to you.",
+        "question": "Do you want per-subagent token usage shown in the strip?",
+        "target": null,
+        "candidate_targets": [],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 10,
+        "manual_review": {}
+      },
+      {
+        "quote": "Let me know if you'd rather I hold this until the link-opening change lands, since both touch the Conversation panel and there's a small merge risk in the message component.",
+        "question": "Should I hold this work until the link-opening change lands?",
+        "target": null,
+        "candidate_targets": [],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 10,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "original-long-revised-2",
+    "case": "original-long",
+    "variant": "revised",
+    "repeat": 2,
+    "seconds": 14.08344501999818,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:14:39.472883+00:00",
+    "prompt_sha256": "933b030aa583a4c77d171e27c034dd301fce82792fe2fe5893a8d714b347da02",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/original-long-revised-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 21793,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 675,
+        "reasoning_output_tokens": 492
+      }
+    ],
+    "tool_items": [],
+    "asks": 4,
+    "expected": 4,
+    "hits": 4,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "Do you want Strata to normalize these, for example always showing \"Explore: search for tests\" style labels, or should it show what the provider sent?",
+        "question": "Should Strata normalize subagent labels into a consistent style or display the raw labels supplied by providers?",
+        "target": "original-long-1",
+        "candidate_targets": [
+          "original-long-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 17,
+        "manual_review": {}
+      },
+      {
+        "quote": "Tell me which you'd rather see and I'll do that one.",
+        "question": "Should finished activity remain collapsed under its message or move into the Trace drawer?",
+        "target": "original-long-2",
+        "candidate_targets": [
+          "original-long-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 14,
+        "manual_review": {}
+      },
+      {
+        "quote": "Is eight the right number, or would you rather it show everything and scroll?",
+        "question": "Should the activity strip show eight rows with an overflow line or show every row with scrolling?",
+        "target": "original-long-3",
+        "candidate_targets": [
+          "original-long-3"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 17,
+        "manual_review": {}
+      },
+      {
+        "quote": "Is that enough, or do you want the error inline?",
+        "question": "Should subagent errors remain only in the trace or also appear inline in the activity strip?",
+        "target": "original-long-4",
+        "candidate_targets": [
+          "original-long-4"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 16,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "nonblocking-revised-2",
+    "case": "nonblocking",
+    "variant": "revised",
+    "repeat": 2,
+    "seconds": 7.3248523350048345,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:14:46.798129+00:00",
+    "prompt_sha256": "1e62e11d6e29251582cd9f81033e039b96583076792a4bede115a2906b1886e2",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/nonblocking-revised-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20729,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 139,
+        "reasoning_output_tokens": 59
+      }
+    ],
+    "tool_items": [],
+    "asks": 2,
+    "expected": 2,
+    "hits": 2,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "Please choose whether errors appear inline or in the status bar.",
+        "question": "Should errors appear inline or in the status bar?",
+        "target": "nonblocking-1",
+        "candidate_targets": [
+          "nonblocking-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 9,
+        "manual_review": {}
+      },
+      {
+        "quote": "Also, would you prefer the label 'Questions' or 'Needs your input'?",
+        "question": "Should the label be 'Questions' or 'Needs your input'?",
+        "target": "nonblocking-2",
+        "candidate_targets": [
+          "nonblocking-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 9,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "nonblocking-baseline-2",
+    "case": "nonblocking",
+    "variant": "baseline",
+    "repeat": 2,
+    "seconds": 6.323271440000099,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:14:53.121863+00:00",
+    "prompt_sha256": "858b159eb5c17662c4e497be6924547d5cd02e752e29c7eecc5afc92e6ccc0b1",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/nonblocking-baseline-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20648,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 150,
+        "reasoning_output_tokens": 68
+      }
+    ],
+    "tool_items": [],
+    "asks": 2,
+    "expected": 2,
+    "hits": 2,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "Please choose whether errors appear inline or in the status bar.",
+        "question": "Should errors appear inline or in the status bar?",
+        "target": "nonblocking-1",
+        "candidate_targets": [
+          "nonblocking-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 9,
+        "manual_review": {}
+      },
+      {
+        "quote": "Also, would you prefer the label 'Questions' or 'Needs your input'?",
+        "question": "Which label do you prefer: 'Questions' or 'Needs your input'?",
+        "target": "nonblocking-2",
+        "candidate_targets": [
+          "nonblocking-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 10,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "real-two-decisions-baseline-2",
+    "case": "real-two-decisions",
+    "variant": "baseline",
+    "repeat": 2,
+    "seconds": 8.626002959994366,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:15:01.748230+00:00",
+    "prompt_sha256": "0bc44b2612fe35ecef84869a44ff941bdc4bfba1f6fe629407a87c04dac16ed9",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/real-two-decisions-baseline-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20739,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 176,
+        "reasoning_output_tokens": 92
+      }
+    ],
+    "tool_items": [],
+    "asks": 2,
+    "expected": 2,
+    "hits": 2,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "**Where does the icon go when a reply had no tool calls?**",
+        "question": "Where should the icon go when a reply has no tool calls?",
+        "target": "real-two-decisions-1",
+        "candidate_targets": [
+          "real-two-decisions-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 12,
+        "manual_review": {}
+      },
+      {
+        "quote": "**What happens to replies that finished while Strata was closed?**",
+        "question": "What should happen to replies that finished while Strata was closed?",
+        "target": "real-two-decisions-2",
+        "candidate_targets": [
+          "real-two-decisions-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 11,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "real-two-decisions-revised-2",
+    "case": "real-two-decisions",
+    "variant": "revised",
+    "repeat": 2,
+    "seconds": 5.722186995000811,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:15:07.470861+00:00",
+    "prompt_sha256": "e4a6821f0d33eb76e506242979f15890a24dde0efc600f5059535482f90f065c",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/real-two-decisions-revised-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20820,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 128,
+        "reasoning_output_tokens": 48
+      }
+    ],
+    "tool_items": [],
+    "asks": 2,
+    "expected": 2,
+    "hits": 2,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "Where does the icon go when a reply had no tool calls?",
+        "question": "Where should the icon appear when a reply has no tool calls?",
+        "target": "real-two-decisions-1",
+        "candidate_targets": [
+          "real-two-decisions-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 12,
+        "manual_review": {}
+      },
+      {
+        "quote": "What happens to replies that finished while Strata was closed?",
+        "question": "How should replies that finished while Strata was closed be handled?",
+        "target": "real-two-decisions-2",
+        "candidate_targets": [
+          "real-two-decisions-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 11,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "mixed-explicit-revised-2",
+    "case": "mixed-explicit",
+    "variant": "revised",
+    "repeat": 2,
+    "seconds": 5.922394397995959,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:15:13.393665+00:00",
+    "prompt_sha256": "454313690f665d0632cb43e1628789ead7d89f51eb9d5334595fcfd35cdcdd73",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/mixed-explicit-revised-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20726,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 101,
+        "reasoning_output_tokens": 55
+      }
+    ],
+    "tool_items": [],
+    "asks": 1,
+    "expected": 1,
+    "hits": 1,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "One additional preference: should the exported comments show full names or initials?",
+        "question": "Should exported comments show full names or initials?",
+        "target": "mixed-explicit-1",
+        "candidate_targets": [
+          "mixed-explicit-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 8,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "mixed-explicit-baseline-2",
+    "case": "mixed-explicit",
+    "variant": "baseline",
+    "repeat": 2,
+    "seconds": 6.073372987004404,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:15:19.467432+00:00",
+    "prompt_sha256": "0d1b445266fafd822b6bf2c9cc481c6ac8e93451ace0986beb54bcb8fde0e636",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/mixed-explicit-baseline-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20645,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 159,
+        "reasoning_output_tokens": 93
+      }
+    ],
+    "tool_items": [],
+    "asks": 2,
+    "expected": 1,
+    "hits": 1,
+    "misses": [],
+    "extras": 1,
+    "rows": [
+      {
+        "quote": "Should the export include resolved comments?",
+        "question": "Should the export include resolved comments?",
+        "target": null,
+        "candidate_targets": [],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 6,
+        "manual_review": {}
+      },
+      {
+        "quote": "One additional preference: should the exported comments show full names or initials?",
+        "question": "Should exported comments show full names or initials?",
+        "target": "mixed-explicit-1",
+        "candidate_targets": [
+          "mixed-explicit-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 8,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "offers-only-baseline-2",
+    "case": "offers-only",
+    "variant": "baseline",
+    "repeat": 2,
+    "seconds": 7.62480575999507,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:15:27.092608+00:00",
+    "prompt_sha256": "b5726ffb755b5d7d0640d75346b271595c5b5d66ce23ebe98146afca58e8dc33",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/offers-only-baseline-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20669,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 247,
+        "reasoning_output_tokens": 174
+      }
+    ],
+    "tool_items": [],
+    "asks": 2,
+    "expected": 0,
+    "hits": 0,
+    "misses": [],
+    "extras": 2,
+    "rows": [
+      {
+        "quote": "If you disagree, say so and I'll move it into the Trace drawer.",
+        "question": "Do you disagree with keeping finished work collapsed under the reply? ",
+        "target": null,
+        "candidate_targets": [],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 11,
+        "manual_review": {}
+      },
+      {
+        "quote": "I can add a setting if that would be useful.",
+        "question": "Would adding a setting be useful? ",
+        "target": null,
+        "candidate_targets": [],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 6,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "offers-only-revised-2",
+    "case": "offers-only",
+    "variant": "revised",
+    "repeat": 2,
+    "seconds": 6.0725194010010455,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:15:33.165536+00:00",
+    "prompt_sha256": "776b6b8f01734d48cbd27ed8a1ca8e0ec856ba41cf9417de6dd7a5eec7032277",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/offers-only-revised-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20750,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 98,
+        "reasoning_output_tokens": 82
+      }
+    ],
+    "tool_items": [],
+    "asks": 0,
+    "expected": 0,
+    "hits": 0,
+    "misses": [],
+    "extras": 0,
+    "rows": []
+  },
+  {
+    "id": "original-short-revised-2",
+    "case": "original-short",
+    "variant": "revised",
+    "repeat": 2,
+    "seconds": 7.8255051659944,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:15:40.991440+00:00",
+    "prompt_sha256": "84ef198169a042c25d665ed18a76017c8873c30ecb23520ced97f9012c9c8216",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/original-short-revised-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20897,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 268,
+        "reasoning_output_tokens": 117
+      }
+    ],
+    "tool_items": [],
+    "asks": 3,
+    "expected": 3,
+    "hits": 3,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "Should md links that point at a file outside the project's workspace root still open in Strata, or should those fall through to the browser?",
+        "question": "Should Markdown links to files outside the project workspace root open in Strata or the system browser?",
+        "target": "original-short-1",
+        "candidate_targets": [
+          "original-short-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 17,
+        "manual_review": {}
+      },
+      {
+        "quote": "And do you want the confirmation dialog for external links, or is that just friction?",
+        "question": "Should external links require a confirmation dialog?",
+        "target": "original-short-2",
+        "candidate_targets": [
+          "original-short-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 7,
+        "manual_review": {}
+      },
+      {
+        "quote": "Pick one of these for the worktree question and I'll finish it in this change:",
+        "question": "Which worktree boundary should the implementation use: include the thread’s worktree, keep only the workspace root, or make it configurable?",
+        "target": "original-short-3",
+        "candidate_targets": [
+          "original-short-3"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 20,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "original-short-baseline-2",
+    "case": "original-short",
+    "variant": "baseline",
+    "repeat": 2,
+    "seconds": 7.626081910006178,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:15:48.617979+00:00",
+    "prompt_sha256": "35cfb5cb796b760e8d14e9a161f47306390a7ac28210c202c66b74469dc345c9",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/original-short-baseline-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20816,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 296,
+        "reasoning_output_tokens": 149
+      }
+    ],
+    "tool_items": [],
+    "asks": 4,
+    "expected": 3,
+    "hits": 3,
+    "misses": [],
+    "extras": 1,
+    "rows": [
+      {
+        "quote": "Should md links that point at a file outside the project's workspace root still open in Strata, or should those fall through to the browser?",
+        "question": "Should Markdown links outside the workspace root open in Strata or the browser?",
+        "target": "original-short-1",
+        "candidate_targets": [
+          "original-short-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 13,
+        "manual_review": {}
+      },
+      {
+        "quote": "And do you want the confirmation dialog for external links, or is that just friction?",
+        "question": "Do you want confirmation dialogs for external links?",
+        "target": "original-short-2",
+        "candidate_targets": [
+          "original-short-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 8,
+        "manual_review": {}
+      },
+      {
+        "quote": "Sounds good?",
+        "question": "Does this approach sound good to you?",
+        "target": null,
+        "candidate_targets": [],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 7,
+        "manual_review": {}
+      },
+      {
+        "quote": "Pick one of these for the worktree question and I'll finish it in this change:",
+        "question": "Which worktree fence option should I implement?",
+        "target": "original-short-3",
+        "candidate_targets": [
+          "original-short-3"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 7,
+        "manual_review": {
+          "standalone_issue": "The worktree row omits all three alternatives."
+        }
+      }
+    ]
+  },
+  {
+    "id": "context-options-baseline-2",
+    "case": "context-options",
+    "variant": "baseline",
+    "repeat": 2,
+    "seconds": 5.675002020005195,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:15:54.293385+00:00",
+    "prompt_sha256": "21db8a4d3066ab75e1314f2f6df053b2cfa4dc02d7892e70d00fd841d547479d",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/context-options-baseline-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20671,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 140,
+        "reasoning_output_tokens": 38
+      }
+    ],
+    "tool_items": [],
+    "asks": 2,
+    "expected": 2,
+    "hits": 2,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "The reminder rule needs your call. For paid accounts with an overdue invoice but an active billing dispute, should reminders pause until the dispute closes, while reminders for accounts without a dispute continue every seven days?",
+        "question": "Should reminders pause during active billing disputes while undisputed overdue accounts continue receiving seven-day reminders?",
+        "target": "context-options-1",
+        "candidate_targets": [
+          "context-options-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 15,
+        "manual_review": {
+          "meaning_issue": "Drops the paid-account restriction."
+        }
+      },
+      {
+        "quote": "For the export format, pick one:",
+        "question": "Which export format should I implement?",
+        "target": "context-options-2",
+        "candidate_targets": [
+          "context-options-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 6,
+        "manual_review": {
+          "standalone_issue": "Export format row omits the three formats and image arrangements."
+        }
+      }
+    ]
+  },
+  {
+    "id": "context-options-revised-2",
+    "case": "context-options",
+    "variant": "revised",
+    "repeat": 2,
+    "seconds": 7.675776258998667,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:16:01.969598+00:00",
+    "prompt_sha256": "18da764e962cb24f8809a93d5d3bf7959230cfc93d549b46077c1ce26b9f2c9f",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/context-options-revised-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 20752,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 169,
+        "reasoning_output_tokens": 49
+      }
+    ],
+    "tool_items": [],
+    "asks": 2,
+    "expected": 2,
+    "hits": 2,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "For paid accounts with an overdue invoice but an active billing dispute, should reminders pause until the dispute closes, while reminders for accounts without a dispute continue every seven days?",
+        "question": "Should reminders pause for paid accounts with overdue invoices during active billing disputes while undisputed accounts continue receiving reminders every seven days?",
+        "target": "context-options-1",
+        "candidate_targets": [
+          "context-options-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 22,
+        "manual_review": {}
+      },
+      {
+        "quote": "For the export format, pick one:",
+        "question": "Which export format should be used: one Markdown file per conversation, one combined Markdown file, or a ZIP containing conversations and images?",
+        "target": "context-options-2",
+        "candidate_targets": [
+          "context-options-2"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 22,
+        "manual_review": {
+          "meaning_issue": "Names all three formats but omits images beside the Markdown files for the first two options."
+        }
+      }
+    ]
+  },
+  {
+    "id": "real-implicit-decision-revised-2",
+    "case": "real-implicit-decision",
+    "variant": "revised",
+    "repeat": 2,
+    "seconds": 7.326843397997436,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:16:09.296864+00:00",
+    "prompt_sha256": "3eb447e945181f34a4c721af01f980c52cf9db476b7af00e2f48553cd1f4a7df",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/real-implicit-decision-revised-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 21337,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 217,
+        "reasoning_output_tokens": 159
+      }
+    ],
+    "tool_items": [],
+    "asks": 1,
+    "expected": 1,
+    "hits": 1,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "The one call left for you is whether to keep the restated question at all.",
+        "question": "Should the Items panel keep the restated question field or show only the agent’s quoted words?",
+        "target": "real-implicit-decision-1",
+        "candidate_targets": [
+          "real-implicit-decision-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 16,
+        "manual_review": {}
+      }
+    ]
+  },
+  {
+    "id": "real-implicit-decision-baseline-2",
+    "case": "real-implicit-decision",
+    "variant": "baseline",
+    "repeat": 2,
+    "seconds": 7.176639270001033,
+    "exit": 0,
+    "timed_out": false,
+    "at": "2026-09-07T16:16:16.474075+00:00",
+    "prompt_sha256": "d67d0ab71b334301ba9fe8cf60713ddbb43afa3dfb49dbde596d2aff8eaad11e",
+    "args": [
+      "codex",
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "--model",
+      "gpt-5.6-luna",
+      "--config",
+      "model_reasoning_effort=\"low\"",
+      "--config",
+      "service_tier=\"fast\"",
+      "--json",
+      "--output-schema",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/schema.json",
+      "--output-last-message",
+      "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment/review-2026-09-07/out/real-implicit-decision-baseline-2.json",
+      "-"
+    ],
+    "cwd": "/home/dillonc/Projects/StrataMD/docs/design/inferred-asks/experiment",
+    "usage": [
+      {
+        "input_tokens": 21256,
+        "cached_input_tokens": 20224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 256,
+        "reasoning_output_tokens": 207
+      }
+    ],
+    "tool_items": [],
+    "asks": 1,
+    "expected": 1,
+    "hits": 1,
+    "misses": [],
+    "extras": 0,
+    "rows": [
+      {
+        "quote": "The one call left for you is whether to keep the restated question at all.",
+        "question": "Should the product keep the restated question field?",
+        "target": "real-implicit-decision-1",
+        "candidate_targets": [
+          "real-implicit-decision-1"
+        ],
+        "exact_verbatim": true,
+        "normalized_verbatim": true,
+        "question_words": 8,
+        "manual_review": {}
+      }
+    ]
+  }
+]

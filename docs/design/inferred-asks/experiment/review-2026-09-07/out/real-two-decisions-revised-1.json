@@ -1,0 +1,1 @@
+{"asks":[{"quote":"Where does the icon go when a reply had no tool calls?","question":"Where should the icon appear when a reply contains no tool calls?"},{"quote":"What happens to replies that finished while Strata was closed?","question":"How should Strata handle replies that finished while it was closed?"}]}

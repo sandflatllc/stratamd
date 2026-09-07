@@ -1,0 +1,2 @@
+2026-09-07T16:12:02.627038Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when AuthRequired(AuthRequiredError { www_authenticate_header: "Bearer realm=\"A1 Gallery MCP\" resource_metadata=\"https://www.a1.gallery/.well-known/oauth-protected-resource\"" })
+2026-09-07T16:12:02.946654Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when AuthRequired(AuthRequiredError { www_authenticate_header: "Bearer realm=\"A1 Gallery MCP\" resource_metadata=\"https://www.a1.gallery/.well-known/oauth-protected-resource\"" })

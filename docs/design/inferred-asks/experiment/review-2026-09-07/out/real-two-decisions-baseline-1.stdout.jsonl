@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"01a07ca4-2c1e-7fd2-a48c-fde20169fa91"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"{\"asks\":[{\"quote\":\"**Where does the icon go when a reply had no tool calls?**\",\"question\":\"Where should the icon go when a reply has no tool calls?\"},{\"quote\":\"**What happens to replies that finished while Strata was closed?**\",\"question\":\"What should happen to replies that finished while Strata was closed?\"}]}"}}
+{"type":"turn.completed","usage":{"input_tokens":20929,"cached_input_tokens":15104,"cache_write_input_tokens":0,"output_tokens":204,"reasoning_output_tokens":120}}

@@ -1,0 +1,68 @@
+{
+  "original-long-revised-1": {
+    "1": {
+      "target": "original-long-2",
+      "anchor_issue": "The request was correctly identified, but the quote marks a descriptive alternative instead of the sentence asking the owner to choose. Count as a selection hit and an anchor-quality defect.",
+      "review_basis": "Question explicitly names finished activity under the message versus Trace drawer, matching the frozen expected meaning."
+    }
+  },
+  "real-plan-offer-baseline-1": {
+    "0": {
+      "standalone_issue": "The recommended fix does not identify transcript scrolling when this question is read alone."
+    }
+  },
+  "real-plan-offer-revised-1": {
+    "0": {
+      "standalone_issue": "The recommended fix does not identify transcript scrolling when this question is read alone."
+    }
+  },
+  "original-short-baseline-1": {
+    "2": {
+      "standalone_issue": "The worktree row omits all three alternatives, so the row alone does not support the intended choice."
+    }
+  },
+  "context-options-baseline-1": {
+    "0": {
+      "meaning_issue": "Drops the request to continue reminders every seven days for accounts without disputes."
+    },
+    "1": {
+      "standalone_issue": "Export format row supplies none of the three available formats or image arrangements."
+    }
+  },
+  "context-options-revised-1": {
+    "0": {
+      "meaning_issue": "Drops the paid-account restriction. The revised question does retain seven-day reminders for undisputed accounts."
+    },
+    "1": {
+      "meaning_issue": "Names all three formats but drops images beside the Markdown files for the first two options."
+    }
+  },
+  "real-implicit-decision-baseline-1": {
+    "0": {
+      "anchor_issue": "Quotes the entire three-sentence paragraph, including illustrative questions, rather than the direct request sentence. Violates the baseline two-sentence maximum."
+    }
+  },
+  "real-plan-offer-baseline-2": {
+    "0": {
+      "standalone_issue": "The recommended fix does not identify transcript scrolling when this question is read alone."
+    }
+  },
+  "original-short-baseline-2": {
+    "3": {
+      "standalone_issue": "The worktree row omits all three alternatives."
+    }
+  },
+  "context-options-baseline-2": {
+    "0": {
+      "meaning_issue": "Drops the paid-account restriction."
+    },
+    "1": {
+      "standalone_issue": "Export format row omits the three formats and image arrangements."
+    }
+  },
+  "context-options-revised-2": {
+    "1": {
+      "meaning_issue": "Names all three formats but omits images beside the Markdown files for the first two options."
+    }
+  }
+}

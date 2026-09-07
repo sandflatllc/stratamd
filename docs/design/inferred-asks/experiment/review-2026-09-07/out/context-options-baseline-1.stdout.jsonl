@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"01a07ca5-090a-7fc2-b1b6-2acfb7511ae3"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"{\"asks\":[{\"quote\":\"The reminder rule needs your call. For paid accounts with an overdue invoice but an active billing dispute, should reminders pause until the dispute closes, while reminders for accounts without a dispute continue every seven days?\",\"question\":\"Should reminders pause during active billing disputes for paid accounts with overdue invoices?\"},{\"quote\":\"For the export format, pick one:\",\"question\":\"Which export format do you choose?\"}]}"}}
+{"type":"turn.completed","usage":{"input_tokens":20671,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":96,"reasoning_output_tokens":0}}

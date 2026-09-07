@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"01a07ca5-23b2-7ab2-a5b6-53ac6c1d4db4"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"{\"asks\":[{\"quote\":\"The one call left for you is whether to keep the restated question at all. It exists because a raw quote like \\\"Tell me which you'd rather see and I'll do that one\\\" is meaningless on its own in the Items panel, while the restated version, \\\"Should finished activity stay under the message or move to the Trace drawer?\\\", is answerable from the panel. If you'd rather the panel only ever show the agent's own words, I drop that field too and the panel shows the quote.\",\"question\":\"Should the panel keep the restated question or show only the agent’s original quote?\"}]}"}}
+{"type":"turn.completed","usage":{"input_tokens":21256,"cached_input_tokens":20224,"cache_write_input_tokens":0,"output_tokens":421,"reasoning_output_tokens":280}}

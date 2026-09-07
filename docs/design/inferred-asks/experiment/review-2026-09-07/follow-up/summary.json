@@ -1,0 +1,121 @@
+{
+  "baseline": {
+    "calls": 12,
+    "hits": 20,
+    "expected": 22,
+    "extras": 1,
+    "misses": 2,
+    "precision": 0.9523809523809523,
+    "recall": 0.9090909090909091,
+    "exact_set": 9,
+    "invalid_quotes": 0,
+    "median": 7.1247945745017205,
+    "mean": 7.325346043499546,
+    "max": 10.377937839002698,
+    "failures": 0
+  },
+  "revised": {
+    "calls": 12,
+    "hits": 22,
+    "expected": 22,
+    "extras": 1,
+    "misses": 0,
+    "precision": 0.9565217391304348,
+    "recall": 1.0,
+    "exact_set": 11,
+    "invalid_quotes": 0,
+    "median": 6.481469191501674,
+    "mean": 7.565276053665002,
+    "max": 12.233928456997091,
+    "failures": 0
+  },
+  "pairs": [
+    {
+      "case": "context-options",
+      "repeat": 1,
+      "baseline": 6.9254652860036,
+      "revised": 6.539783696003724,
+      "delta": -0.38568158999987645
+    },
+    {
+      "case": "original-long",
+      "repeat": 1,
+      "baseline": 8.525687531000585,
+      "revised": 9.227178757995716,
+      "delta": 0.701491226995131
+    },
+    {
+      "case": "heldout-direct-offer",
+      "repeat": 1,
+      "baseline": 7.324123862999841,
+      "revised": 6.423154686999624,
+      "delta": -0.900969176000217
+    },
+    {
+      "case": "original-short",
+      "repeat": 1,
+      "baseline": 7.3250734050016035,
+      "revised": 9.928196278997348,
+      "delta": 2.603122873995744
+    },
+    {
+      "case": "real-plan-offer",
+      "repeat": 1,
+      "baseline": 10.377937839002698,
+      "revised": 6.3728665499947965,
+      "delta": -4.005071289007901
+    },
+    {
+      "case": "heldout-declarative-offer",
+      "repeat": 1,
+      "baseline": 5.772145289003674,
+      "revised": 5.8226149789988995,
+      "delta": 0.05046968999522505
+    },
+    {
+      "case": "context-options",
+      "repeat": 2,
+      "baseline": 6.424776576997829,
+      "revised": 6.278665364996414,
+      "delta": -0.14611121200141497
+    },
+    {
+      "case": "original-long",
+      "repeat": 2,
+      "baseline": 9.807687599000928,
+      "revised": 12.233928456997091,
+      "delta": 2.426240857996163
+    },
+    {
+      "case": "heldout-direct-offer",
+      "repeat": 2,
+      "baseline": 5.6507241259969305,
+      "revised": 7.808269178996852,
+      "delta": 2.1575450529999216
+    },
+    {
+      "case": "original-short",
+      "repeat": 2,
+      "baseline": 7.925762004997523,
+      "revised": 8.15382997100096,
+      "delta": 0.2280679660034366
+    },
+    {
+      "case": "real-plan-offer",
+      "repeat": 2,
+      "baseline": 5.121256561993505,
+      "revised": 6.222648889000993,
+      "delta": 1.1013923270074883
+    },
+    {
+      "case": "heldout-declarative-offer",
+      "repeat": 2,
+      "baseline": 6.7235124399958295,
+      "revised": 5.772175833997608,
+      "delta": -0.9513366059982218
+    }
+  ],
+  "paired_mean_delta": 0.23993001016545654,
+  "paired_median_delta": 0.13926882799933082,
+  "revised_faster_pairs": 5
+}

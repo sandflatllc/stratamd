@@ -1,0 +1,83 @@
+{
+  "schema-version": 3,
+  "name": "Copy of Strata Night",
+  "fonts": {
+    "text": "Baloo 2",
+    "code": "JetBrains Mono"
+  },
+  "surfaces": {
+    "window": "#000000",
+    "panel": "#0d0d0d",
+    "transcript-style": "panel",
+    "transcript": "#080808",
+    "inset": "#384757",
+    "user-message": "#242638",
+    "tool-call": "#090c09",
+    "field": "#0d0d0d",
+    "code": "#0d0e13",
+    "border": "#525252",
+    "overlay": "#eceef5",
+    "transcript-border": "#0f0f0f",
+    "transcript-shadow-style": "drop-shadow",
+    "transcript-shadow": "#000000"
+  },
+  "interface": {
+    "primary": "#f2f3f7",
+    "body": "#d3d6df",
+    "secondary": "#9a9fae",
+    "muted": "#8a8f9e"
+  },
+  "document": {
+    "body": "#e0e0e0",
+    "headings": "#c9b3ff",
+    "small-headings": "#8fd0ff",
+    "bold": "#ffcb7b",
+    "italic": "#f2a0ae",
+    "code": "#8fe3a9",
+    "link": "#5cd6c2",
+    "quote": "#98a3c7",
+    "table-heading": "#dfc7ff"
+  },
+  "controls": {
+    "primary": "#80e5d9",
+    "primary-highlight": "#b7a6e8",
+    "selected": "#5560a8",
+    "positive": "#4cbd8a",
+    "warning": "#e0aa4e",
+    "danger": "#e07082",
+    "focus": "#7aa7ff"
+  },
+  "changes": {
+    "added": "#5fc9d9",
+    "removed": "#f08a6e"
+  },
+  "people": {
+    "you": "#e58aa8",
+    "agent-1": "#a98cf0",
+    "agent-2": "#7fb0f5",
+    "agent-3": "#62c99a",
+    "agent-4": "#e6b45e",
+    "external": "#9fa6b6"
+  },
+  "visuals": {
+    "category-1": "#a98cf0",
+    "category-2": "#5fc9d9",
+    "category-3": "#e6b45e",
+    "category-4": "#62c99a",
+    "category-5": "#f08a6e",
+    "category-6": "#7fb0f5"
+  },
+  "effects": {
+    "primary": "#ffa8d2",
+    "secondary": "#6fc6ff",
+    "tertiary": "#e2bdff",
+    "detail-1": "#ffd27a",
+    "detail-2": "#5dbb8c",
+    "panel-style": "stars-and-smoke",
+    "intensity": 1,
+    "speed": 0.25,
+    "side-window-style": "background",
+    "side-window-opacity": 0.85,
+    "background-style": "none"
+  }
+}

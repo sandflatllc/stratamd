@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"01a07ca7-ba68-7cf3-9517-89c4d9690061"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"{\"asks\":[{\"quote\":\"The one call left for you is whether to keep the restated question at all.\",\"question\":\"Should the Items panel keep the restated question field or show only the agent’s quoted words?\"}]}"}}
+{"type":"turn.completed","usage":{"input_tokens":21337,"cached_input_tokens":20224,"cache_write_input_tokens":0,"output_tokens":217,"reasoning_output_tokens":159}}

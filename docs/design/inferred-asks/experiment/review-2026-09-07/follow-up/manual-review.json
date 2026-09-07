@@ -1,0 +1,45 @@
+{
+  "context-options-baseline-1": {
+    "1": {
+      "meaning_issue": "Names the formats but omits images beside the Markdown files."
+    }
+  },
+  "context-options-revised-1": {
+    "1": {
+      "meaning_issue": "Names the formats but omits images beside the Markdown files."
+    }
+  },
+  "real-plan-offer-baseline-1": {
+    "0": {
+      "standalone_issue": "The recommended fix does not identify transcript scrolling when this row is read alone."
+    }
+  },
+  "real-plan-offer-revised-1": {
+    "0": {
+      "standalone_issue": "The recommended fix does not identify transcript scrolling when this row is read alone."
+    }
+  },
+  "context-options-baseline-2": {
+    "1": {
+      "meaning_issue": "Names the formats but omits all image arrangements."
+    }
+  },
+  "context-options-revised-2": {
+    "0": {
+      "meaning_issue": "Drops the paid-account restriction."
+    },
+    "1": {
+      "meaning_issue": "Names the formats but omits images beside the Markdown files."
+    }
+  },
+  "real-plan-offer-baseline-2": {
+    "0": {
+      "standalone_issue": "The question does not identify transcript scrolling when read alone."
+    }
+  },
+  "real-plan-offer-revised-2": {
+    "0": {
+      "standalone_issue": "The question does not identify transcript scrolling when read alone."
+    }
+  }
+}

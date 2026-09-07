@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"01a07ca4-4be3-7ad1-9a88-037f1f902bae"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"{\"asks\":[{\"quote\":\"Should the export include resolved comments?\",\"question\":\"Should the export include resolved comments?\"},{\"quote\":\"One additional preference: should the exported comments show full names or initials?\",\"question\":\"Should exported comments show full names or initials?\"}]}"}}
+{"type":"turn.completed","usage":{"input_tokens":20645,"cached_input_tokens":20224,"cache_write_input_tokens":0,"output_tokens":117,"reasoning_output_tokens":51}}

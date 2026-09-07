@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"01a07ca5-9209-7331-b4c2-df2089921248"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"{\"asks\":[{\"quote\":\"Should links expire after seven days?\",\"question\":\"Should shared links expire after seven days?\"},{\"quote\":\"Should recipients need an account?\",\"question\":\"Should recipients need an account to access shared links?\"}]}"}}
+{"type":"turn.completed","usage":{"input_tokens":20705,"cached_input_tokens":20224,"cache_write_input_tokens":0,"output_tokens":83,"reasoning_output_tokens":23}}
