@@ -273,6 +273,8 @@ test('the theme panel floats over a live app, writes only chosen keys, follows o
 
     // Move and resize, then restart: geometry and theme persist.
     const header = panel.locator('.theme-panel-grip')
+    const beforeMove = (await panel.boundingBox())!
+    const expectedX = Math.round(beforeMove.x - 200)
     const box = (await header.boundingBox())!
     const dragStart = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
     await header.dispatchEvent('pointerdown', { pointerId: 1, isPrimary: true, clientX: dragStart.x, clientY: dragStart.y, button: 0 })
@@ -280,11 +282,11 @@ test('the theme panel floats over a live app, writes only chosen keys, follows o
       window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, isPrimary: true, clientX: x - 200, clientY: y - 120, bubbles: true }))
       window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, isPrimary: true, clientX: x - 200, clientY: y - 120, bubbles: true }))
     }, dragStart)
-    // Synthetic window events schedule a React update; wait for its layout commit.
-    await expect.poll(async () => Math.round((await panel.boundingBox())?.x ?? Infinity)).toBeLessThan(Math.round(box.x) - 130)
-    const moved = (await panel.boundingBox())!
+    // A settings push can briefly restore the prior layout while the drag commit is in flight.
+    // Assert the requested destination, never freeze an intermediate layout as the expected value.
     const settingsPath = join(String(value.env.XDG_CONFIG_HOME), 'stratamd', 'settings.json')
-    await expect.poll(async () => JSON.parse(await readFile(settingsPath, 'utf8')).panels.themePanel.x).toBe(Math.round(moved.x))
+    await expect.poll(async () => JSON.parse(await readFile(settingsPath, 'utf8')).panels.themePanel.x).toBe(expectedX)
+    await expect.poll(async () => Math.round((await panel.boundingBox())?.x ?? Infinity)).toBe(expectedX)
 
     await value.stop()
     const restarted = await value.launch()
@@ -295,7 +297,7 @@ test('the theme panel floats over a live app, writes only chosen keys, follows o
     await restarted.getByRole('menuitem', { name: 'Theme', exact: true }).click()
     const reopened = restarted.getByRole('dialog', { name: 'Theme' })
     // Persisted, not the bottom-right default (about 200px away); the clamp may shift it a little with window size.
-    expect(Math.abs((await reopened.boundingBox())!.x - moved.x)).toBeLessThan(60)
+    await expect.poll(async () => Math.abs((await reopened.boundingBox())!.x - expectedX)).toBeLessThan(60)
     await expect(reopened.getByRole('combobox', { name: 'Theme' })).toHaveValue('copy-of-strata-vivid')
     await reopened.getByRole('combobox', { name: 'Theme' }).selectOption('strata-vivid')
     await expect(restarted.locator('.app-shell')).toHaveAttribute('data-ambient-windows', 'glow-orbs')

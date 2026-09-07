@@ -235,7 +235,7 @@ export function ThemePanel({ theme, zoom, geometry, onGeometry, onClose, onHighl
               <span className="disclosure">{open.has(group) ? '▾' : '▸'}</span> {GROUP_LABELS[group]}
             </button>
             {open.has(group) && <p className="theme-group-note">{GROUP_NOTES[group]}</p>}
-            {open.has(group) && THEME_KEYS.filter((entry) => entry.group === group && (entry.key !== 'visuals.table-background-end' || active.values['visuals.table-style'] === 'gradient') && (entry.key !== 'effects.side-window-opacity' || active.values['effects.side-window-style'] === 'glass')).map((entry) => (
+            {open.has(group) && THEME_KEYS.filter((entry) => entry.group === group && (entry.key !== 'surfaces.transcript-shadow-strength' || (active.values['surfaces.transcript-style'] === 'panel' && active.values['surfaces.transcript-shadow-style'] === 'drop-shadow')) && (entry.key !== 'visuals.table-background-end' || active.values['visuals.table-style'] === 'gradient') && (entry.key !== 'effects.side-window-opacity' || active.values['effects.side-window-style'] === 'glass')).map((entry) => (
               <Row
                 key={entry.key}
                 entry={entry}

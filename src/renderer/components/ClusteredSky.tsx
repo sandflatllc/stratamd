@@ -92,7 +92,9 @@ export function ClusteredSky({ smoke, className }: { smoke: boolean; className: 
         const rect = transcript.getBoundingClientRect()
         if (rect.width > 0 && rect.height > 28) {
           const xScale = frame.width / bounds.width, yScale = frame.height / bounds.height
-          frame.occlusion = [(rect.left - bounds.left + 1) * xScale, (rect.top - bounds.top + 1) * yScale, (rect.right - bounds.left - 1) * xScale, (rect.bottom - bounds.top - 14) * yScale]
+          // Leave both 14px corner bands painted; the skipped rectangle must
+          // stay inside the opaque panel, including at its rounded top edge.
+          frame.occlusion = [(rect.left - bounds.left + 1) * xScale, (rect.top - bounds.top + 14) * yScale, (rect.right - bounds.left - 1) * xScale, (rect.bottom - bounds.top - 14) * yScale]
         }
       }
       const visible = shell!.dataset.motion === 'true' && !document.hidden && !reducedMotion.matches && intersecting && bounds.width > 0 && bounds.height > 0 && frame.intensity > 0

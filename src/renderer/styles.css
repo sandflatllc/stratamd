@@ -11,6 +11,7 @@
   --surfaces-transcript: #15141a;
   --surfaces-transcript-border: #463c6e;
   --surfaces-transcript-shadow: #000000;
+  --surfaces-transcript-shadow-strength: 1;
   --surfaces-inset: #312a50;
   --surfaces-user-message: #312a50;
   --surfaces-tool-call: #1d1731;
@@ -1985,7 +1986,7 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
    two 24px insets plus borders, preserving the saved text and composer widths. */
 .app-shell[data-transcript-style="panel"] .conversation-reading-area { margin-bottom: 16px; }
 .app-shell[data-transcript-style="panel"] .conversation-messages { background: var(--surfaces-transcript); border: 1px solid var(--surfaces-transcript-border); border-radius: 14px; padding-bottom: 24px; }
-.app-shell[data-transcript-style="panel"][data-transcript-shadow="drop-shadow"] :is(.conversation-messages, .theme-sample-transcript) { box-shadow: 0 8px 24px color-mix(in srgb, var(--surfaces-transcript-shadow) 65%, transparent); }
+.app-shell[data-transcript-style="panel"][data-transcript-shadow="drop-shadow"] :is(.conversation-messages, .theme-sample-transcript) { box-shadow: 0 calc(8px * var(--surfaces-transcript-shadow-strength)) calc(24px * var(--surfaces-transcript-shadow-strength)) max(0px, calc(4px * (var(--surfaces-transcript-shadow-strength) - 1))) color-mix(in srgb, var(--surfaces-transcript-shadow) min(100%, calc(65% * var(--surfaces-transcript-shadow-strength))), transparent); }
 .app-shell[data-transcript-style="panel"] .conversation-panel[data-placement="center"] .conversation-messages { flex: none; width: min(100%, calc(var(--conversation-measure) + 50px + 2 * var(--scrollbar-size)), calc(100% - 2 * var(--conversation-gutter) + 50px)); margin-inline: auto; padding: 24px; }
 .app-shell[data-transcript-style="panel"] .conversation-latest { bottom: -28px; }
 
