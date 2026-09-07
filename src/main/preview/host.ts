@@ -146,6 +146,9 @@ export class PreviewHost {
   attachWindow(window: BrowserWindow): void {
     this.#window = window
     window.once('closed', () => { if (this.#window === window) { this.#window = null; this.#bounds = null } })
+    const layout = () => { if (this.#window === window) this.#layout() }
+    window.on('hide', layout)
+    window.on('show', layout)
     for (const runtime of this.#runtimes.values()) this.#attachHidden(runtime.view)
     this.#layout()
   }
@@ -167,11 +170,29 @@ export class PreviewHost {
   #attachHidden(view: WebContentsView): void {
     const parking = this.#parkingWindow()
     if (!parking.contentView.children.includes(view)) {
-      parking.contentView.addChildView(view)
+      this.#attachView(parking, view)
       const bounds = view.getBounds()
       view.setBounds({ x: 0, y: 0, width: bounds.width || 1024, height: bounds.height || 768 })
     }
     view.setVisible(true)
+  }
+
+  #attachView(window: BaseWindow, view: WebContentsView): void {
+    if (window.contentView.children.includes(view)) return
+    const contents = view.webContents
+    const throttling = contents.getBackgroundThrottling()
+    // With background throttling disabled, Chromium skips the hide that releases
+    // the old window's compositor. A transferred guest can then capture normally
+    // while drawing nothing in its new window (Electron 44/Linux). Let the native
+    // view hide before reparenting, then restore background rendering immediately.
+    contents.setBackgroundThrottling(true)
+    view.setVisible(false)
+    try {
+      window.contentView.addChildView(view)
+      view.setVisible(true)
+    } finally {
+      contents.setBackgroundThrottling(throttling)
+    }
   }
 
   /** The renderer says where the shown page sits; null hides it. Switching to a document keeps every page alive. */
@@ -195,14 +216,12 @@ export class PreviewHost {
     const window = this.#window
     if (!window || window.isDestroyed()) return
     for (const [id, runtime] of this.#runtimes) {
-      const show = id === this.#shownTabId && this.#bounds !== null && !this.#overlay && this.#bounds.width > 0 && this.#bounds.height > 0
+      const show = window.isVisible() && id === this.#shownTabId && this.#bounds !== null && !this.#overlay && this.#bounds.width > 0 && this.#bounds.height > 0
       const viewport = this.#model.get(id)?.viewport ?? { mode: 'fill' as const }
       if (show) {
-        window.contentView.addChildView(runtime.view)
+        this.#attachView(window, runtime.view)
         runtime.view.setBounds(this.#bounds!)
         runtime.size = { width: this.#bounds!.width, height: this.#bounds!.height }
-        // Only the selected page occupies the reported preview rectangle.
-        window.contentView.addChildView(runtime.view)
         runtime.view.setVisible(true)
         this.#emulate(runtime, viewport, this.#bounds!)
       } else {
@@ -233,7 +252,7 @@ export class PreviewHost {
 
   /** Whether the tab is on screen right now, for status results. */
   #visible(tabId: string): boolean {
-    return this.#shownTabId === tabId && this.#bounds !== null && !this.#overlay && this.#window !== null
+    return this.#shownTabId === tabId && this.#bounds !== null && !this.#overlay && this.#window?.isVisible() === true
   }
 
   // ---- Tabs

@@ -19,6 +19,8 @@ test('theme panel resizes, zooms independently, and remembers both across restar
     await expect(panel).toHaveCSS('height', '550px')
 
     // Use real pointer capture, including a release outside the resize button.
+    // Raw coordinates do not wait for the panel's pop-in transform to settle.
+    await grip.hover()
     const box = (await grip.boundingBox())!
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
     await page.mouse.down()
