@@ -31,7 +31,8 @@ async function openAddress(page: Page, window: Locator, url: string, title: stri
 }
 
 async function browserShared(page: Page, engine: FakeEngine): Promise<void> {
-  await expect(page.getByText('Browser shared')).toBeVisible()
+  await expect.poll(async () => (await state(page)).preview.registered).toBe(true)
+  await expect(page.getByText('Browser shared', { exact: true })).toHaveCount(0)
   await expect.poll(() => engine.hosts().length).toBe(1)
 }
 
@@ -324,7 +325,8 @@ test('annotation note and destination survive visiting a conversation and the to
     await expect(page.getByRole('region', { name: 'Conversation' })).toBeVisible()
     await openProjectPreview(page)
     await expect(dialog.getByRole('textbox', { name: 'Visual comment' })).toHaveValue('Keep this note through navigation.')
-    await expect(dialog.locator('.visual-context')).toContainText('Live engine thread')
+    await expect(dialog.locator('.visual-context')).toHaveText('Send to this conversation')
+    await expect(dialog.locator('.visual-context')).toHaveAttribute('title', /Live engine thread$/)
     await preview.getByRole('button', { name: /^Annotat/ }).click()
     await expect(dialog).toBeHidden()
     await expect.poll(async () => (await state(page)).engine.projects[0]?.visualComments?.[0]?.draft?.text).toBe('Keep this note through navigation.')

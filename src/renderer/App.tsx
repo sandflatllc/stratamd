@@ -246,7 +246,9 @@ export function App({ createEditor }: AppProps) {
     let previousDocument: string | null | undefined
     const adopt = (next: AppView) => {
       const path = next.activeDocument?.path ?? null
-      if (previousDocument !== undefined && path && path !== previousDocument) { setConversationCentered(false); setPreviewCentered(null) }
+      // Closing the active tab selects a replacement without requesting document mode.
+      const previousDocumentClosed = previousDocument != null && !next.tabs.some((tab) => tab.path === previousDocument)
+      if (previousDocument !== undefined && path && path !== previousDocument && !previousDocumentClosed) { setConversationCentered(false); setPreviewCentered(null) }
       previousDocument = path
       setView(next)
       if (shouldAdoptPushed(next.settings.panelSizes, committedPanels.current)) {
@@ -599,7 +601,7 @@ export function App({ createEditor }: AppProps) {
     const active = tabs.find((tab) => tab.id === activePreviewTabs[projectId]) ?? tabs.find((tab) => tab.kind === 'owner') ?? tabs[0] ?? null
     return { id: projectId, name: previewPillName(project.title, active ? { url: active.url, title: active.title } : null), active: previewShown === projectId, held: (project.visualComments ?? []).some((comment) => comment.status === 'held') }
   })
-  const topBarPreviews = { previewPills, onOpenPreviewPill: showPreview, onClosePreviewPill: closePreview, browserShared: view.preview.registered, onOpenPreview: () => { const projectId = activeThreadProject?.id ?? view.engine.projects[0]?.id; if (projectId) openPreview(projectId); else report('Add a project before opening a preview.') } }
+  const topBarPreviews = { previewPills, onOpenPreviewPill: showPreview, onClosePreviewPill: closePreview, onOpenPreview: () => { const projectId = activeThreadProject?.id ?? view.engine.projects[0]?.id; if (projectId) openPreview(projectId); else report('Add a project before opening a preview.') } }
   // Annotate on a page: the frame is captured into the evidence store, the live view hides, and the session opens over the stage.
   const annotateDestination = (projectId: string): VisualDestinationView | null => {
     const project = view.engine.projects.find((candidate) => candidate.id === projectId)

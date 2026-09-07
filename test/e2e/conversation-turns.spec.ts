@@ -160,7 +160,12 @@ test('Find and a comment marker open the folded turn that holds their target', a
     await marker.click()
     await expect(toggle).toHaveAttribute('aria-expanded', 'true')
     await expect(progress.locator(`[data-draft-id="${commentId}"], [data-annotation-id="${commentId}"]`).first()).toBeInViewport()
-    await expect(page.getByRole('region', { name: 'Saved comment' })).toContainText('Why the order first?')
+    await expect(page.locator('.annotation-composer textarea')).toHaveValue('Why the order first?')
+    await expect(page.getByRole('dialog', { name: 'Saved comment' })).toHaveCount(0)
+    await page.locator('.annotation-composer').getByRole('button', { name: 'Cancel', exact: true }).click()
+    await panel.getByRole('button', { name: 'Remove held comment: Why the order first?', exact: true }).click()
+    await expect(marker).toHaveCount(0)
+    await expect(panel.getByRole('button', { name: 'Remove held comment: Why the order first?', exact: true })).toHaveCount(0)
     await page.mouse.move(1300, 60)
     await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('marker-reveal.png') })
   } finally { await scenario.dispose(); await engine.close() }

@@ -417,7 +417,7 @@ export function VisualSession({ sessionId, session: controlled, setSession: setC
         {onAdjust && (() => { const mark = marks.find((candidate) => candidate.id === selectedMark && candidate.kind === 'element' && candidate.identity); return mark ? <VisualAdjustments mark={mark} adjustments={adjusted} status={liveApplied.current ? adjustStatus ?? 'shown live' : 'not shown yet'} busy={busy || adjusting} canUndo={history.length > 0} onChange={(next) => void applyAdjustments(next)} onUndo={() => void undoAdjustment()} onReset={() => void resetAdjustments()} /> : null })()}
         {!onAdjust && adjusted.length > 0 && <p className="visual-adjustment-summary">{adjusted.map((adjustment) => adjustment.label).join(' · ')}</p>}
         <footer>
-          <span className="visual-context">{place} · to <b>{destination.threadTitle}</b></span>
+          <span className="visual-context" title={`${place} · ${destination.threadTitle}`}>Send to this conversation</span>
           <button type="button" className="quiet-button" disabled={busy} onClick={() => void cancel()}>{source ? 'Cancel attachment' : 'Discard'}</button>
           <button type="button" className="quiet-button" disabled={busy} onClick={() => void holdAndClose()}>Hold</button>
           <button type="submit" className="primary-button" disabled={busy}>Send now</button>

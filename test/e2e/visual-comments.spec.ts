@@ -31,7 +31,9 @@ async function pasteScreenshot(page: Page): Promise<void> {
 async function openLiveThread(page: Page) {
   await page.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
   await page.getByRole('button', { name: /^Open Live engine thread$/ }).click()
-  return page.getByRole('region', { name: 'Conversation' })
+  const conversation = page.getByRole('region', { name: 'Conversation' })
+  await expect(conversation.getByRole('textbox', { name: 'Message conversation' })).toBeVisible()
+  return conversation
 }
 
 const session = (page: Page) => page.getByRole('dialog', { name: 'Mark up the image' })
@@ -75,8 +77,9 @@ test('1: with no document open, a pasted screenshot opens the session, and Hold 
     await expect(conversation.getByRole('textbox', { name: 'Message conversation' })).toBeVisible()
     await pasteScreenshot(page)
     const dialog = await markUp(page, 'The button floats above the table header.')
-    // The card names the destination thread in plain words, and no label names a file or selector.
-    await expect(dialog.locator('.visual-context')).toContainText('Pasted image · 320 × 200 · to Live engine thread')
+    // The destination stays readable, with the thread title available on hover.
+    await expect(dialog.locator('.visual-context')).toHaveText('Send to this conversation')
+    await expect(dialog.locator('.visual-context')).toHaveAttribute('title', 'Pasted image · 320 × 200 · Live engine thread')
     expect(await dialog.textContent()).not.toMatch(/\.png|selector|\.tsx|px\b/)
     await dialog.getByRole('button', { name: 'Hold' }).click()
     await expect(dialog).toBeHidden()
@@ -106,6 +109,9 @@ test('1: with no document open, a pasted screenshot opens the session, and Hold 
     await expect(reopened.getByRole('textbox', { name: 'Visual comment' })).toHaveValue('The button floats above the table header.')
     await page.keyboard.press('Escape')
     await expect(reopened).toBeHidden()
+    await restored.getByRole('button', { name: /^Remove held visual comment:/ }).click()
+    await expect(restored).toHaveCount(0)
+    await expect.poll(() => evidenceFiles(dataHome)).toHaveLength(0)
   } finally {
     await scenario.dispose()
     await engine.close()
@@ -129,10 +135,10 @@ test('2: the capacity line says what Send carries beside ordinary attachments', 
     await expect(conversation.locator('.conversation-attachment-preview')).toHaveCount(3)
     await expect(conversation.locator('.conversation-capacity')).toHaveText('Send carries 3 files, 1 marked screenshot, and the context file · 5 of 8')
     // Setting the comment aside for this send keeps it held and drops it from the count.
-    await conversation.getByRole('button', { name: /^Set aside/ }).click()
+    await conversation.getByRole('checkbox', { name: 'Include', exact: true }).uncheck()
     await expect(conversation.locator('.conversation-capacity')).toHaveText('Send carries 3 files · 3 of 8')
     await expect(conversation.locator('.conversation-visual-card .visual-status')).toHaveText('held')
-    await conversation.getByRole('button', { name: /^Include/ }).click()
+    await conversation.getByRole('checkbox', { name: 'Include', exact: true }).check()
     await expect(conversation.locator('.conversation-capacity')).toHaveText('Send carries 3 files, 1 marked screenshot, and the context file · 5 of 8')
     // The composer Send carries the files, the marked screenshot, and the context file in one turn.
     await conversation.getByRole('textbox', { name: 'Message conversation' }).fill('Both at once')
@@ -247,4 +253,28 @@ test('4: a failed Send stays retryable and retry sends the frozen revision, not 
     await scenario.dispose()
     await engine.close()
   }
+})
+
+
+test('cancelling a pasted photo removes the attachment and survives reopening the conversation', async ({}, testInfo) => {
+  const engine = await startEngine({ pendingRequests: false })
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    let page = await scenario.launchEmpty()
+    await openLiveThread(page)
+    await pasteScreenshot(page)
+    const dialog = session(page)
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: 'Cancel attachment', exact: true }).click()
+    await expect(dialog).toBeHidden()
+    await expect(page.locator('.conversation-attachment-preview')).toHaveCount(0)
+    await expect(page.locator('.conversation-visual-card')).toHaveCount(0)
+    await expect.poll(() => stagedFiles(String(scenario.env.XDG_DATA_HOME))).toHaveLength(0)
+    await scenario.stop()
+    page = await scenario.launchEmpty()
+    await openLiveThread(page)
+    await expect(page.locator('.conversation-attachment-preview')).toHaveCount(0)
+    await expect(session(page)).toBeHidden()
+    expect(engine.commands.filter(command => command.type === 'thread.turn.start')).toHaveLength(0)
+  } finally { await scenario.dispose(); await engine.close() }
 })

@@ -208,22 +208,15 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
   const heldVisual = useMemo(() => threadVisual.filter((comment) => comment.status === 'held' && comment.draft), [threadVisual])
   const visualById = useMemo(() => new Map(visualComments.map((comment) => [comment.id, comment])), [visualComments])
   const workspace = useConversationWorkspace(thread, onStart, panelRef, { comments: threadVisual, onOpen: (id) => onOpenVisual?.(id) })
-  /** Whether the reader sits at the bottom, and where the latest agent answer begins relative to the viewport. */
-  const [reading, setReading] = useState<{ atBottom: boolean; latest: 'above' | 'visible' | 'below' | null }>({ atBottom: true, latest: null })
+  const [atBottom, setAtBottom] = useState(true)
   const latestId = workspace.latestResponse
+  const jumpToResponse = atBottom && !!latestId
   useEffect(() => {
     const viewport = panelRef.current?.querySelector<HTMLElement>('.conversation-messages')
     if (!viewport) return
     let frame = 0
     const update = () => {
-      const atBottom = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= 24
-      const row = latestId ? viewport.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(latestId)}"]`) : null
-      let latest: 'above' | 'visible' | 'below' | null = null
-      if (row) {
-        const top = row.getBoundingClientRect().top - viewport.getBoundingClientRect().top - Number.parseFloat(getComputedStyle(viewport).paddingTop)
-        latest = top < -2 ? 'above' : top > viewport.clientHeight - 40 ? 'below' : 'visible'
-      }
-      setReading((previous) => previous.atBottom === atBottom && previous.latest === latest ? previous : { atBottom, latest })
+      setAtBottom(viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= 24)
     }
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update) }
     const resize = new ResizeObserver(schedule)
@@ -352,8 +345,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
     </ConversationHistory>
     {visible && workspace.discussionView}
     {visible && <ConversationNavigator key={thread.id} thread={thread} onJump={workspace.navigate} />}
-    {visible && reading.latest && reading.latest !== 'visible' && <button type="button" className="conversation-latest" data-direction={reading.latest === 'above' ? 'up' : 'down'} aria-label="Latest response" title="Read the latest response from its start" onClick={workspace.jumpToLatest}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 7.5 6 3.5l4 4" /></svg></button>}
-    {visible && !reading.atBottom && <button type="button" className="conversation-newest" aria-label="Newest" title="Jump to the newest message" onClick={() => history.current?.scrollToBottom()}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4.5 6 8.5l4-4" /></svg></button>}
+    {visible && <button type="button" className="conversation-latest" data-direction={jumpToResponse ? 'up' : 'down'} aria-label={jumpToResponse ? 'Latest response' : 'Newest'} title={jumpToResponse ? 'Read the latest response from its start' : 'Jump to the newest message'} onClick={() => { if (jumpToResponse) workspace.jumpToLatest(); else history.current?.scrollToBottom() }}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 7.5 6 3.5l4 4" /></svg></button>}
     </div>
     {visible && workspace.overlay}
     <ConversationComposer deliveryId={workspace.previewId} key={`composer:${thread.id}`} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} context={<div className="conversation-context">{placement === 'side' && onDocumentContext && <button type="button" onClick={onDocumentContext}>Document context</button>}{workspace.tray}</div>} queuedCount={workspace.selectedCount} reservedAttachments={workspace.selectedCount > 0 || (thread.outcomes?.length ?? 0) > 0 ? 1 : 0} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} running={running} onStop={() => onStop(thread.id)} onSend={async input => { await onStart(thread.id, { ...input, ...workspace.outgoing }); workspace.sent() }} visualComments={heldVisual} {...(onOpenVisual ? { onOpenVisual: (comment: VisualCommentView) => onOpenVisual(comment.id) } : {})} {...(onMarkUpImage ? { onMarkUpImage } : {})} {...(consumedAttachmentIds ? { consumedAttachmentIds } : {})} />

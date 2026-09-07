@@ -61,7 +61,7 @@ export function ConversationNavigator({ thread, onJump }: { thread: EngineThread
   }
   if (!markers.length) return null
   return <nav ref={root} className="conversation-navigator" aria-label="Conversation history" onMouseLeave={() => setPreview(undefined)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setPreview(undefined) }} onKeyDown={event => {
-    if (event.key === 'Escape') { setPreview(undefined); event.stopPropagation() }
+    if (event.key === 'Escape' && preview) { setPreview(undefined); event.stopPropagation() }
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
     const buttons = Array.from(root.current!.querySelectorAll<HTMLButtonElement>('.conversation-marker'))
     const index = buttons.indexOf(document.activeElement as HTMLButtonElement)

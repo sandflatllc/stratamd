@@ -45,6 +45,10 @@ test('dropdowns remain clickable above the workspace, scroll, and restore keyboa
     await page.keyboard.press('Escape')
     await expect(page.locator('.conversation-panel[data-placement="center"]')).toContainText('Read-side conversation from T3.')
     await docs.click()
+    await menu.getByRole('button', { name: 'Close notes-00.md', exact: true }).click()
+    await expect(menu.getByRole('menuitem', { name: 'notes-00.md', exact: true })).toHaveCount(0)
+    await expect(page.locator('.conversation-panel[data-placement="center"]')).toBeVisible()
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('stratamd.workspace.v1')!).conversationCentered)).toBe(true)
     const message = (await page.locator('.conversation-panel[data-placement="center"] .conversation-message').first().boundingBox())!
     await page.mouse.click(message.x + message.width / 2, message.y + message.height / 2)
     await expect(menu).toBeHidden()

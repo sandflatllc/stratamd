@@ -134,7 +134,8 @@ describe('visual comments through the engine client', () => {
     expect(briefs).toHaveLength(1)
     expect(briefs[0]).toMatchObject({ id, revision: 1, text: 'The header labels drift left.', captures: [{ name: message.attachments[0]!.name, width: 1, height: 1 }] })
     expect(briefs[0].marks[0]).toMatchObject({ label: 'Region 1', capture: message.attachments[0]!.name, rect: { x: 0, y: 0, width: 1, height: 1 } })
-    expect(context).toContain('"ready":true')
+    expect(context).not.toContain('"ready":true')
+    expect(context).not.toContain('Do the change')
     let card = visual(instance)[0]!
     expect(card.status).toBe('sending')
     expect(card.draft).toBeUndefined()

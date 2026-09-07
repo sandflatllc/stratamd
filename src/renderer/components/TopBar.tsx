@@ -53,8 +53,6 @@ interface TopBarProps {
   onClosePreviewPill?(id: string): void
   /** Opens a preview window for the active project from the logo menu. */
   onOpenPreview?(): void
-  /** Strata is registered with the engine as its browser host; shown beside the engine status. */
-  browserShared?: boolean
 }
 
 type MenuKind = 'app' | 'documents' | 'conversations' | 'previews'
@@ -89,7 +87,7 @@ interface OpenItem {
   onContextMenu?(event: ReactMouseEvent): void
 }
 
-export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onOpenFile, onSend, onStartThread, zoomed, onResetZoom, onOpenTheme, conversationTabs = [], onOpenConversationTab, onCloseConversation, engine, onOpenEngine, onOpenAccounts, onOpenSettings, onToggleTerminal, onOpenUsage, previewPills = [], onOpenPreviewPill, onClosePreviewPill, onOpenPreview, browserShared = false }: TopBarProps) {
+export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, pending, pendingUnsaved, onOpenTab, onCloseTab, onCopyPath, onCloseOthers, onCloseAll, onCloseSaved, onOpenFile, onSend, onStartThread, zoomed, onResetZoom, onOpenTheme, conversationTabs = [], onOpenConversationTab, onCloseConversation, engine, onOpenEngine, onOpenAccounts, onOpenSettings, onToggleTerminal, onOpenUsage, previewPills = [], onOpenPreviewPill, onClosePreviewPill, onOpenPreview }: TopBarProps) {
   const previewActive = previewPills.some((pill) => pill.active)
   const conversationTab = previewActive ? undefined : conversationTabs.find((tab) => tab.active)
   const navigation = useRef<HTMLElement>(null)
@@ -234,7 +232,6 @@ export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, 
           <span className="engine-status-label">{engine.state === 'unpaired' ? 'Pair engine' : engineStateLabel(engine)}</span>
         </button>
       )}
-      {browserShared && <span className="browser-shared" title="Strata is registered with the engine as a browser host; agents can open their own tabs here">Browser shared</span>}
       <span className="pending-status" data-unsaved={pendingUnsaved} title="Next change · F7. Previous change · Shift+F7. All shortcuts · F1">{pending} pending</span>
       {hasAgents || !onStartThread
         ? <button type="button" className="send-button" title={sendTitle} data-enabled={canSend} onClick={onSend} disabled={!canSend}>Send ↗</button>

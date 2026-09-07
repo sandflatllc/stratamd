@@ -30,7 +30,8 @@ async function openAddress(page: Page, window: ReturnType<Page['getByRole']>, ur
 }
 
 async function browserShared(page: Page, engine: FakeEngine): Promise<void> {
-  await expect(page.getByText('Browser shared')).toBeVisible()
+  await expect.poll(async () => (await state(page)).preview.registered).toBe(true)
+  await expect(page.getByText('Browser shared', { exact: true })).toHaveCount(0)
   await expect.poll(() => engine.hosts().length).toBe(1)
 }
 

@@ -79,13 +79,18 @@ for (const placement of ['side', 'center']) test(`latest response aligns long an
     const short = panel.locator(`[data-message-id="${next}"]`)
     await expect(short).toBeAttached()
     await expect.poll(async () => Math.abs(await anchor.evaluate(el => el.getBoundingClientRect().top) - top)).toBeLessThan(2)
+    await expect(panel.locator('.conversation-latest')).toHaveAttribute('data-direction', 'down')
+    await panel.getByRole('button', { name: 'Newest', exact: true }).click()
+    await expectBottom(history)
     await panel.getByRole('button', { name: 'Latest response', exact: true }).click()
     await expectStart(short)
     await panel.getByRole('button', { name: 'Newest', exact: true }).click()
     await expectBottom(history)
-    // Both controls show only while they would move the reader somewhere new.
-    await expect(panel.getByRole('button', { name: 'Newest', exact: true })).toHaveCount(0)
-    await expect(panel.getByRole('button', { name: 'Latest response', exact: true })).toHaveCount(0)
+    // One persistent strip switches direction; the former floating dot stays absent.
+    await expect(panel.locator('.conversation-latest')).toHaveCount(1)
+    await expect(panel.locator('.conversation-latest')).toHaveAttribute('data-direction', 'up')
+    await expect(panel.getByRole('button', { name: 'Latest response', exact: true })).toBeVisible()
+    await expect(panel.locator('.conversation-newest')).toHaveCount(0)
     if (placement === 'side') {
       await navigation.getByRole('tab', { name: 'Contents' }).click()
       await navigation.getByRole('tab', { name: 'Conversation', exact: true }).click()
