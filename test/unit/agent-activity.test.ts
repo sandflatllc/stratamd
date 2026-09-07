@@ -53,8 +53,37 @@ describe('agent activity', () => {
       activity('task.started', { taskId: 'leaf-1', agentKind: 'agent', title: 'diagnose_image_rendering', role: 'diagnose_image_rendering', model: 'gpt-6-astra', effort: 'medium', agentPath: '/root/plan/diagnose_image_rendering', timelineBypass: true }),
       activity('task.updated', { taskId: 'leaf-1', agentKind: 'agent', title: 'diagnose_image_rendering', agentPath: '/root/plan/diagnose_image_rendering', status: 'idle' }),
     ])
-    expect(runs.map((run) => [run.id, run.depth, run.parentId, run.depthKnown, run.state])).toEqual([['root-1', 1, null, true, 'working'], ['leaf-1', 2, 'root-1', true, 'waiting']])
+    // Codex reports `idle` for an agent that finished its turn; it is done, not a question for the owner, and its end is the row's time.
+    expect(runs.map((run) => [run.id, run.depth, run.parentId, run.depthKnown, run.state])).toEqual([['root-1', 1, null, true, 'working'], ['leaf-1', 2, 'root-1', true, 'done']])
+    expect(runs[1]!.endedAt).toBe(runs[1]!.activityIds.length === 2 ? new Date(Date.UTC(2026, 8, 6, 12, 0, tick)).toISOString() : null)
     expect(runs[0]!.modelLabel).toBe('Astra')
+  })
+
+  it('settles an interrupted Codex agent as done', () => {
+    const runs = deriveAgentRuns([
+      activity('task.started', { taskId: 'root-2', agentKind: 'agent', title: 'plan', agentPath: '/root/plan' }),
+      activity('task.updated', { taskId: 'root-2', agentKind: 'agent', title: 'plan', agentPath: '/root/plan', status: 'interrupted' }),
+    ])
+    expect(runs.map((run) => [run.state, run.endedAt !== null])).toEqual([['done', true]])
+  })
+
+  it('places a workflow child under the parent T3 names', () => {
+    const runs = deriveAgentRuns([
+      activity('task.started', { taskId: 'wf', taskType: 'local_workflow', agentKind: 'agent', title: 'Review workflow', toolUseId: 'toolu_wf' }),
+      activity('task.progress', { taskId: 'wf:wf:1', agentKind: 'agent', title: 'Angle A', parentAgentId: 'wf', status: 'running', phaseTitle: 'Review' }),
+      activity('task.progress', { taskId: 'wf:wf:1', agentKind: 'agent', title: 'Angle A', parentAgentId: 'wf', status: 'completed', phaseTitle: 'Review' }),
+    ])
+    expect(runs.map((run) => [run.id, run.depth, run.parentId, run.depthKnown, run.state])).toEqual([['wf', 1, null, false, 'working'], ['wf:wf:1', 2, 'wf', true, 'done']])
+  })
+
+  it('infers nothing in a turn where T3 reported no Agent call rows', () => {
+    const runs = deriveAgentRuns([
+      activity('tool.started', { itemType: 'tool_call', toolCallId: 'skill-call', status: 'inProgress' }, 'tool'),
+      activity('task.started', { taskId: 'first', taskType: 'local_agent', agentKind: 'agent', title: 'Angle A', toolUseId: 'toolu_1' }),
+      activity('task.started', { taskId: 'second', taskType: 'local_agent', agentKind: 'agent', title: 'Angle B', toolUseId: 'toolu_2' }),
+      activity('task.started', { taskId: 'third', taskType: 'local_agent', agentKind: 'agent', title: 'Angle C', toolUseId: 'toolu_3' }),
+    ])
+    expect(runs.map((run) => [run.id, run.depth, run.parentId, run.depthKnown])).toEqual([['first', 1, null, false], ['second', 1, null, false], ['third', 1, null, false]])
   })
 
   it('infers Claude children from spawns whose calls are not the main thread\'s while a run is working', () => {
@@ -106,7 +135,9 @@ describe('agent activity', () => {
 
   it('measures elapsed time from the report, the span, or the clock', () => {
     const now = Date.parse('2026-09-06T12:10:00.000Z')
-    expect(agentRunElapsedMs({ durationMs: 5_000, startedAt: '2026-09-06T12:00:00.000Z', endedAt: null, state: 'working' }, now)).toBe(5_000)
+    // A live run keeps counting from the clock even after T3 reported a duration snapshot on a progress row.
+    expect(agentRunElapsedMs({ durationMs: 5_000, startedAt: '2026-09-06T12:00:00.000Z', endedAt: null, state: 'working' }, now)).toBe(600_000)
+    expect(agentRunElapsedMs({ durationMs: 5_000, startedAt: '2026-09-06T12:00:00.000Z', endedAt: '2026-09-06T12:01:30.000Z', state: 'done' }, now)).toBe(5_000)
     expect(agentRunElapsedMs({ durationMs: null, startedAt: '2026-09-06T12:00:00.000Z', endedAt: '2026-09-06T12:01:30.000Z', state: 'done' }, now)).toBe(90_000)
     expect(agentRunElapsedMs({ durationMs: null, startedAt: '2026-09-06T12:00:00.000Z', endedAt: null, state: 'working' }, now)).toBe(600_000)
     expect(agentRunElapsedMs({ durationMs: null, startedAt: '2026-09-06T12:00:00.000Z', endedAt: null, state: 'done' }, now)).toBeNull()

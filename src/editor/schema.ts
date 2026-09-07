@@ -29,7 +29,8 @@ export function frontmatterChipLabel(raw: string): string {
 const safeLinkHref = (href: unknown): string | undefined => {
   if (typeof href !== 'string' || href.length === 0) return undefined
   const scheme = /^([a-z][a-z\d+.-]*):/i.exec(href)?.[1]?.toLowerCase()
-  if (scheme !== undefined && !['http', 'https', 'mailto'].includes(scheme)) return undefined
+  // `file:` stays so the shell's link picker and copy menu can see local pages and documents; main checks the file before anything opens.
+  if (scheme !== undefined && !['http', 'https', 'mailto', 'file'].includes(scheme)) return undefined
   return href
 }
 

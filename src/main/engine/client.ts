@@ -1,3 +1,4 @@
+import { accountForModel } from '../../core/accountState'
 import type { ComposeCommentImage } from '../visual-comment-image'
 import { effectiveProviderInstances, mergeEngineSettings, mergeProviderEdit, type EngineSettingsEdit, type ProviderEdit, type EngineSupport, type EngineActivity, isSettingsRecord } from '../../shared/engine-settings'
 import { ConnectionOperations } from './connection-operations'
@@ -341,6 +342,7 @@ export class T3EngineClient implements EngineReadClient {
   #usageSuspensions = 0
   #usageJobs = new Map<string, { abort: AbortController; done: Promise<void> }>()
   #usageAttempt = new Map<string, number>()
+  #usageProblems = new Map<string, string>()
   #backgroundAllowed = true
   #configFetchedAt = 0
   #configProblem: string | null = null
@@ -457,6 +459,7 @@ export class T3EngineClient implements EngineReadClient {
   async shutdown(): Promise<void> {
     await this.#cancelUsage()
     this.#usageAttempt.clear()
+    this.#usageProblems.clear()
     if (this.#terminalAttachment) await this.#detachTerminal(this.#terminalAttachment)
     this.#terminalListeners.clear()
     this.#running = false
@@ -568,13 +571,16 @@ export class T3EngineClient implements EngineReadClient {
       accounts,
       models: this.#models.map(model => ({ order: this.#accounts.modelPreferences?.[model.instanceId]?.order?.indexOf(model.slug) ?? -1, ...model, favorite: this.#accounts.modelPreferences?.[model.instanceId]?.favorites.includes(model.slug) ?? false, hidden: this.#accounts.modelPreferences?.[model.instanceId]?.hidden.includes(model.slug) ?? false })).sort((left, right) => left.instanceId === right.instanceId ? (left.order < 0 ? 1e6 : left.order) - (right.order < 0 ? 1e6 : right.order) : 0),
       terminalDefaults: { ...this.#accounts.terminalDefaults },
-      autoInstanceIds: Object.fromEntries([...new Set(accounts.map((account) => account.driver))].map((driver) => [driver, chooseInstance(this.#accounts, accounts, null, driver)])),
+      autoInstanceIds: Object.fromEntries([...new Set(accounts.map((account) => account.driver))].map((driver) => [driver, chooseInstance(this.#accounts, accounts, null, driver, driver === 'claudeAgent' ? 'fable' : '', this.#now())])),
       terminalShimDirectory: this.#shimDirectory,
     }
   }
 
   #accountViews() {
-    return accountViews(this.#accounts, this.#providers, this.#now())
+    return accountViews(this.#accounts, this.#providers, this.#now()).map(account => {
+      const usageProblem = this.#usageProblems.get(account.instanceId) ?? null
+      return { ...account, usageProblem, usageRefreshing: this.#usageJobs.has(account.instanceId), ...(usageProblem && account.state === 'ready' ? { state: 'stale' as const, reason: usageProblem } : {}) }
+    })
   }
 
   /**
@@ -619,7 +625,8 @@ export class T3EngineClient implements EngineReadClient {
     await this.#rpcOrSocket(T3_RPC.refreshProviders, {}, 'provider refresh').catch(() => undefined)
     this.#configFetchedAt = 0
     this.#usageAttempt.clear()
-    await this.#refreshConfig()
+    this.#usageProblems.clear()
+    await this.#refreshConfig(true)
     this.#publish()
     if (this.#configProblem) throw new Error(this.#configProblem)
   }
@@ -820,7 +827,7 @@ export class T3EngineClient implements EngineReadClient {
     const catalog = this.#models.filter(model => model.instanceId === instanceId)
     if (catalog.length && !catalog.some(model => model.slug === input.model)) throw new Error(`Model ${input.model} is not available on subscription ${instanceId}.`)
     // Validate routing before uploading files or consuming queued replies.
-    await this.#resolveInstance(thread.projectId, instanceId)
+    await this.#resolveInstance(thread.projectId, instanceId, input.model)
     // A conversation Send carries the queued item replies as its attachment (§5.4), keyed by item id; the text stays the owner's note.
     const state = this.#conversations.threads[threadId]
     if (input.context && (input.context.threadId !== threadId || input.context.deliveryId !== input.messageId)) throw new Error('Conversation context belongs to another delivery')
@@ -849,8 +856,18 @@ export class T3EngineClient implements EngineReadClient {
       if (comment.projectId !== thread.projectId) throw new Error(`Visual comment ${id} belongs to another project`)
       return comment
     })
-    const budget = sendCapacity({ files: userAttachments.length, visualImages: visualDrafts.reduce((count, comment) => count + visualCaptureIds(comment).length, 0), visualComments: visualDrafts.length, contextFile: Boolean(queued || comments.length || outcomes.length) })
-    if (visualDrafts.length && budget.refusal) throw new Error(budget.refusal)
+    const contextNeeded = Boolean(queued || comments.length || outcomes.length)
+    // Every refusal that needs no composed image comes first, so a refused send leaves no comment sheets behind.
+    if (!input.text.trim() && !visualDrafts.length && !queued && !comments.length && !userAttachments.length && !outcomes.length) throw new Error('Write a message or queue a reply, or attach a file before sending')
+    // T3 refuses a turn with more than eight attachments. The context file keeps its place; the owner's files must make room (§6.0).
+    // A selection over capacity stays intact and is refused by name; nothing is trimmed or split across turns.
+    if (visualDrafts.length) {
+      const budget = sendCapacity({ files: userAttachments.length, visualImages: visualDrafts.reduce((count, comment) => count + visualCaptureIds(comment).length, 0), visualComments: visualDrafts.length, contextFile: contextNeeded })
+      if (budget.refusal) throw new Error(budget.refusal)
+    } else if (userAttachments.length + (contextNeeded ? 1 : 0) > MAX_ATTACHMENTS) throw new Error(attachmentLimitMessage(contextNeeded ? 1 : 0))
+    for (const attachment of userAttachments) if (attachment.kind === 'image' && !(await this.#staged.exists(attachment.id))) throw new Error(`Attachment ${attachment.name} is no longer staged. Attach it again.`)
+    const workspace = input.workspace ?? state?.workspace
+    if (workspace && (thread.worktreePath || thread.latestUserMessageAt)) throw new Error(`Thread ${threadId} already has a working copy or a first turn`)
     // A page comment re-checks its marks immediately before Send: refused, with the draft kept, only when the page was
     // replaced or a marked thing is gone; anything else on a live page sends.
     for (const comment of visualDrafts) {
@@ -861,6 +878,9 @@ export class T3EngineClient implements EngineReadClient {
     }
     const visualAttachments: PreparedAttachment[] = []
     const frozen: Array<{ comment: VisualCommentRecord; revision: VisualRevision; names: Map<string, string> }> = []
+    // Sheets stored so far are dropped when a later comment refuses; nothing would ever reference them.
+    const storedSheets: string[] = []
+    try {
     for (const comment of visualDrafts) {
       const draft = comment.draft!
       // The requested appearance rides along as a reference when the draft carries adjustments.
@@ -884,6 +904,7 @@ export class T3EngineClient implements EngineReadClient {
         })
         if (sheet.bytes.byteLength > 10 * 1024 * 1024) throw new Error(`Image ${name} exceeds the 10 MiB limit. Use a smaller capture or split the comment.`)
         const stored = await this.#evidence.put({ ...sheet, mimeType: 'image/png' })
+        storedSheets.push(stored.id)
         sentEvidence.push(stored.id)
         visualAttachments.push({ kind: 'evidence', id: stored.id, name, mimeType: stored.mimeType, sizeBytes: stored.sizeBytes })
         names.set(captureId, name)
@@ -895,16 +916,12 @@ export class T3EngineClient implements EngineReadClient {
       }
       frozen.push({ comment, revision, names })
     }
+    } catch (error) {
+      for (const id of storedSheets) await this.#evidence.discard(id).catch(() => undefined)
+      throw error
+    }
     const text = input.text.trim() || (frozen.length ? visualSendSummary(frozen.map(({ revision }) => revision)) : queued ? `Replies to ${Object.keys(queued).length} item${Object.keys(queued).length === 1 ? '' : 's'}.` : comments.length ? `Comments on ${comments.length} passages.` : userAttachments.length ? attachmentSummary(userAttachments) : outcomes.length ? 'Conversation outcomes.' : '')
     if (!text) throw new Error('Write a message or queue a reply, or attach a file before sending')
-    const contextNeeded = Boolean(queued || comments.length || outcomes.length)
-    // T3 refuses a turn with more than eight attachments. The context file keeps its place; the owner's files must make room (§6.0).
-    // A selection over capacity stays intact and is refused by name; nothing is trimmed or split across turns.
-    if (frozen.length) {
-      const capacity = sendCapacity({ files: userAttachments.length, visualImages: visualAttachments.length, visualComments: frozen.length, contextFile: contextNeeded })
-      if (capacity.refusal) throw new Error(capacity.refusal)
-    } else if (userAttachments.length + (contextNeeded ? 1 : 0) > MAX_ATTACHMENTS) throw new Error(attachmentLimitMessage(contextNeeded ? 1 : 0))
-    for (const attachment of userAttachments) if (attachment.kind === 'image' && !(await this.#staged.exists(attachment.id))) throw new Error(`Attachment ${attachment.name} is no longer staged. Attach it again.`)
     const briefs = frozen.map(({ comment, revision, names }) => visualBrief(comment, revision, names))
     const contextFile: PreparedAttachment | undefined = contextNeeded ? { kind: 'text', name: `conversation-${messageId}.md`, text: renderConversationDelivery(input.context ?? conversationDelivery(threadId, messageId, comments, queued ?? {}, messages, outcomes)) } : undefined
     const attachmentInputs: PreparedAttachment[] = [
@@ -912,8 +929,6 @@ export class T3EngineClient implements EngineReadClient {
       ...visualAttachments,
       ...(contextFile ? [contextFile] : []),
     ]
-    const workspace = input.workspace ?? state?.workspace
-    if (workspace && (thread.worktreePath || thread.latestUserMessageAt)) throw new Error(`Thread ${threadId} already has a working copy or a first turn`)
     const command = turnStartCommand.parse({
       ...(workspace ? { bootstrap: { prepareWorktree: { projectCwd: this.#shell!.projects.find(project => project.id === thread.projectId)!.workspaceRoot, baseBranch: workspace.baseBranch, branch: `t3/${randomUUID().replaceAll('-', '').slice(0, 8)}`, startFromOrigin: workspace.startFromOrigin }, runSetupScript: true } } : {}),
       type: 'thread.turn.start', commandId: input.commandId ?? `strata-${messageId}`, threadId, createdAt: new Date(this.#now()).toISOString(),
@@ -1261,7 +1276,7 @@ export class T3EngineClient implements EngineReadClient {
       await this.openThread(threadId)
       return threadId
     }
-    const instanceId = await this.#resolveInstance(input.projectId, input.instanceId ?? null)
+    const instanceId = await this.#resolveInstance(input.projectId, input.instanceId ?? null, input.model)
     if (input.workspace) {
       this.#conversations.threads[threadId] = { ...(this.#conversations.threads[threadId] ?? emptyConversationState()), workspace: worktreeRequest.parse(input.workspace) }
       await writeConversationsStore(this.#conversationsPath, this.#conversations)
@@ -1278,10 +1293,13 @@ export class T3EngineClient implements EngineReadClient {
    * knows; an explicit choice is honored but refused while unusable. Without
    * any account report the project's existing instance keeps working.
    */
-  async #resolveInstance(projectId: string, explicit: string | null): Promise<string> {
-    const accounts = this.#accountViews()
+  async #resolveInstance(projectId: string, explicit: string | null, model: string): Promise<string> {
+    const reported = this.#accountViews()
+    const family = modelFamily(this.#models.find(candidate => candidate.slug === model)?.driver, model)
+    const accounts = reported.filter(account => explicit || family === 'unknown' || modelFamily(account.driver, model) === family).map(account => accountForModel(account, model, this.#now()))
     if (explicit) {
       const account = accounts.find((candidate) => candidate.instanceId === explicit)
+      if (account && family !== 'unknown' && modelFamily(account.driver, model) !== family) throw new Error(`Model ${model} is not available on ${account.name}.`)
       if (account && !account.usable) throw new Error(`${account.name} cannot take a thread: ${account.reason ?? account.state}`)
       return explicit
     }
@@ -1293,7 +1311,7 @@ export class T3EngineClient implements EngineReadClient {
       }
       return chosen
     }
-    if (accounts.length) throw new Error('No account can take a thread right now. Unpark one or wait for a limit to reset.')
+    if (reported.length) throw new Error(`No account can use ${model} right now. Choose another model, unpark an account, or wait for a limit to reset.`)
     return this.#shell?.threads.find((thread) => thread.projectId === projectId)?.modelSelection.instanceId ?? this.#shell?.threads[0]?.modelSelection.instanceId ?? 'codex'
   }
 
@@ -1900,7 +1918,7 @@ export class T3EngineClient implements EngineReadClient {
    * Provider readiness comes from stock T3. Verified local usage is measured
    * separately and persisted; failed measurements retain their original time.
    */
-  async #refreshConfig(): Promise<void> {
+  async #refreshConfig(forceUsage = false): Promise<void> {
     const identity = this.#identity
     this.#configFetchedAt = this.#now()
     try {
@@ -1913,7 +1931,7 @@ export class T3EngineClient implements EngineReadClient {
         const policy = await this.#rpcOrSocket('server.getBackgroundPolicy', {}, 'background policy', 3000).catch(() => null)
         if (isSettingsRecord(policy) && typeof policy.shouldRunOpportunisticWork === 'boolean') this.#backgroundAllowed = policy.shouldRunOpportunisticWork
       }
-      this.#probeUsage({ ...settings, providerInstances: effectiveProviderInstances(settings) })
+      this.#probeUsage({ ...settings, providerInstances: effectiveProviderInstances(settings) }, forceUsage)
       this.#configProblem = null
       await this.#syncShims()
     } catch (error) {
@@ -1934,23 +1952,26 @@ export class T3EngineClient implements EngineReadClient {
     await Promise.allSettled(jobs.map(job => job.done))
   }
 
-  #probeUsage(settings: EngineSettings): void {
-    if (!this.#measureUsage || !this.#localUsageAvailable() || !this.#backgroundAllowed || this.#localSetupBusy() || this.#usageSuspensions || this.#pendingCommands.some(pending => (pending.command as { type?: string }).type === 'thread.turn.start')) return
+  #probeUsage(settings: EngineSettings, force = false): void {
+    if (!this.#measureUsage || !this.#localUsageAvailable() || !force && !this.#backgroundAllowed || this.#localSetupBusy() || this.#usageSuspensions || this.#pendingCommands.some(pending => (pending.command as { type?: string }).type === 'thread.turn.start')) return
     const interval = typeof settings.providerHealthRefreshInterval === 'number' ? settings.providerHealthRefreshInterval : 300000
-    if (interval <= 0) return
+    if (!force && interval <= 0) return
     const identity = this.#identity
     for (const provider of this.#providers) {
       if (!provider.installed || !provider.enabled || provider.auth.status !== 'authenticated' || !['codex', 'claudeAgent'].includes(provider.driver)) continue
-      if (this.#usageJobs.has(provider.instanceId) || this.#now() - (this.#usageAttempt.get(provider.instanceId) ?? -Infinity) < interval) continue
+      if (this.#usageJobs.has(provider.instanceId) || !force && this.#now() - (this.#usageAttempt.get(provider.instanceId) ?? -Infinity) < interval) continue
       if (provider.driver === 'codex' && this.view().projects.some(project => project.threads.some(thread => thread.providerInstanceId === provider.instanceId && ['running', 'starting'].includes(thread.status)))) continue
       this.#usageAttempt.set(provider.instanceId, this.#now())
       const abort = new AbortController()
       const done = this.#measureUsage(provider, settings, abort.signal).then(async measurement => {
-        if (!measurement || abort.signal.aborted || identity !== this.#identity) return
+        if (abort.signal.aborted || identity !== this.#identity) return
+        if (!measurement) { this.#usageProblems.set(provider.instanceId, 'Usage could not be refreshed. Check the account configuration and try again.'); return }
+        this.#usageProblems.delete(provider.instanceId)
         this.#accounts = recordMeasurements(this.#accounts, [{ ...provider, usage: measurement }], measurement.measuredAt)
         await this.#persistAccounts()
+        await this.#syncShims()
         this.#publish()
-      }).catch(() => undefined).finally(() => { this.#usageJobs.delete(provider.instanceId) })
+      }).catch(() => { if (!abort.signal.aborted && identity === this.#identity) this.#usageProblems.set(provider.instanceId, 'Usage could not be refreshed. Try again.') }).finally(() => { this.#usageJobs.delete(provider.instanceId); this.#publish() })
       this.#usageJobs.set(provider.instanceId, { abort, done })
     }
   }

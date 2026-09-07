@@ -1,3 +1,4 @@
+import { accountForModel } from '../core/accountState'
 import { engineStorage, engineStorageKey } from './engineStorage'
 import { flagshipModel } from '../shared/modelSelection'
 import type { ConversationAttachment, ConversationInput, CreateDraftRequest, EngineModelView, EngineView, ModelOption } from '../shared/contracts'
@@ -5,7 +6,16 @@ import type { ConversationAttachment, ConversationInput, CreateDraftRequest, Eng
 export type ComposerSelection = Pick<ConversationInput, 'model' | 'effort' | 'access' | 'instanceId' | 'options'>
 /** An image's bytes sit in the main process; the draft keeps only a small preview beside the reference (§6.0). */
 export type DraftAttachment = ConversationAttachment & { thumbnail?: string }
-export interface ConversationDraft { workspace?: import('./components/WorkspaceControls').WorkspaceChoice; messageId?: string; text: string; attachments?: DraftAttachment[] | undefined; selection?: ComposerSelection; threadId?: string }
+export interface ConversationDraft {
+  workspace?: import('./components/WorkspaceControls').WorkspaceChoice
+  messageId?: string
+  text: string
+  attachments?: DraftAttachment[] | undefined
+  selection?: ComposerSelection
+  /** The thread's own saved selection when `selection` was written; a thread whose selection has since changed elsewhere wins over the draft. */
+  selectionBase?: ComposerSelection
+  threadId?: string
+}
 const memory = new Map<string, ConversationDraft>()
 const prefix = 'stratamd.conversation-draft.v1:'
 
@@ -43,8 +53,25 @@ export function clearDraft(key: string): void {
   try { engineStorage.removeItem(prefix + key) } catch { /* Storage may be unavailable. */ }
 }
 /** Sending consumes content and delivery IDs, but model settings outlive the message. */
-export function clearDraftContent(key: string, selection: ComposerSelection): boolean {
-  return writeDraft(key, { text: '', selection })
+export function clearDraftContent(key: string, selection: ComposerSelection, selectionBase?: ComposerSelection): boolean {
+  return writeDraft(key, { text: '', selection, ...(selectionBase ? { selectionBase } : {}) })
+}
+function canonicalSelection(selection: ComposerSelection): string {
+  return JSON.stringify({ model: selection.model, instanceId: selection.instanceId ?? null, effort: selection.effort ?? null, access: selection.access, options: [...(selection.options ?? [])].sort((a, b) => a.id.localeCompare(b.id)) })
+}
+/**
+ * The selection a composer opens with. A draft's selection is used only when it still names an available model on
+ * a usable account; for a thread, only while the thread's own selection is the one the draft was written against,
+ * so a change made outside Strata (or the settings a send saved) is not overwritten by a stale draft. Otherwise the
+ * thread's or project's `initial` selection applies.
+ */
+export function draftSelection(engine: EngineView, draft: ConversationDraft, initial: ComposerSelection, boundToThread: boolean): ComposerSelection {
+  const selection = draft.selection
+  if (!selection) return initial
+  if (!availableModels(engine).some((model) => model.slug === selection.model && model.instanceId === selection.instanceId)) return initial
+  if (engine.accounts.some((account) => account.instanceId === selection.instanceId && !accountForModel(account, selection.model).usable)) return initial
+  if (boundToThread && (!draft.selectionBase || canonicalSelection(draft.selectionBase) !== canonicalSelection(initial))) return initial
+  return selection
 }
 export function availableModels(engine: EngineView): EngineModelView[] {
   if (engine.models?.length) return engine.models
@@ -82,17 +109,17 @@ export function rememberedSelection(projectId: string, instanceId: string): Comp
 }
 export function initialSelection(engine: EngineView, projectId: string): ComposerSelection {
   const models = availableModels(engine)
-  const usable = (instanceId?: string | null) => !engine.accounts.some((account) => account.instanceId === instanceId && !account.usable)
+  const usable = (instanceId: string | null | undefined, model: string) => !engine.accounts.some((account) => account.instanceId === instanceId && !accountForModel(account, model).usable)
   try {
     const saved = JSON.parse(engineStorage.getItem(`stratamd.conversation-defaults.v1:${projectId}`) ?? 'null') as ComposerSelection | null
-    if (saved && usable(saved.instanceId) && models.some((model) => model.slug === saved.model && model.instanceId === saved.instanceId)) return saved
+    if (saved && usable(saved.instanceId, saved.model) && models.some((model) => model.slug === saved.model && model.instanceId === saved.instanceId)) return saved
   } catch { /* Use the project's defaults. */ }
   const project = engine.projects.find((candidate) => candidate.id === projectId)
   const previous = project?.threads.filter((thread) => !thread.archived).toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
   const selected = project?.defaultModelSelection
   const instanceId = selected?.instanceId ?? previous?.providerInstanceId
   const slug = selected?.model ?? previous?.model
-  const model = (selected ? models.find((candidate) => candidate.instanceId === instanceId && candidate.slug === slug && usable(candidate.instanceId)) : undefined) ?? flagshipModel(models.filter((candidate) => candidate.instanceId === instanceId && usable(candidate.instanceId))) ?? flagshipModel(models.filter((candidate) => usable(candidate.instanceId)))
+  const model = (selected ? models.find((candidate) => candidate.instanceId === instanceId && candidate.slug === slug && usable(candidate.instanceId, candidate.slug)) : undefined) ?? flagshipModel(models.filter((candidate) => candidate.instanceId === instanceId && usable(candidate.instanceId, candidate.slug))) ?? flagshipModel(models.filter((candidate) => usable(candidate.instanceId, candidate.slug)))
   if (!model) return { model: '', instanceId: null, options: [], effort: null, access: 'approval-required' }
   const result = selectionForModel(model, previous?.access ?? 'approval-required')
   if (model.instanceId === instanceId && model.slug === slug) {

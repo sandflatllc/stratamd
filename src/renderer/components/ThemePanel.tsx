@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { claimEscape } from '../escape'
 import type { ThemePanelGeometry, ThemeView } from '../../shared/contracts'
 import { AMBIENT_STYLES, BUILT_IN_THEME_ID, BUNDLED_FONTS, DEFAULT_THEME_VALUES, readSparseValue, THEME_GROUPS, THEME_KEYS, type ThemeGroup, type ThemeKeyEntry } from '../../shared/theme-keys'
@@ -88,16 +88,43 @@ export function ThemePanel({ theme, zoom, geometry, onGeometry, onClose, onHighl
     return undefined
   }, [active.values, theme.externalRevision])
 
+  // A geometry change from a key or a window resize is shown at once and written to settings once the burst ends:
+  // key repeat and resize events arrive many times a second, and each commit is a settings file write.
+  const latestGeometry = useRef(geometry)
+  const pendingCommit = useRef<ThemePanelGeometry | null>(null)
+  const commitTimer = useRef<number | null>(null)
+  const latestOnGeometry = useRef(onGeometry)
+  useLayoutEffect(() => { latestGeometry.current = geometry; latestOnGeometry.current = onGeometry })
+  const commitPending = useCallback(() => {
+    if (commitTimer.current !== null) { window.clearTimeout(commitTimer.current); commitTimer.current = null }
+    const pending = pendingCommit.current
+    pendingCommit.current = null
+    if (pending) latestOnGeometry.current(pending, true)
+  }, [])
+  const nudge = useCallback((next: ThemePanelGeometry, settle: 'later' | 'on-release') => {
+    pendingCommit.current = next
+    latestOnGeometry.current(next, false)
+    if (settle === 'later') {
+      if (commitTimer.current !== null) window.clearTimeout(commitTimer.current)
+      commitTimer.current = window.setTimeout(commitPending, 250)
+    }
+  }, [commitPending])
+  useEffect(() => () => commitPending(), [commitPending])
+
   // Keep the panel inside the window when it resizes.
   useEffect(() => {
-    const clamp = () => {
-      const next = clampThemePanel(geometry, viewport())
-      if (next.x !== geometry.x || next.y !== geometry.y || next.width !== geometry.width || next.height !== geometry.height) onGeometry(next, true)
+    const clamp = (settle: 'now' | 'later') => {
+      const current = latestGeometry.current
+      const next = clampThemePanel(current, viewport())
+      if (next.x === current.x && next.y === current.y && next.width === current.width && next.height === current.height) return
+      if (settle === 'now') latestOnGeometry.current(next, true)
+      else nudge(next, 'later')
     }
-    clamp()
-    window.addEventListener('resize', clamp)
-    return () => window.removeEventListener('resize', clamp)
-  }, [geometry, onGeometry])
+    clamp('now')
+    const resized = () => clamp('later')
+    window.addEventListener('resize', resized)
+    return () => window.removeEventListener('resize', resized)
+  }, [nudge])
 
   const setValue = useCallback((key: string, value: string | number | null, immediate = true) => {
     const now = Date.now()
@@ -150,18 +177,19 @@ export function ThemePanel({ theme, zoom, geometry, onGeometry, onClose, onHighl
     const delta = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] }[event.key]
     if (!delta) return
     event.preventDefault()
-    onGeometry(clampThemePanel({ ...geometry, x: geometry.x + delta[0]!, y: geometry.y + delta[1]! }, viewport()), true)
+    nudge(clampThemePanel({ ...geometry, x: geometry.x + delta[0]!, y: geometry.y + delta[1]! }, viewport()), 'on-release')
   }
 
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || !root.current?.contains(document.activeElement)) return
       claimEscape(event)
+      commitPending()
       onClose()
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [onClose])
+  }, [onClose, commitPending])
 
   const problems = useMemo(() => new Map(active.problems.map((problem) => [problem.key, problem.reason])), [active.problems])
   const locked = active.builtIn
@@ -172,7 +200,7 @@ export function ThemePanel({ theme, zoom, geometry, onGeometry, onClose, onHighl
   return (
     <div ref={root} className="theme-panel" data-pane="themePanel" role="dialog" aria-label="Theme" aria-modal="false" style={style}>
       <header className="theme-panel-header" onPointerDown={startDrag}>
-        <button type="button" className="theme-panel-grip" aria-label="Move theme panel (arrow keys)" onKeyDown={moveByKey}>⋮⋮</button>
+        <button type="button" className="theme-panel-grip" aria-label="Move theme panel (arrow keys)" onKeyDown={moveByKey} onKeyUp={commitPending} onBlur={commitPending}>⋮⋮</button>
         {locked
           ? <strong className="theme-panel-name">{active.name}</strong>
           : <input className="theme-panel-name" aria-label="Theme name" defaultValue={active.name} key={active.id} onBlur={(event) => { const name = event.currentTarget.value.trim(); if (name && name !== active.name) run(() => window.strata.renameTheme(name)) }} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }} />}
@@ -224,11 +252,11 @@ export function ThemePanel({ theme, zoom, geometry, onGeometry, onClose, onHighl
           </section>
         ))}
       </div>
-      <button type="button" className="theme-panel-resize" aria-label="Resize theme panel" title="Drag to resize. Arrow keys adjust width and height." onPointerDown={startResize} onKeyDown={(event) => {
+      <button type="button" className="theme-panel-resize" aria-label="Resize theme panel" title="Drag to resize. Arrow keys adjust width and height." onPointerDown={startResize} onKeyUp={commitPending} onBlur={commitPending} onKeyDown={(event) => {
         const delta = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] }[event.key]
         if (!delta) return
         event.preventDefault()
-        onGeometry(clampThemePanel({ ...geometry, width: geometry.width + delta[0]!, height: geometry.height + delta[1]! }, viewport()), true)
+        nudge(clampThemePanel({ ...geometry, width: geometry.width + delta[0]!, height: geometry.height + delta[1]! }, viewport()), 'on-release')
       }} />
     </div>
   )

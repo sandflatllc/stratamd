@@ -584,14 +584,24 @@ export function App({ createEditor }: AppProps) {
   // The overlay layer reports one boolean: while a modal is open, or an overlay sits over the page's hole, the page hides beneath it.
   // A panel or popover elsewhere in the shell leaves the page showing.
   const overlayReported = useRef<boolean | null>(null)
+  const overlayCheck = useRef<() => void>(() => undefined)
   useEffect(() => {
     const selector = '[role="dialog"], [aria-modal="true"], .modal-backdrop, .visual-session, .theme-panel, [role="menu"], :popover-open, .drop-overlay'
     const boxOf = (element: Element): ScreenBox => { const rect = element.getBoundingClientRect(); return { x: rect.left, y: rect.top, width: rect.width, height: rect.height } }
     const modal = (element: Element) => element.getAttribute('aria-modal') === 'true' || element.classList.contains('modal-backdrop')
     let frame = 0
+    // The hole's own size follows the pane resizers and device presets through inline style; a resize observer
+    // on the current hole element follows it without watching every inline style in the app.
+    let observedHole: Element | null = null
+    const holeResize = new ResizeObserver(() => schedule())
     const check = () => {
       frame = 0
       const hole = globalThis.document.querySelector('.preview-hole')
+      if (hole !== observedHole) {
+        if (observedHole) holeResize.unobserve(observedHole)
+        observedHole = hole
+        if (hole) holeResize.observe(hole)
+      }
       const overlays = [...globalThis.document.querySelectorAll(selector)].map((element) => ({ box: boxOf(element), modal: modal(element) }))
       const open = overlayCoversPage(hole ? boxOf(hole) : null, overlays)
       if (overlayReported.current === open) return
@@ -599,14 +609,19 @@ export function App({ createEditor }: AppProps) {
       void window.strata.reportOverlay(open).catch(() => undefined)
     }
     const schedule = () => { if (frame === 0) frame = window.requestAnimationFrame(check) }
+    overlayCheck.current = schedule
     const observer = new MutationObserver(schedule)
-    // Style joins the list because a dragged panel moves through its inline style; a popover closing fires toggle without any mutation.
-    observer.observe(globalThis.document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open', 'popover', 'hidden', 'role', 'class', 'style'] })
+    // A popover closing fires toggle without any mutation. Inline style is not watched: the terminal, resizers, and
+    // the editor write it every frame; the theme panel, the one overlay that moves through style alone, reports its
+    // geometry through App state and re-runs the check from there.
+    observer.observe(globalThis.document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open', 'popover', 'hidden', 'role', 'class'] })
     globalThis.document.addEventListener('toggle', schedule, true)
     window.addEventListener('resize', schedule)
     window.addEventListener('scroll', schedule, true)
     check()
     return () => {
+      overlayCheck.current = () => undefined
+      holeResize.disconnect()
       observer.disconnect()
       globalThis.document.removeEventListener('toggle', schedule, true)
       window.removeEventListener('resize', schedule)
@@ -614,6 +629,7 @@ export function App({ createEditor }: AppProps) {
       if (frame) window.cancelAnimationFrame(frame)
     }
   }, [])
+  useEffect(() => { overlayCheck.current() }, [panelSizes.themePanel, themeOpen])
   const previewPills = previewProjectIds.map((projectId) => {
     const project = view.engine.projects.find((candidate) => candidate.id === projectId)!
     const tabs = previewTabs.filter((tab) => tab.projectId === projectId)

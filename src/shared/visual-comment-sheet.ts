@@ -12,7 +12,8 @@ export interface CommentSheetInput {
 export async function paintCommentSheet(input: CommentSheetInput): Promise<{ dataUrl: string; width: number; height: number }> {
   const image = new Image()
   image.src = input.image
-  await image.decode()
+  // A DOMException from decode() does not survive the trip to the main process; a plain Error carries its sentence.
+  try { await image.decode() } catch { throw new Error('The capture image could not be read. Capture or attach it again.') }
   const width = image.naturalWidth, height = image.naturalHeight
   const below = width >= 1600 || width / height >= 2.3
   const noteWidth = below ? Math.max(480, width) : Math.max(400, Math.min(600, Math.round(width * .4)))

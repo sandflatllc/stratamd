@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
-import { availableModels, clearDraft, clearDraftContent, draftAttachmentIds, initialSelection, readDraft, rememberedSelection, rememberSelection, selectionForModel, writeDraft } from '../../src/renderer/conversationDrafts'
+import { availableModels, clearDraft, clearDraftContent, draftAttachmentIds, draftSelection, initialSelection, readDraft, rememberedSelection, rememberSelection, selectionForModel, writeDraft } from '../../src/renderer/conversationDrafts'
 import { setEngineStorageIdentity } from '../../src/renderer/engineStorage'
 import { EMPTY_VIEW } from '../../src/renderer/model'
 import type { EngineModelView, EngineView } from '../../src/shared/contracts'
@@ -40,6 +40,26 @@ it('sending clears content and delivery IDs but keeps settings through storage r
   localStorage.setItem('stratamd.conversation-draft.v1:thread:sent', persisted)
   expect(readDraft('thread:sent')).toEqual({ text: '', selection })
   localStorage.removeItem('stratamd.conversation-draft.v1:thread:sent')
+})
+it('opens a composer on the draft selection only while it is available, usable, and still the thread\'s own', () => {
+  const view = engine()
+  const draftPick = selectionForModel(codex, 'full-access')
+  const threadPick = selectionForModel(claude, 'approval-required')
+  // A new-conversation draft keeps its selection while the model is available on a usable account.
+  expect(draftSelection(view, { text: '', selection: draftPick }, threadPick, false)).toEqual(draftPick)
+  // A thread draft with no record of the thread's selection cannot prove it is current: the thread wins.
+  expect(draftSelection(view, { text: '', selection: draftPick }, threadPick, true)).toEqual(threadPick)
+  // Written against the thread's current selection, the owner's unsent change survives; option order does not matter.
+  expect(draftSelection(view, { text: '', selection: draftPick, selectionBase: threadPick }, threadPick, true)).toEqual(draftPick)
+  const reordered = { ...threadPick, options: [{ id: 'b', value: true }, { id: 'a', value: 'x' }] }
+  expect(draftSelection(view, { text: '', selection: draftPick, selectionBase: { ...threadPick, options: [{ id: 'a', value: 'x' }, { id: 'b', value: true }] } }, reordered, true)).toEqual(draftPick)
+  // The thread's selection changed since the draft was written: the thread wins.
+  expect(draftSelection(view, { text: '', selection: draftPick, selectionBase: threadPick }, { ...threadPick, effort: 'low' }, true)).toEqual({ ...threadPick, effort: 'low' })
+  // A parked account or a model the engine no longer lists falls back to the thread or project selection.
+  const parked = engine()
+  parked.accounts = [{ instanceId: 'work', usable: false } as EngineView['accounts'][number]]
+  expect(draftSelection(parked, { text: '', selection: draftPick }, threadPick, false)).toEqual(threadPick)
+  expect(draftSelection({ ...view, models: [claude] }, { text: '', selection: draftPick }, threadPick, false)).toEqual(threadPick)
 })
 it('preserves compatible model options and restores each account independently', () => {
   const model: EngineModelView = { ...codex, options: [{ id: 'reasoningEffort', label: 'Reasoning', type: 'select', options: [{ id: 'medium', label: 'Medium', isDefault: true }, { id: 'high', label: 'High' }] }] }

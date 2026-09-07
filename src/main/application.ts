@@ -2615,9 +2615,14 @@ export class StrataApplication implements StrataApi {
     }
   }
 
-  async resolveLocalLink(input: { projectId: string | null; href: string }): Promise<LocalLinkTarget> {
-    const project = input.projectId ? this.#engine.view().projects.find((candidate) => candidate.id === input.projectId) : null
-    return resolveLocalLink(input.href, project?.workspaceRoot ?? null)
+  async resolveLocalLink(input: { projectId: string | null; href: string; documentPath?: string }): Promise<LocalLinkTarget> {
+    const projects = this.#engine.view().projects
+    const project = input.projectId ? projects.find((candidate) => candidate.id === input.projectId) : null
+    // A relative link in a document resolves against that document's folder, as its Markdown references and the
+    // copy menu do. The base is trusted only when it names an open document or a project's conversation file.
+    const documentPath = input.documentPath
+    const trustedDocument = documentPath !== undefined && (projects.some(candidate => join(candidate.workspaceRoot, '.conversation.md') === documentPath) || this.#sessions.has(documentPath))
+    return resolveLocalLink(input.href, trustedDocument ? dirname(documentPath) : project?.workspaceRoot ?? null)
   }
 
   async resolveLocalMarkdown(documentPath: string, source: string): Promise<LocalMarkdownPreview | null> {

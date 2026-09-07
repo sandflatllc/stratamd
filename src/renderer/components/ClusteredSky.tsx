@@ -14,7 +14,7 @@ export function ClusteredSky({ smoke, className }: { smoke: boolean; className: 
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)')
     let canvas = document.createElement('canvas')
     canvas.setAttribute('aria-hidden', 'true'); element.append(canvas)
-    let renderer: SkyRenderer | null = null, disposed = false, lost = false, intersecting = true, requestedCloud = false
+    let renderer: SkyRenderer | null = null, disposed = false, lost = false, intersecting = true, requestedCloud = false, unsupported = false
     let timer = 0, animationFrame = 0, refreshFrame = 0, last = 0, active = false, speed = 1
     let transcript: Element | null = null, lastAppearance = ''
     const frame: SkyFrame = { width: 0, height: 0, dpr: 1, time: 0, intensity: 1, palette: [], occlusion: [0, 0, 0, 0], highlight: -1 }
@@ -49,7 +49,9 @@ export function ClusteredSky({ smoke, className }: { smoke: boolean; className: 
         // A canvas that acquired WebGL cannot subsequently acquire 2D.
         canvas.remove(); canvas = document.createElement('canvas'); canvas.setAttribute('aria-hidden', 'true'); element!.append(canvas)
         renderer = createCanvasSkyRenderer(canvas)
-        canvas.dataset.skyRenderer = 'canvas'
+        // With neither context the sky stays empty; trying again on the next mutation would swap canvases forever.
+        if (renderer) canvas.dataset.skyRenderer = 'canvas'
+        else { unsupported = true; stop() }
       } else {
         canvas.dataset.skyRenderer = 'webgl'
         canvas.addEventListener('webglcontextlost', contextLost)
@@ -57,9 +59,16 @@ export function ClusteredSky({ smoke, className }: { smoke: boolean; className: 
       }
       receiveCloud()
     }
+    // The transcript this layer skips: the centered one when both placements are open, else the first.
+    const findTranscript = () => {
+      const scope = element!.parentElement!
+      return scope.querySelector('.conversation-panel[data-placement="center"] .conversation-messages') ?? scope.querySelector('.conversation-messages')
+    }
     function refresh() {
       refreshFrame = 0
       if (disposed) return
+      // The cheap gates come before any layout read: a hidden, paused, or offscreen sky costs nothing per mutation.
+      if (!(shell!.dataset.motion === 'true' && !document.hidden && !reducedMotion.matches && intersecting)) { stop(); return }
       const bounds = element!.getBoundingClientRect()
       frame.width = element!.clientWidth; frame.height = element!.clientHeight; frame.dpr = Math.min(devicePixelRatio || 1, 2)
       const style = getComputedStyle(shell!)
@@ -72,8 +81,7 @@ export function ClusteredSky({ smoke, className }: { smoke: boolean; className: 
       frame.highlight = EFFECT_SLOTS.findIndex(slot => shell!.dataset.themeHighlight === `effects-${slot}`)
       // Observe only the transcript belonging to this layer's island. Page effects
       // can also skip a transcript, though the opaque island already covers it.
-      const scope = element!.parentElement!
-      const next = scope.querySelector('.conversation-messages')
+      const next = findTranscript()
       if (next !== transcript) {
         if (transcript) resize.unobserve(transcript)
         transcript = next
@@ -89,7 +97,7 @@ export function ClusteredSky({ smoke, className }: { smoke: boolean; className: 
       }
       const visible = shell!.dataset.motion === 'true' && !document.hidden && !reducedMotion.matches && intersecting && bounds.width > 0 && bounds.height > 0 && frame.intensity > 0
       if (!visible || lost) { stop(); if (frame.intensity === 0 && renderer && !lost) draw(); return }
-      if (!renderer) initRenderer()
+      if (!renderer && !unsupported) initRenderer()
       if (!renderer) return
       // React can mutate transcript text many times per second. Those mutations
       // must not force additional canvas frames or redraw an unchanged paused sky.
@@ -106,7 +114,8 @@ export function ClusteredSky({ smoke, className }: { smoke: boolean; className: 
     intersection.observe(element)
     const themeChanges = new MutationObserver(scheduleRefresh)
     themeChanges.observe(shell, { attributes: true, attributeFilter: ['style', 'data-motion', 'data-transcript-style', 'data-theme-highlight'] })
-    const layoutChanges = new MutationObserver(scheduleRefresh)
+    // The page layer's parent is the whole shell; a mutation there matters only when it changed which transcript exists.
+    const layoutChanges = new MutationObserver(() => { if (findTranscript() !== transcript) scheduleRefresh() })
     layoutChanges.observe(element.parentElement!, { childList: true, subtree: true })
     const typing = new MutationObserver(scheduleRefresh)
     typing.observe(document.documentElement, { attributes: true, attributeFilter: ['data-typing'] })

@@ -16,6 +16,8 @@ interface LinkRequest {
   anchor: { left: number; top: number } | null
   /** A .html page or Markdown file on this computer rather than a web address. */
   local: 'html' | 'markdown' | null
+  /** The document the link sits in, when its editor host names one; a relative local link resolves against its folder. */
+  documentPath: string | null
 }
 interface Options {
   scope: string | null
@@ -49,7 +51,7 @@ export function useWebLinkPicker(options: Options) {
       // Main resolves a local link against the project folder and checks the
       // file before anything opens it. A Markdown file becomes a document tab
       // and takes no picker; a page offers the same two destinations as a web link.
-      const url = link.local ? (await window.strata.resolveLocalLink({ projectId: link.projectId, href: link.url })).url : link.url
+      const url = link.local ? (await window.strata.resolveLocalLink({ projectId: link.projectId, href: link.url, ...(link.documentPath ? { documentPath: link.documentPath } : {}) })).url : link.url
       if (link.local === 'markdown') {
         await window.strata.openDocument(fileURLPath(url))
         return
@@ -66,14 +68,28 @@ export function useWebLinkPicker(options: Options) {
   }
   const activate = (url: string, event: MouseEvent, projectId?: string | null) => {
     const local = classifyLocalLink(url)
+    const trimmed = url.trim()
     if (!local) {
-      if (!/^https?:\/\//i.test(url)) return
-      try { new URL(url) } catch { return }
+      // In-page anchors and mail links keep their own handling (main opens mailto in the system mailer).
+      if (trimmed.startsWith('#') || /^mailto:/i.test(trimmed)) return
+      let web = false
+      if (/^https?:\/\//i.test(trimmed)) { try { new URL(trimmed); web = true } catch { web = false } }
+      if (!web) {
+        // Empty, query-only, protocol-relative, and unparseable links would navigate the window
+        // itself to the app's root page and reload it; they are swallowed with a note instead.
+        event.preventDefault()
+        event.stopPropagation()
+        if (event.detail === 1) latest.current.options.onError(`Only web links, .html pages, and Markdown files open from here: ${url}`)
+        return
+      }
     }
-    // A document's own editor previews a Markdown reference beside the link
-    // and offers Open document (PRD §6.1); that stays with the editor. A
-    // conversation message mounts the same editor, but its links open directly.
-    if (local?.kind === 'markdown' && event.target instanceof Element && event.target.closest('[data-document-path]') && !event.target.closest('.conversation-panel, .conversation-discussion')) return
+    const target = event.target instanceof Element ? event.target : null
+    const host = target?.closest<HTMLElement>('[data-document-path]') ?? null
+    // A document's own editor previews a relative Markdown reference beside the
+    // link and offers Open document (PRD §6.1); that stays with the editor. A
+    // file: URL is outside that preview, and a conversation message mounts the
+    // same editor but its links open directly.
+    if (local?.kind === 'markdown' && !local.fileUrl && host && !target?.closest('.conversation-panel, .conversation-discussion')) return
     // The window itself never follows a link: a relative path would replace
     // the whole app with a missing app:// page.
     event.preventDefault()
@@ -90,6 +106,7 @@ export function useWebLinkPicker(options: Options) {
       url, origin, keyboard,
       anchor: rect ? { left: rect.left, top: rect.top } : null,
       local: local?.kind ?? null,
+      documentPath: host?.dataset.documentPath || null,
       projectId: projectId === undefined ? latest.current.options.projectFor(origin) : projectId,
       x: keyboard && rect ? rect.left : event.clientX,
       y: keyboard && rect ? rect.bottom : event.clientY,

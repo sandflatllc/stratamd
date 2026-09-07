@@ -1,3 +1,4 @@
+import { accountForModel } from '../../core/accountState'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { ConversationInput, EngineView, EngineThreadView, EngineModelView, VisualCommentView } from '../../shared/contracts'
 import { sendCapacity, visualCaptureIds } from '../../core/visual-comments'
@@ -7,7 +8,7 @@ import { ProviderGlyph } from './ProviderGlyph'
 import { ContextWindowMeter } from './ContextWindowMeter'
 import { FolderIcon, FolderGit2Icon, GitBranchIcon } from '../icons/lucide'
 import { ModelPicker } from './ModelPicker'
-import { availableModels, clearDraftContent, readDraft, rememberedSelection, rememberSelection, selectionForModel, writeDraft, type ComposerSelection, type DraftAttachment } from '../conversationDrafts'
+import { availableModels, clearDraftContent, draftSelection, readDraft, rememberedSelection, rememberSelection, selectionForModel, writeDraft, type ComposerSelection, type DraftAttachment } from '../conversationDrafts'
 import { acceptFiles, classifyFile, SUPPORTED_IMAGE_TYPES } from '../../core/composer-attachments'
 
 const PICKER_ACCEPT = ['text/*', '.md', '.markdown', '.json', '.csv', '.ts', '.tsx', '.js', '.py', ...SUPPORTED_IMAGE_TYPES].join(',')
@@ -71,7 +72,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
   const setAttachments = (next: DraftAttachment[]) => { latestAttachments.current = next; setAttachmentsState(next) }
   /** Local storage refused the last draft write; the draft lives in memory until a later write succeeds. */
   const [unsaved, setUnsaved] = useState(false)
-  const [storedSelection, setSelection] = useState(draft.selection ?? initial)
+  const [storedSelection, setSelection] = useState(() => draftSelection(engine, draft, initial, thread !== undefined))
   /** Held visual comments the owner set aside for this Send; they stay held. */
   const [excludedVisual, setExcludedVisual] = useState<string[]>([])
   const includedVisual = visualComments.filter((comment) => !excludedVisual.includes(comment.id))
@@ -93,7 +94,8 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
   const models = allModels.filter(model => permitsSelection(scope, { instanceId: model.instanceId, model: model.slug, driver: model.driver }))
   const selection = permitsSelection(scope, { instanceId: storedSelection.instanceId ?? '', model: storedSelection.model, driver: driverFor(storedSelection.instanceId) }) ? storedSelection : boundThread ? { model: boundThread.model, instanceId: boundThread.providerInstanceId, effort: boundThread.effort, options: boundThread.options ?? [], access: storedSelection.access } : initial
   const model = models.find((model) => model.slug === selection.model && model.instanceId === selection.instanceId)
-  const account = engine.accounts.find((account) => account.instanceId === selection.instanceId)
+  const selectedAccount = engine.accounts.find((account) => account.instanceId === selection.instanceId)
+  const account = selectedAccount ? accountForModel(selectedAccount, selection.model) : undefined
   const access = accessModes.find(([id]) => id === selection.access) ?? accessModes[0]
   const descriptors = model?.options ?? []
   const selectedOptions = descriptors.map((descriptor) => {
@@ -108,7 +110,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     return label ? [label] : typeof value === 'boolean' && value ? [descriptor.label] : []
   }).join(' · ') || selection.effort || 'Model defaults'
   const valid = engine.state === 'connected' && !!projectId && !!model && account?.usable !== false
-  const persist = (nextText: string, nextSelection: ComposerSelection, nextAttachments: DraftAttachment[]) => setUnsaved(!writeDraft(draftKey, { ...readDraft(draftKey), text: nextText, selection: nextSelection, ...(nextAttachments.length ? { attachments: nextAttachments } : { attachments: undefined }) }))
+  const persist = (nextText: string, nextSelection: ComposerSelection, nextAttachments: DraftAttachment[]) => setUnsaved(!writeDraft(draftKey, { ...readDraft(draftKey), text: nextText, selection: nextSelection, ...(thread ? { selectionBase: initial } : {}), ...(nextAttachments.length ? { attachments: nextAttachments } : { attachments: undefined }) }))
   const choose = (next: ComposerSelection) => { setSelection(next); rememberSelection(projectId, next); persist(text, next, latestAttachments.current) }
   const chooseOption = (id: string, value: string | boolean) => {
     const effort = id === 'effort' || id === 'reasoningEffort'
@@ -207,7 +209,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
       const outgoing = attachments.map(({ thumbnail: _thumbnail, ...attachment }) => attachment)
       await onSend({ ...selection, messageId, commandId: `strata-${messageId}`, text: text.trim(), ...(outgoing.length ? { attachments: outgoing } : {}), ...(includedVisual.length ? { visual: includedVisual.map((comment) => comment.id) } : {}) })
       // The preparation owns the staged images now; clearing the list must not discard them.
-      setUnsaved(!clearDraftContent(draftKey, selection)); setText(''); setAttachments([])
+      setUnsaved(!clearDraftContent(draftKey, selection, thread ? initial : undefined)); setText(''); setAttachments([])
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'The message could not be sent. Try again.') }
     finally { sending.current = false; setBusy(false) }
   }
@@ -263,7 +265,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     {!workspaceControls && (workspace || branch) && <div className="chat-workspace"><span title={workspace}>{thread?.worktreePath ? <FolderGit2Icon /> : <FolderIcon />}{thread?.worktreePath ? 'Worktree' : 'Current checkout'}{workspace && <small>{thread?.worktreePath ?? workspace}</small>}</span>{branch && <span><GitBranchIcon />{branch}</span>}</div>}
     {queuedCount > 0 && <small>{queuedCount} answers queued</small>}
     {(attachments.length > 0 || includedVisual.length > 0) && <small className="conversation-capacity" role="status" data-over={capacity.refusal ? '' : undefined}>{capacity.refusal ?? capacity.line}</small>}
-    {account?.usable === false && <p role="alert">{account.name} cannot take a turn: {account.reason ?? account.state}. Choose another account.</p>}
+    {account?.usable === false && <p role="alert">{account.name} cannot take a turn: {account.reason ?? account.state}. Choose another model or account.</p>}
     {unsaved && <p className="conversation-draft-unsaved" role="status">This draft could not be saved and will not survive reload.</p>}
     {error && <p className="send-error" role="alert">{error}</p>}
   </form>
