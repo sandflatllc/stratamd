@@ -11,14 +11,16 @@ import { createEngineBackup } from '../../src/main/engine/backups'
 function immediateRecoveryTimers() {
   const schedule = globalThis.setTimeout
   const delays: number[] = []
+  const traces: unknown[] = []
   const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => {
     if ([1000, 3000, 10000].includes(ms ?? -1)) {
       delays.push(ms!)
+      traces.push({ ms, stack: new Error().stack })
       return schedule(callback, 0, ...args)
     }
     return schedule(callback, ms, ...args)
   }) as typeof setTimeout)
-  return { delays, restore: () => spy.mockRestore() }
+  return { delays, traces, restore: () => spy.mockRestore() }
 }
 
 it('stops repeated ready-then-crash cycles and retains the failure signal', async () => {
@@ -40,9 +42,10 @@ it('stops repeated ready-then-crash cycles and retains the failure signal', asyn
 }, 30000)
 
 it('replenishes retry attempts only after a native health check and ignores duplicate death reports', async () => {
+  const states: unknown[] = []
   const root = await mkdtemp(join(tmpdir(), 'strata-healthy-budget-'))
   const bundle = await recoveryFixture(root)
-  const manager = new LocalEngineManager({ directory: join(root, 'engine'), bundle, healthyIntervalMs: 20, connect: async () => {}, authenticate: async () => true, reconnect: async () => {}, changed: () => {} })
+  const manager = new LocalEngineManager({ directory: join(root, 'engine'), bundle, healthyIntervalMs: 20, connect: async () => {}, authenticate: async () => true, reconnect: async () => {}, changed: view => { states.push({ ...view }) } })
   const timers = immediateRecoveryTimers()
   const verified = managedProcess.verifiedProcess
   let readyAt = Infinity
@@ -68,7 +71,7 @@ it('replenishes retry attempts only after a native health check and ignores dupl
       await expect.poll(async () => manager.view().state === 'running' && JSON.parse(await readFile(join(root, 'engine/runtime.json'), 'utf8')).pid !== record.pid, { timeout: 4000 }).toBe(true)
     }
     expect(manager.view().failure?.attempt).toBe(0)
-    expect(timers.delays).toEqual([1000, 1000, 1000, 1000, 1000])
+    expect(timers.delays, JSON.stringify({ states, timers: timers.traces })).toEqual([1000, 1000, 1000, 1000, 1000])
   } finally { monitor.mockRestore(); timers.restore(); await manager.stop(); await rm(root, { recursive: true, force: true }) }
 }, 20000)
 
