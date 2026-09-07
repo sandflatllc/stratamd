@@ -1,6 +1,7 @@
 import { engineStorage } from './engineStorage'
 import { findInDocument } from '../editor/find'
 import { sourceSelectionForEditor } from '../editor/selection'
+import { readingSourceRange } from '../editor/reading-source-map'
 import { parseMarkdownForEditor } from '../editor/markdown'
 import type { ParsedEditorMarkdown } from '../editor/types'
 const parsed = new Map<string, ParsedEditorMarkdown>()
@@ -22,7 +23,7 @@ export function writeConversationReading(thread: string, state: Record<string, s
 export function conversationMatches(id: string, source: string, query: string) {
   const parsed = conversationParse(id, source)
   return findInDocument(parsed.doc, query).flatMap(match => {
-    const range = sourceSelectionForEditor(parsed, parsed.doc, match.from, match.to)
+    const range = readingSourceRange(parsed, parsed.doc, match.from, match.to) ?? sourceSelectionForEditor(parsed, parsed.doc, match.from, match.to)
     return range ? [{ from: range.from, to: range.to }] : []
   })
 }

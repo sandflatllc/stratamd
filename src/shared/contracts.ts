@@ -650,6 +650,9 @@ export interface LocalImageResolution {
   path: string
   /** File size and nanosecond mtime; used to require screenshot-pin verification after an image changes. */
   version: string
+  /** Intrinsic pixel size from the file header when the format and orientation are understood; absent otherwise, and the image measures itself on load. */
+  width?: number
+  height?: number
 }
 
 /**

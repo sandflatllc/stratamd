@@ -11,7 +11,7 @@ import { AgentClusters, AgentsDialog } from './AgentClusters'
 import { engineStorage } from '../engineStorage'
 import { conversationTurns } from '../../core/conversation-turns'
 import { ConversationComposer } from './ConversationComposer'
-import { ConversationHistory } from './ConversationHistory'
+import { ConversationHistory, TranscriptStaging } from './ConversationHistory'
 import { ConversationNavigator } from './ConversationNavigator'
 import { isOwnerComment } from '../../core/conversation-delivery'
 import { Resizer } from './Resizer'
@@ -218,7 +218,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
   const threadVisual = useMemo(() => thread ? visualComments.filter((comment) => (comment.draft?.destination.threadId ?? comment.revisions.at(-1)?.destination.threadId) === thread.id) : [], [thread?.id, visualComments])
   const heldVisual = useMemo(() => threadVisual.filter((comment) => comment.status === 'held' && comment.draft), [threadVisual])
   const visualById = useMemo(() => new Map(visualComments.map((comment) => [comment.id, comment])), [visualComments])
-  const workspace = useConversationWorkspace(thread, onStart, panelRef, { comments: threadVisual, onOpen: (id) => onOpenVisual?.(id) })
+  const workspace = useConversationWorkspace(thread, onStart, panelRef, { comments: threadVisual, onOpen: (id) => onOpenVisual?.(id) }, history)
   const [atBottom, setAtBottom] = useState(true)
   const latestId = workspace.latestResponse
   const jumpToResponse = atBottom && !!latestId
@@ -289,7 +289,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
     setExpandedWork((value) => ({ ...value, [group.id]: true }))
     requestAnimationFrame(() => {
       const row = panelRef.current?.querySelector<HTMLElement>(`[data-work-entry-id="${CSS.escape(entry.id)}"]`)
-      row?.scrollIntoView({ block: 'center' })
+      if (row) history.current?.centerElement(row)
       row?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true })
     })
   }
@@ -319,7 +319,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
     {passage && <div className="conversation-passage">{passage}</div>}
     {agentsDialog && createPortal(<AgentsDialog runs={agentRuns} background={backgroundTasks} focus={agentsDialog.focus} now={now} onClose={() => setAgentsDialog(null)} onShow={showAgentInTranscript} />, document.querySelector('.app-shell') ?? document.body)}
     <div className="conversation-reading-area">
-    <ConversationHistory ref={history} active={visible} navigation={workspace.target?.serial} startMessage={workspace.target?.align === 'start' ? workspace.target.message : undefined} key={`history:${thread.id}`} className="conversation-messages">
+    <ConversationHistory ref={history} active={visible} target={workspace.target} streaming={running} messages={thread.messages.map(message => message.id)} identity={{ engine: engine.server ?? '', thread: thread.id, placement, project: selected.root ?? '' }} onNavigation={workspace.onNavigation} key={`history:${thread.id}`} className="conversation-messages">
       {placement === 'center' && onDocumentMeasure && <div className="conversation-measure" style={{ width: `min(${documentMeasure}px, 100%)` }}><Resizer axis="vertical" label="Resize conversation measure" value={documentMeasure} min={620} max={1600} onChange={(value) => onDocumentMeasure(value, false)} onCommit={(value) => onDocumentMeasure(value, true)} /></div>}
       <div className="conversation-column">
       {turns.map((turn) => {
@@ -379,6 +379,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
           <TurnChecklist items={allItems.filter((item) => item.threadId === thread.id && item.turnId === turn.turnId)} onReply={(item, value) => { if (item.annotationId && onReplyItem) onReplyItem(item, value); else onQueueReply?.(thread.id, item, value) }} onDismiss={(item) => onDismissItem?.(thread.id, item)} onOpen={item => { if (item.annotationId) onOpenItem?.(item); else workspace.open(item.id) }} {...(onActItem ? { onAct: onActItem } : {})} />
         </section>
       })}
+      <TranscriptStaging />
       </div>
     </ConversationHistory>
     {visible && workspace.discussionView}

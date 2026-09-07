@@ -1,6 +1,7 @@
 import type { Node as ProseMirrorNode } from 'prosemirror-model'
 import type { NodeView, NodeViewConstructor } from 'prosemirror-view'
 import { toolbarButton } from './dom.js'
+import type { LayoutReadiness } from './layout-readiness.js'
 
 export interface LocalImageRequest {
   documentPath: string
@@ -17,6 +18,9 @@ export interface ResolvedLocalImageUrl {
   url: string
   path?: string
   version?: string
+  /** Intrinsic pixel dimensions read from the file header, when the format and orientation are understood. */
+  width?: number
+  height?: number
 }
 
 export type ResolvedLocalImage = ResolvedLocalImageBytes | ResolvedLocalImageUrl
@@ -211,15 +215,18 @@ class LocalImageNodeView implements NodeView {
   private readonly documentPath: string
   private readonly resolve: LocalImageResolver
   private readonly inspection: ImageInspectionManager | null
+  private readonly readiness: LayoutReadiness | null
   private readonly key: string
   private generation = 0
   private objectUrl: string | null = null
+  private settle: (() => void) | null = null
 
-  constructor(node: ProseMirrorNode, documentPath: string, resolve: LocalImageResolver, inspection: ImageInspectionManager | null) {
+  constructor(node: ProseMirrorNode, documentPath: string, resolve: LocalImageResolver, inspection: ImageInspectionManager | null, readiness: LayoutReadiness | null = null) {
     this.node = node
     this.documentPath = documentPath
     this.resolve = resolve
     this.inspection = inspection
+    this.readiness = readiness
     this.key = typeof node.attrs.sourceId === 'string' ? node.attrs.sourceId : String(node.attrs.src ?? '')
     this.dom = document.createElement('span')
     this.dom.className = 'strata-image strata-image--loading'
@@ -241,10 +248,18 @@ class LocalImageNodeView implements NodeView {
   destroy(): void {
     this.generation += 1
     this.revokeObjectUrl()
+    this.settled()
   }
 
   ignoreMutation(): boolean {
     return true
+  }
+
+  /** The current load reached a terminal presentation; the editor's layout no longer waits on it. */
+  private settled(): void {
+    const settle = this.settle
+    this.settle = null
+    settle?.()
   }
 
   private placeholder(text: string, modifier: string): void {
@@ -276,34 +291,45 @@ class LocalImageNodeView implements NodeView {
 
   private load(): void {
     const generation = ++this.generation
+    this.settled()
     const source = String(this.node.attrs.src ?? '').trim()
     if (!isLocalImageSource(source)) {
       this.placeholder('Remote image blocked', 'blocked')
       return
     }
 
+    // Layout waits until the image reaches a terminal presentation: a decoded
+    // picture at its final box, or the unavailable placeholder. Installing the
+    // element is not enough; the box only settles once the bytes decode.
+    this.settle = this.readiness?.begin(`image:${source}`) ?? null
+    const finish = (): void => { if (generation === this.generation) this.settled() }
     this.placeholder('Loading image', 'loading')
     void this.resolve({ documentPath: this.documentPath, source })
-      .then((resolved) => {
+      .then(async (resolved) => {
         if (generation !== this.generation) return
         if (resolved === null) {
           this.placeholder('Image unavailable', 'missing')
+          finish()
           return
         }
 
         this.revokeObjectUrl()
         let sourceUrl: string
         let displayPath = source
+        let dimensions: { width: number; height: number } | null = null
         if ('url' in resolved) {
           if (!trustedProtocolUrl(resolved.url)) {
             this.placeholder('Image unavailable', 'missing')
+            finish()
             return
           }
           sourceUrl = resolved.url
           displayPath = resolved.path ?? source
+          if (typeof resolved.width === 'number' && typeof resolved.height === 'number' && resolved.width > 0 && resolved.height > 0) dimensions = { width: resolved.width, height: resolved.height }
         } else {
           if (!imageMimeTypes.has(resolved.mimeType.toLowerCase())) {
             this.placeholder('Image unavailable', 'missing')
+            finish()
             return
           }
           const blob = new Blob([byteBuffer(resolved.bytes)], { type: resolved.mimeType })
@@ -311,13 +337,38 @@ class LocalImageNodeView implements NodeView {
           sourceUrl = this.objectUrl
         }
         const image = document.createElement('img')
+        // Header dimensions reserve the CSS-constrained box before the bytes
+        // arrive: the width attribute bounds the box and the height attribute
+        // supplies the aspect ratio while the stylesheet keeps height auto.
+        if (dimensions) {
+          image.width = dimensions.width
+          image.height = dimensions.height
+          image.dataset.intrinsicWidth = String(dimensions.width)
+          image.dataset.intrinsicHeight = String(dimensions.height)
+        }
         image.src = sourceUrl
         image.alt = this.altText()
         if (typeof this.node.attrs.title === 'string') image.title = this.node.attrs.title
         image.draggable = false
         image.addEventListener('error', () => {
-          if (generation === this.generation) this.placeholder('Image unavailable', 'missing')
+          if (generation === this.generation) { this.placeholder('Image unavailable', 'missing'); finish() }
         }, { once: true })
+        const decoded = (): void => {
+          if (generation !== this.generation) return
+          image.dataset.decoded = 'true'
+          finish()
+        }
+        const waitForDecode = (): void => {
+          void (this.readiness ? this.readiness.pass('image-decode') : Promise.resolve())
+            .then(() => image.decode())
+            .then(decoded, () => {
+              // decode() rejects for images the browser cannot decode and for
+              // elements detached mid-flight; the error listener covers the former.
+              if (generation === this.generation && image.complete && image.naturalWidth > 0) decoded()
+            })
+        }
+        if (image.complete && image.naturalWidth > 0) waitForDecode()
+        else image.addEventListener('load', waitForDecode, { once: true })
         this.dom.replaceChildren(image)
         this.dom.className = 'strata-image strata-image--ready'
         this.dom.removeAttribute('role')
@@ -343,7 +394,7 @@ class LocalImageNodeView implements NodeView {
         if (this.inspection?.isActive(this.key)) inspect()
       })
       .catch(() => {
-        if (generation === this.generation) this.placeholder('Image unavailable', 'missing')
+        if (generation === this.generation) { this.placeholder('Image unavailable', 'missing'); finish() }
       })
   }
 }
@@ -353,8 +404,9 @@ export function createLocalImageNodeView(
   documentPath: string,
   resolve: LocalImageResolver = resolveImageThroughMainProtocol,
   inspection: ImageInspectionManager | null = null,
+  readiness: LayoutReadiness | null = null,
 ): NodeViewConstructor {
-  return (node) => new LocalImageNodeView(node, documentPath, resolve, inspection)
+  return (node) => new LocalImageNodeView(node, documentPath, resolve, inspection, readiness)
 }
 
 /** Convenience wrapper for direct use as EditorProps.nodeViews. */
@@ -362,6 +414,7 @@ export function createLocalImageNodeViews(
   documentPath: string,
   resolve: LocalImageResolver = resolveImageThroughMainProtocol,
   inspection: ImageInspectionManager | null = null,
+  readiness: LayoutReadiness | null = null,
 ): Record<'image', NodeViewConstructor> {
-  return { image: createLocalImageNodeView(documentPath, resolve, inspection) }
+  return { image: createLocalImageNodeView(documentPath, resolve, inspection, readiness) }
 }

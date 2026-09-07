@@ -48,7 +48,8 @@ import {
   type ReviewRange,
 } from './review.js'
 import { strataSchema } from './schema.js'
-import { editorRangeForSource, sourceRangeIsSingleBlock, sourceSelectionForEditor, wordRangeAt } from './selection.js'
+import { editorPositionForSource, editorRangeForSource, sourceOffsetForEditorPosition, sourceRangeIsSingleBlock, sourceSelectionForEditor, wordRangeAt } from './selection.js'
+import { LayoutReadiness } from './layout-readiness.js'
 import { createSourceSpanPlugin } from './source-spans.js'
 import type { ColdEditorState, EditorMode, EditorRestoreState, EditorSelection, ParsedEditorMarkdown, StrataEditorHandle } from './types.js'
 import { CHAIN_HISTORY_META, LocalHistoryChain } from './local-history.js'
@@ -81,6 +82,7 @@ export * from './tables.js'
 export * from './types.js'
 export * from './undo.js'
 export * from './components.js'
+export * from './layout-readiness.js'
 
 export interface StrataEditorOptions {
   content: string
@@ -124,6 +126,8 @@ export interface StrataEditorOptions {
   onFold?(heading: HeadingReference, folded: boolean): void
   resolveLocalMarkdown?: LocalMarkdownResolver
   onOpenLocalMarkdown?(path: string): void
+  /** Asynchronous node views register their work here; the caller waits on it before trusting the editor's geometry. */
+  layoutReadiness?: LayoutReadiness
 }
 
 function editorInputRules() {
@@ -709,9 +713,10 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
   }
 
   const imageInspection = new ImageInspectionManager(element, options.imageInspectionState ?? { activeKey: null, zoom: 1, panX: 0, panY: 0 })
+  const layoutReadiness = options.layoutReadiness ?? new LayoutReadiness()
   const imageNodeViews = options.resolveLocalImage
-    ? createLocalImageNodeViews(documentPath, options.resolveLocalImage, phase6Enabled ? imageInspection : null)
-    : createLocalImageNodeViews(documentPath, undefined, phase6Enabled ? imageInspection : null)
+    ? createLocalImageNodeViews(documentPath, options.resolveLocalImage, phase6Enabled ? imageInspection : null, layoutReadiness)
+    : createLocalImageNodeViews(documentPath, undefined, phase6Enabled ? imageInspection : null, layoutReadiness)
   const referencePreview = referencePreviewsEnabled && options.resolveLocalMarkdown && options.onOpenLocalMarkdown
     ? new ReferencePreviewController(element, options.resolveLocalMarkdown, options.onOpenLocalMarkdown)
     : null
@@ -801,9 +806,9 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
   })
   const nodeViews = {
     ...imageNodeViews,
-    component_block: createComponentNodeView(documentPath, options.resolveLocalImage ?? resolveImageThroughMainProtocol, screenshotPinDiscussion),
+    component_block: createComponentNodeView(documentPath, options.resolveLocalImage ?? resolveImageThroughMainProtocol, screenshotPinDiscussion, layoutReadiness),
     ...(phase6Enabled ? {
-      code_block: createCodeBlockNodeView({ sessions: options.visualCodeSessions ?? new Map() }),
+      code_block: createCodeBlockNodeView({ sessions: options.visualCodeSessions ?? new Map(), readiness: layoutReadiness }),
       heading: (node: ProseMirrorNode, editorView: EditorView, getPos: () => number | undefined) => foldingManager.createHeading(node, editorView, getPos),
     } : {}),
     table: (node: ProseMirrorNode, editorView: EditorView, getPos: () => number | undefined) => tableManager.create(node, editorView, getPos),
@@ -1334,6 +1339,22 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     }, 900)
   }
 
+  /**
+   * Client coordinates of an editor position after opening the folds and table
+   * views that hide it, without moving the selection, focus, or any scroll
+   * parent. The transcript's coordinator scrolls from these itself.
+   */
+  const locate = (from: number, to = from): { top: number; bottom: number; left: number } | null => {
+    if (mode !== 'visual') return null
+    tableManager.revealPosition(from)
+    foldingManager.revealPosition(from)
+    foldingManager.flush()
+    const selection = textSelectionBetween(view.state.doc, from, Math.max(from, to))
+    const start = view.coordsAtPos(selection.from)
+    const end = view.coordsAtPos(selection.to)
+    return { top: Math.min(start.top, end.top), bottom: Math.max(start.bottom, end.bottom), left: Math.min(start.left, end.left) }
+  }
+
   const jump = (from: number, to = from): void => {
     tableManager.revealPosition(from)
     foldingManager.revealPosition(from)
@@ -1579,6 +1600,36 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       jump(range.from, range.to)
       flash(setAnnotationFlash, id)
     },
+    layoutReadiness,
+    revealAnnotation(id, flashTarget = true) {
+      const range = getAnnotationRanges(view.state).find((candidate) => candidate.id === id)
+      if (!range || range.status === 'orphaned') return null
+      const coordinates = locate(range.from, range.to)
+      if (coordinates && flashTarget) flash(setAnnotationFlash, id)
+      return coordinates
+    },
+    revealSource(from, to = from) {
+      const start = editorPositionForSource(parseCurrentMarkdown(), view.state.doc, from)
+      const end = editorPositionForSource(parseCurrentMarkdown(), view.state.doc, Math.max(from, to - 1))
+      if (start === null || start === undefined) return null
+      return locate(start, end ?? start)
+    },
+    coordsForSourceOffset(offset) {
+      if (mode !== 'visual') return null
+      const position = editorPositionForSource(parseCurrentMarkdown(), view.state.doc, offset)
+      if (position === null) return null
+      const dom = view.domAtPos(position)
+      const parent = dom.node.nodeType === Node.TEXT_NODE ? dom.node.parentElement : dom.node as HTMLElement
+      if (!parent?.checkVisibility({ checkVisibilityCSS: false })) return null
+      const coords = view.coordsAtPos(position)
+      return { top: coords.top, bottom: coords.bottom, left: coords.left }
+    },
+    sourceOffsetAtPoint(left, top) {
+      if (mode !== 'visual') return null
+      const hit = view.posAtCoords({ left, top })
+      if (!hit) return null
+      return sourceOffsetForEditorPosition(parseCurrentMarkdown(), view.state.doc, hit.pos)
+    },
     jumpToHeading(id) {
       const heading = headingsForState(view.state).find((candidate) => candidate.id === id)
       if (!heading) return
@@ -1686,6 +1737,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     },
     destroy() {
       closePopover()
+      layoutReadiness.destroy()
       referencePreview?.destroy()
       imageInspection.destroy()
       foldingManager.destroy()

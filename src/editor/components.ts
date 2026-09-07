@@ -1,6 +1,7 @@
 import { Fragment, type Node as ProseMirrorNode } from 'prosemirror-model'
 import type { EditorView, NodeView, NodeViewConstructor } from 'prosemirror-view'
 import type { LocalImageResolver } from './images.js'
+import type { LayoutReadiness } from './layout-readiness.js'
 import { strataSchema } from './schema.js'
 import { COMPONENT_REGISTRY } from '../core/markdown/components.js'
 import { componentGlyph, componentLabel, componentQualifier } from './component-labels.js'
@@ -90,6 +91,9 @@ class ComponentNodeView implements NodeView {
   private readonly documentPath: string
   private readonly resolveImage: LocalImageResolver
   private readonly onDiscuss: ((request: ScreenshotPinDiscussionRequest) => void) | undefined
+  private readonly readiness: LayoutReadiness | null
+  private settleChart: (() => void) | null = null
+  private settleScreenshot: (() => void) | null = null
   private readonly sessionState: ComponentSessionState
   private readonly eyebrow: HTMLElement
   private readonly tooling: HTMLElement
@@ -112,6 +116,7 @@ class ComponentNodeView implements NodeView {
     resolveImage: LocalImageResolver,
     sessionState: ComponentSessionState,
     onDiscuss?: (request: ScreenshotPinDiscussionRequest) => void,
+    readiness: LayoutReadiness | null = null,
   ) {
     this.node = node
     this.view = view
@@ -119,6 +124,7 @@ class ComponentNodeView implements NodeView {
     this.documentPath = documentPath
     this.resolveImage = resolveImage
     this.onDiscuss = onDiscuss
+    this.readiness = readiness
     this.sessionState = sessionState
     this.screenshotFocused = sessionState.screenshotFocused ?? false
     this.activePin = sessionState.activePin ?? null
@@ -169,6 +175,8 @@ class ComponentNodeView implements NodeView {
     this.chartGeneration += 1
     this.screenshotGeneration += 1
     this.chart?.destroy()
+    this.settleChart?.(); this.settleChart = null
+    this.settleScreenshot?.(); this.settleScreenshot = null
   }
 
   ignoreMutation(mutation: Parameters<NonNullable<NodeView['ignoreMutation']>>[0]): boolean {
@@ -277,6 +285,9 @@ class ComponentNodeView implements NodeView {
     const table = directTable(this.node)
     if (!table || table.rows.length < 2) return
     const generation = ++this.chartGeneration
+    this.settleChart?.()
+    this.settleChart = this.readiness?.begin('chart') ?? null
+    const finishChart = (): void => { if (generation === this.chartGeneration) { this.settleChart?.(); this.settleChart = null } }
     const surface = document.createElement('div')
     surface.className = 'strata-chart-surface'
     surface.contentEditable = 'false'
@@ -290,7 +301,7 @@ class ComponentNodeView implements NodeView {
       values: table.rows.slice(1).map((row) => Number(row[index + 1])),
     }))
     void import('./chart-renderer.js').then(({ renderDeclarativeChart }) => {
-      if (generation !== this.chartGeneration || !surface.isConnected) return
+      if (generation !== this.chartGeneration || !surface.isConnected) { finishChart(); return }
       const canvas = document.createElement('canvas')
       canvas.setAttribute('role', 'img')
       canvas.setAttribute('aria-label', `${this.semantic()} chart with ${labels.length} categories and ${series.length} series`)
@@ -311,11 +322,13 @@ class ComponentNodeView implements NodeView {
         surface.replaceChildren(document.createTextNode('This chart could not be drawn. Edit the table below.'))
         surface.removeAttribute('aria-busy')
       }
+      finishChart()
     }).catch(() => {
       if (generation === this.chartGeneration) {
         surface.textContent = 'This chart could not be drawn. Edit the table below.'
         surface.removeAttribute('aria-busy')
       }
+      finishChart()
     })
   }
 
@@ -340,17 +353,24 @@ class ComponentNodeView implements NodeView {
     focus.disabled = source === null
     this.tooling.append(place, focus)
     if (source && source !== this.resolvedImageSource) {
+      // The version lookup and the decoration frame that follows it both shape
+      // the screenshot's status row, so layout waits for them like a resource.
+      this.settleScreenshot?.()
+      this.settleScreenshot = this.readiness?.begin('screenshot') ?? null
+      const finishScreenshot = (): void => { if (generation === this.screenshotGeneration) { this.settleScreenshot?.(); this.settleScreenshot = null } }
       void this.resolveImage({ documentPath: this.documentPath, source }).then((resolved) => {
         if (generation !== this.screenshotGeneration) return
         this.resolvedImageSource = source
         this.imageVersion = resolved && 'version' in resolved && typeof resolved.version === 'string' ? resolved.version : null
         this.tooling.replaceChildren()
+        finishScreenshot()
         this.configureScreenshot()
       }).catch(() => {
         if (generation === this.screenshotGeneration) {
           this.resolvedImageSource = source
           this.imageVersion = null
           this.tooling.replaceChildren()
+          finishScreenshot()
           this.configureScreenshot()
         }
       })
@@ -573,12 +593,13 @@ export function createComponentNodeView(
   documentPath: string,
   resolveImage: LocalImageResolver,
   onDiscuss?: (request: ScreenshotPinDiscussionRequest) => void,
+  readiness: LayoutReadiness | null = null,
 ): NodeViewConstructor {
   const states = new Map<string, ComponentSessionState>()
   return (node, view, getPos) => {
     const key = typeof node.attrs.sourceId === 'string' ? node.attrs.sourceId : `${node.attrs.name}:${getPos() ?? 'unknown'}`
     const state = states.get(key) ?? {}
     states.set(key, state)
-    return new ComponentNodeView(node, view, getPos, documentPath, resolveImage, state, onDiscuss)
+    return new ComponentNodeView(node, view, getPos, documentPath, resolveImage, state, onDiscuss, readiness)
   }
 }

@@ -396,6 +396,9 @@ export function hardenWindow(window: BrowserWindow, openExternal = openExternalU
 function imageRoots(view: AppView): string[] {
   const roots = view.explorer.map((folder) => folder.path)
   if (view.activeDocument) roots.push(dirname(view.activeDocument.path))
+  // Transcript images resolve against their project's workspace (§6.15), the
+  // same base conversation Markdown links use, so the protocol serves it too.
+  for (const project of view.engine.projects) if (project.workspaceRoot) roots.push(project.workspaceRoot)
   return [...new Set(roots)]
 }
 

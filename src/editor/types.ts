@@ -114,6 +114,16 @@ export interface StrataEditorHandle {
   jumpToHunk(id: string): void
   jumpToAnnotation(id: string): void
   jumpToHeading(id: string): void
+  /** Asynchronous node-view work; settled means the editor's geometry no longer waits on resources. */
+  readonly layoutReadiness: import('./layout-readiness.js').LayoutReadiness
+  /** Opens folds and table views hiding an annotation and returns its client coordinates without scrolling; flashes it unless told not to. */
+  revealAnnotation(id: string, flash?: boolean): { top: number; bottom: number; left: number } | null
+  /** The same for an exact source range. */
+  revealSource(from: number, to?: number): { top: number; bottom: number; left: number } | null
+  /** Client coordinates of the text that shows a source offset, or null when it is not rendered as text. */
+  coordsForSourceOffset(offset: number): { top: number; bottom: number; left: number } | null
+  /** The exact source offset of the text nearest a client point, or null inside atomic content. */
+  sourceOffsetAtPoint(left: number, top: number): number | null
   headingSource(id: string): { quote: string; from: number; to: number; atx: boolean } | null
   /** Shows drag handles on one open annotation (null hides them). */
   setActiveAnnotation(id: string | null): void

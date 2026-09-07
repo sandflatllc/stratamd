@@ -209,11 +209,23 @@ export class FoldingManager {
     if (this.frame !== null) return
     this.frame = requestAnimationFrame(() => {
       this.frame = null
-      const view = this.view
-      if (!view) return
-      view.dispatch(view.state.tr.setMeta(foldingKey, true).setMeta('addToHistory', false))
-      for (const nodeView of this.nodeViews) nodeView.refresh()
+      this.apply()
     })
+  }
+
+  /** Applies a pending fold change now, so a caller can measure the revealed layout in the same task. */
+  flush(): void {
+    if (this.frame === null) return
+    cancelAnimationFrame(this.frame)
+    this.frame = null
+    this.apply()
+  }
+
+  private apply(): void {
+    const view = this.view
+    if (!view) return
+    view.dispatch(view.state.tr.setMeta(foldingKey, true).setMeta('addToHistory', false))
+    for (const nodeView of this.nodeViews) nodeView.refresh()
   }
 
   documentChanged(selectionHead: number): void {

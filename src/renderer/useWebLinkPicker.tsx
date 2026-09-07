@@ -34,6 +34,17 @@ export function useWebLinkPicker(options: Options) {
   useLayoutEffect(() => { latest.current = { options, request } })
   useLayoutEffect(() => { setRequest(null) }, [options.scope])
 
+  // Keep the origin's DOM while the picker owns focus. A transcript upgrade
+  // must not remove the link that Escape will return to.
+  useLayoutEffect(() => {
+    const origin = request?.origin
+    if (!origin) return
+    const notify = () => origin.dispatchEvent(new Event('strata-reading-retention', { bubbles: true }))
+    origin.setAttribute('data-reading-retained', '')
+    notify()
+    return () => { origin.removeAttribute('data-reading-retained'); notify() }
+  }, [request?.origin])
+
   const close = (restoreFocus = false) => {
     const origin = latest.current.request?.origin
     setRequest(null)

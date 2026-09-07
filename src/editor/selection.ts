@@ -1,5 +1,6 @@
 import type { Node as ProseMirrorNode } from 'prosemirror-model'
 import type { ParsedEditorMarkdown } from './types.js'
+import { readingEditorPosition, readingSourcePosition, textRunPositions } from './reading-source-map'
 
 export interface SourceSelection {
   quote: string
@@ -53,6 +54,23 @@ function renderedCharacterPositions(source: string, rendered: string): number[] 
     sourceCursor = match + 1
   }
   return positions
+}
+
+/**
+ * The source offset of a rendered character offset within one block or text
+ * run. Decode escapes and entities while retaining their original offsets;
+ * a run that differs from the decoded source returns null rather than a guess.
+ */
+export function sourceOffsetWithin(
+  source: string,
+  rendered: string,
+  textOffset: number,
+  bias: 'start' | 'end' = 'start',
+): number | null {
+  const positions = textRunPositions(source, rendered)
+  if (!positions) return null
+  if (textOffset === rendered.length) return source.length
+  return bias === 'end' && textOffset > 0 ? (positions[textOffset - 1] ?? -1) + 1 : positions[textOffset] ?? null
 }
 
 function sourceOffsetForTextOffset(
@@ -109,6 +127,37 @@ export function sourceSelectionForEditor(
     to: sourceTo,
     singleBlock: start.index === end.index,
   }
+}
+
+/**
+ * The exact source offset of one editor position, for reading anchors: the
+ * text point nearest the reading edge maps to the source character it shows.
+ * Positions inside atomic nodes or unmatched runs return null.
+ */
+export function sourceOffsetForEditorPosition(
+  parsed: ParsedEditorMarkdown,
+  doc: ProseMirrorNode,
+  position: number,
+): number | null {
+  return readingSourcePosition(parsed, doc, position)
+}
+
+/** The rendered character index that shows a source offset within one text run, or null when the run cannot be matched. */
+export function renderedOffsetForSource(source: string, rendered: string, withinOffset: number): number | null {
+  if (!rendered) return 0
+  const positions = textRunPositions(source, rendered)
+  if (!positions) return null
+  const index = positions.findIndex((position) => position >= withinOffset)
+  return index < 0 ? rendered.length : index
+}
+
+/** The editor position that shows a source offset, or null when the offset has no rendered text. */
+export function editorPositionForSource(
+  parsed: ParsedEditorMarkdown,
+  doc: ProseMirrorNode,
+  sourceOffset: number,
+): number | null {
+  return readingEditorPosition(parsed, doc, sourceOffset)
 }
 
 const WORD_CHARACTER = /[\p{L}\p{N}_]/u

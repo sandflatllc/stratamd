@@ -1,3 +1,4 @@
+import { captureWhenPainted } from './capture'
 import { isLocalPage, isLocalPageSync } from '../local-link'
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
@@ -470,13 +471,7 @@ export class PreviewHost {
   /** A frame from a shown or parked tab, waiting for its compositor when needed. */
   async #captureImage(id: string, rect?: Rectangle): Promise<Electron.NativeImage> {
     const contents = this.#contents(id)
-    const deadline = this.#now() + 5000
-    for (;;) {
-      const image = await contents.capturePage(rect)
-      if (!image.isEmpty()) return image
-      if (this.#now() >= deadline || contents.isDestroyed()) throw new Error(`Preview tab ${id} has not produced a capturable frame`)
-      await contents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))', true)
-    }
+    return captureWhenPainted(contents, `Preview tab ${id}`, this.#now, rect)
   }
 
   /** The visible frame, or a rect of it, as PNG bytes in device pixels. */
@@ -569,7 +564,7 @@ export class PreviewHost {
   /** A frame from any web contents with the page's own size and scroll; the caller controls clean capture. */
   async frameOf(contents: WebContents): Promise<{ bytes: Uint8Array; width: number; height: number; cssWidth: number; cssHeight: number; scroll: { x: number; y: number }; scale: number }> {
     const viewport = await contents.executeJavaScript('({ width: window.innerWidth, height: window.innerHeight, scroll: { x: Math.round(window.scrollX), y: Math.round(window.scrollY) }, deviceScale: window.devicePixelRatio || 1 })', true) as { width: number; height: number; scroll: { x: number; y: number }; deviceScale: number }
-    const image = await contents.capturePage()
+    const image = await captureWhenPainted(contents, 'Preview page', this.#now)
     const size = image.getSize()
     return { bytes: new Uint8Array(image.toPNG()), width: size.width, height: size.height, cssWidth: viewport.width, cssHeight: viewport.height, scroll: viewport.scroll, scale: viewport.width > 0 && size.width > 0 ? size.width / viewport.width : viewport.deviceScale }
   }

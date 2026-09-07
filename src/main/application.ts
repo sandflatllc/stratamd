@@ -145,6 +145,7 @@ import { parseMarkdown } from '../core/markdown'
 import { analyzeComponentNode, annotatedScreenshotData, type ComponentAstNode } from '../core/markdown/components'
 import { findMarkdownByIdentity, scanAndSeedExplorer, scanExplorer, type ExplorerScanResult } from './explorer'
 import { readDiskState, readDocument, resolveAllowedLocalPath, resolveDocumentPath, saveDocumentWithHashCheck, seedGhostFromGit } from './files'
+import { IMAGE_HEADER_BYTES, imageDimensionsFromHeader } from './image-dimensions'
 import { readDraftStore, writeDraftStore } from './drafts'
 import { localImageUrl } from './protocols'
 import { lineAt, stableValue } from './view-stability'
@@ -2602,17 +2603,46 @@ export class StrataApplication implements StrataApi {
     this.#publish()
   }
 
+  /** Header dimensions by canonical path and file version; shared in flight and bounded so a long transcript cannot grow it. */
+  readonly #imageMetadata = new Map<string, Promise<{ width: number; height: number } | null>>()
+
   async resolveLocalImage(documentPath: string, source: string): Promise<LocalImageResolution | null> {
-    if (/^[a-z][a-z\d+.-]*:/i.test(source) || source.startsWith('//')) return null
-    const session = this.#require(documentPath)
+    if (/^[a-z][a-z\d+.-]*:/i.test(source) || source.startsWith('//') || source.includes('\0')) return null
+    // A conversation's synthetic document resolves against its project's
+    // workspace, like its Markdown links do (§6.15); no session is created for it.
+    const projectBase = this.#engine.view().projects.some(project => join(project.workspaceRoot, '.conversation.md') === documentPath)
+    const basePath = projectBase ? documentPath : this.#require(documentPath).path
     try {
-      const safe = await resolveAllowedLocalPath(source, session.path, this.#settings.explorerFolders)
+      const safe = await resolveAllowedLocalPath(source, basePath, this.#settings.explorerFolders)
       if (!safe) return null
       const details = await stat(safe, { bigint: true })
-      return { url: localImageUrl(safe), path: safe, version: `${details.size}:${details.mtimeNs}` }
+      const version = `${details.size}:${details.mtimeNs}`
+      const dimensions = await this.#imageDimensions(safe, version)
+      return { url: localImageUrl(safe), path: safe, version, ...(dimensions ?? {}) }
     } catch {
       return null
     }
+  }
+
+  #imageDimensions(path: string, version: string): Promise<{ width: number; height: number } | null> {
+    const key = `${path}\0${version}`
+    const cached = this.#imageMetadata.get(key)
+    if (cached) return cached
+    const pending = (async () => {
+      const handle = await open(path, 'r')
+      try {
+        const bytes = Buffer.alloc(IMAGE_HEADER_BYTES)
+        const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0)
+        return imageDimensionsFromHeader(bytes.subarray(0, bytesRead))
+      } finally {
+        await handle.close()
+      }
+    })().catch(() => null)
+    // Older versions of the same file are superseded; the newest entries stay.
+    for (const existing of [...this.#imageMetadata.keys()]) if (existing.startsWith(`${path}\0`)) this.#imageMetadata.delete(existing)
+    this.#imageMetadata.set(key, pending)
+    if (this.#imageMetadata.size > 512) this.#imageMetadata.delete(this.#imageMetadata.keys().next().value!)
+    return pending
   }
 
   async resolveLocalLink(input: { projectId: string | null; href: string }): Promise<LocalLinkTarget> {

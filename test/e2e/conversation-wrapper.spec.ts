@@ -42,7 +42,7 @@ test('opaque transcript meets the toolbar and clears the composer as it grows in
       await history.evaluate(el => { el.scrollTop = 0 })
       await panel.getByRole('button', { name: 'Newest', exact: true }).click()
       await expect.poll(() => history.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeLessThan(2)
-      await expect(history.getByText('Paragraph 35.', { exact: false })).toBeInViewport()
+      await expect(history.locator('[data-message-id]').getByText('Paragraph 35.', { exact: false })).toBeInViewport()
       await page.screenshot({ path: testInfo.outputPath(`transcript-${placement}.png`) })
       await panel.locator('.chat-composer textarea').fill('')
     }

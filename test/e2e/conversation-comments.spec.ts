@@ -133,6 +133,9 @@ for (const placement of ['side', 'center'] as const) test(`100 exchanges mount o
     await navigator.getByRole('button', { name: 'Message: Request 1', exact: true }).click()
     await expect(panel.locator('[data-message-id="history-user-0"]')).toBeInViewport()
     await expect(navigator.locator('[aria-current="location"]')).toHaveCount(1)
+    const diagnostics = await page.evaluate(() => window.strataTranscript!.snapshot())
+    expect(diagnostics.counters.peakLive).toBeLessThan(12)
+    await writeFile(testInfo.outputPath(`${placement}-allocation-events.json`), JSON.stringify(diagnostics, null, 2))
     await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${placement}-long-history.png`) })
   } finally { await scenario.dispose(); await engine.close() }
 })

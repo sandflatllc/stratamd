@@ -247,6 +247,16 @@ if (process.env.STRATAMD_CRASH_PROBE === '1') {
   contextBridge.exposeInMainWorld('strataCrashProbe', '1')
 }
 
+// Transcript probe for the scroll-stability tests: lets a test hold image
+// metadata, image decode, and Mermaid completion until it releases them.
+if (process.env.STRATAMD_TRANSCRIPT_PROBE === '1') {
+  contextBridge.exposeInMainWorld('strataTranscriptProbe', '1')
+}
+// Switches for the optional transcript optimizations; '0' disables one.
+for (const [name, variable] of [['strataTranscriptCache', 'STRATAMD_TRANSCRIPT_CACHE'], ['strataTranscriptSweep', 'STRATAMD_TRANSCRIPT_SWEEP']] as const) {
+  if (process.env[variable] === '0') contextBridge.exposeInMainWorld(name, '0')
+}
+
 // The Phase 6 dependency proof renders the real review diagrams in the same
 // sandboxed renderer as the editor before any Mermaid NodeView is installed.
 if (process.env.STRATAMD_MERMAID_PROOF === '1') {

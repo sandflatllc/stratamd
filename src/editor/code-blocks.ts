@@ -2,6 +2,7 @@ import type { Node as ProseMirrorNode } from 'prosemirror-model'
 import type { EditorView, NodeView, ViewMutationRecord } from 'prosemirror-view'
 import { parseMermaidSvg, renderMermaid } from './mermaid-renderer'
 import { toolbarButton } from './dom.js'
+import type { LayoutReadiness } from './layout-readiness.js'
 
 export interface VisualCodeBlockState {
   presentation: 'visual' | 'source'
@@ -14,6 +15,8 @@ export type VisualCodeBlockSessions = Map<string, VisualCodeBlockState>
 
 export interface CodeBlockNodeViewOptions {
   sessions: VisualCodeBlockSessions
+  /** Diagram rendering registers with the editor's layout readiness when present. */
+  readiness?: LayoutReadiness | null
 }
 
 interface TreeNode {
@@ -65,6 +68,8 @@ class CodeBlockNodeView implements NodeView {
   readonly contentDOM: HTMLElement
   private node: ProseMirrorNode
   private readonly sessions: VisualCodeBlockSessions
+  private readonly readiness: LayoutReadiness | null
+  private settle: (() => void) | null = null
   private readonly key: string
   private readonly kind: 'mermaid' | 'tree' | null
   private readonly source: HTMLPreElement
@@ -81,6 +86,7 @@ class CodeBlockNodeView implements NodeView {
   constructor(node: ProseMirrorNode, _view: EditorView, getPos: () => number | undefined, options: CodeBlockNodeViewOptions) {
     this.node = node
     this.sessions = options.sessions
+    this.readiness = options.readiness ?? null
     const info = String(node.attrs.info ?? '').trim()
     const special = visualCodeFenceKind(node.attrs.info, node.attrs.meta)
     this.kind = special
@@ -162,6 +168,14 @@ class CodeBlockNodeView implements NodeView {
   destroy(): void {
     this.generation += 1
     if (this.renderTimer !== null) window.clearTimeout(this.renderTimer)
+    this.settled()
+  }
+
+  /** The diagram reached its SVG or its error presentation; layout no longer waits on it. */
+  private settled(): void {
+    const settle = this.settle
+    this.settle = null
+    settle?.()
   }
 
   stopEvent(event: Event): boolean {
@@ -335,16 +349,21 @@ class CodeBlockNodeView implements NodeView {
     }
     this.diagramDirty = false
     const generation = ++this.generation
+    this.settled()
+    this.settle = this.readiness?.begin('mermaid') ?? null
+    const finish = (): void => { if (generation === this.generation) this.settled() }
     this.canvas.replaceChildren()
     const loading = document.createElement('span')
     loading.className = 'strata-visual-code__loading'
     loading.textContent = 'Drawing diagram…'
     this.canvas.append(loading)
     void renderMermaid(`strata-mermaid-${generation}-${Math.random().toString(36).slice(2)}`, this.node.textContent, { normalizeBreaks: true })
-      .then((result) => {
+      .then(async (result) => {
+        if (this.readiness) await this.readiness.pass('mermaid')
         if (generation !== this.generation) return
         this.canvas?.replaceChildren(parseMermaidSvg(result.svg))
         this.paintState()
+        finish()
       })
       .catch((error: unknown) => {
         if (generation !== this.generation || !this.canvas) return
@@ -353,6 +372,7 @@ class CodeBlockNodeView implements NodeView {
         const detail = error instanceof Error ? error.message.split('\n')[0] : 'Check the Mermaid source.'
         message.textContent = `This diagram could not be drawn. ${detail}`
         this.canvas.replaceChildren(message)
+        finish()
       })
   }
 }
