@@ -34,7 +34,7 @@ export function ProviderInstall({ account, engine }: { account: AccountView; eng
       {running && <><button type="button" className="quiet-button" onClick={() => void act('cancel')}>Cancel setup</button>{url && <button type="button" className="quiet-button" onClick={() => void window.strata.openExternal?.(url)}>Open provider sign-in</button>}</>}
       {job?.output && <pre className="provider-setup-output">{job.output}</pre>}
       {running && account.installed && <label className="setup-field">Sign-in code, if the provider asks<input aria-label="Provider sign-in code" value={code} autoComplete="off" onChange={event => setCode(event.target.value)} /><button type="button" className="quiet-button" disabled={!code.trim() || starting} onClick={() => void act('input')}>Submit code</button></label>}
-    </> : <p className="engine-hint">{engine.managed ? `Install and sign in to ${account.name} with its own tool, then refresh Accounts.` : `Set up ${account.name} on the engine's computer, then refresh Accounts.`}</p>}
+    </> : <p className="engine-hint">{engine.managed ? `Install and sign in to ${account.name} with its own tool, then refresh Usage Limits.` : `Set up ${account.name} on the engine's computer, then refresh Usage Limits.`}</p>}
     {error && <p role="alert" className="send-error">{error}</p>}
   </div>
 }

@@ -1,3 +1,4 @@
+import { DialogResize } from './DialogResize'
 import { createPortal } from 'react-dom'
 import { useRef, type ReactNode } from 'react'
 import { useDialogFocus } from '../useDialogFocus'
@@ -14,6 +15,7 @@ export function SetupDialog({ title, subtitle, back, onClose, children, footer, 
       <header className="setup-dialog-header"><div>{back && <button type="button" className="text-action setup-back" onClick={back.action}><ArrowLeftIcon />{back.label}</button>}<h2>{title}</h2>{subtitle && <p className="modal-subtitle">{subtitle}</p>}</div>{tools}<button type="button" className="quiet-button icon-button" aria-label="Close dialog" onClick={onClose}><XIcon /></button></header>
       <div className="setup-dialog-body">{children}</div>
       <footer className="modal-actions parity-dialog-footer">{footer}</footer>
+      <DialogResize name={title} />
     </section>
   </div>, document.querySelector('.app-shell') ?? document.body)
 }

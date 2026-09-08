@@ -200,8 +200,8 @@ export function TopBar({ windowState, onWindowAction, tabs, canSend, hasAgents, 
           {onOpenPreview && engine && engine.state === 'connected' && <button type="button" role="menuitem" className="tab-menu-open open-preview-button" onClick={() => menuAction(onOpenPreview)}>Open preview</button>}
           {(showAccounts || onOpenUsage) && <>
             <div className="app-menu-divider" role="separator" />
-            {showAccounts && <button type="button" role="menuitem" className="tab-menu-open accounts-button" onClick={() => menuAction(showAccounts)}>Accounts</button>}
-            {onOpenUsage && <button type="button" role="menuitem" className="tab-menu-open" onClick={() => menuAction(onOpenUsage)}>Usage</button>}
+            {showAccounts && <button type="button" role="menuitem" className="tab-menu-open accounts-button" onClick={() => menuAction(showAccounts)}>Usage Limits</button>}
+            {onOpenUsage && <button type="button" role="menuitem" className="tab-menu-open" onClick={() => menuAction(onOpenUsage)}>Token Use</button>}
           </>}
           <div className="app-menu-divider" role="separator" />
           {engine && onOpenEngine && <button type="button" role="menuitem" className="tab-menu-open" onClick={() => menuAction(onOpenEngine)}>{engine.managed ? 'This computer' : 'Engine'}</button>}

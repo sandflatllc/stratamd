@@ -53,7 +53,7 @@ export function EngineDialog({ engine, onPair, onReconnect, onClose, onOpenAccou
   }
   return (
     <SetupDialog title={engine.managed ? 'This computer' : 'Engine'} subtitle="The T3 server that runs your agents." onClose={onClose} className="engine-dialog" footer={<>
-      {onOpenAccounts && paired && <button type="button" className="quiet-button" onClick={onOpenAccounts}>Accounts</button>}
+      {onOpenAccounts && paired && <button type="button" className="quiet-button" onClick={onOpenAccounts}>Usage Limits</button>}
       <button type="button" className="primary-button" onClick={onClose}>Close</button>
     </>}>
         <dl className="engine-facts">

@@ -1,3 +1,4 @@
+import { DialogResize } from './DialogResize'
 import { accountForModel, usageWindowStale } from '../../core/accountState'
 import { ProviderInstall } from './ProviderInstall'
 import { generatedModelSchema } from '../../shared/engine-settings'
@@ -172,7 +173,7 @@ function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEn
     <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <section ref={dialogRef} tabIndex={-1} className="modal accounts-dialog" role="dialog" aria-modal="true" aria-labelledby="accounts-title">
         <div className="accounts-body">
-          <div className="parity-dialog-heading"><h2 id="accounts-title">Accounts</h2><button type="button" className="quiet-button" onClick={() => onManage('new')}><PlusIcon /> Add provider</button></div>
+          <div className="parity-dialog-heading"><h2 id="accounts-title">Usage Limits</h2><button type="button" className="quiet-button" onClick={() => onManage('new')}><PlusIcon /> Add provider</button></div>
           <p className="modal-subtitle">Provider logins on {engine.managed ? 'this computer' : engine.server ? <code>{engine.server.replace(/^https?:\/\//, '')}</code> : 'the engine'}. Auto keeps its account while usable, then chooses by usage. Claude Auto checks Fable and shared limits.</p>
           {engine.state !== 'connected' && <p className="engine-problem">The engine is {engine.state === 'unpaired' ? 'not paired' : engine.state}. Showing what Strata last measured.</p>}
           {refreshError && <p className="engine-problem" role="alert">{refreshError}</p>}
@@ -202,7 +203,8 @@ function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEn
                 <div className="accounts-list">
                   {accounts.map((account) => <AccountRow account={account} engine={engine} auto={account.instanceId === auto} now={now} onPark={onPark} onManage={() => onManage(account)} key={account.instanceId} />)}
                 </div>
-              </section>
+                <DialogResize name="Usage Limits" />
+      </section>
             )
           })}
           {inactive.length > 0 && (
@@ -220,16 +222,18 @@ function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEn
                   </div>
                 ))}
               </div>
-            </section>
+              <DialogResize name="Usage Limits" />
+      </section>
           )}
         </div>
         <div className="modal-actions accounts-actions">
           {engine.terminalShimDirectory && <p className="engine-hint">Terminal launchers live in <code>{engine.terminalShimDirectory}</code>. Put that directory on PATH before the provider binaries.</p>}
           {onOpenEngine && <button type="button" className="quiet-button" onClick={onOpenEngine}>{engine.managed ? 'This computer' : 'Engine'}</button>}
-          {onOpenUsage && <button type="button" className="quiet-button" onClick={onOpenUsage}>Usage</button>}
+          {onOpenUsage && <button type="button" className="quiet-button" onClick={onOpenUsage}>Token Use</button>}
           <button type="button" className="quiet-button" disabled={refreshing || engine.accounts.some(account => account.usageRefreshing) || engine.state !== 'connected'} onClick={() => void refresh()}>{refreshing || engine.accounts.some(account => account.usageRefreshing) ? 'Refreshing…' : 'Refresh'}</button>
           <button type="button" className="primary-button" data-dialog-initial-focus onClick={onClose}>Close</button>
         </div>
+        <DialogResize name="Usage Limits" />
       </section>
     </div>
   )

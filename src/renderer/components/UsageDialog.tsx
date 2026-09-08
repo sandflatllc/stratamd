@@ -1,3 +1,4 @@
+import { DialogResize } from './DialogResize'
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { Chart, CategoryScale, LinearScale, PointElement, LineElement, LineController, Filler, Tooltip } from 'chart.js'
@@ -61,8 +62,8 @@ export function UsageDialog({ connected, onClose, onAccounts }: { connected: boo
   const rows = summary ? usageRows(summary.buckets, grouping) : []
   if (grouping === 'model') rows.sort((a, b) => b.costUsd - a.costUsd || b.tokens - a.tokens || a.key.localeCompare(b.key))
   return createPortal(<div className="modal-backdrop" onMouseDown={event => { if (event.currentTarget === event.target) onClose() }}>
-    <section className="modal usage-dialog" role="dialog" aria-modal="true" aria-label="Your usage" tabIndex={-1} ref={dialog}>
-      <header className="usage-header"><div><p className="usage-eyebrow">All activity on this engine</p><h2>Your usage</h2><p>A view of the models doing your work.</p></div><button className="quiet-button" type="button" onClick={onAccounts}><UserRoundIcon />Accounts</button><button className="icon-button" type="button" aria-label="Close usage" onClick={onClose}><XIcon /></button></header>
+    <section className="modal usage-dialog" role="dialog" aria-modal="true" aria-label="Token Use" tabIndex={-1} ref={dialog}>
+      <header className="usage-header"><div><p className="usage-eyebrow">All activity on this engine</p><h2>Token Use</h2><p>A view of the models doing your work.</p></div><button className="quiet-button" type="button" onClick={onAccounts}><UserRoundIcon />Usage Limits</button><button className="icon-button" type="button" aria-label="Close Token Use" onClick={onClose}><XIcon /></button></header>
       <div className="usage-body">
         <div className="usage-toolbar"><div className="usage-segments" aria-label="Usage metric">{(['cost', 'tokens'] as const).map(value => <button type="button" key={value} aria-pressed={metric === value} onClick={() => setMetric(value)}>{value === 'tokens' ? 'Tokens' : 'API estimate'}</button>)}</div><div className="usage-segments usage-windows" aria-label="Usage window">{(Object.keys(windows) as UsageWindow[]).map(value => <button type="button" key={value} aria-pressed={window === value} onClick={() => setWindow(value)}>{windows[value]}</button>)}</div><button type="button" className="icon-button" aria-label="Refresh usage" disabled={loading || !connected} onClick={() => setRefresh(value => value + 1)}><RefreshCwIcon /></button></div>
         {loading && <p role="status">Reading usage from the engine…</p>}
@@ -95,6 +96,6 @@ export function UsageDialog({ connected, onClose, onAccounts }: { connected: boo
         </>}
       </div>
       <footer>{summary ? `Updated ${new Date(summary.readAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ` : ''}Cost is an API-equivalent estimate. Your subscription bill is separate.</footer>
-    </section>
+    <DialogResize name="Token Use" /></section>
   </div>, document.querySelector('.app-shell') ?? document.body)
 }
