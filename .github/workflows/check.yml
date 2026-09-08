@@ -12,9 +12,10 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       STRATAMD_LINUX_TOOLCHAIN: ubuntu-24.04
-      STRATAMD_VERIFY_HOME: ${{ runner.temp }}/stratamd-verification
     timeout-minutes: 30
     steps:
+      - name: Set verification evidence directory
+        run: echo "STRATAMD_VERIFY_HOME=$RUNNER_TEMP/stratamd-verification" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
@@ -67,10 +68,10 @@ jobs:
 
   macos:
     runs-on: macos-14
-    env:
-      STRATAMD_VERIFY_HOME: ${{ runner.temp }}/stratamd-verification
     timeout-minutes: 60
     steps:
+      - name: Set verification evidence directory
+        run: echo "STRATAMD_VERIFY_HOME=$RUNNER_TEMP/stratamd-verification" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
