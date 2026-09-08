@@ -445,6 +445,18 @@ export function App({ createEditor }: AppProps) {
     window.addEventListener('keydown', start)
     return () => window.removeEventListener('keydown', start)
   }, [documentPicker?.projectId, view.engine.activeThreadId, view.engine.projects, document?.path, conversationCentered])
+  const hadDocument = useRef(Boolean(document))
+  useLayoutEffect(() => {
+    const closedLastDocument = hadDocument.current && !document && view.tabs.length === 0
+    hadDocument.current = Boolean(document)
+    if (!closedLastDocument || previewShown || conversationCentered) return
+    const active = view.engine.projects.flatMap(project => project.threads).find(thread => thread.id === view.engine.activeThreadId && thread.lifecycle !== 'settled')
+    if (active) {
+      setDocumentPicker(null)
+      setConversationCentered(true)
+      setConversationTabs(current => current.includes(active.id) ? current : [...current, active.id])
+    } else beginNewConversation()
+  }, [document, view.tabs.length, view.engine.activeThreadId, view.engine.projects, previewShown, conversationCentered])
   const openUsage = () => { setAccountsDialog(false); setUsageOpen(true) }
   const openAccounts = () => {
     setUsageOpen(false)
