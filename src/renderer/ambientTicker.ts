@@ -29,6 +29,9 @@ export function startAmbientTicker(doc: Document = document): () => void {
     const now = performance.now()
     const delta = now - last
     last = now
+    // A hidden window paints nothing: skip the animation walk and hold the
+    // clock, so motion resumes where it stopped when the window shows again.
+    if (doc.hidden) return
     const typing = doc.documentElement.getAttribute('data-typing') === 'true'
     if (!typing) activeMs += delta
     for (const animation of doc.getAnimations()) {
