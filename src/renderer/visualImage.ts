@@ -96,7 +96,7 @@ export function arrowHeadPath(stroke: Pick<VisualStrokeView, 'points'>, size = A
   return `M ${left.x} ${left.y} L ${to.x} ${to.y} L ${right.x} ${right.y}`
 }
 
-function drawStroke(context: CanvasRenderingContext2D, stroke: Pick<VisualStrokeView, 'tool' | 'points'>): void {
+function drawStroke(context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, stroke: Pick<VisualStrokeView, 'tool' | 'points'>): void {
   const points = stroke.tool === 'arrow' ? [stroke.points[0], stroke.points.at(-1)].filter((value): value is VisualPointView => value !== undefined) : stroke.points
   if (points.length === 0) return
   context.beginPath()
@@ -114,7 +114,7 @@ function drawStroke(context: CanvasRenderingContext2D, stroke: Pick<VisualStroke
 }
 
 /** Paints marks and strokes over whatever the context already holds, in capture pixels. */
-export function paintMarks(context: CanvasRenderingContext2D, marks: readonly VisualMarkView[], strokes: readonly VisualStrokeView[], width: number, height: number): void {
+export function paintMarks(context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, marks: readonly VisualMarkView[], strokes: readonly VisualStrokeView[], width: number, height: number): void {
   const colors = markColors()
   context.save()
   context.lineCap = 'round'
@@ -150,14 +150,22 @@ export function paintMarks(context: CanvasRenderingContext2D, marks: readonly Vi
 
 /** The capture with its marks baked in, as PNG bytes: what travels to the agent on Send. */
 export async function renderMarkedCapture(image: CanvasImageSource, width: number, height: number, marks: readonly VisualMarkView[], strokes: readonly VisualStrokeView[]): Promise<Uint8Array> {
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.max(1, Math.round(width))
-  canvas.height = Math.max(1, Math.round(height))
+  // Draw here, then encode in a worker so PNG export never waits for renderer idle time.
+  const canvas = new OffscreenCanvas(Math.max(1, Math.round(width)), Math.max(1, Math.round(height)))
   const context = canvas.getContext('2d')
   if (!context) throw new Error('The marked image could not be drawn')
   context.drawImage(image, 0, 0, canvas.width, canvas.height)
   paintMarks(context, marks, strokes, canvas.width, canvas.height)
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
-  if (!blob) throw new Error('The marked image could not be saved')
-  return new Uint8Array(await blob.arrayBuffer())
+  const bitmap = canvas.transferToImageBitmap()
+  const worker = new Worker(new URL('./visualImage.worker.ts', import.meta.url), { type: 'module' })
+  try {
+    return await new Promise<Uint8Array>((resolve, reject) => {
+      worker.onmessage = (event: MessageEvent<{ bytes?: ArrayBuffer; error?: string }>) => {
+        if (event.data.bytes) resolve(new Uint8Array(event.data.bytes))
+        else reject(new Error(event.data.error ?? 'The marked image could not be saved'))
+      }
+      worker.onerror = () => reject(new Error('The marked image could not be saved'))
+      worker.postMessage(bitmap, [bitmap])
+    })
+  } finally { worker.terminate(); bitmap.close() }
 }

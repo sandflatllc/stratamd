@@ -520,7 +520,10 @@ export function App({ createEditor }: AppProps) {
   }
   const holdVisual = async (input: HoldVisualCommentInput) => {
     const id = await window.strata.holdVisualComment(input)
-    if (previewShown) setPreviewNavigationTab('conversation')
+    if (previewShown) {
+      await window.strata.openConversation(input.threadId)
+      setPreviewNavigationTab('conversation')
+    }
     if (input.source) setConsumedStaged((current) => [...current, input.source!.staged])
     return id
   }

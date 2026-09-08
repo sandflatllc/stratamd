@@ -280,6 +280,7 @@ export function VisualSession({ sessionId, session: controlled, setSession: setC
         if (hasContent()) void actions.current.holdAndClose(); else void actions.current.finishSession()
         return
       }
+      if (event.key === 'Enter' && (holding.current || ending.current)) return
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && (inTextField(event.target) || event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); void actions.current.holdAndClose(); return }
       if (event.ctrlKey || event.metaKey || event.altKey || inTextField(event.target)) return
       const next = TOOLS.find(([, , letter]) => letter.toLowerCase() === event.key.toLowerCase())

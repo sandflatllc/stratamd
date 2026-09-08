@@ -1,5 +1,5 @@
 import { useHeldUserInputs } from '../useHeldUserInputs'
-import { focusConversationComposer } from '../focusConversationComposer'
+import { holdConversationContext } from '../focusConversationComposer'
 import { ConversationMessage } from './ConversationMessage'
 import { useConversationWorkspace } from './ConversationWorkspace'
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
@@ -421,7 +421,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
           })}
           {headerIndex === -1 && workingRow}
           {approvals.filter(activity => turn.activities.some(candidate => candidate.id === activity.id)).map((activity) => { const payload = record(activity.payload); const requestId = String(payload.requestId ?? ''); return <section className="conversation-request" data-kind="approval" key={activity.id}><strong>{typeof payload.detail === 'string' ? payload.detail : activity.summary}</strong><div className="conversation-actions"><button type="button" onClick={() => onApproval(thread.id, requestId, 'accept')}>Approve</button><button type="button" onClick={() => onApproval(thread.id, requestId, 'decline')}>Decline</button></div></section> })}
-          {userInputs.filter(activity => turn.activities.some(candidate => candidate.id === activity.id)).map((activity) => <UserInputCard key={activity.id} activity={activity} held={heldInputs.answers[String(record(activity.payload).requestId ?? '')]} onAnswer={(requestId, answers) => { try { heldInputs.hold(requestId, answers); setInputError(''); focusConversationComposer(panelRef.current) } catch (failure) { setInputError(String(failure)) } }} />)}
+          {userInputs.filter(activity => turn.activities.some(candidate => candidate.id === activity.id)).map((activity) => <UserInputCard key={activity.id} activity={activity} held={heldInputs.answers[String(record(activity.payload).requestId ?? '')]} onAnswer={(requestId, answers) => void holdConversationContext(async () => { heldInputs.hold(requestId, answers); setInputError('') }, panelRef.current).catch(failure => setInputError(String(failure)))} />)}
           <TurnChecklist items={allItems.filter((item) => !item.inferred && item.threadId === thread.id && item.turnId === turn.turnId)} onReply={(item, value) => { if (item.annotationId && onReplyItem) onReplyItem(item, value); else onQueueReply?.(thread.id, item, value) }} onDismiss={(item) => onDismissItem?.(thread.id, item)} onOpen={item => { if (item.annotationId) onOpenItem?.(item); else workspace.open(item.id) }} {...(onActItem ? { onAct: onActItem } : {})} />
         </section>
       })}

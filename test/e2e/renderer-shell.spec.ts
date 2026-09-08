@@ -28,7 +28,7 @@ test('blank shell opens a document from the Open file button, the bridge, and dr
 
     await openDocsMenu(page)
     await page.getByRole('button', { name: 'Close first.md', exact: true }).click()
-    await expect(page.getByRole('heading', { name: /Open a markdown file/i })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'New conversation' })).toBeVisible()
 
     await page.evaluate(() => {
       const input = document.createElement('input')
