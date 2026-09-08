@@ -75,7 +75,7 @@ export function NavigationRail(props: NavigationRailProps) {
   const counts: Partial<Record<LeftTab, number | undefined>> = { conversation: props.conversationCount }
   const tabs = leftTabs(props.documentOpen, props.previewOpen).map((id) => ({ id, label: labels[id], ...(counts[id] ? { count: counts[id] } : {}) }))
   return (
-    <aside className="island navigation-rail" aria-label="Document navigation">
+    <aside className="island navigation-rail" aria-label="Document navigation" data-panel={selected}>
       <AmbientDecor variant="explorer" />
       <div className="navigation-header">
         <button ref={searchTrigger} type="button" className="projects-search-trigger" aria-label="Search threads" title={props.projectQuery ? `Search threads: ${props.projectQuery}` : 'Search threads'} aria-expanded={searchOpen} aria-controls={searchOpen ? 'projects-search-popover' : undefined} data-filtered={Boolean(props.projectQuery.trim())} onClick={() => { if (!searchOpen) props.onSelect('projects'); setSearchOpen(!searchOpen) }}><SearchIcon /></button>

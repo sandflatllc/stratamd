@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { memo, type ReactNode } from 'react'
 import { fromMarkdown } from 'mdast-util-from-markdown'
 import { gfmFromMarkdown } from 'mdast-util-gfm'
 import { gfm } from 'micromark-extension-gfm'
@@ -90,7 +90,8 @@ export function inlineSegments(markdown: string): InlineSegment[] {
   return out.filter((segment) => segment.text.length > 0)
 }
 
-export function InlineMarkdown({ text, links = false }: { text: string; links?: boolean }) {
+/** Memoized: a discussion re-render with unchanged text must not parse that text again. */
+export const InlineMarkdown = memo(function InlineMarkdown({ text, links = false }: { text: string; links?: boolean }) {
   return (
     <>
       {inlineSegments(text).map((segment, index) => {
@@ -104,4 +105,4 @@ export function InlineMarkdown({ text, links = false }: { text: string; links?: 
       })}
     </>
   )
-}
+})

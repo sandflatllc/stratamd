@@ -52,24 +52,14 @@ function ItemTime({ time, now }: { time: number | undefined; now: number }) {
   return <time className="thread-time" dateTime={new Date(time!).toISOString()} title={absoluteTime(time!)}>{relative}</time>
 }
 
-export function ItemPanel({ annotation, visible, documentPath, onReply, onResolve, onAnswer, onReopen, onAccept, onReject, onClose, opener }: ItemPanelProps) {
-  const draftKey = replyDraftKey(documentPath, annotation.id)
+/**
+ * The reply draft and its text field. Keeping the draft here means each
+ * keystroke updates this small component alone; the discussion history above
+ * it, with every formatted reply, is untouched until a reply is actually sent.
+ */
+function ReplyEditor({ draftKey, visible, onReply }: { draftKey: string; visible: boolean; onReply(text: string): void }) {
   const [reply, setReply] = useState(() => replyDrafts.get(draftKey) ?? '')
-  const [choice, setChoice] = useState('')
-  const [other, setOther] = useState('')
   const replyBox = useRef<HTMLTextAreaElement>(null)
-  const now = useClock()
-
-  // Capture the opener once; it receives focus when the item closes (§5.11).
-  useEffect(() => {
-    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    const restoreTo = opener?.current ?? active
-    return () => {
-      if (restoreTo?.isConnected) restoreTo.focus({ preventScroll: true })
-    }
-    // Captured once per item; the opener is fixed at open time.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   // Opening an item mounts it before the navigation-tab update returns over
   // IPC. A hidden textarea ignores focus, so wait for Conversation to show.
@@ -85,6 +75,59 @@ export function ItemPanel({ annotation, visible, documentPath, onReply, onResolv
     else replyDrafts.delete(draftKey)
   }, [draftKey, reply])
 
+  const submit = () => {
+    const clean = reply.trim()
+    if (!clean) return
+    onReply(clean)
+    setReply('')
+  }
+
+  return (
+    <div className="reply-box">
+      <textarea
+        ref={replyBox}
+        rows={1}
+        value={reply}
+        onChange={(event) => setReply(event.target.value)}
+        onKeyDown={(event) => {
+          // Enter and Ctrl+Enter send; Shift+Enter makes a new line. Ctrl+Enter
+          // stops here so the window's Send shortcut never fires underneath (§5.2).
+          if (event.key === 'Enter' && hasPrimaryModifier(event)) {
+            event.preventDefault()
+            event.stopPropagation()
+            submit()
+            return
+          }
+          if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+            event.preventDefault()
+            submit()
+          }
+        }}
+        placeholder="Reply… (Shift+Enter for a new line)"
+        aria-label="Reply"
+      />
+      <button type="button" aria-label="Send reply" onClick={submit}>↵</button>
+    </div>
+  )
+}
+
+export function ItemPanel({ annotation, visible, documentPath, onReply, onResolve, onAnswer, onReopen, onAccept, onReject, onClose, opener }: ItemPanelProps) {
+  const draftKey = replyDraftKey(documentPath, annotation.id)
+  const [choice, setChoice] = useState('')
+  const [other, setOther] = useState('')
+  const now = useClock()
+
+  // Capture the opener once; it receives focus when the item closes (§5.11).
+  useEffect(() => {
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const restoreTo = opener?.current ?? active
+    return () => {
+      if (restoreTo?.isConnected) restoreTo.focus({ preventScroll: true })
+    }
+    // Captured once per item; the opener is fixed at open time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Escape closes the thread unless a surface above it (the annotate menu, the
   // find bar, a dialog, the theme panel) already claimed the key.
   useEffect(() => {
@@ -96,13 +139,6 @@ export function ItemPanel({ annotation, visible, documentPath, onReply, onResolv
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
   }, [onClose])
-
-  const submit = () => {
-    const clean = reply.trim()
-    if (!clean) return
-    onReply(clean)
-    setReply('')
-  }
 
   const orphaned = annotation.status === 'orphaned'
   const openSuggestion = annotation.kind === 'suggestion' && annotation.status === 'open'
@@ -145,31 +181,7 @@ export function ItemPanel({ annotation, visible, documentPath, onReply, onResolv
           }}>Answer decision</button>
         </fieldset>
       )}
-      <div className="reply-box">
-        <textarea
-          ref={replyBox}
-          rows={1}
-          value={reply}
-          onChange={(event) => setReply(event.target.value)}
-          onKeyDown={(event) => {
-            // Enter and Ctrl+Enter send; Shift+Enter makes a new line. Ctrl+Enter
-            // stops here so the window's Send shortcut never fires underneath (§5.2).
-            if (event.key === 'Enter' && hasPrimaryModifier(event)) {
-              event.preventDefault()
-              event.stopPropagation()
-              submit()
-              return
-            }
-            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-              event.preventDefault()
-              submit()
-            }
-          }}
-          placeholder="Reply… (Shift+Enter for a new line)"
-          aria-label="Reply"
-        />
-        <button type="button" aria-label="Send reply" onClick={submit}>↵</button>
-      </div>
+      <ReplyEditor key={draftKey} draftKey={draftKey} visible={visible} onReply={onReply} />
       {openSuggestion && (
         <div className="thread-panel-actions">
           <button type="button" className="keep-button" onClick={onAccept}>Accept</button>

@@ -1948,7 +1948,7 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .conversation-panel > header { grid-template-columns: minmax(0, 1fr); }
 .conversation-title, .conversation-tools { min-width: 0; max-width: 100%; }
 .conversation-panel[data-placement="side"] .conversation-messages { overflow-x: hidden; }
-.navigation-rail:has(#navigation-panel-conversation:not([hidden])) .rail-tab { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.navigation-rail[data-panel="conversation"] .rail-tab { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .conversation-rich-message .prosemirror-host { min-height: 0; animation: none; }
 /* Candidate editors lay out at the column's width outside the transcript's flow (§6.15): attached, laid out, hidden, and inert. */
