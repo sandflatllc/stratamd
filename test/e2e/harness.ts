@@ -500,6 +500,11 @@ export async function selectNavigationTab(page: Page, name: 'Projects' | 'Conver
   await expect(page.locator(`#navigation-panel-${name.toLowerCase()}`)).toBeVisible()
 }
 
+/** Escapes a literal file name for use inside a menu-item name pattern. */
+export function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 /**
  * Brings an open document to the center through the Docs menu.
  */

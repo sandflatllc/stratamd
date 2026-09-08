@@ -118,7 +118,10 @@ async function traceRun(testInfo: TestInfo, variant: 'default' | 'motion-off'): 
       totalTraceEvents: collected.length,
     }
     console.log(JSON.stringify(report, null, 2))
-    const outDir = join('test-results', 'performance', 'keystroke')
+    // Each run keeps its own artifacts so a later experiment cannot overwrite
+    // the baseline trace it is being compared against.
+    const runId = process.env.STRATAMD_PERF_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, '-')
+    const outDir = join('test-results', 'performance', 'keystroke', runId)
     await mkdir(outDir, { recursive: true })
     await writeFile(join(outDir, `${variant}.json`), `${JSON.stringify({ ...report, events: undefined }, null, 2)}\n`)
     await writeFile(join(outDir, `${variant}-raw-trace.json`), JSON.stringify({ traceEvents: mainEvents }))

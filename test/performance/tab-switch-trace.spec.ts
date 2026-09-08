@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { expect, test, type Page, type TestInfo } from '../e2e/test'
-import { Scenario } from '../e2e/harness'
+import { Scenario, escapeRegExp, switchToDocument } from '../e2e/harness'
 import { generateCorpus, writeCorpusAssets } from './corpus'
 import { selfTimes, stageOf, threadNames, type TraceEvent } from './trace-utils'
 
@@ -82,8 +82,13 @@ function median(values: readonly number[]): number {
  */
 async function driveSwitches(page: Page, largeTab: string, smallTab: string, heading: string, count: number): Promise<DriverResult> {
   return page.evaluate(({ largeTab, smallTab, heading, count }) => new Promise<DriverResult>((resolve) => {
+    // Documents live in the Docs menu now; opening the menu stays outside the
+    // bracketed switch so only the document activation is measured.
     const findTab = (label: string): HTMLElement => {
-      const tabs = [...document.querySelectorAll<HTMLElement>('.tabs .tab')]
+      const trigger = document.querySelector<HTMLElement>('button[data-menu="documents"]')
+      if (!trigger) throw new Error('Docs menu button not found')
+      if (trigger.getAttribute('aria-expanded') !== 'true') trigger.click()
+      const tabs = [...document.querySelectorAll<HTMLElement>('#topbar-menu-documents [role="menuitem"]')]
       const match = tabs.find((tab) => (tab.textContent ?? '').includes(label))
       if (!match) throw new Error(`Tab not found: ${label} (have ${tabs.map((tab) => tab.textContent).join(' | ')})`)
       return match
@@ -94,9 +99,10 @@ async function driveSwitches(page: Page, largeTab: string, smallTab: string, hea
     }
     const twoFrames = (done: () => void) => requestAnimationFrame(() => requestAnimationFrame(done))
     const click = (label: string, expected: string, mark: string | null, done: (ms: number) => void) => {
+      const tab = findTab(label)
       if (mark) performance.mark(`${mark}-start`)
       const started = performance.now()
-      findTab(label).click()
+      tab.click()
       const poll = () => {
         if (settled(expected)) {
           twoFrames(() => {
@@ -271,7 +277,7 @@ async function traceRun(testInfo: TestInfo, variant: string): Promise<void> {
     await writeFile(third, '# Performance checklist\n\n- [ ] Return to the loaded fixture\n')
     await page.evaluate((path) => window.strata.openDocument(path), second)
     await page.evaluate((path) => window.strata.openDocument(path), third)
-    await expect(page.locator('.tabs .tab')).toHaveCount(3, { timeout: 30_000 })
+    await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).tabs.length, { timeout: 30_000 }).toBe(3)
     // Settle launch parses, first paint, and ambient warm-up.
     await page.waitForTimeout(3_000)
 
@@ -299,7 +305,7 @@ async function traceRun(testInfo: TestInfo, variant: string): Promise<void> {
     if (variant === 'reattach') {
       // Opening the two side documents makes the last one active; the probe
       // needs the large document mounted.
-      await page.locator('.tabs .tab').filter({ hasText: basename(value.file) }).click()
+      await switchToDocument(page, new RegExp(escapeRegExp(basename(value.file))))
       await expect(editor).toContainText(corpus.firstHeading, { timeout: 60_000 })
       await page.waitForTimeout(1_500)
     }

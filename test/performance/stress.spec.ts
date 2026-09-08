@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '../e2e/test'
 import { basename, dirname, join } from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
-import { Scenario, save } from '../e2e/harness'
+import { Scenario, escapeRegExp, save, switchToDocument } from '../e2e/harness'
 import { interactionViolations } from './budgets'
 import { generateCorpus, writeCorpusAssets } from './corpus'
 import { aggregateRendererSnapshots, installRendererProbe, measureAction, ProcessSampler } from './metrics'
@@ -71,7 +71,7 @@ for (const performanceCase of requestedCases()) {
       await page.evaluate((path) => window.strata.openDocument(path), third)
       activeStage = 'tab-switch-large'
       actions.push(await measureAction(page, 'tab-switch-large', async () => {
-        await page.locator('.tabs .tab').filter({ hasText: basename(value.file) }).click()
+        await switchToDocument(page, new RegExp(escapeRegExp(basename(value.file))))
         await expect(editor).toBeVisible({ timeout: 60_000 })
         await expect(editor).toContainText(corpus.firstHeading, { timeout: 60_000 })
       }))

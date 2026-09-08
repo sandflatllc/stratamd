@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { expect, test, type Page, type TestInfo } from '../e2e/test'
-import { Scenario } from '../e2e/harness'
+import { Scenario, escapeRegExp, switchToDocument } from '../e2e/harness'
 import { generateCorpus, writeCorpusAssets } from './corpus'
 import { selfTimes, stageOf, threadNames, type TraceEvent } from './trace-utils'
 
@@ -148,7 +148,7 @@ async function traceRun(testInfo: TestInfo, variant: string): Promise<void> {
       await writeFile(join(documents, 'performance-checklist.md'), '# Performance checklist\n\n- [ ] Return to the loaded fixture\n')
       await page.evaluate((path) => window.strata.openDocument(path), join(documents, 'performance-side-note.md'))
       await page.evaluate((path) => window.strata.openDocument(path), join(documents, 'performance-checklist.md'))
-      await page.locator('.tabs .tab').filter({ hasText: basename(value.file) }).click()
+      await switchToDocument(page, new RegExp(escapeRegExp(basename(value.file))))
       await expect(editor).toBeVisible({ timeout: 60_000 })
       await expect(editor).toContainText(corpus.firstHeading, { timeout: 60_000 })
     }

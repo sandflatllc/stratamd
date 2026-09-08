@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { expect, test, type Page } from '../e2e/test'
-import { Scenario } from '../e2e/harness'
+import { Scenario, escapeRegExp, expectDocumentListed } from '../e2e/harness'
 import { generateCorpus, writeCorpusAssets } from './corpus'
 
 /**
@@ -250,7 +250,7 @@ test('memory attribution across the tabs ladder', async ({}, testInfo) => {
       while (opened < rung) {
         const path = paths[opened]!
         await page.evaluate((target) => window.strata.openDocument(target), path)
-        await expect(page.locator('.tabs .tab').filter({ hasText: basename(path) })).toBeVisible({ timeout: 60_000 })
+        await expectDocumentListed(page, new RegExp(escapeRegExp(basename(path))))
         await expect(editor).toBeVisible({ timeout: 60_000 })
         opened += 1
       }

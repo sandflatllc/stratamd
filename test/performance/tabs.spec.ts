@@ -1,7 +1,7 @@
 import { mkdir, readdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { expect, test } from '../e2e/test'
-import { Scenario } from '../e2e/harness'
+import { Scenario, escapeRegExp, expectDocumentListed, switchToDocument } from '../e2e/harness'
 import { generateCorpus, writeCorpusAssets } from './corpus'
 import { ProcessSampler } from './metrics'
 import type { ProcessSummary } from './types'
@@ -72,7 +72,7 @@ test('resource usage while stacking open documents', async ({}, testInfo) => {
         const path = paths[opened]!
         const openStarted = performance.now()
         await page.evaluate((target) => window.strata.openDocument(target), path)
-        await expect(page.locator('.tabs .tab').filter({ hasText: basename(path) })).toBeVisible({ timeout: 60_000 })
+        await expectDocumentListed(page, new RegExp(escapeRegExp(basename(path))))
         await expect(editor).toBeVisible({ timeout: 60_000 })
         lastOpenMs = performance.now() - openStarted
         opened += 1
@@ -86,13 +86,13 @@ test('resource usage while stacking open documents', async ({}, testInfo) => {
       const processSummary = await sampler.stop()
 
       const switchStarted = performance.now()
-      await page.locator('.tabs .tab').filter({ hasText: basename(paths[0]!) }).click()
+      await switchToDocument(page, new RegExp(escapeRegExp(basename(paths[0]!))))
       await expect(editor).toContainText(first.firstHeading, { timeout: 60_000 })
       const switchToFirstMs = performance.now() - switchStarted
 
       const target = paths[opened - 1]!
       const backStarted = performance.now()
-      await page.locator('.tabs .tab').filter({ hasText: basename(target) }).click()
+      await switchToDocument(page, new RegExp(escapeRegExp(basename(target))))
       await expect(editor).toBeVisible({ timeout: 60_000 })
       await page.waitForTimeout(100)
       const switchBackMs = performance.now() - backStarted
