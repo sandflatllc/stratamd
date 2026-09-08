@@ -1335,6 +1335,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     view.dispatch(apply(clearFlashes(view.state.tr), id))
     flashTimer = window.setTimeout(() => {
       flashTimer = null
+      synchronizeDomSelection(view)
       view.dispatch(clearFlashes(view.state.tr))
     }, 900)
   }

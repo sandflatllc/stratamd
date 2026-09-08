@@ -258,6 +258,54 @@ test('diagrams, trees, images, local previews, and durable folds remain document
   }
 })
 
+test('ending an annotation flash preserves a native caret move out of a folded section', async ({}, testInfo) => {
+  const source = '# Navigation\n\n## Folded section\n\nAnnotated passage.\n\n## Outside\n\nOutside paragraph.\n'
+  const scenario = await Scenario.create(testInfo, source, 'fold-selection.md')
+  try {
+    const page = await scenario.launch()
+    const editor = page.getByRole('textbox', { name: 'Document editor' })
+    await page.evaluate(async ({ path, from }) => window.strata.addAnnotation(path, {
+      kind: 'question', quote: 'Annotated passage.', text: 'Inspect this.', from, to: from + 'Annotated passage.'.length,
+    }), { path: scenario.file, from: source.indexOf('Annotated passage.') })
+    await page.locator('.strata-fold-heading').filter({ hasText: 'Folded section' }).getByRole('button', { name: 'Collapse section' }).click()
+    await expect(editor.getByText('Annotated passage.', { exact: true })).toBeHidden()
+    await page.evaluate(() => {
+      const original = window.setTimeout.bind(window)
+      let flash: (() => void) | null = null
+      window.setTimeout = ((callback: TimerHandler, delay?: number, ...args: unknown[]) => {
+        if (delay === 900 && typeof callback === 'function') {
+          flash = () => callback(...args)
+          return 0
+        }
+        return original(callback, delay, ...args)
+      }) as typeof window.setTimeout
+      Object.assign(window, { __finishAnnotationFlash: () => {
+        window.setTimeout = original
+        if (!flash) throw new Error('Annotation navigation did not schedule its flash')
+        flash()
+      } })
+    })
+    await page.getByRole('tablist', { name: 'Document review' }).getByRole('tab', { name: /^Items/ }).click()
+    await page.locator('.annotation-row').filter({ hasText: 'Annotated passage.' }).click()
+    await expect(editor.locator('.strata-annotation.is-flashing')).toBeVisible()
+    await page.getByRole('button', { name: 'Close thread' }).click()
+    await expect(page.getByRole('region', { name: 'question thread' })).toBeHidden()
+    const caret = await editor.getByText('Outside paragraph.', { exact: true }).evaluate(element => {
+      const host = element.closest<HTMLElement>('[contenteditable="true"]')!
+      host.focus()
+      const text = element.firstChild!
+      const selection = window.getSelection()!
+      selection.collapse(text, 4)
+      // End the real flash in this task, before the native selectionchange event reaches ProseMirror.
+      ;(window as unknown as { __finishAnnotationFlash(): void }).__finishAnnotationFlash()
+      return { outside: element.contains(selection.anchorNode), offset: selection.anchorOffset }
+    })
+    expect(caret).toEqual({ outside: true, offset: 4 })
+    await expect(editor.getByText('Annotated passage.', { exact: true })).toBeHidden()
+    expect(await readFile(scenario.file, 'utf8')).toBe(source)
+  } finally { await scenario.dispose() }
+})
+
 const defensiveMarkdown = `# Defensive document intelligence
 
 [Missing notes](missing.md)
