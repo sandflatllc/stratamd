@@ -69,7 +69,10 @@ test('an app crash adopts only its surviving authenticated engine @managed', asy
     const first = JSON.parse(await readFile(path, 'utf8'))
     await scenario.stop(true)
     page = await scenario.launch()
-    await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).engine.managed?.state).toBe('running')
+    // A fresh renderer reloads when it learns the surviving engine's identity.
+    await expect(async () => {
+      expect((await page.evaluate(() => window.strata.getState())).engine.managed?.state).toBe('running')
+    }).toPass({ timeout: 5000 })
     expect(JSON.parse(await readFile(path, 'utf8')).pid).toBe(first.pid)
     await expect(page.getByRole('button', { name: 'Engine status' })).toContainText('Connected')
   } finally { await scenario.stop(); await scenario.dispose() }
