@@ -412,13 +412,11 @@ describe('StrataApplication: the buffer, the mirror, and Save', () => {
     }
 
     await app.updateBuffer(path, '# Plan\n\nFirst edit.\n')
-    await new Promise((resolve) => setTimeout(resolve, 150))
-    expect((await app.getState()).activeDocument?.problems).toEqual(['mirror'])
+    await expect.poll(async () => (await app.getState()).activeDocument?.problems).toEqual(['mirror'])
 
     failing = false
     await app.updateBuffer(path, '# Plan\n\nSecond edit.\n')
-    await new Promise((resolve) => setTimeout(resolve, 150))
-    expect((await app.getState()).activeDocument?.problems).toEqual([])
+    await expect.poll(async () => (await app.getState()).activeDocument?.problems).toEqual([])
     expect((await store.readBuffer(path))?.toString('utf8')).toContain('Second edit')
   })
 

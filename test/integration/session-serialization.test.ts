@@ -85,14 +85,14 @@ describe('durability (plan 2.5, 2.6, 4.10, 4.11)', () => {
       return original(file, content)
     }
     await app.updateBuffer(path, '# Plan\n\nUnwritten.\n')
-    await new Promise((resolve) => setTimeout(resolve, 150))
+    await expect.poll(async () => (await app.getState()).activeDocument?.problems).toEqual(['mirror'])
     await app.flushPersistence(path)
     let meta = await store.loadMeta(path)
     expect(await store.getObjectText(meta.mirrorBlob!)).toBe('# Plan\n\nOriginal.\n')
 
     failing = false
     await app.updateBuffer(path, '# Plan\n\nWritten.\n')
-    await new Promise((resolve) => setTimeout(resolve, 150))
+    await expect.poll(async () => (await app.getState()).activeDocument?.problems).toEqual([])
     await app.flushPersistence(path)
     meta = await store.loadMeta(path)
     expect(await store.getObjectText(meta.mirrorBlob!)).toBe('# Plan\n\nWritten.\n')
