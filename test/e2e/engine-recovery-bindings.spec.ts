@@ -15,7 +15,7 @@ test('engine rollback restores an existing document conversation link and Lead w
   scenario.env.STRATAMD_ENGINE_MODE = 'managed'; scenario.env.STRATAMD_ENGINE_BUNDLE = bundle
   try {
     await writeFile(join(bundle, 'runtime.json'), JSON.stringify({ ...manifest, version: manifest.version + '-bindings-old' }))
-    let page = await scenario.launch()
+    const page = await scenario.launch()
     await expect.poll(async () => (await page.evaluate(() => window.strata.getState()).catch(() => null))?.engine.managed?.state, { timeout: 20000 }).toBe('running')
     const state = await page.evaluate(() => window.strata.getState())
     const projectId = await page.evaluate(root => window.strata.createEngineProject({ title: 'Recovery fixture', workspaceRoot: root }), scenario.root)
@@ -23,12 +23,14 @@ test('engine rollback restores an existing document conversation link and Lead w
     const credential = JSON.parse(await readFile(join(data, 'engine-credential.json'), 'utf8'))
     const command = threadCreateCommand.parse({ type: 'thread.create', commandId: 'fixture-create', threadId: 'fixture-linked-thread', projectId, title: 'Linked conversation', modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: [] }, runtimeMode: 'approval-required', interactionMode: 'default', branch: null, worktreePath: null, createdAt: new Date().toISOString() })
     expect((await fetch(credential.server + '/api/orchestration/dispatch', { method: 'POST', headers: { authorization: `Bearer ${credential.accessToken}`, 'content-type': 'application/json' }, body: JSON.stringify(command) })).ok).toBe(true)
-    await scenario.stop()
+    // Closing with Save flushes metadata and removes the session before the fixture edits its stored binding.
+    expect(await page.evaluate(path => window.strata.closeDocument(path, 'save'), scenario.file)).toBe('closed')
     const store = new GhostStore({ dataDirectory: data }); await store.initialize()
     const meta = await store.loadMeta(scenario.file)
     await store.saveMeta({ ...meta, engineIdentity: state.engine.identity!, leadAgentId: 'fixture-linked-thread', attachments: { 'fixture-linked-thread': { id: 'fixture-linked-thread', name: 'Linked conversation', attachedAt: Date.now(), baselineBlob: meta.ghostBlob, segmentIndex: 0, cursor: 0, deliveries: [] } } })
+    await page.evaluate(path => window.strata.openDocument(path), scenario.file)
     await writeFile(join(bundle, 'runtime.json'), JSON.stringify({ ...manifest, version: manifest.version + '-bindings-new' }))
-    page = await scenario.launch()
+    await page.evaluate(() => window.strata.engineRecovery!({ action: 'update' }))
     await expect.poll(async () => (await page.evaluate(() => window.strata.getState()).catch(() => null))?.engine.managed?.version, { timeout: 20000 }).toContain('bindings-new')
     await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).activeDocument?.leadAgentId).toBe('fixture-linked-thread')
     await page.evaluate(path => window.strata.detachThread(path, 'fixture-linked-thread'), scenario.file)

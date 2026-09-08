@@ -4,12 +4,12 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Scenario } from './harness'
 
-test('This computer manages real pairing links, tray and login choices in an isolated stock environment @managed', async ({}, testInfo) => {
+test('This computer manages real pairing links and login choices in an isolated stock environment @managed', async ({}, testInfo) => {
   test.skip(!process.env.STRATAMD_ENGINE_BUNDLE, 'Requires the stock runtime')
   const scenario = await Scenario.create(testInfo, '# Connections stay separate\n')
   scenario.env.STRATAMD_ENGINE_MODE = 'managed'
   try {
-    let page = await scenario.launch()
+    const page = await scenario.launch()
     await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).engine.managed?.state, { timeout: 20000 }).toBe('running')
     await page.getByRole('button', { name: 'StrataMD menu' }).click()
     await page.getByRole('menuitem', { name: 'This computer', exact: true }).click()
@@ -38,6 +38,19 @@ test('This computer manages real pairing links, tray and login choices in an iso
     await dialog.getByRole('button', { name: 'Revoke link', exact: true }).click()
     await expect(dialog.getByLabel('New pairing link', { exact: true })).toHaveCount(0)
     await expect(dialog.getByText('This Strata session', { exact: false })).toBeVisible()
+  } finally { await scenario.stop(); await scenario.dispose() }
+})
+
+test('This computer persists the tray choice and stops its owned engine on window close @managed', async ({}, testInfo) => {
+  test.skip(!process.env.STRATAMD_ENGINE_BUNDLE, 'Requires the stock runtime')
+  const scenario = await Scenario.create(testInfo, '# Tray choice survives restart\n')
+  scenario.env.STRATAMD_ENGINE_MODE = 'managed'
+  try {
+    let page = await scenario.launch()
+    await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).engine.managed?.state, { timeout: 20000 }).toBe('running')
+    await page.getByRole('button', { name: 'StrataMD menu' }).click()
+    await page.getByRole('menuitem', { name: 'This computer', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'This computer' })
     await dialog.getByLabel('Keep running in the tray').uncheck()
     await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).settings.engine?.keepRunning).toBe(false)
     await scenario.stop()

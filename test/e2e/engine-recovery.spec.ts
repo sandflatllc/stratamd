@@ -14,12 +14,11 @@ test('restoring through This computer keeps newer document text and restores mat
   scenario.env.STRATAMD_ENGINE_BUNDLE = bundle
   try {
     await writeFile(join(bundle, 'runtime.json'), JSON.stringify({ ...manifest, version: manifest.version + '-ui-old' }))
-    let page = await scenario.launch()
+    const page = await scenario.launch()
     await expect.poll(async () => (await page.evaluate(() => window.strata.getState()).catch(() => null))?.engine.managed?.state, { timeout: 20000 }).toBe('running')
     await page.evaluate(() => window.strata.parkAccount('codex', true))
-    await scenario.stop()
     await writeFile(join(bundle, 'runtime.json'), JSON.stringify({ ...manifest, version: manifest.version + '-ui-new' }))
-    page = await scenario.launch()
+    await page.evaluate(() => window.strata.engineRecovery!({ action: 'update' }))
     await expect.poll(async () => (await page.evaluate(() => window.strata.getState()).catch(() => null))?.engine.managed?.version, { timeout: 30000 }).toContain('ui-new')
     // A stopped state during the transition can open the recovery dialog.
     const openDialog = page.getByRole('dialog', { name: 'This computer' })
