@@ -4,7 +4,9 @@ import { ConversationMessage } from './ConversationMessage'
 import { useConversationWorkspace } from './ConversationWorkspace'
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { EngineActivityView, EngineThreadView, EngineView, ItemView, VisualCommentView } from '../../shared/contracts'
+import type { EngineActivityView, EngineThreadView, EngineView, HeadingReference, ItemView, VisualCommentView } from '../../shared/contracts'
+import type { EditorSelection } from '../../editor'
+import type { MessageComment } from '../../core/conversation-delivery'
 import type { DraftAttachment } from '../conversationDrafts'
 import { changedFilesLabel, formatDelta, summarizeChangedFiles, type ChangedFileInput, type ChangedFileView } from '../../core/changed-files'
 import { deriveTurnFold, deriveWorkEntries, groupWorkRows, turnRows, type WorkEntry, type WorkGroupRow } from '../../core/work-log'
@@ -21,6 +23,19 @@ import { MessageMarkdown } from '../messageMarkdown'
 import { TranscriptImageDialog } from './TranscriptImageDialog'
 
 const AGENTS_COLLAPSED_KEY = 'conversation-agents-collapsed'
+const NO_ASKS: ItemView[] = []
+const NO_COMMENTS: MessageComment[] = []
+
+function groupBy<Item>(items: readonly Item[], key: (item: Item) => string | null): Map<string, Item[]> {
+  const groups = new Map<string, Item[]>()
+  for (const item of items) {
+    const id = key(item)
+    if (id === null) continue
+    const group = groups.get(id)
+    if (group) group.push(item); else groups.set(id, [item])
+  }
+  return groups
+}
 
 function activeThread(engine: EngineView): { thread: EngineThreadView; project: string; root: string | null } | null {
   for (const project of engine.projects) {
@@ -78,6 +93,16 @@ function elapsed(startedAt: string | null, now: number): string {
   const seconds = Math.max(0, Math.floor((now - Date.parse(startedAt)) / 1_000))
   if (seconds < 60) return `${seconds}s`
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+}
+
+/** A ticking label with its own one-second clock; only this element re-renders as time passes. */
+function ElapsedTime({ startedAt }: { startedAt: string | null }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000)
+    return () => window.clearInterval(timer)
+  }, [])
+  return <time>{elapsed(startedAt, now)}</time>
 }
 
 function openRequests(activities: EngineActivityView[], kind: 'approval' | 'user-input'): EngineActivityView[] {
@@ -225,6 +250,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
   const [expandedTurns, setExpandedTurns] = useState<Record<string, boolean>>({})
   const [dismissedReveal, setDismissedReveal] = useState<number | null>(null)
   const [expandedMessages, setExpandedMessages] = useState<Record<string, boolean>>({})
+  /** The agents dialog's clock; it ticks only while that dialog is open. */
   const [now, setNow] = useState(Date.now())
   /** The agent clusters fold behind their chevron (§6.9 Agents); the choice outlives the thread and the session. */
   const [agentsCollapsed, setAgentsCollapsed] = useState(() => engineStorage.getItem(AGENTS_COLLAPSED_KEY) === '1')
@@ -258,11 +284,6 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
     schedule()
     return () => { cancelAnimationFrame(frame); resize.disconnect(); viewport.removeEventListener('scroll', schedule) }
   }, [thread?.id, latestId, visible, engine.state])
-  useEffect(() => {
-    if (thread?.status !== 'running' && thread?.status !== 'starting') return
-    const timer = window.setInterval(() => setNow(Date.now()), 1_000)
-    return () => window.clearInterval(timer)
-  }, [thread?.status])
 
   // An in-session interrupt leaves its turn open so the reader keeps their place;
   // the next turn folds it, and so does a reload, since this is component state.
@@ -305,10 +326,11 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
     return new Set(agentRuns.filter((run) => run.activityIds.some((id) => entryIds.has(id))).map((run) => run.id))
   }, [workGroups, agentRuns])
   useEffect(() => {
-    if (!agentRuns.some((run) => run.state === 'working' || run.state === 'waiting')) return
+    if (!agentsDialog) return
+    setNow(Date.now())
     const timer = window.setInterval(() => setNow(Date.now()), 1_000)
     return () => window.clearInterval(timer)
-  }, [agentRuns])
+  }, [agentsDialog])
   const toggleAgents = () => setAgentsCollapsed((value) => { engineStorage.setItem(AGENTS_COLLAPSED_KEY, value ? '0' : '1'); return !value })
   /** Open the turn and the call group that hold the agent's spawn row, then bring that row into view. */
   const showAgentInTranscript = (run: AgentRun) => {
@@ -327,6 +349,25 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
   }
   const pendingInputs = userInputs.flatMap(activity => { const id = String(record(activity.payload).requestId ?? ''); return heldInputs.answers[id] ? [{ id, answers: heldInputs.answers[id]! }] : [] })
   const allItems = useMemo(() => thread ? [...items, ...(thread.items ?? []).filter(item => !isOwnerComment(item))] : [...items], [items, thread])
+  /** Per-message asks and comments, grouped once per list so an unchanged message keeps the same array between renders. */
+  const asksByMessage = useMemo(() => groupBy(thread?.items ?? [], (item) => item.inferred ? item.messageId ?? null : null), [thread?.items])
+  const commentsByMessage = useMemo(() => groupBy(thread?.comments ?? [], (comment) => comment.anchor.message), [thread?.comments])
+  const workspaceRef = useRef(workspace)
+  useLayoutEffect(() => { workspaceRef.current = workspace })
+  const messageCallbacks = useRef(new Map<string, { onFold(heading: HeadingReference, folded: boolean): void; onSelection(range: EditorSelection | null): void; onOpen(id: string): void }>())
+  const callbacksFor = (messageId: string) => {
+    let callbacks = messageCallbacks.current.get(messageId)
+    if (!callbacks) {
+      callbacks = {
+        onFold: (heading, folded) => workspaceRef.current.foldHeading(messageId, heading, folded),
+        onSelection: (range) => workspaceRef.current.select(messageId, range),
+        onOpen: (id) => workspaceRef.current.open(id, false),
+      }
+      messageCallbacks.current.set(messageId, callbacks)
+    }
+    return callbacks
+  }
+  useEffect(() => { messageCallbacks.current.clear() }, [thread?.id])
   /** Replies queued in the main process for this thread's message items; they ride the next Send. */
   const queuedCount = thread ? (thread.items ?? []).filter((item) => item.draftReply !== undefined).length : 0
 
@@ -378,7 +419,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
         const hasScan = !!thread.askScan && turn.messages.some(message => message.id === thread.askScan!.messageId)
         const changedFiles = thread.documents?.filter((file) => file.turnId === turn.turnId) ?? []
         /** While the turn runs, T3's header sits where Worked for will: after the request, before the first work or answer. */
-        const workingRow = turnRunning && !fold ? <div className="conversation-turn-fold" data-history-row><div className="conversation-working-row"><span className="working-pulse" aria-hidden="true" />Working for <time>{elapsed(thread.turnStartedAt, now)}</time></div></div> : null
+        const workingRow = turnRunning && !fold ? <div className="conversation-turn-fold" data-history-row><div className="conversation-working-row"><span className="working-pulse" aria-hidden="true" />Working for <ElapsedTime startedAt={thread.turnStartedAt} /></div></div> : null
         const headerIndex = timeline.findIndex((row) => row.kind === 'work' || row.message.role !== 'user')
         return <section className="conversation-turn" key={turn.id} data-running={turnRunning || undefined} data-folded={fold && !open ? '' : undefined}>
           {timeline.map((row, index) => {
@@ -410,7 +451,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
             const messageExpanded = expandedMessages[message.id] ?? false
             return <Fragment key={row.id}>{foldRow}<article className={`conversation-message ${message.role}`} data-history-row data-message-id={message.id} data-streaming={message.streaming || undefined} data-turn-trace={hidden || undefined}>
               <small>{message.role === 'assistant' ? 'Agent' : message.role === 'user' ? 'You' : 'System'}{message.role === 'user' && <span className="conversation-chip">{message.attachmentCount > 0 ? `${message.attachmentCount} attached` : 'Message'}</span>}{message.role === 'assistant' && <button type="button" className="conversation-copy" aria-label="Copy assistant message" onClick={() => onCopyText?.(prose)}>Copy</button>}</small>
-              <div className={longUserMessage && !messageExpanded ? 'conversation-user-collapsed' : undefined} data-annotatable={message.role === 'assistant' && !message.streaming || undefined} data-block-ids={blocks.map((block) => block.id).join(' ')}>{message.role === 'assistant' && !message.streaming ? <ConversationMessage message={message} asks={(thread.items ?? []).filter(item => item.inferred && item.messageId === message.id)} comments={(thread.comments ?? []).filter(comment => comment.anchor.message === message.id)} pinned={workspace.selection?.message === message.id || workspace.discussion?.anchor.message === message.id || workspace.answerMessage === message.id} target={workspace.target} root={selected.root} folds={workspace.folds(message.id)} onFold={(heading, folded) => workspace.foldHeading(message.id, heading, folded)} onSelection={range => workspace.select(message.id, range)} onOpen={id => workspace.open(id, false)} /> : <MessageMarkdown text={prose} />}</div>
+              <div className={longUserMessage && !messageExpanded ? 'conversation-user-collapsed' : undefined} data-annotatable={message.role === 'assistant' && !message.streaming || undefined} data-block-ids={blocks.map((block) => block.id).join(' ')}>{message.role === 'assistant' && !message.streaming ? <ConversationMessage message={message} asks={asksByMessage.get(message.id) ?? NO_ASKS} comments={commentsByMessage.get(message.id) ?? NO_COMMENTS} pinned={workspace.selection?.message === message.id || workspace.discussion?.anchor.message === message.id || workspace.answerMessage === message.id} target={workspace.target} root={selected.root} folds={workspace.folds(message.id)} {...callbacksFor(message.id)} /> : <MessageMarkdown text={prose} />}</div>
               {longUserMessage && <button type="button" className="conversation-message-toggle" aria-expanded={messageExpanded} onClick={() => setExpandedMessages((value) => ({ ...value, [message.id]: !messageExpanded }))}>{messageExpanded ? 'Show less' : 'Show more'}</button>}
               {message.role === 'user' && threadVisual.flatMap(comment => comment.revisions.filter(revision => revision.deliveryId === message.id).map(revision => <div className="conversation-sent-images" key={`${comment.id}:${revision.number}`}>
                 {(revision.images ?? []).map((url, index) => <button type="button" key={url} aria-label={`Inspect annotated image: ${revision.text || comment.title}`} onClick={() => onOpenVisual?.(comment.id)}><img src={url} alt={`Annotated image ${index + 1}: ${revision.text || comment.title}`} style={{ display: 'block', maxWidth: '100%', height: 'auto' }} /></button>)}

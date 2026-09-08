@@ -1,4 +1,4 @@
-import type { AppView, DocumentView } from './contracts'
+import type { AppView, DocumentView, EngineActivityView, EngineMessageView, EngineProjectView, EngineThreadView, EngineView } from './contracts'
 
 /**
  * One engine-to-window state update. Either a complete view (`full`) or a
@@ -21,7 +21,10 @@ export interface ViewUpdate {
     tabs?: AppView['tabs']
     explorer?: AppView['explorer']
     settings?: AppView['settings']
+    /** The whole engine section; used when there is no base to diff against. */
     engine?: AppView['engine']
+    /** The engine section as changes keyed by project, thread, and message id. */
+    engineDelta?: EngineDelta
     preview?: AppView['preview']
     activeDocument?: ActiveDocumentSection | null
   }
@@ -41,6 +44,146 @@ export interface ContentSplice {
 export interface ActiveDocumentSection {
   document: Omit<DocumentView, 'content'>
   content: { text: string } | { unchanged: true } | { splice: ContentSplice }
+}
+
+/**
+ * An engine update that carries only what changed since the base view. Thread
+ * bodies, messages, and activities travel when their JSON differs; everything
+ * else is referenced by id, and the window reuses its previous objects for
+ * those, so unchanged history keeps its identity through the renderer.
+ */
+export interface EngineDelta {
+  engine: Omit<EngineView, 'projects'>
+  projects: ProjectDelta[]
+}
+
+export interface ProjectDelta {
+  id: string
+  /** Absent when the project's own fields are unchanged since the base. */
+  project?: Omit<EngineProjectView, 'threads'>
+  threads: ThreadDelta[]
+}
+
+export interface ThreadDelta {
+  id: string
+  /** Absent when the thread's own fields are unchanged since the base. */
+  thread?: Omit<EngineThreadView, 'messages' | 'activities'>
+  /** Absent when the message list is unchanged since the base. */
+  messages?: ListDelta<EngineMessageView>
+  /** Absent when the activity list is unchanged since the base. */
+  activities?: ListDelta<EngineActivityView>
+}
+
+export interface ListDelta<Item extends { id: string }> {
+  /** The full order. */
+  ids: string[]
+  /** Items whose JSON differs from the base, or which are new. */
+  changed: Item[]
+}
+
+type ThreadBody = Omit<EngineThreadView, 'messages' | 'activities'>
+type ProjectBody = Omit<EngineProjectView, 'threads'>
+
+function threadBody(thread: EngineThreadView): ThreadBody {
+  const { messages: _messages, activities: _activities, ...body } = thread
+  return body
+}
+
+function projectBody(project: EngineProjectView): ProjectBody {
+  const { threads: _threads, ...body } = project
+  return body
+}
+
+function byId<Item extends { id: string }>(items: readonly Item[]): Map<string, Item> {
+  return new Map(items.map((item) => [item.id, item]))
+}
+
+function encodeList<Item extends { id: string }>(previous: readonly Item[] | undefined, next: readonly Item[]): ListDelta<Item> | undefined {
+  if (previous === next) return undefined
+  const previousById = previous ? byId(previous) : new Map<string, Item>()
+  const changed: Item[] = []
+  let sameOrder = previous !== undefined && previous.length === next.length
+  next.forEach((item, index) => {
+    const before = previousById.get(item.id)
+    if (!before || !sameJson(before, item)) changed.push(item)
+    if (sameOrder && previous![index]!.id !== item.id) sameOrder = false
+  })
+  if (sameOrder && changed.length === 0) return undefined
+  return { ids: next.map((item) => item.id), changed }
+}
+
+export function encodeEngineDelta(previous: EngineView, next: EngineView): EngineDelta {
+  const previousProjects = byId(previous.projects)
+  const previousThreads = byId(previous.projects.flatMap((project) => project.threads))
+  const { projects: _projects, ...engine } = next
+  return {
+    engine,
+    projects: next.projects.map((project) => {
+      const before = previousProjects.get(project.id)
+      const body = projectBody(project)
+      return {
+        id: project.id,
+        ...(before && sameJson(projectBody(before), body) ? {} : { project: body }),
+        threads: project.threads.map((thread) => {
+          const previousThread = previousThreads.get(thread.id)
+          const delta: ThreadDelta = { id: thread.id }
+          const nextBody = threadBody(thread)
+          if (!previousThread || !sameJson(threadBody(previousThread), nextBody)) delta.thread = nextBody
+          const messages = encodeList(previousThread?.messages, thread.messages)
+          if (messages) delta.messages = messages
+          const activities = encodeList(previousThread?.activities, thread.activities)
+          if (activities) delta.activities = activities
+          return delta
+        }),
+      }
+    }),
+  }
+}
+
+function applyList<Item extends { id: string }>(previous: readonly Item[] | undefined, delta: ListDelta<Item> | undefined): Item[] | null {
+  if (!delta) return previous ? [...previous] : null
+  const previousById = previous ? byId(previous) : new Map<string, Item>()
+  const changedById = byId(delta.changed)
+  const items: Item[] = []
+  for (const id of delta.ids) {
+    const item = changedById.get(id) ?? previousById.get(id)
+    if (!item) return null
+    items.push(item)
+  }
+  return items
+}
+
+/** Rebuilds the engine section, reusing every previous object the delta did not replace; null when the base does not hold what it references. */
+export function applyEngineDelta(previous: EngineView, delta: EngineDelta): EngineView | null {
+  const previousProjects = byId(previous.projects)
+  const previousThreads = byId(previous.projects.flatMap((project) => project.threads))
+  const projects: EngineProjectView[] = []
+  for (const projectDelta of delta.projects) {
+    const before = previousProjects.get(projectDelta.id)
+    const body = projectDelta.project ?? (before ? projectBody(before) : null)
+    if (!body) return null
+    const threads: EngineThreadView[] = []
+    let threadsChanged = !before || before.threads.length !== projectDelta.threads.length
+    for (const threadDelta of projectDelta.threads) {
+      const previousThread = previousThreads.get(threadDelta.id)
+      if (!threadDelta.thread && !threadDelta.messages && !threadDelta.activities) {
+        if (!previousThread) return null
+        threads.push(previousThread)
+        continue
+      }
+      threadsChanged = true
+      const threadBase = threadDelta.thread ?? (previousThread ? threadBody(previousThread) : null)
+      if (!threadBase) return null
+      const messages = applyList(previousThread?.messages, threadDelta.messages)
+      const activities = applyList(previousThread?.activities, threadDelta.activities)
+      if (!messages || !activities) return null
+      threads.push({ ...threadBase, messages, activities })
+    }
+    if (!threadsChanged && before) threadsChanged = before.threads.some((thread, index) => threads[index] !== thread)
+    if (before && !projectDelta.project && !threadsChanged) projects.push(before)
+    else projects.push({ ...body, threads })
+  }
+  return { ...delta.engine, projects }
 }
 
 /** Longest common prefix and suffix, so one edit region travels instead of the document. */
@@ -67,7 +210,7 @@ export function encodeViewUpdate(previous: SyncedView | null, seq: number, next:
   if (next.tabs !== previous.view.tabs) sections.tabs = next.tabs
   if (next.explorer !== previous.view.explorer) sections.explorer = next.explorer
   if (next.settings !== previous.view.settings) sections.settings = next.settings
-  if (next.engine !== previous.view.engine) sections.engine = next.engine
+  if (next.engine !== previous.view.engine) sections.engineDelta = encodeEngineDelta(previous.view.engine, next.engine)
   if (next.preview !== previous.view.preview) sections.preview = next.preview
   if (next.activeDocument !== previous.view.activeDocument) {
     if (next.activeDocument === null) {
@@ -119,11 +262,17 @@ export function applyViewUpdate(current: SyncedView | null, update: ViewUpdate):
       activeDocument = { ...section.document, content: current.view.activeDocument.content }
     }
   }
+  let engine = sections.engine ?? current.view.engine
+  if (sections.engineDelta !== undefined) {
+    const applied = applyEngineDelta(current.view.engine, sections.engineDelta)
+    if (applied === null) return { status: 'resync' }
+    engine = applied
+  }
   const view: AppView = {
     tabs: sections.tabs ?? current.view.tabs,
     explorer: sections.explorer ?? current.view.explorer,
     settings: sections.settings ?? current.view.settings,
-    engine: sections.engine ?? current.view.engine,
+    engine,
     preview: sections.preview ?? current.view.preview,
     activeDocument,
   }

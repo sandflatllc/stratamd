@@ -15,6 +15,8 @@ import type { ConversationHistory } from './ConversationHistory'
 import type { NavigationOutcome } from '../transcriptCoordinator'
 import type { ReadingAnchor } from '../transcriptAnchors'
 
+const NO_FOLDS: HeadingReference[] = []
+
 export function useConversationWorkspace(thread: EngineThreadView | undefined, onStart: (id: string, input: ConversationInput) => Promise<void>, panel: RefObject<HTMLElement | null>, visual: { comments: VisualCommentView[]; onOpen(id: string): void } = { comments: [], onOpen: () => undefined }, transcript?: RefObject<ConversationHistory | null>) {
   const [selection, setSelection] = useState<{ message: string; range: EditorSelection; id?: string } | null>(null)
   const [discussion, setDiscussion] = useState<string | null>(null)
@@ -29,6 +31,8 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   const [target, setTarget] = useState<PassageTarget | null>(null)
   const [excluded, setExcluded] = useState<string[]>([])
   const [reading, setReading] = useState<Record<string, string>>({})
+  /** Parsed fold lists by message, reused while the stored JSON is unchanged so history rows keep stable inputs. */
+  const foldCache = useRef(new Map<string, { raw: string; folds: HeadingReference[] }>())
   const [menu, setMenu] = useState<'items' | null>(null)
   const findField = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
@@ -241,7 +245,7 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
 
   return { navigate, selection, target, onNavigation, tools, tray, latestResponse: latestResponse?.id, jumpToLatest: () => { setMenu(null); if (latestResponse) jump(latestResponse.id, 0, 0, 'start') }, overlay: overlay ? createPortal(overlay, document.querySelector('.app-shell') ?? document.body) : null, discussion: activeComment, discussionView: <>{discussionView}{answerView}</>, answerMessage: replyRecord?.inferred ? replyRecord.messageId : null, open, setReplyItem: focusReply, outgoing, previewId, sent: () => setPreviewId(crypto.randomUUID()), selectedCount: selectedComments.length + Object.keys(selectedReplies).length,
     select: (message: string, range: EditorSelection | null) => { if (range) setSelection(previous => previous?.message === message && previous.range.from === range.from && previous.range.to === range.to ? previous : { message, range }) },
-    folds: (message: string): HeadingReference[] => { if (target?.message === message) return []; try { return JSON.parse(reading[`headings:${message}`] ?? '[]') } catch { return [] } },
+    folds: (message: string): HeadingReference[] => { if (target?.message === message) return NO_FOLDS; const raw = reading[`headings:${message}`] ?? '[]'; const cached = foldCache.current.get(message); if (cached?.raw === raw) return cached.folds; let folds: HeadingReference[]; try { folds = JSON.parse(raw) } catch { folds = [] }; foldCache.current.set(message, { raw, folds }); return folds },
     foldHeading: (message: string, heading: HeadingReference, folded: boolean) => { if (target?.message === message) setTarget(null); const previous: HeadingReference[] = JSON.parse(reading[`headings:${message}`] ?? '[]'); remember(`headings:${message}`, JSON.stringify([...previous.filter(value => JSON.stringify(value) !== JSON.stringify(heading)), ...(folded ? [heading] : [])])) },
     onKeyDown: (event: React.KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.key === 'f') { event.preventDefault(); event.stopPropagation(); findField.current?.focus(); findField.current?.select() } },
   }

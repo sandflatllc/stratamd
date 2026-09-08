@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AppView, DocumentView } from '../../src/shared/contracts'
 import { applyContentSplice, applyViewUpdate, encodeViewUpdate, isViewUpdate, sameJson, spliceContent, type SyncedView } from '../../src/shared/view-sync'
+import type { EngineMessageView, EngineThreadView, EngineView } from '../../src/shared/contracts'
 import { EMPTY_VIEW } from '../../src/renderer/model'
 
 function makeDocument(content: string, overrides: Partial<DocumentView> = {}): DocumentView {
@@ -163,5 +164,70 @@ describe('view sync protocol', () => {
     expect(isViewUpdate({ seq: 1 })).toBe(false)
     expect(isViewUpdate({ seq: 1, base: 0, sections: {} })).toBe(true)
     expect(isViewUpdate({ seq: 1, full: makeView() })).toBe(true)
+  })
+})
+
+function makeMessage(id: string, text: string): EngineMessageView {
+  return { id, role: 'assistant', text, turnId: 't1', streaming: false, createdAt: '2026-09-08T00:00:00Z', attachmentCount: 0 }
+}
+
+function makeThread(id: string, messages: EngineMessageView[], status: EngineThreadView['status'] = 'idle'): EngineThreadView {
+  return {
+    id, projectId: 'p1', title: `Thread ${id}`, model: 'm', providerInstanceId: 'i', effort: null, access: 'auto', status,
+    updatedAt: '2026-09-08T00:00:00Z', lastExchangeAt: '2026-09-08T00:00:00Z', unread: false, pendingApprovals: false, pendingUserInput: false,
+    activeTurnId: null, turnStartedAt: null, latestTurn: null, messages, activities: [], pinnedAt: null, snoozedUntil: null, lifecycle: 'active', archived: false, attention: 0, pendingWork: 0,
+  }
+}
+
+function makeEngine(threads: EngineThreadView[]): EngineView {
+  return { state: 'connected', server: 'http://engine', problem: null, credential: null, projects: [{ id: 'p1', title: 'Project', workspaceRoot: '/tmp/p1', threads }], activeThreadId: threads[0]?.id ?? null, accounts: [], terminalDefaults: {}, terminalShimDirectory: null }
+}
+
+describe('engine deltas', () => {
+  it('sends only changed threads and messages and keeps unchanged objects by identity', () => {
+    const messages = [makeMessage('m1', 'one'), makeMessage('m2', 'two')]
+    const first = makeView({ engine: makeEngine([makeThread('a', messages), makeThread('b', [makeMessage('m3', 'three')])]) })
+    const synced: SyncedView = { seq: 1, view: first }
+    const next = makeView({ engine: makeEngine([makeThread('a', [...messages, makeMessage('m4', 'four')], 'running'), makeThread('b', [makeMessage('m3', 'three')])]) })
+    const update = encodeViewUpdate(synced, 2, next, true)
+    const delta = update.sections!.engineDelta!
+    expect(update.sections!.engine).toBeUndefined()
+    expect(delta.projects[0]!.threads.map((thread) => ({ id: thread.id, body: !!thread.thread, messages: thread.messages?.changed.map((message) => message.id) }))).toEqual([
+      { id: 'a', body: true, messages: ['m4'] },
+      { id: 'b', body: false, messages: undefined },
+    ])
+    const applied = applyViewUpdate(synced, update)
+    expect(applied.status).toBe('applied')
+    if (applied.status !== 'applied') return
+    expect(sameJson(applied.synced.view, next)).toBe(true)
+    const [threadA, threadB] = applied.synced.view.engine.projects[0]!.threads
+    expect(threadB).toBe(synced.view.engine.projects[0]!.threads[1])
+    expect(threadA!.messages[0]).toBe(synced.view.engine.projects[0]!.threads[0]!.messages[0])
+    expect(threadA!.messages[1]).toBe(synced.view.engine.projects[0]!.threads[0]!.messages[1])
+    expect(threadA!.status).toBe('running')
+  })
+
+  it('carries edited, reordered, and removed messages and resyncs when the base lacks a referenced message', () => {
+    const first = makeView({ engine: makeEngine([makeThread('a', [makeMessage('m1', 'one'), makeMessage('m2', 'two'), makeMessage('m3', 'three')])]) })
+    const synced: SyncedView = { seq: 1, view: first }
+    const next = makeView({ engine: makeEngine([makeThread('a', [makeMessage('m3', 'three'), makeMessage('m1', 'one edited')])]) })
+    const update = encodeViewUpdate(synced, 2, next, true)
+    const list = update.sections!.engineDelta!.projects[0]!.threads[0]!.messages!
+    expect(list.ids).toEqual(['m3', 'm1'])
+    expect(list.changed.map((message) => message.id)).toEqual(['m1'])
+    const applied = applyViewUpdate(synced, update)
+    expect(applied.status === 'applied' && sameJson(applied.synced.view, next)).toBe(true)
+    const stale: SyncedView = { seq: 1, view: makeView({ engine: makeEngine([makeThread('a', [makeMessage('m1', 'one')])]) }) }
+    expect(applyViewUpdate(stale, update).status).toBe('resync')
+  })
+
+  it('reuses an unchanged project and adds and removes threads', () => {
+    const first = makeView({ engine: makeEngine([makeThread('a', [makeMessage('m1', 'one')])]) })
+    const synced: SyncedView = { seq: 1, view: first }
+    const unchanged = roundTrip(synced, makeView({ engine: { ...first.engine, activeThreadId: 'zzz' } }), 2)
+    expect(unchanged.view.engine.projects[0]).toBe(synced.view.engine.projects[0])
+    const next = makeView({ engine: makeEngine([makeThread('c', [])]) })
+    const replaced = roundTrip(unchanged, next, 3)
+    expect(replaced.view.engine.projects[0]!.threads.map((thread) => thread.id)).toEqual(['c'])
   })
 })
