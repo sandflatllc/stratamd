@@ -7,6 +7,12 @@ test('conversations keep the panel background, with an inline side header and no
   const scenario = await seededScenario(testInfo, engine.origin)
   try {
     const page = await scenario.launch()
+    // Exercise animated side panels explicitly; stock themes may choose solid backgrounds.
+    await page.evaluate(async () => {
+      await window.strata.createTheme('Animated panels', 'strata-vivid')
+      await window.strata.setThemeValue('effects.panel-style', 'glow-orbs')
+      await window.strata.setThemeValue('effects.side-window-style', 'animation')
+    })
     const editor = page.locator('main[data-pane="editor"]')
     const rail = page.locator('.navigation-rail')
     // Distinct colors catch a window-colored child covering the panel background.
@@ -52,7 +58,7 @@ test('conversations keep the panel background, with an inline side header and no
 
     // The theme's Open choice restores the original transparent reading area.
     await page.evaluate(async () => {
-      await window.strata.createTheme('Open conversation', 'strata-vivid')
+      await window.strata.createTheme('Open conversation', 'animated-panels')
       await window.strata.setThemeValue('surfaces.transcript-style', 'open')
     })
     await expect(center.locator('.conversation-messages')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')

@@ -143,7 +143,7 @@ import {
 } from '../core/state'
 import { parseMarkdown } from '../core/markdown'
 import { analyzeComponentNode, annotatedScreenshotData, type ComponentAstNode } from '../core/markdown/components'
-import { findMarkdownByIdentity, scanAndSeedExplorer, scanExplorer, type ExplorerScanResult } from './explorer'
+import { findMarkdownByIdentity, readExplorerRoots, scanAndSeedExplorer, scanExplorer, type ExplorerScanResult } from './explorer'
 import { readDiskState, readDocument, resolveAllowedLocalPath, resolveDocumentPath, saveDocumentWithHashCheck, seedGhostFromGit } from './files'
 import { IMAGE_HEADER_BYTES, imageDimensionsFromHeader } from './image-dimensions'
 import { readDraftStore, writeDraftStore } from './drafts'
@@ -365,6 +365,7 @@ export class StrataApplication implements StrataApi {
   readonly #tabs: SessionRegistry
   #settings: Settings = structuredClone(DEFAULT_SETTINGS)
   #explorer: ExplorerScanResult = { roots: [], files: [] }
+  #explorerScan: { controller: AbortController; done: Promise<void> } | null = null
   #shutdown: Promise<void> | null = null
   #lastView: AppView | null = null
 
@@ -489,7 +490,12 @@ export class StrataApplication implements StrataApi {
     await this.#loadActiveTheme(this.#settings.theme)
     await this.#relistThemes()
     if (this.#watch) await this.#watchThemes()
-    await this.refreshExplorer()
+    // Local references need the roots immediately; discovering every file must
+    // not hold up restoring documents or creating the window.
+    this.#explorer = { roots: await readExplorerRoots(this.#settings.explorerFolders), files: [] }
+    if (this.#settings.explorerFolders.length > 0) {
+      void this.refreshExplorer().catch(error => logError('explorer', 'Startup folder scan failed', error))
+    }
     return this
   }
 
@@ -728,6 +734,8 @@ export class StrataApplication implements StrataApi {
   }
 
   async #shutdownOnce(): Promise<void> {
+    this.#explorerScan?.controller.abort()
+    await this.#explorerScan?.done.catch(() => undefined)
     if (this.#themeRelistTimer) clearTimeout(this.#themeRelistTimer)
     this.#themeRelistTimer = null
     this.#flushThemeWrite()
@@ -2588,13 +2596,38 @@ export class StrataApplication implements StrataApi {
   async scanFolder(path: string): Promise<void> {
     const folders = [...new Set([...this.#settings.explorerFolders, resolve(path)])]
     if (folders.length !== this.#settings.explorerFolders.length) this.#settings = await this.#settingsStore.update({ explorerFolders: folders })
-    this.#explorer = await scanAndSeedExplorer(folders, this.#store)
-    this.#publish()
+    await this.#scanExplorer(true)
   }
 
-  async refreshExplorer(): Promise<void> {
-    this.#explorer = await scanExplorer(this.#settings.explorerFolders, { knownDocuments: await this.#store.listDocuments() })
-    this.#publish()
+  refreshExplorer(): Promise<void> {
+    return this.#scanExplorer(false)
+  }
+
+  #scanExplorer(seed: boolean): Promise<void> {
+    if (this.#shutdown) return Promise.resolve()
+    const previous = this.#explorerScan
+    previous?.controller.abort()
+    const controller = new AbortController()
+    const { signal } = controller
+    const folders = this.#settings.explorerFolders
+    const done = (async () => {
+      // A newer folder change cancels and drains the old scan, so stale results
+      // cannot put a removed folder back or race ghost creation.
+      await previous?.done.catch(() => undefined)
+      signal.throwIfAborted()
+      const scan = seed
+        ? await scanAndSeedExplorer(folders, this.#store, signal)
+        : await scanExplorer(folders, { knownDocuments: await this.#store.listDocuments(), signal })
+      signal.throwIfAborted()
+      this.#explorer = scan
+      this.#publish()
+    })().catch(error => {
+      if (!signal.aborted) throw error
+    }).finally(() => {
+      if (this.#explorerScan?.controller === controller) this.#explorerScan = null
+    })
+    this.#explorerScan = { controller, done }
+    return done
   }
 
   async forgetDocument(path: string): Promise<void> {

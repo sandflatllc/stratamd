@@ -42,12 +42,13 @@ async function until<T>(read: () => Promise<T> | T, ok: (value: T) => boolean, t
 }
 
 describe('themes in the application', () => {
-  it('starts on Strata Vivid, the default view, with every key resolved', async () => {
+  it('starts on Strata, the default view, with every key resolved', async () => {
     const { app } = await fixture()
     const { theme } = (await app.getState()).settings
-    expect(theme.active).toMatchObject({ id: 'strata-vivid', builtIn: true, missing: false, path: null })
-    expect(theme.active.values['document.bold']).toBe('#ffbe5c')
-    expect(theme.available.map((summary) => summary.id)).toEqual(['strata-vivid', 'strata-vivid-light', 'strata-night', 'strata-day'])
+    expect(theme.active).toMatchObject({ id: 'strata-night', name: 'Strata', builtIn: true, missing: false, path: null })
+    expect(theme.active.values['document.bold']).toBe('#ffcb7b')
+    expect(theme.available.map((summary) => summary.id)).toEqual(['strata-night', 'strata-vivid', 'strata-vivid-light', 'strata-day'])
+    expect(theme.available.map((summary) => summary.name)).toEqual(['Strata', 'Strata Vivid', 'Strata Light', 'Strata Mono'])
     expect(await app.listFonts()).toEqual(['Baloo 2', 'JetBrains Mono', 'Abel'])
   })
 
@@ -81,10 +82,10 @@ describe('themes in the application', () => {
     await expect(app.deleteTheme('strata-night')).rejects.toThrow(/ship with StrataMD/)
     // Deleting the active theme falls back to the built-in first.
     await app.deleteTheme(id)
-    expect((await app.getState()).settings.theme.active.id).toBe('strata-vivid')
-    expect((await settingsStore.load()).theme).toBe('strata-vivid')
+    expect((await app.getState()).settings.theme.active.id).toBe('strata-night')
+    expect((await settingsStore.load()).theme).toBe('strata-night')
     await expect(app.setThemeValue('document.bold', '#000000')).rejects.toThrow(/ship with StrataMD/)
-    expect(states.at(-1)!.settings.theme.available.map((summary) => summary.id)).toEqual(['strata-vivid', 'strata-vivid-light', 'strata-night', 'strata-day'])
+    expect(states.at(-1)!.settings.theme.available.map((summary) => summary.id)).toEqual(['strata-night', 'strata-vivid', 'strata-vivid-light', 'strata-day'])
   })
 
   it('reverts to a snapshot and lists broken files without applying them', async () => {
@@ -93,7 +94,7 @@ describe('themes in the application', () => {
     const snapshot = (await app.getState()).settings.theme.active.sparse
     await app.setThemeValue('surfaces.window', '#ffffff')
     await app.revertTheme(snapshot)
-    expect((await app.getState()).settings.theme.active.values['surfaces.window']).toBe('#07080c')
+    expect((await app.getState()).settings.theme.active.values['surfaces.window']).toBe('#000000')
     await app.flushThemeWrites()
 
     await writeFile(themeStore.pathFor('broken'), '{ nope')
@@ -102,7 +103,7 @@ describe('themes in the application', () => {
     expect(list.find((summary) => summary.id === 'broken')).toMatchObject({ broken: true })
     await app.selectTheme('broken')
     const active = (await app.getState()).settings.theme.active
-    expect(active.values['surfaces.window']).toBe('#0a0810')
+    expect(active.values['surfaces.window']).toBe('#000000')
     expect(active.problems[0]?.key).toBe('file')
   })
 

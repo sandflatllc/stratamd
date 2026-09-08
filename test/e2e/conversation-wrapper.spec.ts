@@ -50,7 +50,7 @@ test('opaque transcript meets the toolbar and clears the composer as it grows in
   } finally { await scenario.dispose(); await engine.close() }
 })
 
-test('transcript theme controls preview independently and persist layout, shadow, and colors', async ({}, testInfo) => {
+test('shared reading controls preview and persist document and transcript layout, shadow, and colors', async ({}, testInfo) => {
   const engine = await startEngine()
   const scenario = await seededScenario(testInfo, engine.origin)
   try {
@@ -60,19 +60,22 @@ test('transcript theme controls preview independently and persist layout, shadow
     const theme = page.getByRole('dialog', { name: 'Theme' })
     await theme.getByRole('button', { name: 'New from this' }).click()
     await theme.getByRole('button', { name: 'Surfaces' }).click()
-    const layout = theme.getByRole('combobox', { name: 'Transcript layout' })
-    const shadow = theme.getByRole('combobox', { name: 'Transcript shadow', exact: true })
-    const strength = theme.getByRole('slider', { name: 'Transcript shadow strength' })
+    const layout = theme.getByRole('combobox', { name: 'Reading panel layout' })
+    const shadow = theme.getByRole('combobox', { name: 'Reading panel shadow', exact: true })
+    const strength = theme.getByRole('slider', { name: 'Reading panel shadow strength' })
     await expect(strength).toHaveCount(0)
     await expect(shadow).toHaveValue('none')
     await shadow.selectOption('drop-shadow')
     await expect(strength).toHaveValue('1')
     await expect(strength).toHaveAttribute('aria-valuetext', '100%')
     await expect(layout).toHaveValue('panel')
+    const documentPanel = page.locator('.editor-scroll')
     await layout.selectOption('open')
     await expect(page.locator('.app-shell')).toHaveAttribute('data-transcript-style', 'open')
+    await expect(documentPanel).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+    await expect(documentPanel).toHaveCSS('box-shadow', 'none')
     await expect(strength).toHaveCount(0)
-    for (const [label, color] of [['Transcript background', '#203040'], ['Transcript border', '#607080'], ['Transcript shadow color', '#ff0000']]) {
+    for (const [label, color] of [['Reading panel background', '#203040'], ['Reading panel border', '#607080'], ['Reading panel shadow color', '#ff0000']]) {
       await theme.getByLabel(label!, { exact: true }).evaluate((element, value) => {
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(element, value)
         element.dispatchEvent(new Event('input', { bubbles: true }))
@@ -90,6 +93,9 @@ test('transcript theme controls preview independently and persist layout, shadow
     await expect(strength).toHaveAttribute('aria-valuetext', '300%')
     const strongRedShadow = /(?:color\(srgb 1 0 0\)|rgb\(255, 0, 0\)) 0px 24px 72px 8px/
     await expect(theme.locator('.theme-sample-transcript')).toHaveCSS('box-shadow', strongRedShadow)
+    await expect(documentPanel).toHaveCSS('background-color', 'rgb(32, 48, 64)')
+    await expect(documentPanel).toHaveCSS('border-top-color', 'rgb(96, 112, 128)')
+    await expect(documentPanel).toHaveCSS('box-shadow', strongRedShadow)
     const themePath = join(String(scenario.env.XDG_CONFIG_HOME), 'stratamd', 'themes', 'copy-of-strata-vivid.json')
     await expect.poll(async () => JSON.parse(await readFile(themePath, 'utf8')).surfaces).toMatchObject({ 'transcript-style': 'panel', transcript: '#203040', 'transcript-border': '#607080', 'transcript-shadow-style': 'drop-shadow', 'transcript-shadow': '#ff0000', 'transcript-shadow-strength': 3, panel: '#15141a' })
     await theme.getByRole('button', { name: 'Close theme panel' }).click()
@@ -114,12 +120,17 @@ test('transcript theme controls preview independently and persist layout, shadow
     await expect(restored.locator('.conversation-panel[data-placement="side"] .conversation-messages')).toHaveCSS('background-color', 'rgb(32, 48, 64)')
     const restoredHistory = restored.locator('.conversation-panel[data-placement="side"] .conversation-messages')
     await expect(restoredHistory).toHaveCSS('box-shadow', strongRedShadow)
+    await expect(restored.locator('.editor-scroll')).toHaveCSS('box-shadow', strongRedShadow)
+    await expect(restored.locator('.editor-scroll')).toHaveCSS('background-color', 'rgb(32, 48, 64)')
     await restored.evaluate(() => window.strata.setThemeValue('surfaces.transcript-style', 'open'))
     await expect(restored.locator('.conversation-panel[data-placement="side"] .conversation-messages')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
     await expect(restoredHistory).toHaveCSS('box-shadow', 'none')
+    await expect(restored.locator('.editor-scroll')).toHaveCSS('box-shadow', 'none')
+    await expect(restored.locator('.editor-scroll')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
     await restored.evaluate(() => window.strata.setThemeValue('surfaces.transcript-style', 'panel'))
     await expect(restoredHistory).toHaveCSS('box-shadow', strongRedShadow)
     await restored.evaluate(() => window.strata.setThemeValue('surfaces.transcript-shadow-style', 'none'))
     await expect(restoredHistory).toHaveCSS('box-shadow', 'none')
+    await expect(restored.locator('.editor-scroll')).toHaveCSS('box-shadow', 'none')
   } finally { await scenario.dispose(); await engine.close() }
 })

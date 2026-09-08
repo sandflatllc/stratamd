@@ -21,15 +21,18 @@ afterEach(async () => {
 })
 
 describe('explorer scanning', () => {
-  it('honors gitignore, skips node_modules, follows symlinks safely, and deduplicates overlaps', async () => {
+  it('includes Git-ignored plans, skips dependency and Git internals, and deduplicates symlinks and overlaps', async () => {
     const root = await temporaryDirectory()
     await run('git', ['init', '-q', root])
-    await writeFile(join(root, '.gitignore'), 'ignored.md\nnested/private.markdown\n')
+    await writeFile(join(root, '.gitignore'), 'ignored.md\nnested/private.markdown\nplans/\n')
     await mkdir(join(root, 'nested'))
+    await mkdir(join(root, 'plans'))
     await mkdir(join(root, 'node_modules'))
     await Promise.all([
       writeFile(join(root, 'visible.md'), ''),
       writeFile(join(root, 'ignored.md'), ''),
+      writeFile(join(root, 'plans', 'next.md'), '# Next plan'),
+      writeFile(join(root, '.git', 'internal.md'), ''),
       writeFile(join(root, 'notes.txt'), ''),
       writeFile(join(root, 'nested', 'visible.markdown'), ''),
       writeFile(join(root, 'nested', 'private.markdown'), ''),
@@ -40,7 +43,10 @@ describe('explorer scanning', () => {
 
     const result = await scanExplorer([root, join(root, 'nested')])
     expect(result.files.map((file) => file.path)).toEqual([
+      join(root, 'ignored.md'),
+      join(root, 'nested', 'private.markdown'),
       join(root, 'nested', 'visible.markdown'),
+      join(root, 'plans', 'next.md'),
       join(root, 'visible.md'),
     ])
     expect(result.files.find((file) => file.path.endsWith('visible.md'))?.displayPath).toBe(
@@ -68,10 +74,11 @@ describe('explorer scanning', () => {
     await run('git', ['-C', root, 'commit', '-qm', 'tracked'])
     await writeFile(tracked, 'working\n')
     await writeFile(untracked, 'new\n')
+    await writeFile(join(root, '.gitignore'), 'untracked.md\n')
     await writeFile(invalid, Buffer.from([0x80]))
 
     // Git plays no part in Scan seeding (PRD §6.3): a tracked file with
-    // uncommitted edits and an untracked file both seed from disk content.
+    // uncommitted edits and a Git-ignored file both seed from disk content.
     const store = new GhostStore({ dataDirectory: join(root, '.data') })
     const result = await scanAndSeedExplorer([root], store)
     expect(result.seeded).toEqual([tracked, untracked])

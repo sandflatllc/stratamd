@@ -56,7 +56,7 @@ describe('settings', () => {
       explorerFolders: ['./one', './one'],
     })
     expect(settings.formatVersion).toBe(2)
-    expect(settings.theme).toBe('strata-vivid')
+    expect(settings.theme).toBe('strata-night')
     expect(settings.panels).toMatchObject({ explorerWidth: 900, rightRailWidth: 240, documentMeasure: 1600 })
     expect(settings.explorerFolders).toHaveLength(1)
   })
@@ -92,10 +92,10 @@ describe('settings', () => {
     expect(restarted.theme).toBe('dusk-warm')
     expect(restarted.panels.themePanel).toEqual({ x: 40, y: 20_000, width: 300, height: 700 })
     const legacy = normalizeSettings({ theme: 'dark', font: 'Nunito', annotationColors: { user: '#102030' } }) as unknown as Record<string, unknown>
-    expect(legacy.theme).toBe('strata-vivid')
+    expect(legacy.theme).toBe('strata-night')
     expect(legacy).not.toHaveProperty('font')
     expect(legacy).not.toHaveProperty('annotationColors')
-    expect(normalizeSettings({ theme: 'Not A Slug' }).theme).toBe('strata-vivid')
+    expect(normalizeSettings({ theme: 'Not A Slug' }).theme).toBe('strata-night')
   })
 
   it('preserves newer settings aside and falls back to defaults', async () => {

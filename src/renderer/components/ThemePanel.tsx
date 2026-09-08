@@ -331,7 +331,7 @@ function ChromeStrip({ highlight }: { highlight: string | null }) {
   return (
     <div className="theme-chrome island" {...sample('surfaces-panel')}>
       <AmbientDecor variant="agents" />
-      <span className="theme-sample-chip theme-sample-transcript" {...sample('surfaces-transcript')} style={{ background: 'var(--surfaces-transcript)', border: '1px solid var(--surfaces-transcript-border)', color: 'var(--document-body)' }}><span {...sample('surfaces-transcript-shadow')}><span {...sample('surfaces-transcript-border')}>transcript</span></span></span>
+      <span className="theme-sample-chip theme-sample-transcript" {...sample('surfaces-transcript')} style={{ background: 'var(--surfaces-transcript)', border: '1px solid var(--surfaces-transcript-border)', color: 'var(--document-body)' }}><span {...sample('surfaces-transcript-shadow')}><span {...sample('surfaces-transcript-border')}>reading panel</span></span></span>
       <span className="annotation-chip" {...sample('people-you')} style={{ color: 'var(--people-you)', background: 'color-mix(in srgb, var(--people-you) 20%, transparent)' }}>you</span>
       {[1, 2, 3, 4].map((slot) => <span className="agent-avatar" {...sample(`people-agent-${slot}`)} style={{ background: `var(--people-agent-${slot})`, color: `var(--people-agent-${slot}-text)` }} key={slot}>A{slot}</span>)}
       <span className="annotation-chip" {...sample('people-external')} style={{ color: 'var(--people-external)', background: 'color-mix(in srgb, var(--people-external) 25%, transparent)' }}>outside</span>

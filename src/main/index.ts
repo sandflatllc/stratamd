@@ -1,3 +1,4 @@
+import { DEFAULT_THEME_VALUES } from '../shared/bundled-themes'
 import { isAppRootNavigation } from './local-link'
 import { assertSupportedPlatform } from '../platform/runtime'
 import { createLoginRegistration } from './start-at-login'
@@ -195,7 +196,7 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
       minHeight: 640,
       show: false,
       ...windowFrameOptions(),
-      backgroundColor: String(initialState.settings.theme.active.values['surfaces.window'] ?? '#0a0810'),
+      backgroundColor: String(initialState.settings.theme.active.values['surfaces.window'] ?? DEFAULT_THEME_VALUES['surfaces.window']),
       webPreferences: {
         preload: preloadPath,
         contextIsolation: true,

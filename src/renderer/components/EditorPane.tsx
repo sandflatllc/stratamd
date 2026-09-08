@@ -180,7 +180,7 @@ export function EditorPane(props: EditorPaneProps) {
   const activeAnnotationId = selectedAnnotation?.status === 'open' && selectedAnnotation.anchor !== 'document' ? selectedAnnotation.id : null
   useEffect(() => { editor.current?.setActiveAnnotation?.(activeAnnotationId) }, [activeAnnotationId])
   return (
-    <main className="editor-island island" data-pane="editor" style={{ '--zoom': props.zoom } as CSSProperties}>
+    <main className="editor-island island" data-pane="editor" style={{ '--zoom': props.zoom, '--document-measure': `${props.documentMeasure}px` } as CSSProperties}>
       <AmbientDecor variant="editor" />
       <Toolbar source={document.sourceMode} sourceOnly={document.sourceOnly} readOnly={document.readOnly} dirty={document.dirty} onCommand={command} onToggleSource={() => props.onToggleSource(!document.sourceMode)} onSave={props.onSave} />
       {find.open && (

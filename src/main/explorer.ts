@@ -1,6 +1,5 @@
-import { spawn } from 'node:child_process'
 import { lstat, readdir, realpath, stat } from 'node:fs/promises'
-import { basename, dirname, extname, relative, resolve, sep } from 'node:path'
+import { basename, extname, relative, resolve, sep } from 'node:path'
 import { GhostStore } from './storage'
 import { readDocument } from './files'
 
@@ -28,6 +27,7 @@ export interface ExplorerScanResult {
 export interface ExplorerScanOptions {
   readonly knownDocuments?: readonly { readonly realpath: string }[]
   readonly includeMissing?: boolean
+  readonly signal?: AbortSignal
 }
 
 export interface ExplorerSeedResult extends ExplorerScanResult {
@@ -57,49 +57,11 @@ function isWithin(path: string, root: string): boolean {
   return offset === '' || (offset !== '..' && !offset.startsWith(`..${sep}`))
 }
 
-async function gitRootFor(path: string): Promise<string | undefined> {
-  return new Promise((resolvePromise, reject) => {
-    const child = spawn('git', ['-C', path, 'rev-parse', '--show-toplevel'], {
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-    const chunks: Buffer[] = []
-    child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk))
-    child.on('error', (error) => {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') resolvePromise(undefined)
-      else reject(error)
-    })
-    child.on('close', (code) => {
-      if (code !== 0) resolvePromise(undefined)
-      else resolvePromise(Buffer.concat(chunks).toString('utf8').trimEnd())
-    })
-  })
-}
-
-async function ignoredPaths(gitRoot: string, paths: readonly string[]): Promise<Set<string>> {
-  if (paths.length === 0) return new Set()
-  return new Promise((resolvePromise, reject) => {
-    const child = spawn('git', ['-C', gitRoot, 'check-ignore', '--stdin', '-z'], {
-      stdio: ['pipe', 'pipe', 'ignore'],
-    })
-    const chunks: Buffer[] = []
-    child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk))
-    child.on('error', reject)
-    child.on('close', (code) => {
-      if (code !== 0 && code !== 1) {
-        reject(new Error(`git check-ignore exited with status ${String(code)}`))
-        return
-      }
-      const output = Buffer.concat(chunks).toString('utf8')
-      resolvePromise(new Set(output.split('\0').filter(Boolean)))
-    })
-    child.stdin.end(`${paths.join('\0')}\0`)
-  })
-}
-
-async function walkRoot(root: string, seenDirectories: Set<string>): Promise<CandidateFile[]> {
+async function walkRoot(root: string, seenDirectories: Set<string>, signal?: AbortSignal): Promise<CandidateFile[]> {
   const files: CandidateFile[] = []
 
   async function walk(logicalDirectory: string): Promise<void> {
+    signal?.throwIfAborted()
     let canonicalDirectory: string
     try {
       canonicalDirectory = await realpath(logicalDirectory)
@@ -115,11 +77,12 @@ async function walkRoot(root: string, seenDirectories: Set<string>): Promise<Can
     const entries = await readdir(logicalDirectory, { withFileTypes: true })
     entries.sort((left, right) => left.name.localeCompare(right.name))
     for (const entry of entries) {
+      signal?.throwIfAborted()
       if (entry.name === 'node_modules' || entry.name === '.git') continue
       const displayPath = resolve(logicalDirectory, entry.name)
       let entryStat
       try {
-        entryStat = entry.isSymbolicLink() ? await stat(displayPath) : await lstat(displayPath)
+        entryStat = entry.isSymbolicLink() ? await stat(displayPath) : entry
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
         throw error
@@ -129,8 +92,12 @@ async function walkRoot(root: string, seenDirectories: Set<string>): Promise<Can
         continue
       }
       if (!entryStat.isFile() || !isMarkdownPath(entry.name)) continue
-      const path = await realpath(displayPath)
-      files.push({ path, displayPath, root, relativePath: relative(root, displayPath) })
+      try {
+        const path = await realpath(displayPath)
+        files.push({ path, displayPath, root, relativePath: relative(root, displayPath) })
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
     }
   }
 
@@ -138,47 +105,12 @@ async function walkRoot(root: string, seenDirectories: Set<string>): Promise<Can
   return files
 }
 
-async function removeGitIgnored(candidates: readonly CandidateFile[]): Promise<CandidateFile[]> {
-  const groups = new Map<string, CandidateFile[]>()
-  const outsideGit: CandidateFile[] = []
-  const rootCache = new Map<string, Promise<string | undefined>>()
-
-  for (const candidate of candidates) {
-    const searchDirectory = dirname(candidate.displayPath)
-    let rootPromise = rootCache.get(searchDirectory)
-    if (!rootPromise) {
-      rootPromise = gitRootFor(searchDirectory)
-      rootCache.set(searchDirectory, rootPromise)
-    }
-    const gitRoot = await rootPromise
-    if (!gitRoot || !isWithin(candidate.displayPath, gitRoot)) {
-      outsideGit.push(candidate)
-      continue
-    }
-    const group = groups.get(gitRoot) ?? []
-    group.push(candidate)
-    groups.set(gitRoot, group)
-  }
-
-  const visible = [...outsideGit]
-  for (const [gitRoot, group] of groups) {
-    const relativePaths = group.map((candidate) => relative(gitRoot, candidate.displayPath).split(sep).join('/'))
-    const ignored = await ignoredPaths(gitRoot, relativePaths)
-    group.forEach((candidate, index) => {
-      if (!ignored.has(relativePaths[index]!)) visible.push(candidate)
-    })
-  }
-  return visible
-}
-
-export async function scanExplorer(
-  folders: readonly string[],
-  options: ExplorerScanOptions = {},
-): Promise<ExplorerScanResult> {
+/** Resolve the small folder allowlist without walking its contents. */
+export async function readExplorerRoots(folders: readonly string[], signal?: AbortSignal): Promise<ExplorerRoot[]> {
   const roots: ExplorerRoot[] = []
-  const canonicalRoots: string[] = []
   const rootIdentity = new Set<string>()
   for (const configuredPath of folders) {
+    signal?.throwIfAborted()
     const configured = resolve(configuredPath)
     try {
       const path = await realpath(configured)
@@ -188,7 +120,6 @@ export async function scanExplorer(
       } else if (!rootIdentity.has(path)) {
         rootIdentity.add(path)
         roots.push({ path, configuredPath, missing: false })
-        canonicalRoots.push(path)
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
@@ -196,14 +127,24 @@ export async function scanExplorer(
     }
   }
 
+  signal?.throwIfAborted()
+  return roots
+}
+
+export async function scanExplorer(
+  folders: readonly string[],
+  options: ExplorerScanOptions = {},
+): Promise<ExplorerScanResult> {
+  const roots = await readExplorerRoots(folders, options.signal)
+  const canonicalRoots = roots.filter(root => !root.missing).map(root => root.path)
   // Sharing this set detects both symlink cycles and overlapping roots.
   const seenDirectories = new Set<string>()
   const candidates: CandidateFile[] = []
-  for (const root of canonicalRoots) candidates.push(...await walkRoot(root, seenDirectories))
-  const visible = await removeGitIgnored(candidates)
+  for (const root of canonicalRoots) candidates.push(...await walkRoot(root, seenDirectories, options.signal))
+  options.signal?.throwIfAborted()
 
   const filesByIdentity = new Map<string, ExplorerFile>()
-  for (const file of visible) {
+  for (const file of candidates) {
     const existing = filesByIdentity.get(file.path)
     if (existing) {
       const existingIsDirect = existing.displayPath === existing.path
@@ -218,6 +159,7 @@ export async function scanExplorer(
 
   if (options.includeMissing !== false) {
     for (const document of options.knownDocuments ?? []) {
+      options.signal?.throwIfAborted()
       if (filesByIdentity.has(document.realpath)) continue
       if (!canonicalRoots.some((root) => isWithin(document.realpath, root))) continue
       try {
@@ -246,10 +188,8 @@ export async function scanExplorer(
 export const scanExplorerFolders = scanExplorer
 
 /**
- * Locates one already-open Markdown file by filesystem identity. Unlike an
- * explorer refresh, this intentionally does not apply .gitignore: moving an
- * open session into an ignored path must not detach it. Multiple hard links
- * are ambiguous, so this returns null instead of guessing.
+ * Locates one already-open Markdown file by filesystem identity. Multiple
+ * hard links are ambiguous, so this returns null instead of guessing.
  */
 export async function findMarkdownByIdentity(
   folders: readonly string[],
@@ -285,13 +225,16 @@ export async function findMarkdownByIdentity(
 export async function scanAndSeedExplorer(
   folders: readonly string[],
   store: GhostStore,
+  signal?: AbortSignal,
 ): Promise<ExplorerSeedResult> {
+  signal?.throwIfAborted()
   const knownDocuments = await store.listDocuments()
-  const scan = await scanExplorer(folders, { knownDocuments })
+  const scan = await scanExplorer(folders, { knownDocuments, ...(signal ? { signal } : {}) })
   const seeded: string[] = []
   const skippedInvalidUtf8: string[] = []
 
   for (const file of scan.files) {
+    signal?.throwIfAborted()
     if (file.missing || await store.hasDocument(file.path)) continue
     const current = await readDocument(file.path)
     if (!current.validUtf8) {

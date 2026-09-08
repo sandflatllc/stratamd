@@ -194,7 +194,7 @@ export class Scenario {
     }, testInfo)
   }
 
-  /** Tests run on the shipped default, Strata Vivid, unless they choose a theme. */
+  /** Tests use a fixed Strata Vivid fixture unless they choose a theme. */
   async writeSettings(settings: Record<string, unknown>): Promise<void> {
     const path = join(String(this.env.XDG_CONFIG_HOME), 'stratamd/settings.json')
     await mkdir(dirname(path), { recursive: true })

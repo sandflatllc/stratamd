@@ -42,7 +42,7 @@ export interface LoadedTheme {
   readonly set: readonly string[]
 }
 
-// The built-in Strata Vivid theme is a complete stock definition like the rest: its
+// The built-in Strata theme is a complete stock definition like the rest: its
 // sparse form carries every value, so New from this copies all of them.
 export const BUILT_IN_THEME: LoadedTheme = Object.freeze({
   id: BUILT_IN_THEME_ID,
@@ -75,7 +75,7 @@ function isThemeId(value: string): boolean {
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
 }
 
-/** Read-only themes that ship with the app: built-in Strata Vivid plus the three bundled alternatives. */
+/** Read-only themes that ship with the app: built-in Strata plus the three bundled alternatives. */
 export function isShippedThemeId(id: string): boolean {
   return id === BUILT_IN_THEME_ID || BUNDLED_THEMES.has(id)
 }

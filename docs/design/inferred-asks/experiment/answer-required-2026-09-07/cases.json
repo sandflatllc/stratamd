@@ -1,0 +1,92 @@
+[
+  {
+    "id": "restart-instruction",
+    "text": "Done. Your launcher and `stratamd` shortcut now point to the new build. Quit Strata fully, then reopen it from your usual launcher.",
+    "expected": []
+  },
+  {
+    "id": "setup-steps",
+    "text": "The installer is ready. Download the archive, extract it, and run the installer. Open Settings and select the new profile.",
+    "expected": []
+  },
+  {
+    "id": "polite-action",
+    "text": "The new build is installed. Could you restart the app?",
+    "expected": []
+  },
+  {
+    "id": "verify-without-report",
+    "text": "The fix is ready. Run the checks, open the preview, and verify that the sidebar is visible.",
+    "expected": []
+  },
+  {
+    "id": "confirmation-button",
+    "text": "Click Confirm to finish the installation, then close the setup window.",
+    "expected": []
+  },
+  {
+    "id": "reported-result",
+    "text": "I restarted the app and confirmed the issue is gone. The setup is complete.",
+    "expected": []
+  },
+  {
+    "id": "instruction-and-decision",
+    "text": "Restart the app to load the new build. Should the sidebar open automatically or stay closed?",
+    "expected": [
+      {
+        "id": "instruction-and-decision-1",
+        "anchor": "Should the sidebar open automatically or stay closed?"
+      }
+    ]
+  },
+  {
+    "id": "imperative-preference",
+    "text": "Tell me whether you prefer tabs or spaces.",
+    "expected": [
+      {
+        "id": "imperative-preference-1",
+        "anchor": "Tell me whether you prefer tabs or spaces."
+      }
+    ]
+  },
+  {
+    "id": "restart-approval",
+    "text": "Should I restart Strata now?",
+    "expected": [
+      {
+        "id": "restart-approval-1",
+        "anchor": "Should I restart Strata now?"
+      }
+    ]
+  },
+  {
+    "id": "explicit-result",
+    "text": "Restart Strata and tell me whether the issue persists.",
+    "expected": [
+      {
+        "id": "explicit-result-1",
+        "anchor": "tell me whether the issue persists."
+      }
+    ]
+  },
+  {
+    "id": "requested-evidence",
+    "text": "Please send a screenshot of the error so I can see which step failed.",
+    "expected": [
+      {
+        "id": "requested-evidence-1",
+        "anchor": "Please send a screenshot of the error so I can see which step failed."
+      }
+    ]
+  },
+  {
+    "id": "result-question",
+    "text": "Did restarting clear the issue?",
+    "expected": [
+      {
+        "id": "result-question-1",
+        "anchor": "Did restarting clear the issue?"
+      }
+    ]
+  }
+]

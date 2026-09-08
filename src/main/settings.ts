@@ -1,3 +1,4 @@
+import { DEFAULT_THEME_ID } from '../shared/bundled-themes'
 import { join, resolve } from 'node:path'
 import { readFile, rename } from 'node:fs/promises'
 import { getConfigDirectory as getPlatformConfigDirectory } from '../platform/paths.js'
@@ -54,7 +55,7 @@ export const ZOOM_STEP = 0.1
 
 export interface Settings {
   readonly formatVersion: typeof CURRENT_SETTINGS_VERSION
-  /** Active theme id (PRD §6.13). Strata Vivid is the default and built-in fallback. */
+  /** Active theme id (PRD §6.13). Strata is the default and built-in fallback. */
   readonly theme: string
   readonly keepResolvedAnnotations: boolean
   readonly explorerFolders: readonly string[]
@@ -77,7 +78,7 @@ export interface SettingsStoreOptions {
 
 export const DEFAULT_SETTINGS: Settings = Object.freeze({
   formatVersion: CURRENT_SETTINGS_VERSION,
-  theme: 'strata-vivid',
+  theme: DEFAULT_THEME_ID,
   keepResolvedAnnotations: true,
   explorerFolders: Object.freeze([]),
   panels: Object.freeze({

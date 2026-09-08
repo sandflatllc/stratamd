@@ -3,7 +3,7 @@
 // variable, and `stratamd theme` prints each key with its description. The
 // table owns labels, descriptions, kinds, grouping, ranges, and highlight
 // metadata; the values themselves live in the stock definitions in
-// bundled-themes.ts, with Strata Vivid as the runtime default.
+// bundled-themes.ts, with Strata as the runtime default.
 
 import { DEFAULT_THEME_ID, DEFAULT_THEME_NAME, DEFAULT_THEME_VALUES } from './bundled-themes'
 
@@ -78,12 +78,12 @@ export const THEME_KEYS: readonly ThemeKeyEntry[] = Object.freeze([
   color('surfaces.field', 'Text field background', 'The full chat input box, including its model controls, plus annotation, reply, send, rename, and other text-entry fields'),
   color('surfaces.code', 'Code and preview background', 'Boxes behind code, source previews, image placeholders, and delivery previews'),
   color('surfaces.border', 'Borders and rules', 'Panel borders, input borders, dividers, scrollbars, and horizontal rules'),
-  { key: 'surfaces.transcript-style', group: 'surfaces', variable: '--surfaces-transcript-style', label: 'Transcript layout', description: 'Wrap the conversation in an opaque panel, or leave it open over the background', kind: 'style', sample: 'surfaces-transcript', options: [{ id: 'panel', label: 'Opaque panel' }, { id: 'open', label: 'Open' }] },
-  color('surfaces.transcript', 'Transcript background', 'The opaque reading panel around conversation messages, separate from the composer'),
-  color('surfaces.transcript-border', 'Transcript border', 'The edge of the conversation reading panel'),
-  { key: 'surfaces.transcript-shadow-style', group: 'surfaces', variable: '--surfaces-transcript-shadow-style', label: 'Transcript shadow', description: 'Add a soft drop shadow around the opaque transcript panel; has no effect with Open layout', kind: 'style', sample: 'surfaces-transcript-shadow', options: [{ id: 'none', label: 'None' }, { id: 'drop-shadow', label: 'Drop shadow' }] },
-  { key: 'surfaces.transcript-shadow-strength', group: 'surfaces', variable: '--surfaces-transcript-shadow-strength', label: 'Transcript shadow strength', description: 'Make the shadow wider and darker: 0% hides it, 100% is the original size, and 300% is strongest. Applies to Drop shadow with Opaque panel layout.', kind: 'range', min: 0, max: 3, step: 0.05, unit: 'percent', sample: 'surfaces-transcript-shadow' },
-  color('surfaces.transcript-shadow', 'Transcript shadow color', 'The drop shadow around the opaque transcript panel, separate from its background and border'),
+  { key: 'surfaces.transcript-style', group: 'surfaces', variable: '--surfaces-transcript-style', label: 'Reading panel layout', description: 'Wrap documents and conversation transcripts in opaque panels, or leave both open over the background', kind: 'style', sample: 'surfaces-transcript', options: [{ id: 'panel', label: 'Opaque panel' }, { id: 'open', label: 'Open' }] },
+  color('surfaces.transcript', 'Reading panel background', 'The shared opaque background behind documents and conversation transcripts, separate from the composer'),
+  color('surfaces.transcript-border', 'Reading panel border', 'The shared edge color of document and conversation reading panels'),
+  { key: 'surfaces.transcript-shadow-style', group: 'surfaces', variable: '--surfaces-transcript-shadow-style', label: 'Reading panel shadow', description: 'Add a soft drop shadow around opaque document and conversation reading panels; has no effect with Open layout', kind: 'style', sample: 'surfaces-transcript-shadow', options: [{ id: 'none', label: 'None' }, { id: 'drop-shadow', label: 'Drop shadow' }] },
+  { key: 'surfaces.transcript-shadow-strength', group: 'surfaces', variable: '--surfaces-transcript-shadow-strength', label: 'Reading panel shadow strength', description: 'Make the shadow wider and darker: 0% hides it, 100% is the original size, and 300% is strongest. Applies to Drop shadow with Opaque panel layout.', kind: 'range', min: 0, max: 3, step: 0.05, unit: 'percent', sample: 'surfaces-transcript-shadow' },
+  color('surfaces.transcript-shadow', 'Reading panel shadow color', 'The drop shadow around opaque document and conversation reading panels, separate from its background and border'),
   color('surfaces.overlay', 'Popover and toast background', 'The selection menu, active tab, and toasts; their text color is chosen automatically'),
 
   color('interface.primary', 'Titles and active labels', 'Panel headings, active labels, menu text, and other prominent app text'),

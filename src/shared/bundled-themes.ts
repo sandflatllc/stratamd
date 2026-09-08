@@ -2,7 +2,7 @@ import type { SparseTheme, ThemeValues } from './theme-keys'
 
 // The four stock themes (PRD §6.13). Each definition chooses every one of the
 // color swatches and all non-color values explicitly — a stock theme
-// never inherits a value from Strata Vivid, so changing the default can never
+// never inherits a value from Strata, so changing the default can never
 // silently restyle another stock theme. Equal hex values within a definition
 // are deliberate. `New from this` copies a stock theme with every value, while
 // user files stay sparse.
@@ -21,8 +21,7 @@ export interface StockTheme {
 
 const STRATA_VIVID: StockTheme = {
   name: 'Strata Vivid',
-  // Near-black purple panels, white body text, and a saturated hue for every
-  // text kind. Rising motes behind the app, glow orbs inside the panels.
+  // Promoted from the owner's saved theme on 2026-09-07.
   values: Object.freeze({
     'fonts.text': 'Baloo 2',
     'fonts.code': 'JetBrains Mono',
@@ -87,26 +86,24 @@ const STRATA_VIVID: StockTheme = {
     'effects.tertiary': '#ff5c8a',
     'effects.detail-1': '#ffb03a',
     'effects.detail-2': '#3dc97c',
-    'effects.background-style': 'rising-motes',
-    'effects.panel-style': 'glow-orbs',
-    'effects.side-window-style': 'animation',
+    'effects.background-style': 'none',
+    'effects.panel-style': 'stars-and-smoke',
+    'effects.side-window-style': 'background',
     'effects.side-window-opacity': 0.55,
     'effects.intensity': 1.5,
-    'effects.speed': 1
+    'effects.speed': 0.75
   })
 }
 
 const STRATA_VIVID_LIGHT: StockTheme = {
-  name: 'Strata Vivid Light',
-  // Strata Vivid turned to daylight: lavender-white panels, near-black body
-  // text, and the same hue for every text kind, darkened until it reads on
-  // white. Controls and effects keep Vivid's saturated purple and pink.
+  name: 'Strata Light',
+  // Promoted from the owner's saved theme on 2026-09-07.
   values: Object.freeze({
     'fonts.text': 'Baloo 2',
     'fonts.code': 'JetBrains Mono',
     'surfaces.window': '#ece6fa',
     'surfaces.panel': '#fbfaff',
-    'surfaces.transcript-style': 'panel',
+    'surfaces.transcript-style': 'open',
     'surfaces.transcript-shadow-style': 'none',
     'surfaces.transcript-shadow-strength': 1,
     'surfaces.transcript-shadow': '#000000',
@@ -165,43 +162,41 @@ const STRATA_VIVID_LIGHT: StockTheme = {
     'effects.tertiary': '#ff5c8a',
     'effects.detail-1': '#ffb03a',
     'effects.detail-2': '#3dc97c',
-    'effects.background-style': 'rising-motes',
-    'effects.panel-style': 'glow-orbs',
-    'effects.side-window-style': 'animation',
-    'effects.side-window-opacity': 0.55,
-    'effects.intensity': 1.5,
-    'effects.speed': 1
+    'effects.background-style': 'none',
+    'effects.panel-style': 'dense-stars',
+    'effects.side-window-style': 'glass',
+    'effects.side-window-opacity': 0,
+    'effects.intensity': 2,
+    'effects.speed': 1.4
   })
 }
 
 const STRATA_NIGHT: StockTheme = {
-  name: 'Strata Night',
-  // A plain dark mode under a starfield. Neutral charcoal surfaces and grey
-  // interface text stay out of the way; the document keeps a distinct, softer
-  // hue for every text kind. Controls are muted slate and lavender.
+  name: 'Strata',
+  // Promoted from the owner's saved theme on 2026-09-07.
   values: Object.freeze({
     'fonts.text': 'Baloo 2',
     'fonts.code': 'JetBrains Mono',
-    'surfaces.window': '#07080c',
-    'surfaces.panel': '#121318',
+    'surfaces.window': '#000000',
+    'surfaces.panel': '#0d0d0d',
     'surfaces.transcript-style': 'panel',
-    'surfaces.transcript-shadow-style': 'none',
+    'surfaces.transcript-shadow-style': 'drop-shadow',
     'surfaces.transcript-shadow-strength': 1,
-    'surfaces.transcript-shadow': '#000000',
-    'surfaces.transcript': '#121318',
-    'surfaces.inset': '#1c1e26',
-    'surfaces.user-message': '#1c1e26',
-    'surfaces.tool-call': '#0d0e13',
-    'surfaces.field': '#0d0e13',
+    'surfaces.transcript-shadow': '#2e2e2e',
+    'surfaces.transcript': '#080808',
+    'surfaces.inset': '#405b77',
+    'surfaces.user-message': '#242638',
+    'surfaces.tool-call': '#090c09',
+    'surfaces.field': '#0d0d0d',
     'surfaces.code': '#0d0e13',
-    'surfaces.border': '#2a2d38',
-    'surfaces.transcript-border': '#2a2d38',
+    'surfaces.border': '#525252',
+    'surfaces.transcript-border': '#262626',
     'surfaces.overlay': '#eceef5',
     'interface.primary': '#f2f3f7',
     'interface.body': '#d3d6df',
-    'interface.secondary': '#9a9fae',
+    'interface.secondary': '#dbdce1',
     'interface.muted': '#8a8f9e',
-    'document.body': '#e6e8ee',
+    'document.body': '#ededed',
     'document.headings': '#c9b3ff',
     'document.small-headings': '#8fd0ff',
     'document.bold': '#ffcb7b',
@@ -209,16 +204,16 @@ const STRATA_NIGHT: StockTheme = {
     'document.code': '#8fe3a9',
     'document.link': '#5cd6c2',
     'document.quote': '#98a3c7',
-    'document.table-heading': '#e8d6ff',
-    'controls.primary': '#8e97d6',
+    'document.table-heading': '#dfc7ff',
+    'controls.primary': '#80e5d9',
     'controls.primary-highlight': '#b7a6e8',
     'controls.selected': '#5560a8',
     'controls.positive': '#4cbd8a',
     'controls.warning': '#e0aa4e',
     'controls.danger': '#e07082',
     'controls.focus': '#7aa7ff',
-    'changes.added': '#5fc9d9',
-    'changes.removed': '#f08a6e',
+    'changes.added': '#715cc7',
+    'changes.removed': '#f56d47',
     'people.you': '#e58aa8',
     'people.agent-1': '#a98cf0',
     'people.agent-2': '#7fb0f5',
@@ -226,34 +221,34 @@ const STRATA_NIGHT: StockTheme = {
     'people.agent-4': '#e6b45e',
     'people.external': '#9fa6b6',
     'visuals.table-style': 'gradient',
-    'visuals.table-background': '#181920',
-    'visuals.table-background-end': '#121318',
-    'visuals.table-toolbar': '#181920',
-    'visuals.table-header': '#1c1e26',
-    'visuals.table-border': '#1f2129',
-    'visuals.table-hover': '#1c1e27',
+    'visuals.table-background': '#27353a',
+    'visuals.table-background-end': '#1f3951',
+    'visuals.table-toolbar': '#000000',
+    'visuals.table-header': '#42687b',
+    'visuals.table-border': '#bdbdbd',
+    'visuals.table-hover': '#201a2c',
     'visuals.category-1': '#a98cf0',
     'visuals.category-2': '#5fc9d9',
     'visuals.category-3': '#e6b45e',
     'visuals.category-4': '#62c99a',
     'visuals.category-5': '#f08a6e',
     'visuals.category-6': '#7fb0f5',
-    'effects.primary': '#8f9cff',
+    'effects.primary': '#ffa8d2',
     'effects.secondary': '#6fc6ff',
-    'effects.tertiary': '#d9a6ff',
+    'effects.tertiary': '#e2bdff',
     'effects.detail-1': '#ffd27a',
-    'effects.detail-2': '#7fe0b0',
-    'effects.background-style': 'starfield',
-    'effects.panel-style': 'starfield',
-    'effects.side-window-style': 'animation',
-    'effects.side-window-opacity': 0.55,
-    'effects.intensity': 1.2,
-    'effects.speed': 0.8
+    'effects.detail-2': '#5dbb8c',
+    'effects.background-style': 'none',
+    'effects.panel-style': 'stars-and-smoke',
+    'effects.side-window-style': 'background',
+    'effects.side-window-opacity': 0.85,
+    'effects.intensity': 1,
+    'effects.speed': 0.45
   })
 }
 
 const STRATA_DAY: StockTheme = {
-  name: 'Strata Day',
+  name: 'Strata Mono',
   // An easy light mode: warm off-white surfaces with no pure white, dark grey
   // interface text, and deep ink colors that keep every document text kind
   // distinct without glare. Controls are muted indigo; a slow aurora drifts
@@ -331,18 +326,18 @@ const STRATA_DAY: StockTheme = {
   })
 }
 
-/** All four stock themes, with the default Strata Vivid first. */
+/** All four stock themes, with the default Strata first; IDs stay stable for saved selections. */
 export const STOCK_THEMES: ReadonlyMap<string, StockTheme> = new Map([
+  ['strata-night', STRATA_NIGHT],
   ['strata-vivid', STRATA_VIVID],
   ['strata-vivid-light', STRATA_VIVID_LIGHT],
-  ['strata-night', STRATA_NIGHT],
   ['strata-day', STRATA_DAY]
 ])
 
-/** Strata Vivid owns fresh-install selection and every missing-value fallback. */
-export const DEFAULT_THEME_ID = 'strata-vivid'
-export const DEFAULT_THEME_NAME = STRATA_VIVID.name
-export const DEFAULT_THEME_VALUES: ThemeValues = STRATA_VIVID.values
+/** Strata owns fresh-install selection and every missing-value fallback. */
+export const DEFAULT_THEME_ID = 'strata-night'
+export const DEFAULT_THEME_NAME = STRATA_NIGHT.name
+export const DEFAULT_THEME_VALUES: ThemeValues = STRATA_NIGHT.values
 
 /** Nests flat dotted keys into the on-disk file shape `{ group: { name } }`. */
 export function nestThemeValues(name: string, values: ThemeValues): SparseTheme {
@@ -354,7 +349,7 @@ export function nestThemeValues(name: string, values: ThemeValues): SparseTheme 
   return Object.freeze({ name, ...nested })
 }
 
-/** The alternate stock themes beyond the built-in Strata Vivid, in their file shape. */
+/** The alternate stock themes beyond the built-in Strata, in their file shape. */
 export const BUNDLED_THEMES: ReadonlyMap<string, SparseTheme> = new Map(
   [...STOCK_THEMES].filter(([id]) => id !== DEFAULT_THEME_ID).map(([id, theme]) => [id, nestThemeValues(theme.name, theme.values)])
 )

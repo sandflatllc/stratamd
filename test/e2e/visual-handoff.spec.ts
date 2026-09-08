@@ -45,6 +45,13 @@ test('populated renderer preserves the handoff tokens, controls, and motion poli
 
   try {
     const page = await value.launch()
+    // This fixture exercises the CSS ambient ticker independently of stock theme choices.
+    await page.evaluate(async () => {
+      await window.strata.createTheme('Motion fixture', 'strata-vivid')
+      await window.strata.setThemeValue('effects.background-style', 'rising-motes')
+      await window.strata.setThemeValue('effects.panel-style', 'glow-orbs')
+      await window.strata.setThemeValue('effects.side-window-style', 'animation')
+    })
     await page.setViewportSize({ width: 1600, height: 900 })
     await page.evaluate(async (path) => window.strata.openDocument(path), notes)
     await expectDocumentListed(page, /notes\.md/i)

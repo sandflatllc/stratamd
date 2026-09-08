@@ -48,7 +48,7 @@ describe('theme schema', () => {
 
 describe('stock themes', () => {
   it('declare all four completely: every color and non-color value, explicitly', () => {
-    expect([...STOCK_THEMES.keys()]).toEqual(['strata-vivid', 'strata-vivid-light', 'strata-night', 'strata-day'])
+    expect([...STOCK_THEMES.keys()]).toEqual(['strata-night', 'strata-vivid', 'strata-vivid-light', 'strata-day'])
     for (const [id, theme] of STOCK_THEMES) {
       for (const entry of THEME_KEYS) {
         expect(theme.values[entry.key], `${id} ${entry.key}`).toBeDefined()
@@ -66,8 +66,8 @@ describe('stock themes', () => {
     }
   })
 
-  it('use the complete Strata Vivid definition as the runtime defaults', () => {
-    expect(DEFAULT_THEME_VALUES).toBe(STOCK_THEMES.get('strata-vivid')!.values)
+  it('use the complete Strata definition as the runtime defaults', () => {
+    expect(DEFAULT_THEME_VALUES).toBe(STOCK_THEMES.get('strata-night')!.values)
     expect(BUILT_IN_THEME.set).toHaveLength(THEME_KEYS.length)
     expect(BUILT_IN_THEME.values).toBe(DEFAULT_THEME_VALUES)
   })
@@ -77,8 +77,8 @@ describe('theme normalization', () => {
   it('keeps transcript choices closed and transcript colors opaque, with defaults for older themes', () => {
     const old = normalizeTheme({ name: 'Existing', surfaces: { panel: '#123456' } })
     expect(old.values['surfaces.transcript-style']).toBe('panel')
-    expect(old.values['surfaces.transcript-shadow-style']).toBe('none')
-    expect(old.values['surfaces.transcript-shadow']).toBe('#000000')
+    expect(old.values['surfaces.transcript-shadow-style']).toBe(DEFAULT_THEME_VALUES['surfaces.transcript-shadow-style'])
+    expect(old.values['surfaces.transcript-shadow']).toBe(DEFAULT_THEME_VALUES['surfaces.transcript-shadow'])
     expect(old.values['surfaces.transcript-shadow-strength']).toBe(1)
     expect(old.values['surfaces.transcript']).toBe(DEFAULT_THEME_VALUES['surfaces.transcript'])
     expect(old.set).not.toContain('surfaces.transcript')
@@ -90,7 +90,7 @@ describe('theme normalization', () => {
     expect(shadow.values).toMatchObject({ 'surfaces.transcript-shadow-style': 'drop-shadow', 'surfaces.transcript-shadow': '#aabbcc' })
     expect(shadow.problems).toEqual([])
     const invalidShadow = normalizeTheme({ name: 'Invalid shadow', surfaces: { 'transcript-shadow-style': 'glow', 'transcript-shadow': '#00000080' } })
-    expect(invalidShadow.values).toMatchObject({ 'surfaces.transcript-shadow-style': 'none', 'surfaces.transcript-shadow': '#000000' })
+    expect(invalidShadow.values).toMatchObject({ 'surfaces.transcript-shadow-style': DEFAULT_THEME_VALUES['surfaces.transcript-shadow-style'], 'surfaces.transcript-shadow': DEFAULT_THEME_VALUES['surfaces.transcript-shadow'] })
     expect(invalidShadow.problems.map(({ key }) => key)).toEqual(['surfaces.transcript-shadow-style', 'surfaces.transcript-shadow'])
     const invalid = normalizeTheme({ name: 'Invalid', surfaces: { 'transcript-style': 'starfield', transcript: '#12345680', 'transcript-border': 'transparent' } })
     expect(invalid.values['surfaces.transcript-style']).toBe('panel')
@@ -111,9 +111,9 @@ describe('theme normalization', () => {
     expect(result.values['document.italic']).toBe(DEFAULT_THEME_VALUES['document.italic'])
     expect(result.values['fonts.text']).toBe('Nunito')
     expect(result.values['effects.background-style']).toBe('starfield')
-    expect(result.values['effects.panel-style']).toBe('glow-orbs')
+    expect(result.values['effects.panel-style']).toBe(DEFAULT_THEME_VALUES['effects.panel-style'])
     expect(result.values['effects.intensity']).toBe(2)
-    expect(result.values['effects.speed']).toBe(1)
+    expect(result.values['effects.speed']).toBe(DEFAULT_THEME_VALUES['effects.speed'])
     expect(result.problems.map((problem) => problem.key)).toEqual(['document.italic', 'effects.panel-style', 'effects.speed'])
     expect(result.set).toEqual(['fonts.text', 'document.bold', 'document.italic', 'effects.background-style', 'effects.panel-style', 'effects.intensity', 'effects.speed'])
     expect(Object.keys(result.values)).toHaveLength(THEME_KEYS.length)
@@ -150,7 +150,7 @@ describe('ThemeStore', () => {
     await writeFile(store.pathFor('broken'), '{ not json')
     await writeFile(join(store.directory, 'Bad Name.json'), '{}')
     const list = await store.list()
-    expect(list.map((theme) => theme.id)).toEqual(['strata-vivid', 'strata-vivid-light', 'strata-night', 'strata-day', 'broken', 'dusk'])
+    expect(list.map((theme) => theme.id)).toEqual(['strata-night', 'strata-vivid', 'strata-vivid-light', 'strata-day', 'broken', 'dusk'])
     expect(list[0]).toMatchObject({ builtIn: true, broken: false })
     expect(list[4]).toMatchObject({ broken: true, name: 'broken.json' })
     expect(list[4]!.problems[0]!.key).toBe('file')
@@ -159,11 +159,11 @@ describe('ThemeStore', () => {
     expect(dusk.set).toEqual(['document.bold'])
     await expect(store.load('broken')).rejects.toBeInstanceOf(ThemeBrokenError)
     await expect(store.load('missing')).rejects.toMatchObject({ code: 'ENOENT' })
-    expect(await store.load('strata-vivid')).toBe(BUILT_IN_THEME)
-    expect((await store.load('strata-night')).name).toBe('Strata Night')
+    expect(await store.load('strata-night')).toBe(BUILT_IN_THEME)
+    expect((await store.load('strata-night')).name).toBe('Strata')
   })
 
-  it('a sparse user theme falls back to Strata Vivid for missing values and Use default removes the value', async () => {
+  it('a sparse user theme falls back to Strata for missing values and Use default removes the value', async () => {
     const store = new ThemeStore({ configDirectory: await temporaryDirectory() })
     await store.ensureDirectory()
     await writeFile(store.pathFor('dusk'), JSON.stringify({ name: 'Dusk', controls: { positive: '#00ff00' } }))
@@ -247,8 +247,8 @@ describe('bundled themes', () => {
       await expect(store.write(id, {})).rejects.toThrow(/cannot be edited/)
       await expect(store.delete(id, 'strata-vivid')).rejects.toThrow(/cannot be deleted/)
     }
-    const copy = await store.create('Copy of Strata Day', 'strata-day')
-    expect(copy.id).toBe('copy-of-strata-day')
+    const copy = await store.create('Copy of Strata Mono', 'strata-day')
+    expect(copy.id).toBe('copy-of-strata-mono')
     expect(copy.builtIn).toBe(false)
     expect(copy.values).toEqual(STOCK_THEMES.get('strata-day')!.values)
   })
@@ -258,7 +258,7 @@ describe('bundled themes', () => {
     await store.ensureDirectory()
     await writeFile(store.pathFor('strata-day'), JSON.stringify({ name: 'Fake' }))
     expect(await store.ids()).toEqual([])
-    expect((await store.load('strata-day')).name).toBe('Strata Day')
+    expect((await store.load('strata-day')).name).toBe('Strata Mono')
   })
 })
 

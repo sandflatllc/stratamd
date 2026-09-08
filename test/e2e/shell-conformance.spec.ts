@@ -219,7 +219,7 @@ test('the theme panel floats over a live app, writes only chosen keys, follows o
     await page.getByRole('menuitem', { name: 'Theme', exact: true }).click()
     const panel = page.getByRole('dialog', { name: 'Theme' })
     await expect(panel).toBeVisible()
-    await expect(panel).toContainText('Built-in theme')
+    await expect(panel).toContainText('Bundled theme')
     await expect(page.locator('.modal-backdrop')).toHaveCount(0)
     // The sample document opens as a real tab and explains each construct in its own words.
     await expectActiveDocument(page, /Theme sample\.md/)
@@ -258,7 +258,7 @@ test('the theme panel floats over a live app, writes only chosen keys, follows o
     await expect(panel.locator('.theme-row[data-key="document.italic"]')).toHaveClass(/is-set/)
 
     await bold.getByRole('button', { name: 'Use default' }).click()
-    await expect(strong).toHaveCSS('color', 'rgb(255, 190, 92)')
+    await expect(strong).toHaveCSS('color', 'rgb(255, 203, 123)')
     await expect.poll(async () => JSON.parse(await readFile(themePath, 'utf8'))).toEqual({ 'schema-version': 3, name: 'Copy of Strata Vivid', document: { italic: '#123456' } })
 
     // Revert restores the snapshot from when the panel opened: the complete copy.
@@ -300,8 +300,8 @@ test('the theme panel floats over a live app, writes only chosen keys, follows o
     await expect.poll(async () => Math.abs((await reopened.boundingBox())!.x - expectedX)).toBeLessThan(60)
     await expect(reopened.getByRole('combobox', { name: 'Theme' })).toHaveValue('copy-of-strata-vivid')
     await reopened.getByRole('combobox', { name: 'Theme' }).selectOption('strata-vivid')
-    await expect(restarted.locator('.app-shell')).toHaveAttribute('data-ambient-windows', 'glow-orbs')
-    await expect(reopened).toContainText('Built-in theme')
+    await expect(restarted.locator('.app-shell')).toHaveAttribute('data-ambient-windows', 'stars-and-smoke')
+    await expect(reopened).toContainText('Bundled theme')
   } finally {
     await value.dispose()
   }

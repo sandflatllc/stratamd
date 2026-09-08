@@ -232,10 +232,10 @@ export function ambientStyles(theme: ThemeView): { background: AmbientStyle; win
   const sideWindows = theme.active.values['effects.side-window-style']
   const opacity = theme.active.values['effects.side-window-opacity']
   return {
-    background: ambientStyle(theme.active.values['effects.background-style'], 'rising-motes'),
-    windows: ambientStyle(theme.active.values['effects.panel-style'], 'glow-orbs'),
-    sideWindows: SIDE_WINDOW_STYLES.some(style => style.id === sideWindows) ? sideWindows as SideWindowStyle : 'animation',
-    sideWindowOpacity: typeof opacity === 'number' && Number.isFinite(opacity) ? Math.max(0, Math.min(1, opacity)) : .55
+    background: ambientStyle(theme.active.values['effects.background-style'], DEFAULT_THEME_VALUES['effects.background-style'] as AmbientStyle),
+    windows: ambientStyle(theme.active.values['effects.panel-style'], DEFAULT_THEME_VALUES['effects.panel-style'] as AmbientStyle),
+    sideWindows: SIDE_WINDOW_STYLES.some(style => style.id === sideWindows) ? sideWindows as SideWindowStyle : DEFAULT_THEME_VALUES['effects.side-window-style'] as SideWindowStyle,
+    sideWindowOpacity: typeof opacity === 'number' && Number.isFinite(opacity) ? Math.max(0, Math.min(1, opacity)) : Number(DEFAULT_THEME_VALUES['effects.side-window-opacity'])
   }
 }
 
