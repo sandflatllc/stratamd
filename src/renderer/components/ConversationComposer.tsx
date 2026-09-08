@@ -8,7 +8,7 @@ import { ProviderGlyph } from './ProviderGlyph'
 import { ContextWindowMeter } from './ContextWindowMeter'
 import { FolderIcon, FolderGit2Icon, GitBranchIcon } from '../icons/lucide'
 import { ModelPicker } from './ModelPicker'
-import { availableModels, clearDraftContent, draftSelection, readDraft, rememberedSelection, rememberSelection, selectionForModel, writeDraft, type ComposerSelection, type DraftAttachment } from '../conversationDrafts'
+import { availableModels, clearDraftContent, draftSelection, flushDrafts, onDraftStorage, readDraft, rememberedSelection, rememberSelection, selectionForModel, writeDraft, type ComposerSelection, type DraftAttachment } from '../conversationDrafts'
 import { acceptFiles, classifyFile, SUPPORTED_IMAGE_TYPES } from '../../core/composer-attachments'
 
 const PICKER_ACCEPT = ['text/*', '.md', '.markdown', '.json', '.csv', '.ts', '.tsx', '.js', '.py', ...SUPPORTED_IMAGE_TYPES].join(',')
@@ -157,6 +157,9 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     finally { setBusy(false) }
   }
   useEffect(() => { if (centered) input.current?.focus() }, [])
+  // Durable draft writes are coalesced; their outcome arrives after the keystroke that queued them.
+  useEffect(() => onDraftStorage((key, stored) => { if (key === draftKey) setUnsaved(!stored) }), [draftKey])
+  useEffect(() => () => { flushDrafts() }, [])
   // A staged image that became a visual comment has no bytes left to discard; it leaves the draft quietly.
   useEffect(() => {
     if (!consumedAttachmentIds.length) return
@@ -204,7 +207,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     sending.current = true; setBusy(true); setError(''); setMenu(null)
     try {
       const messageId = readDraft(draftKey).messageId ?? deliveryId ?? crypto.randomUUID()
-      writeDraft(draftKey, { ...readDraft(draftKey), messageId })
+      writeDraft(draftKey, { ...readDraft(draftKey), messageId }, { immediate: true })
       // The thumbnail stays behind; the main process holds the bytes under the id.
       const outgoing = attachments.map(({ thumbnail: _thumbnail, ...attachment }) => attachment)
       await onSend({ ...selection, messageId, commandId: `strata-${messageId}`, text: text.trim(), ...(outgoing.length ? { attachments: outgoing } : {}), ...(includedVisual.length ? { visual: includedVisual.map((comment) => comment.id) } : {}) })

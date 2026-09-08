@@ -18,6 +18,12 @@ export interface ConversationDraft {
 }
 const memory = new Map<string, ConversationDraft>()
 const prefix = 'stratamd.conversation-draft.v1:'
+/** Durable writes owed for a draft key, coalesced so typing writes memory now and storage shortly after. */
+const pending = new Map<string, { key: string; timer: ReturnType<typeof setTimeout> }>()
+/** Draft keys whose last durable write was refused by storage. */
+const refused = new Set<string>()
+const storageListeners = new Set<(key: string, stored: boolean) => void>()
+export const DRAFT_WRITE_DELAY_MS = 300
 
 function parseDraft(raw: string | null): ConversationDraft | null {
   try {
@@ -34,10 +40,57 @@ export function readDraft(key: string): ConversationDraft {
   // A corrupt disposable draft cannot block conversation entry.
   return parseDraft(engineStorage.getItem(prefix + key)) ?? { text: '' }
 }
-/** False when local storage refused the draft; it then lives in memory only and will not survive reload. */
-export function writeDraft(key: string, draft: ConversationDraft): boolean {
-  memory.set(engineStorageKey(key), draft)
-  try { engineStorage.setItem(prefix + key, JSON.stringify(draft)); return true } catch { return false }
+function writeDurable(key: string, draft: ConversationDraft): boolean {
+  const scoped = engineStorageKey(key)
+  let stored = true
+  try { engineStorage.setItem(prefix + key, JSON.stringify(draft)) } catch { stored = false }
+  if (stored) refused.delete(scoped); else refused.add(scoped)
+  return stored
+}
+function cancelPending(scoped: string): void {
+  const entry = pending.get(scoped)
+  if (!entry) return
+  clearTimeout(entry.timer)
+  pending.delete(scoped)
+}
+function flushOne(scoped: string): boolean {
+  const entry = pending.get(scoped)
+  if (!entry) return !refused.has(scoped)
+  cancelPending(scoped)
+  const draft = memory.get(scoped)
+  const stored = draft ? writeDurable(entry.key, draft) : true
+  for (const listener of storageListeners) listener(entry.key, stored)
+  return stored
+}
+/**
+ * Memory holds the draft at once; the durable copy follows after a short pause so a keystroke never pays
+ * for serializing the whole draft and its inline attachments. Returns false while storage last refused
+ * this draft; `onDraftStorage` reports the outcome of each coalesced write. Pass `immediate` when the
+ * write must be durable before the caller continues, such as the message id a send is about to use.
+ */
+export function writeDraft(key: string, draft: ConversationDraft, options?: { immediate?: boolean }): boolean {
+  const scoped = engineStorageKey(key)
+  memory.set(scoped, draft)
+  if (options?.immediate) { cancelPending(scoped); return writeDurable(key, draft) }
+  if (!pending.has(scoped)) pending.set(scoped, { key, timer: setTimeout(() => flushOne(scoped), DRAFT_WRITE_DELAY_MS) })
+  return !refused.has(scoped)
+}
+/** Writes every coalesced draft now; false when storage refused any of them. */
+export function flushDrafts(): boolean {
+  let stored = true
+  for (const scoped of [...pending.keys()]) stored = flushOne(scoped) && stored
+  return stored
+}
+/** Learns whether each coalesced write reached storage, keyed by the draft key it was written under. */
+export function onDraftStorage(listener: (key: string, stored: boolean) => void): () => void {
+  storageListeners.add(listener)
+  return () => { storageListeners.delete(listener) }
+}
+if (typeof window !== 'undefined') {
+  // A reload, a window close, or the app quitting must not lose the last few hundred milliseconds of typing.
+  window.addEventListener('pagehide', () => { flushDrafts() })
+  window.addEventListener('beforeunload', () => { flushDrafts() })
+  document.addEventListener('visibilitychange', () => { if (document.hidden) flushDrafts() })
 }
 /** Every staged image any saved draft still references, so the main process can delete the rest. */
 export function draftAttachmentIds(): string[] {
@@ -49,12 +102,15 @@ export function draftAttachmentIds(): string[] {
   return [...ids]
 }
 export function clearDraft(key: string): void {
-  memory.delete(engineStorageKey(key))
+  const scoped = engineStorageKey(key)
+  cancelPending(scoped)
+  memory.delete(scoped)
+  refused.delete(scoped)
   try { engineStorage.removeItem(prefix + key) } catch { /* Storage may be unavailable. */ }
 }
 /** Sending consumes content and delivery IDs, but model settings outlive the message. */
 export function clearDraftContent(key: string, selection: ComposerSelection, selectionBase?: ComposerSelection): boolean {
-  return writeDraft(key, { text: '', selection, ...(selectionBase ? { selectionBase } : {}) })
+  return writeDraft(key, { text: '', selection, ...(selectionBase ? { selectionBase } : {}) }, { immediate: true })
 }
 function canonicalSelection(selection: ComposerSelection): string {
   return JSON.stringify({ model: selection.model, instanceId: selection.instanceId ?? null, effort: selection.effort ?? null, access: selection.access, options: [...(selection.options ?? [])].sort((a, b) => a.id.localeCompare(b.id)) })

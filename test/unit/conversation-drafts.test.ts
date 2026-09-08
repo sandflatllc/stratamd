@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
-import { availableModels, clearDraft, clearDraftContent, draftAttachmentIds, draftSelection, initialSelection, readDraft, rememberedSelection, rememberSelection, selectionForModel, writeDraft } from '../../src/renderer/conversationDrafts'
+import { availableModels, clearDraft, clearDraftContent, draftAttachmentIds, draftSelection, flushDrafts, initialSelection, onDraftStorage, readDraft, rememberedSelection, rememberSelection, selectionForModel, writeDraft } from '../../src/renderer/conversationDrafts'
 import { setEngineStorageIdentity } from '../../src/renderer/engineStorage'
 import { EMPTY_VIEW } from '../../src/renderer/model'
 import type { EngineModelView, EngineView } from '../../src/shared/contracts'
@@ -94,7 +94,16 @@ it('migrates a draft saved with one text attachment into the attachment list', (
 })
 it('reports when local storage refuses a draft, and the draft still reads back from memory', () => {
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => { throw new Error('QuotaExceededError') }, removeItem: () => undefined })
-  expect(writeDraft('thread:full', { text: 'Big', attachments: [{ kind: 'image', id: 'a_1', name: 'shot.png', mimeType: 'image/png', sizeBytes: 5 }] })).toBe(false)
+  const outcomes: Array<[string, boolean]> = []
+  const stop = onDraftStorage((key, stored) => outcomes.push([key, stored]))
+  writeDraft('thread:full', { text: 'Big', attachments: [{ kind: 'image', id: 'a_1', name: 'shot.png', mimeType: 'image/png', sizeBytes: 5 }] })
+  expect(flushDrafts()).toBe(false)
+  expect(outcomes).toEqual([['thread:full', false]])
+  expect(writeDraft('thread:full', { text: 'Bigger' })).toBe(false)
+  expect(readDraft('thread:full').text).toBe('Bigger')
+  clearDraft('thread:full')
+  stop()
+  expect(writeDraft('thread:full', { text: 'Big', attachments: [{ kind: 'image', id: 'a_1', name: 'shot.png', mimeType: 'image/png', sizeBytes: 5 }] }, { immediate: true })).toBe(false)
   expect(readDraft('thread:full').attachments).toHaveLength(1)
   expect(draftAttachmentIds()).toEqual(['a_1'])
   clearDraft('thread:full')
@@ -127,4 +136,18 @@ it('keeps matching thread drafts and project defaults with their engine', () => 
   expect(readDraft('thread:collision').text).toBe('Only second')
   clearDraft('thread:collision')
   setEngineStorageIdentity(undefined)
+})
+it('coalesces durable writes while typing and flushes them on demand', () => {
+  const written: string[] = []
+  vi.stubGlobal('localStorage', { getItem: () => null, setItem: (_key: string, value: string) => { written.push(value) }, removeItem: () => undefined })
+  writeDraft('thread:typing', { text: 'a' })
+  writeDraft('thread:typing', { text: 'ab' })
+  writeDraft('thread:typing', { text: 'abc' })
+  expect(readDraft('thread:typing').text).toBe('abc')
+  expect(written).toEqual([])
+  expect(flushDrafts()).toBe(true)
+  expect(written.map((value) => JSON.parse(value).text)).toEqual(['abc'])
+  expect(flushDrafts()).toBe(true)
+  expect(written).toHaveLength(1)
+  clearDraft('thread:typing')
 })
