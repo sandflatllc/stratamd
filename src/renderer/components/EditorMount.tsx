@@ -77,6 +77,7 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
 ) {
   const hostRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<RendererEditorHandle | null>(null)
+  const sourceIntent = useRef<{ owner: RendererEditorHandle | null; source: boolean } | null>(null)
   const handlersRef = useRef(options)
   handlersRef.current = options
   const flashTarget = (attribute: 'reviewId' | 'annotationId', id: string) => {
@@ -168,7 +169,29 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
       onRejectSuggestion: (id) => flashAndRun('annotationId', id, () => handlersRef.current.onRejectSuggestion(id)),
       onUndo: () => handlersRef.current.onUndo(),
       onRedo: () => handlersRef.current.onRedo(),
-      onToggleSource: (source) => handlersRef.current.onToggleSource(source),
+      onToggleSource: (source) => {
+        const intent = { owner: editorRef.current, source }
+        const persist = handlersRef.current.onToggleSource
+        // Persisted mode echoes can repeat an older matching value. Keep the
+        // newest local mode authoritative until that exact request settles.
+        sourceIntent.current = intent
+        const finish = (saved: boolean) => {
+          if (sourceIntent.current !== intent || editorRef.current !== intent.owner) return
+          sourceIntent.current = null
+          if (saved) intent.owner?.toggleSource(source)
+          else intent.owner?.toggleSource(handlersRef.current.sourceMode)
+        }
+        try {
+          const request = persist(source)
+          if (request === undefined) {
+            if (sourceIntent.current === intent && editorRef.current === intent.owner) sourceIntent.current = null
+            return
+          }
+          void request.then(() => finish(true), () => finish(false))
+        } catch {
+          finish(false)
+        }
+      },
       onHeadings: (headings, activeId, durationMs) => handlersRef.current.onHeadings(headings, activeId, durationMs),
       onTableView: (state) => handlersRef.current.onTableView(state),
       focusedTable: focusedTables.get(documentPath) ?? null,
@@ -190,6 +213,7 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
       for (const timer of timers) window.clearTimeout(timer)
       savedEditors.set(documentPath, { kind: 'warm', state: handle.exportState(), savedAt: Date.now() })
       evictBeyondLimit()
+      if (sourceIntent.current?.owner === handle) sourceIntent.current = null
       handle.destroy()
       editorRef.current = null
       host.replaceChildren()
@@ -211,7 +235,10 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
   useEffect(() => { editorRef.current?.setAnnotations([...options.annotations, ...draftRanges(drafts)]); paintDecorations(options.pendingHunks, options.annotations) }, [drafts, options.annotations])
   useEffect(() => { editorRef.current?.setTableViews(options.tableViews) }, [options.tableViews])
   useEffect(() => { editorRef.current?.setFoldedHeadings(options.foldedHeadings) }, [options.foldedHeadings])
-  useEffect(() => { editorRef.current?.toggleSource(options.sourceMode) }, [options.sourceMode])
+  useEffect(() => {
+    if (sourceIntent.current !== null) return
+    editorRef.current?.toggleSource(options.sourceMode)
+  }, [options.sourceMode])
   useEffect(() => { editorRef.current?.setReadOnly?.(options.readOnly) }, [options.readOnly])
 
   return <div ref={hostRef} className="prosemirror-host" data-prosemirror-host data-document-path={documentPath} />

@@ -27,7 +27,7 @@ interface EditorPaneProps {
   onDocumentMeasure(value: number, commit: boolean): void
   onComposerSize(size: PanelSize, commit: boolean): void
   onBufferChange(content: string, origin: BufferOrigin): void
-  onToggleSource(source: boolean): void
+  onToggleSource(source: boolean): Promise<void> | void
   onSave(): void
   onUndo(): Promise<UndoResult>
   onRedo(): Promise<RedoResult>
@@ -182,7 +182,7 @@ export function EditorPane(props: EditorPaneProps) {
   return (
     <main className="editor-island island" data-pane="editor" style={{ '--zoom': props.zoom, '--document-measure': `${props.documentMeasure}px` } as CSSProperties}>
       <AmbientDecor variant="editor" />
-      <Toolbar source={document.sourceMode} sourceOnly={document.sourceOnly} readOnly={document.readOnly} dirty={document.dirty} onCommand={command} onToggleSource={() => props.onToggleSource(!document.sourceMode)} onSave={props.onSave} />
+      <Toolbar source={document.sourceMode} sourceOnly={document.sourceOnly} readOnly={document.readOnly} dirty={document.dirty} onCommand={command} onToggleSource={() => { void Promise.resolve().then(() => props.onToggleSource(!document.sourceMode)).catch(() => undefined) }} onSave={props.onSave} />
       {find.open && (
         <FindBar
           query={find.query}
@@ -233,7 +233,7 @@ export function EditorPane(props: EditorPaneProps) {
             onToggleSource={(source) => {
               // A source-only document has no visual view to switch to.
               if (document.sourceOnly && !source) { editor.current?.toggleSource(true); return }
-              props.onToggleSource(source)
+              return props.onToggleSource(source)
             }}
             onHeadings={props.onHeadings}
             onTableView={props.onTableView}

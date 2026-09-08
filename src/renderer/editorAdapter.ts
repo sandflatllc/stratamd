@@ -48,7 +48,7 @@ export interface RendererEditorOptions {
   onUndo(): Promise<UndoResult>
   onRedo(): Promise<RedoResult>
   /** The editor switched views from its own shortcut; `source` is the view it now shows. */
-  onToggleSource(source: boolean): void
+  onToggleSource(source: boolean): Promise<void> | void
   onHeadings(headings: readonly EditorHeading[], activeId: string | null, durationMs: number): void
   onTableView(state: TableViewState): void
   onTableFocus?(tableKey: string | null): void
