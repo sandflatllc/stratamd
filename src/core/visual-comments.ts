@@ -391,6 +391,7 @@ export function visualCommentView(
   const comparisonView = (value: VisualComparison) => ({ thenUrl: options.captureUrl(value.thenId), nowUrl: value.nowId ? options.captureUrl(value.nowId) : null, note: value.note, takenAt: value.takenAt })
   const revisions: VisualRevisionView[] = comment.revisions.map((revision) => ({
     number: revision.number,
+    images: revision.evidence.map(options.captureUrl),
     text: revision.text,
     marks: revision.marks.map(visualMarkView),
     strokes: revision.strokes.map(visualStrokeView),

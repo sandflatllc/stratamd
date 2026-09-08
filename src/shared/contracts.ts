@@ -446,6 +446,8 @@ export interface VisualComparisonView {
 
 export interface VisualRevisionView {
   number: number
+  /** The immutable comment sheets actually attached to this revision's message. */
+  images?: string[]
   text: string
   marks: VisualMarkView[]
   strokes: VisualStrokeView[]
