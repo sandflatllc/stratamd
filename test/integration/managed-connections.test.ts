@@ -37,3 +37,28 @@ it.skipIf(!process.env.STRATAMD_ENGINE_BUNDLE)('stock pairing links and sessions
     lan = false; await manager.restart(); expect(manager.view().state).toBe('running'); expect(client.view().identity).toBe(identity)
   } finally { await manager.stop(); await client.shutdown(); await rm(root, { recursive: true, force: true }) }
 }, 60000)
+
+
+it.skipIf(!process.env.STRATAMD_ENGINE_BUNDLE)('stock Connect exposes a loopback callback, accepts code fallback over pipes and cancels without saving authorization', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'strata-stock-connect-')), connect = new T3Connect()
+  const bundle = process.env.STRATAMD_ENGINE_BUNDLE!
+  const runtime = JSON.parse(await readFile(join(bundle, 'runtime.json'), 'utf8'))
+  const context = { directory: bundle, baseDirectory: root, executable: join(bundle, runtime.executable) }
+  try {
+    connect.start(context, async operation => { await operation.execute(['login']); return 'Signed in' })
+    await expect.poll(() => connect.view(), { timeout: 10000 }).toMatchObject({ state: 'running', phase: 'browser' })
+    const browserUrl = new URL(connect.view().url!)
+    const params = new URLSearchParams(browserUrl.hash.slice(1))
+    const port = params.get('port')
+    expect(Number(port)).toBeGreaterThan(0)
+    const callback = `http://127.0.0.1:${port}/callback`
+    expect((await fetch(callback)).status).toBe(400)
+    connect.useCode()
+    await expect.poll(() => connect.view().phase, { timeout: 10000 }).toBe('code')
+    expect(new URL(connect.view().url!).hash).not.toContain('port=')
+    await connect.cancel()
+    expect(connect.view()).toMatchObject({ state: 'cancelled' })
+    expect(connect.view().url).toBeUndefined()
+    expect(await connect.status(context, true)).toMatchObject({ authenticated: false, linked: false })
+  } finally { await connect.cancel(); await rm(root, { recursive: true, force: true }) }
+}, 30000)

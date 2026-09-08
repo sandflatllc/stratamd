@@ -1,3 +1,4 @@
+import { installRelayClient } from './relay-install'
 import { accountForModel } from '../../core/accountState'
 import type { ComposeCommentImage } from '../visual-comment-image'
 import { effectiveProviderInstances, generatedModelSchema, mergeEngineSettings, mergeProviderEdit, type EngineSettingsEdit, type ProviderEdit, type EngineSupport, type EngineActivity, isSettingsRecord } from '../../shared/engine-settings'
@@ -199,6 +200,7 @@ export interface EngineReadClient {
   assertNoPendingSends?(): void
   reloadStoredState?(): Promise<void>
   connectionRequest?(action: string, payload?: unknown): Promise<unknown>
+  installRelayClient?(signal: AbortSignal, progress: (message: string) => void): Promise<void>
   readSettings?(): Promise<EngineSettings>
   editSettings?(edit: EngineSettingsEdit): Promise<EngineSettings>
   editProvider?(edit: ProviderEdit): Promise<void>
@@ -1513,6 +1515,12 @@ export class T3EngineClient implements EngineReadClient {
       if (result.nextCursor === null || result.nextCursor === cursor) return { refs, isRepo: result.isRepo, hasPrimaryRemote: result.hasPrimaryRemote }
       cursor = result.nextCursor
     }
+  }
+
+  async installRelayClient(signal: AbortSignal, progress: (message: string) => void): Promise<void> {
+    const socket = this.#socket
+    if (!socket || socket.closed) throw new Error('Reconnect the local engine before installing connection support.')
+    await this.#operations.run(() => installRelayClient(socket, signal, progress))
   }
 
   async connectionRequest(action: string, payload?: unknown): Promise<unknown> {

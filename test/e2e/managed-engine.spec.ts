@@ -23,8 +23,9 @@ test.describe('managed engine @managed', () => {
       await expect.poll(async () => JSON.parse(await readFile(path, 'utf8')).pid, { timeout: 20000 }).not.toBe(record.pid)
       await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).engine.managed?.state).toBe('running')
       expect((await page.evaluate(() => window.strata.getState())).engine.identity).toBe(initial.engine.identity)
-      await expect(page.getByRole('dialog', { name: 'This computer' })).toHaveCount(0)
+      await expect(page.getByRole('dialog', { name: 'Connections', exact: true })).toHaveCount(0)
       await page.getByRole('button', { name: 'Engine status' }).click()
+      await page.getByText('Advanced engine details', { exact: true }).click()
       await expect(page.getByRole('button', { name: 'Show log' })).toBeVisible()
     } catch (error) {
       const state = await scenario.page?.evaluate(() => window.strata.getState()).catch(() => null)

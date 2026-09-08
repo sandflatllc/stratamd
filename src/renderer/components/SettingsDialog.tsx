@@ -7,7 +7,7 @@ import { Switch } from './Switch'
 import { GeneratedModelField } from './GeneratedModelField'
 import { BackgroundSettingsDialog } from './BackgroundSettingsDialog'
 
-export function SettingsDialog({ engine, onClose }: { engine: EngineView; onClose(): void }) {
+export function SettingsDialog({ engine, onClose, onConnections }: { engine: EngineView; onClose(): void; onConnections(): void }) {
   const form = useEngineSettings()
   const [tune, setTune] = useState(false)
   const [support, setSupport] = useState<EngineSupport | null>(null)
@@ -21,6 +21,7 @@ export function SettingsDialog({ engine, onClose }: { engine: EngineView; onClos
   const switchField = (key: 'newWorktreesStartFromOrigin' | 'sidebarAutoSettleOnMerge' | 'enableProviderUpdateChecks', label: string) => supports(key) && typeof settings?.[key] === 'boolean' && <Switch label={label} checked={settings[key]} onChange={value => form.edit({ [key]: value })} />
   if (tune) return <BackgroundSettingsDialog activity={activity} onApply={form.edit} onBack={() => setTune(false)} onClose={onClose} />
   return <SetupDialog title="Settings" subtitle={engine.managed ? "Defaults on this computer. Existing conversations keep their choices." : "Defaults on the connected engine. Existing conversations keep their choices."} onClose={onClose} className="engine-settings-dialog" footer={<><button type="button" className="quiet-button" onClick={onClose}>Cancel</button><button type="button" className="primary-button" disabled={form.busy || !form.dirty} onClick={() => void form.save()}>{form.busy ? 'Saving…' : 'Save changes'}</button></>}>
+    <section className="settings-connections"><h3>Connections</h3><p>Connect this computer to T3 on your phone, or choose the server that runs your agents.</p><button className="quiet-button" disabled={form.dirty || form.busy} onClick={onConnections}>Connections</button>{form.dirty && <p className="engine-hint">Save your settings changes before opening Connections.</p>}</section>
     {form.error && <div role="alert" className="send-error"><p>{form.error}</p><button className="quiet-button" onClick={() => void form.reload()}>Reload and discard changes</button></div>}
     {!settings && !form.error && <p>Reading engine settings…</p>}
     {settings && <fieldset className="setup-fields" disabled={form.busy}>

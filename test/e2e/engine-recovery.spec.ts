@@ -22,13 +22,14 @@ test('restoring through This computer keeps newer document text and restores mat
   await page.evaluate(() => window.strata.engineRecovery!({ action: 'update' }))
   await expect.poll(async () => (await page.evaluate(() => window.strata.getState()).catch(() => null))?.engine.managed?.version, { timeout: 30000 }).toContain('ui-new')
   // A stopped state during the transition can open the recovery dialog.
-  const openDialog = page.getByRole('dialog', { name: 'This computer' })
+  const openDialog = page.getByRole('dialog', { name: 'Connections', exact: true })
   if (await openDialog.isVisible()) await openDialog.getByRole('button', { name: 'Close', exact: true }).click()
   await page.evaluate(() => window.strata.parkAccount('codex', false))
   await setSource(page, '# Newer editor text stays\n')
   await page.evaluate(() => localStorage.setItem('bundled-recovery-draft-proof', 'newer unsent text'))
   await page.getByRole('button', { name: 'Engine status' }).click()
-  const dialog = page.getByRole('dialog', { name: 'This computer' })
+  const dialog = page.getByRole('dialog', { name: 'Connections', exact: true })
+  await dialog.getByText('Advanced engine details', { exact: true }).click()
   await dialog.getByText('Engine updates and recovery', { exact: true }).click()
   const backups = await page.evaluate(() => window.strata.engineRecovery!({ action: 'status' }))
   const backup = backups.backups.find(row => row.kind === 'upgrade')!

@@ -3,6 +3,8 @@ import { captureStrataEngine, restoreStrataEngine, documentBinding } from './eng
 import { hostname, networkInterfaces } from 'node:os'
 import { readTailscale, readServeEndpoint } from './engine/tailscale'
 import { T3Connect } from './engine/connect'
+import { runConnectSetup, type ConnectSetupAction } from './engine/connect-setup'
+import { ConnectReadiness, liveConnectStatus } from './engine/connect-readiness'
 import type { ComputerRequest, ComputerView } from '../shared/computer'
 import { ProviderSetupJobs } from './engine/provider-setup'
 import { measureLocalUsage } from './engine/local-usage'
@@ -348,6 +350,7 @@ export class StrataApplication implements StrataApi {
   readonly #managedBundle: string | undefined
   #documentBarrier: Promise<void> | null = null
   #connect = new T3Connect()
+  #connectReadiness = new ConnectReadiness()
   #computerSnapshot: ComputerView | null = null
   #setStartAtLogin: (enabled: boolean) => Promise<void>
   #providerSetupPreparing = false
@@ -900,6 +903,8 @@ export class StrataApplication implements StrataApi {
     let createdLink: ComputerView['createdLink']
     if (request.action === 'cancel') await this.#connect.cancel()
     else if (request.action === 'input') this.#connect.input(request.text)
+    else if (request.action === 'use-code') this.#connect.useCode()
+    else if (request.action === 'download') this.#connect.download(request.accepted)
     else if (request.action !== 'status' && request.action !== 'progress') {
       if (this.#connect.busy || this.#providerSetupPreparing || this.#providerSetup.busy) throw new Error('Finish or cancel the current setup first.')
       if (request.action === 'preferences') {
@@ -922,20 +927,25 @@ export class StrataApplication implements StrataApi {
           this.#settings = await this.#settingsStore.update({ engine: previous }); await this.#manager.restart(); throw error
         } finally { this.#providerSetupPreparing = false; this.#publish(); await this.#engine.resumeAfterMaintenance?.() }
       } else {
-        const args = request.action === 'login' ? ['login', '--headless'] : request.action === 'logout' ? ['logout'] : request.action === 'remote' ? request.enabled ? ['link', '--headless'] : ['unlink'] : request.action === 'publish' && request.enabled ? ['publish'] : ['publish', '--disable']
-        const restart = request.action !== 'login'
-        let stopped = false, preservePublishing = false
-        this.#connect.start(context, args, async () => {
-          const previous = await this.#connect.status(context)
-          if ((request.action === 'remote' || request.action === 'publish') && request.enabled && !previous.authenticated) throw new Error('Sign in to T3 before enabling this option.')
-          preservePublishing = request.action === 'remote' && !request.enabled && previous.publishAgentActivity
-          if (restart) await this.#engine.prepareLocalSetup?.()
-          if (restart) { await this.#manager!.stop(); stopped = true }
-        }, async () => {
-          try {
-            if (stopped && preservePublishing) await this.#connect.command(context, ['publish'])
-            if (stopped) { await this.#manager!.start(); if (this.#manager!.view().state !== 'running') throw new Error(this.#manager!.view().problem ?? 'Restart the local engine to apply Connect.') }
-          } finally { if (restart) { this.#providerSetupPreparing = false; await this.#engine.resumeAfterMaintenance?.() } }
+        if (request.action !== 'configure' && request.action !== 'login' && request.action !== 'logout' && request.action !== 'change-account') throw new Error('Unsupported T3 setup action.')
+        const setup: ConnectSetupAction = request.action === 'configure' ? { action: 'configure', remote: request.remote, publish: request.publish }
+          : request.action === 'login' ? { action: 'login', ...(request.method ? { method: request.method } : {}) } : { action: request.action }
+        this.#connect.start(context, async operation => {
+          await this.#connectReadiness.watchLog(join(this.#store.dataDirectory, 'engine/log/engine.log'))
+          return runConnectSetup(setup, operation, {
+          status: () => this.#connect.status(context),
+          install: async (signal, progress) => {
+            if (!this.#engine.installRelayClient) throw new Error('This engine cannot install connection support. Update Strata and retry.')
+            await this.#engine.installRelayClient(signal, progress)
+          },
+          prepare: async () => { await this.#engine.prepareLocalSetup?.() },
+          stop: () => this.#manager!.stop(),
+          start: async () => {
+            await this.#manager!.start()
+            if (this.#manager!.view().state !== 'running') throw new Error(this.#manager!.view().problem ?? 'The local engine could not restart. Open Advanced and restart it.')
+          },
+          resume: async () => { this.#providerSetupPreparing = false; await this.#engine.resumeAfterMaintenance?.() },
+          })
         })
       }
     }
@@ -946,12 +956,25 @@ export class StrataApplication implements StrataApi {
     let links: ComputerView['links'] = [], devices: ComputerView['devices'] = []
     if (!this.#connect.busy && this.#engine.view().state === 'connected') {
       try {
-        const live = await connection('state'); remoteEnabled = live.managedTunnelActive === true
-        const rows = await connection('links'); if (!Array.isArray(rows)) throw new Error('Pairing links are unsupported.')
-        links = rows.map(row => ({ id: row.id, label: row.label, expiresAt: row.expiresAt, scopes: row.scopes }))
+        const live = await connection('state')
+        if (connect) { const updated = liveConnectStatus(connect, live); connect = updated.connect; remoteEnabled = updated.remoteEnabled }
+        if (request.action === 'progress') links = this.#computerSnapshot?.links ?? []
+        else {
+          const rows = await connection('links'); if (!Array.isArray(rows)) throw new Error('Pairing links are unsupported.')
+          links = rows.map(row => ({ id: row.id, label: row.label, expiresAt: row.expiresAt, scopes: row.scopes }))
+        }
         const sessions = await connection('devices'); if (!Array.isArray(sessions)) throw new Error('Paired devices are unsupported.')
         devices = sessions.map(row => ({ sessionId: row.sessionId, label: row.client?.label ?? row.subject ?? 'Paired device', current: row.current === true, connected: row.connected === true }))
       } catch (error) { problems.push(String(error)) }
+    }
+    let readiness = this.#connectReadiness.read(connect, remoteEnabled, devices)
+    if (readiness.connectionState === 'starting' || readiness.connectionState === 'failed') {
+      const failure = await this.#connectReadiness.failure()
+      if (failure) readiness = { connectionState: 'failed', connectionMessage: failure }
+    }
+    if (request.action === 'progress' && this.#computerSnapshot) {
+      this.#computerSnapshot = { ...this.#computerSnapshot, connect, remoteEnabled, devices, links, problems, account: this.#connect.account, job: this.#connect.view(), ...readiness }
+      return this.#computerSnapshot
     }
     const prefs = this.#settings.engine
     const server = this.#engine.view().server
@@ -962,7 +985,7 @@ export class StrataApplication implements StrataApi {
       if (endpoint) endpoints.push(endpoint)
       else problems.push('Tailscale HTTPS is not forwarding to this engine. Check Serve before using a tailnet pairing link.')
     }
-    this.#computerSnapshot = { connect, remoteEnabled, tailscaleStatus: await readTailscale(), job: this.#connect.view(), preferences: { keepRunning: prefs.keepRunning, startAtLogin: prefs.startAtLogin, lan: prefs.lan === true, tailscale: prefs.tailscale === true, port: prefs.tailscalePort ?? 443 }, environmentName: hostname(), endpoints, links, devices, problems, ...(createdLink ? { createdLink } : {}) }
+    this.#computerSnapshot = { connect, remoteEnabled, account: this.#connect.account, ...readiness, tailscaleStatus: await readTailscale(), job: this.#connect.view(), preferences: { keepRunning: prefs.keepRunning, startAtLogin: prefs.startAtLogin, lan: prefs.lan === true, tailscale: prefs.tailscale === true, port: prefs.tailscalePort ?? 443 }, environmentName: hostname(), endpoints, links, devices, problems, ...(createdLink ? { createdLink } : {}) }
     return this.#computerSnapshot
   }
 

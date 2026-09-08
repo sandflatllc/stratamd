@@ -20,6 +20,7 @@ test('settings change defaults and writer options, preserve concurrent fields, a
     await page.getByLabel('New conversations', { exact: true }).selectOption('worktree')
     await page.getByRole('switch', { name: 'Start from origin', exact: true }).click()
     await page.getByLabel('Add project starts in', { exact: true }).fill('/home/owner/Projects')
+    await expect(page.getByRole('button', { name: 'Connections', exact: true })).toBeDisabled()
     await page.getByRole('switch', { name: 'Auto-settle merged conversations', exact: true }).click()
     await page.getByRole('switch', { name: 'Auto-settle inactive conversations', exact: true }).click()
     await expect(page.getByLabel('Days of inactivity')).toHaveCount(0)

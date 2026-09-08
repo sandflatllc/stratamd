@@ -482,7 +482,7 @@ export function App({ createEditor }: AppProps) {
     void window.strata.refreshAccounts().catch(() => undefined)
   }
   const openSettings = () => { setAccountsDialog(false); setEngineDialog(false); setSettingsOpen(true) }
-  const settingsDialogNode = settingsOpen && <SettingsDialog engine={view.engine} onClose={() => setSettingsOpen(false)} />
+  const settingsDialogNode = settingsOpen && <SettingsDialog engine={view.engine} onClose={() => setSettingsOpen(false)} onConnections={() => { setSettingsOpen(false); setEngineDialog(true) }} />
   const engineDialogNode = engineDialog && <EngineDialog engine={view.engine} onPair={async (request) => { sessionStorage.setItem('stratamd.reopen-engine-dialog', '1'); try { await window.strata.pairEngine(request) } catch (error) { sessionStorage.removeItem('stratamd.reopen-engine-dialog'); throw error }; report('Paired. Projects and threads come from this server now.') }} onReconnect={reconnectEngine} onClose={() => setEngineDialog(false)} onOpenAccounts={openAccounts} />
   const usageDialogNode = usageOpen && <UsageDialog connected={view.engine.state === 'connected'} onClose={() => setUsageOpen(false)} onAccounts={openAccounts} />
   const accountsDialogNode = accountsDialog && <AccountsDialog onOpenSettings={openSettings} onOpenUsage={openUsage} engine={view.engine} onPark={(instanceId, parked) => void perform(() => window.strata.parkAccount(instanceId, parked))} onTerminalDefault={(driver, selection) => void perform(() => window.strata.setTerminalDefault(driver, selection))} onClose={() => setAccountsDialog(false)} onOpenEngine={() => { setAccountsDialog(false); setEngineDialog(true) }} />

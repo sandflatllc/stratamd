@@ -52,10 +52,13 @@ export function EngineDialog({ engine, onPair, onReconnect, onClose, onOpenAccou
     }
   }
   return (
-    <SetupDialog title={engine.managed ? 'This computer' : 'Engine'} subtitle="The T3 server that runs your agents." onClose={onClose} className="engine-dialog" footer={<>
+    <SetupDialog title={engine.managed ? 'Connections' : 'Engine'} subtitle={engine.managed ? 'This computer and access from your other devices.' : 'The T3 server that runs your agents.'} onClose={onClose} className="engine-dialog" footer={<>
       {onOpenAccounts && paired && <button type="button" className="quiet-button" onClick={onOpenAccounts}>Usage Limits</button>}
       <button type="button" className="primary-button" onClick={onClose}>Close</button>
     </>}>
+        {engine.managed && <p className="local-engine-status" data-testid="local-engine-status">Local engine {engine.managed.state === 'running' ? 'running' : engine.managed.state === 'recovering' ? 'restarting' : engine.managed.state} · Remote access is managed below.</p>}
+        {engine.managed && window.strata.computer && <ComputerControls />}
+        <details className="connection-diagnostics" open={!engine.managed || undefined}><summary>Advanced engine details</summary>
         <dl className="engine-facts">
           {engine.managed && <div><dt>Engine</dt><dd>T3 {engine.managed.version?.match(/^t3-(.+?)-node-/)?.[1] ?? engine.managed.version ?? 'bundled'}</dd></div>}
           <div><dt>Address</dt><dd data-testid="engine-server">{engine.server ?? 'None'}</dd></div>
@@ -70,16 +73,16 @@ export function EngineDialog({ engine, onPair, onReconnect, onClose, onOpenAccou
           <button type="button" className="quiet-button" onClick={() => { void window.strata.manageEngine?.('show-log').catch(error => setError(String(error))) }}>Show log</button>
         </section>}
         {engine.managed && window.strata.engineRecovery && <EngineRecovery />}
-        {engine.managed && window.strata.computer && <ComputerControls />}
         {!engine.managed?.problem && engine.problem && engine.state !== 'unpaired' && <p className="engine-problem">{engine.problem}</p>}
         {paired && <div className="engine-dialog-row">
           {(!engine.managed || engine.managed.state === 'running' && engine.state === 'disconnected') && <button type="button" className={engine.state === 'disconnected' ? 'primary-button' : 'quiet-button'} onClick={onReconnect}>Reconnect</button>}
           {engine.state !== 'disconnected' && engine.server && <button type="button" className="quiet-button" onClick={() => { void window.strata.openExternal?.(engine.server!).catch((failure) => setError(String(failure))) }}>Open T3 in a browser</button>}
         </div>}
+        </details>
         {!engine.managed && window.strata.manageEngine && <details><summary>Use this computer</summary><p>Your current connection keeps its conversations, document links and unsent drafts. The bundled engine starts with its own projects and conversations.</p><button type="button" className="quiet-button" onClick={() => { setError(''); void window.strata.manageEngine?.('use-managed').catch(error => setError(String(error))) }}>Switch to this computer</button></details>}
         {error && <div className="send-error" role="alert">{error}</div>}
         <details className="engine-pairing" open={pairExpanded} onToggle={(event) => setPairExpanded(event.currentTarget.open)}>
-          <summary>{engine.managed ? 'Advanced: use an external server' : paired ? 'Pair again' : 'Pair'}</summary>
+          <summary>{engine.managed ? 'Use another computer to run agents' : paired ? 'Pair again' : 'Pair'}</summary>
         <form className="engine-pairing-form" onSubmit={(event) => { event.preventDefault(); void pair() }}>
           <p className="engine-hint">{paired ? 'Pairing again replaces the stored credential.' : 'Paste the pairing link from T3, or type the host and the code shown beside it. Give the link the Manage access permission so Strata can renew the session itself.'}</p>
           <label>Pairing link<input data-dialog-initial-focus={!paired || undefined} value={link} onChange={(event) => setLink(event.target.value)} placeholder="http://host:3774/pair?token=…" autoComplete="off" spellCheck={false} /></label>

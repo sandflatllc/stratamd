@@ -2440,3 +2440,17 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 
 .conversation-item-entry { display:flex; align-items:center; gap:6px; }
 .conversation-item-entry>button:first-child { flex:1; text-align:left; }
+
+.settings-connections { padding-bottom: 18px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+.connection-summary h3 { font-size: 20px; margin-top: 0; }
+.connection-computer { font-weight: 700; overflow-wrap: anywhere; }
+.connection-steps { display: flex; gap: 24px; flex-wrap: wrap; padding-left: 20px; margin-block: 18px; }
+.connection-steps li { padding-right: 12px; }
+.connection-steps [aria-current="step"] { font-weight: 700; }
+.connection-progress { border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-block: 12px; }
+.connection-progress button, .connection-choices > .primary-button { margin: 8px 8px 8px 0; }
+.connection-handoff ol { list-style: decimal; padding-left: 20px; }
+.connection-handoff li { margin-block: 10px; }
+.connection-diagnostics { margin-block: 18px; }
+.local-engine-status { margin-top: 0; }
+.pairing-qr { display: block; width: 240px; max-width: 100%; height: auto; background: white; margin-block: 12px; }

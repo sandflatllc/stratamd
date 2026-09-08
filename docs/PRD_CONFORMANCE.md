@@ -192,9 +192,10 @@ Conversation navigation gate, 2026-09-05: verified in an isolated checkout of da
 
 | Bundled connection requirement | Evidence |
 | --- | --- |
-| Official isolated Connect commands, cancellation and failed authorization | `test/unit/t3-connect.test.ts` |
+| Official isolated Connect commands, browser/code flow, cancellation, private output and failed authorization | `test/unit/t3-connect.test.ts`, `test/unit/connect-setup.test.ts` |
+| Download before maintenance, combined preferences, restart recovery, installer stream cancellation and bounded live readiness | `test/unit/connect-setup.test.ts`, `test/unit/relay-install.test.ts`, `test/unit/connect-readiness.test.ts` |
 | Stock pairing expiry, scope selection, link/device revocation, explicit LAN restart | `test/integration/managed-connections.test.ts` |
-| Named This computer / Engine entry in the Strata menu, computer controls, persisted tray preference and isolated login entry | `test/e2e/computer-controls.spec.ts`, `test/e2e/engine-dialog.spec.ts`, `test/unit/t3-connect.test.ts` |
+| Settings → Connections and This computer entry, setup before diagnostics, computer/device handoff, tray preference and isolated login entry | `test/e2e/computer-controls.spec.ts`, `test/e2e/connect-setup.spec.ts`, `test/e2e/engine-dialog.spec.ts`, `test/unit/t3-connect.test.ts` |
 | Hosted sign-in, relay reachability, Android turn/reconnect, macOS login integration | Blocked release proofs; phase reports record missing sign-in/devices. |
 
 ### Bundled distribution and recovery
