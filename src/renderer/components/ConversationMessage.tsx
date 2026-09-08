@@ -8,6 +8,31 @@ import { transcriptDiagnostics } from '../transcriptDiagnostics'
 import type { RowDisplay } from '../transcriptCoordinator'
 import { TranscriptContext } from './ConversationHistory'
 
+/**
+ * One document selection listener for every completed message. Each change
+ * resolves the anchor and focus rows once; rows then compare elements instead
+ * of each walking the selection through its own subtree.
+ */
+type SelectionRows = { anchor: Element | null; focus: Element | null } | null
+const selectionListeners = new Set<(rows: SelectionRows) => void>()
+function rowOf(node: Node | null): Element | null {
+  const element = node instanceof Element ? node : node?.parentElement ?? null
+  return element?.closest('.conversation-rich-message') ?? null
+}
+function broadcastSelection(): void {
+  const selection = window.getSelection()
+  const rows: SelectionRows = selection && !selection.isCollapsed && selection.anchorNode && selection.focusNode ? { anchor: rowOf(selection.anchorNode), focus: rowOf(selection.focusNode) } : null
+  for (const listener of selectionListeners) listener(rows)
+}
+function observeSelection(listener: (rows: SelectionRows) => void): () => void {
+  if (selectionListeners.size === 0) document.addEventListener('selectionchange', broadcastSelection)
+  selectionListeners.add(listener)
+  return () => {
+    selectionListeners.delete(listener)
+    if (selectionListeners.size === 0) document.removeEventListener('selectionchange', broadcastSelection)
+  }
+}
+
 export interface PassageTarget { message: string; from: number; to: number; serial: number; align?: 'start'; annotation?: string; pending?: boolean }
 
 /**
@@ -55,11 +80,7 @@ export const ConversationMessage = memo(function ConversationMessage({ message, 
   }, [comments, asks, target, message, source])
   const rangesRef = useRef(ranges); rangesRef.current = ranges
 
-  useEffect(() => {
-    const changed = () => { const selection = window.getSelection(); setSelected(Boolean(selection && !selection.isCollapsed && selection.anchorNode && selection.focusNode && row.current?.contains(selection.anchorNode) && row.current.contains(selection.focusNode))) }
-    document.addEventListener('selectionchange', changed)
-    return () => document.removeEventListener('selectionchange', changed)
-  }, [])
+  useEffect(() => observeSelection((rows) => setSelected(rows !== null && row.current !== null && rows.anchor === row.current && rows.focus === row.current)), [])
 
   useEffect(() => {
     if (!port || !row.current) return

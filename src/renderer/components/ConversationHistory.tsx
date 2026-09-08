@@ -180,9 +180,24 @@ export class ConversationHistory extends Component<Props, Record<string, never>,
     })
     this.observer.observe(viewport)
     // The content wrapper also catches changes outside individual history rows.
-    const observeRows = () => { for (const row of viewport.querySelectorAll('[data-history-row], .conversation-column')) this.observer?.observe(row) }
-    observeRows()
-    this.mutation = new MutationObserver(observeRows)
+    const ROWS = '[data-history-row], .conversation-column'
+    for (const row of viewport.querySelectorAll(ROWS)) this.observer.observe(row)
+    // Only the added and removed subtrees are visited; a full re-query of every
+    // row on each child change grew with the length of the conversation.
+    this.mutation = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (!(node instanceof Element)) continue
+          if (node.matches(ROWS)) this.observer?.observe(node)
+          for (const row of node.querySelectorAll(ROWS)) this.observer?.observe(row)
+        }
+        for (const node of record.removedNodes) {
+          if (!(node instanceof Element)) continue
+          if (node.matches(ROWS)) this.observer?.unobserve(node)
+          for (const row of node.querySelectorAll(ROWS)) this.observer?.unobserve(row)
+        }
+      }
+    })
     this.mutation.observe(viewport, { childList: true, subtree: true })
     viewport.addEventListener('scroll', this.remember, { passive: true })
   }
