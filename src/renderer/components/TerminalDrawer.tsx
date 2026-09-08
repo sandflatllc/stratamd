@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { EngineView, TerminalTarget } from '../../shared/contracts'
 import { GhosttyTerminalSurface } from '../terminal/ghostty/surface'
 import type { GhosttyTheme } from '../terminal/ghostty/core'
-import { applyTerminalAttachStreamEvent, EMPTY_TERMINAL_BUFFER_STATE } from '../terminal/buffer'
+import { applyTerminalAttachStreamEvent, EMPTY_TERMINAL_BUFFER_STATE, terminalBufferText } from '../terminal/buffer'
 import { TerminalIcon, XIcon } from '../icons/lucide'
 import { hasPrimaryModifier } from '../../shared/primary-modifier'
 
@@ -49,7 +49,7 @@ export function TerminalDrawer({ target, cwd, engineState, themeKey, onOpenLink,
       if (eventTarget.threadId !== threadId || eventTarget.terminalId !== terminalId) return
       buffer = applyTerminalAttachStreamEvent(buffer, event)
       setStatus(buffer.status); setError(buffer.error ?? '')
-      if (event.type === 'snapshot' || event.type === 'restarted') { setLabel(event.snapshot.label); surface.current?.resetAndWrite(buffer.buffer) }
+      if (event.type === 'snapshot' || event.type === 'restarted') { setLabel(event.snapshot.label); surface.current?.resetAndWrite(terminalBufferText(buffer)) }
       else if (event.type === 'output') surface.current?.write(event.data)
       else if (event.type === 'cleared') surface.current?.resetAndWrite('')
       else if (event.type === 'activity') setLabel(event.label)
@@ -66,7 +66,7 @@ export function TerminalDrawer({ target, cwd, engineState, themeKey, onOpenLink,
     }).then(async created => {
       if (!active) { created.dispose(); return }
       surface.current = created
-      created.resetAndWrite(buffer.buffer); created.fit(); created.focus()
+      created.resetAndWrite(terminalBufferText(buffer)); created.fit(); created.focus()
       attached = true
       await window.strata.attachEngineTerminal({ ...terminal, attachmentId, cwd, cols: created.cols, rows: created.rows })
     }).catch(fail)
