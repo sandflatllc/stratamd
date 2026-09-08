@@ -50,7 +50,7 @@ function sharedGeometry(): TranscriptGeometryStore | null {
       if (document.querySelector('[data-scroll-active]')) { setTimeout(idleWrite, 250); return }
       write()
     }
-    if (typeof requestIdleCallback === 'function') requestIdleCallback(idleWrite); else setTimeout(idleWrite, 500)
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(idleWrite, { timeout: 1000 }); else setTimeout(idleWrite, 500)
   } }) : null
   return geometryStore
 }

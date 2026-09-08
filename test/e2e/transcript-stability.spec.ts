@@ -218,9 +218,39 @@ test('a reopened cached answer still waits for a replaced image to decode', asyn
   const id = engine.postAssistant('t1', '![Cached screenshot](cached.png)\n\n' + paragraphs)
   try {
     let page = await scenario.launch()
+    await page.evaluate(() => {
+      const target = window as typeof window & {
+        transcriptGeometryIdleProbe?: { scheduled: Array<number | null>; fired: number[]; native: typeof requestIdleCallback }
+      }
+      const native = requestIdleCallback.bind(window)
+      target.transcriptGeometryIdleProbe = { scheduled: [], fired: [], native }
+      window.requestIdleCallback = ((callback: IdleRequestCallback, options?: IdleRequestOptions) => {
+        const timeout = options?.timeout ?? null
+        target.transcriptGeometryIdleProbe!.scheduled.push(timeout)
+        // Model a busy renderer: Chromium need not run a deadline-free callback.
+        if (timeout === null) return 2_000_000_000
+        return native((deadline) => {
+          target.transcriptGeometryIdleProbe!.fired.push(timeout)
+          callback(deadline)
+        }, options)
+      }) as typeof requestIdleCallback
+    })
     let panel = await open(page, 'center')
     await expect(panel.locator(`[data-message-id="${id}"] img[data-decoded]`)).toBeVisible()
+    await expect.poll(() => page.evaluate(() => (window as typeof window & { transcriptGeometryIdleProbe?: { scheduled: Array<number | null> } }).transcriptGeometryIdleProbe?.scheduled.length ?? 0)).toBeGreaterThan(0)
+    const scheduledIdle = await page.evaluate(() => (window as typeof window & { transcriptGeometryIdleProbe?: { scheduled: Array<number | null>; fired: number[] } }).transcriptGeometryIdleProbe)
+    await info.attach('geometry-idle-scheduled.json', { body: Buffer.from(JSON.stringify(scheduledIdle, null, 2)), contentType: 'application/json' })
     await expect.poll(() => page.evaluate(() => Object.keys(localStorage).some(key => key.includes('transcript-geometry') && localStorage.getItem(key)?.includes('cached.png')))).toBe(true)
+    const completedIdle = await page.evaluate(() => {
+      const target = window as typeof window & {
+        transcriptGeometryIdleProbe?: { scheduled: Array<number | null>; fired: number[]; native: typeof requestIdleCallback }
+      }
+      const evidence = target.transcriptGeometryIdleProbe
+      if (evidence) window.requestIdleCallback = evidence.native
+      return evidence ? { scheduled: evidence.scheduled, fired: evidence.fired } : null
+    })
+    expect(completedIdle?.scheduled).toContain(1000)
+    expect(completedIdle?.fired).toContain(1000)
     await scenario.stop()
     await writeFile(image, pngBytes(400, 600, 2))
     page = await scenario.launch()
