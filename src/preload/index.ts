@@ -202,7 +202,7 @@ const api: StrataApi & {
     for (const file of files) await invoke<void>(IPC.openDocument, webUtils.getPathForFile(file))
   },
   closeDocument: (path, decision) => invoke<'closed' | 'needs-decision' | 'cancelled'>(IPC.closeDocument, path, decision),
-  updateBuffer: (path, content, origin) => invoke<void>(IPC.updateBuffer, path, content, origin),
+  updateBuffer: (path, content, origin, blockRanges) => invoke<void>(IPC.updateBuffer, path, content, origin, blockRanges),
   undo: (path) => invoke<'undone' | 'empty'>(IPC.undo, path),
   redo: (path) => invoke<'redone' | 'empty'>(IPC.redo, path),
   save: async (path) => {

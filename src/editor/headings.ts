@@ -54,8 +54,12 @@ function candidateAt(node: ProseMirrorNode, position: number): Omit<EditorHeadin
   }
 }
 
+/** Above this many steps, mapping each step through the ones after it costs more than one full pass. */
+const WHOLE_DOCUMENT_STEPS = 64
+
 function changedRanges(transaction: Transaction): Array<{ from: number; to: number }> {
   const size = transaction.doc.content.size
+  if (transaction.steps.length > WHOLE_DOCUMENT_STEPS) return [{ from: 0, to: size }]
   const ranges: Array<{ from: number; to: number }> = []
   transaction.mapping.maps.forEach((stepMap, index) => {
     const following = transaction.mapping.slice(index + 1)

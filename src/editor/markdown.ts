@@ -622,19 +622,25 @@ function tryStitchParse(previous: ParsedEditorMarkdown, nextSource: string): Sti
   }
 
   // Expand by one block on each side; the expansion blocks are the sentinels.
-  const regionFirst = firstTouched - 1
-  if (regionFirst < 1) return fail('offset-zero')
+  // A change in the first block has no block before it to verify against; its
+  // region starts at the document's first byte instead, where nothing precedes it.
+  const hasStartSentinel = firstTouched >= 1
+  const regionFirst = hasStartSentinel ? firstTouched - 1 : 0
   const hasEndSentinel = lastTouched + 1 <= blockCount - 1
   const regionLast = hasEndSentinel ? lastTouched + 1 : blockCount - 1
   if (regionLast - regionFirst + 1 > 32) return fail('region-too-large')
-  for (let index = regionFirst - 1; index <= Math.min(blockCount - 1, regionLast + 1); index += 1) {
+  // Frontmatter anywhere near the region is position-dependent. Other raw
+  // blocks may serve as sentinels or neighbours, since a sentinel that comes
+  // back byte-identical with the same raw kind proves the edit never reached
+  // it; a raw block the edit itself touches still takes the full parse.
+  for (let index = Math.max(0, regionFirst - 1); index <= Math.min(blockCount - 1, regionLast + 1); index += 1) {
     const block = coreBlocks[index]!
     if (block.rawKind === 'frontmatter') return fail('frontmatter')
-    if (block.rawKind !== undefined) return fail('raw-block')
+    if (block.rawKind !== undefined && index >= firstTouched && index <= lastTouched) return fail('raw-block')
   }
 
   // The region includes the gap on both sides, so blank-line context is real.
-  const regionBase = coreBlocks[regionFirst - 1]!.span.end
+  const regionBase: SourcePoint = regionFirst >= 1 ? coreBlocks[regionFirst - 1]!.span.end : { offset: 0, byteOffset: 0, line: 1, column: 1 }
   const regionOldEnd = regionLast + 1 < blockCount
     ? coreBlocks[regionLast + 1]!.span.start.offset
     : previousSource.length
@@ -644,7 +650,7 @@ function tryStitchParse(previous: ParsedEditorMarkdown, nextSource: string): Sti
 
   const regionParsed = parseMarkdown(regionText)
   const regionBlocks = regionParsed.blocks
-  if (regionBlocks.length < (hasEndSentinel ? 2 : 1)) return fail('sentinel-mismatch')
+  if (regionBlocks.length < (hasStartSentinel ? 1 : 0) + (hasEndSentinel ? 1 : 0)) return fail('sentinel-mismatch')
   // Definitions and frontmatter formed inside the region reach beyond it.
   if (regionBlocks.some((block) => block.rawKind === 'link-definition' || block.rawKind === 'frontmatter')) {
     return fail('region-parse-raw')
@@ -655,11 +661,11 @@ function tryStitchParse(previous: ParsedEditorMarkdown, nextSource: string): Sti
   // effects escaped the region (docs/plans/completed/reparse-plan.md §4.5).
   const startSentinel = regionBlocks[0]!
   const beforeSentinel = coreBlocks[regionFirst]!
-  if (startSentinel.source !== beforeSentinel.source
+  if (hasStartSentinel && (startSentinel.source !== beforeSentinel.source
     || startSentinel.span.start.offset + regionBase.offset !== beforeSentinel.span.start.offset
     || startSentinel.span.end.offset + regionBase.offset !== beforeSentinel.span.end.offset
     || startSentinel.node.type !== beforeSentinel.node.type
-    || startSentinel.rawKind !== beforeSentinel.rawKind) {
+    || startSentinel.rawKind !== beforeSentinel.rawKind)) {
     return fail('sentinel-mismatch')
   }
   if (hasEndSentinel) {
@@ -682,14 +688,14 @@ function tryStitchParse(previous: ParsedEditorMarkdown, nextSource: string): Sti
   // The sentinels themselves are stitched from the previous parse (the exact
   // blocks a full parse of nextSource reproduces); the region parse's copies
   // of them exist only for the verification above.
-  const interior = regionBlocks.slice(1, hasEndSentinel ? regionBlocks.length - 1 : regionBlocks.length)
+  const interior = regionBlocks.slice(hasStartSentinel ? 1 : 0, hasEndSentinel ? regionBlocks.length - 1 : regionBlocks.length)
 
   const stitchedCore: MarkdownBlock[] = []
   const editorBlocks: ParsedMarkdownBlock[] = []
   const definitions = new Map<string, LinkDefinition>()
 
   // Before the region: byte-identical prefix, everything reused.
-  for (let index = 0; index <= regionFirst; index += 1) {
+  for (let index = 0; index <= (hasStartSentinel ? regionFirst : -1); index += 1) {
     stitchedCore.push({ ...coreBlocks[index]! })
     editorBlocks.push({ ...previous.blocks[index]! })
   }
@@ -867,19 +873,24 @@ export function describeParseDivergence(stitched: ParsedEditorMarkdown, full: Pa
  * (docs/plans/completed/reparse-plan.md §2).
  */
 export function updateParsedMarkdown(previous: ParsedEditorMarkdown, nextSource: string): ParsedEditorMarkdown {
+  return tryUpdateParsedMarkdown(previous, nextSource) ?? parseMarkdownForEditor(nextSource)
+}
+
+/** Attempt an exact incremental parse without paying for a full fallback. */
+export function tryUpdateParsedMarkdown(previous: ParsedEditorMarkdown, nextSource: string): ParsedEditorMarkdown | null {
   if (previous.source === nextSource) return previous
   const attempt = tryStitchParse(previous, nextSource)
   if (!attempt.ok) {
     countFallback(attempt.reason)
-    return parseMarkdownForEditor(nextSource)
+    return null
   }
   if (parseVerifyEnabled()) {
     const full = parseMarkdownForEditor(nextSource)
     const divergence = describeParseDivergence(attempt.parsed, full)
     if (divergence !== null) {
-      console.error(`StrataMD reparse: stitched parse diverged from the full parse (${divergence}); using the full parse`)
+      console.error(`StrataMD reparse: stitched parse diverged from the full parse (${divergence}); discarding the stitch`)
       countFallback('verify-divergence')
-      return full
+      return null
     }
   }
   reparseStats.stitched += 1

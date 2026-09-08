@@ -1,3 +1,6 @@
+import { EditorState } from 'prosemirror-state'
+import { parseMarkdownForEditor, strataSchema } from '../../src/editor/index'
+import { createReferencePreviewPlugin } from '../../src/editor/references'
 import { describe, expect, it } from 'vitest'
 import { parseFileTree, visualCodeFenceKind } from '../../src/editor/code-blocks'
 import { MERMAID_CONFIG, normalizeMermaidSource } from '../../src/editor/mermaid-renderer'
@@ -51,4 +54,18 @@ describe('Phase 6 document intelligence', () => {
     expect(references.map(({ reference }) => reference.level)).toEqual([1, 2, 3, 4, 5, 6])
     expect(references[5]?.reference).toMatchObject({ text: 'Level 6', parentText: 'Level 5' })
   })
+})
+
+
+it.each([63, 65])('finds a reference created by a %i-step transaction and removes its decoration on deletion', (steps) => {
+  const plugin = createReferencePreviewPlugin()
+  let state = EditorState.create({ doc: parseMarkdownForEditor('Before.\n\nReference.').doc, plugins: [plugin] })
+  const transaction = state.tr
+  for (let step = 0; step < steps - 1; step++) transaction.insertText('x', 1)
+  const at = transaction.doc.content.size - 1
+  transaction.insert(at, strataSchema.text('docs/plan.md', [strataSchema.marks.code.create()]))
+  state = state.apply(transaction)
+  expect(plugin.getState(state)?.find()).toHaveLength(1)
+  state = state.apply(state.tr.delete(at, at + 'docs/plan.md'.length))
+  expect(plugin.getState(state)?.find()).toHaveLength(0)
 })

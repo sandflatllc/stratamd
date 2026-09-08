@@ -1,4 +1,5 @@
 import { resolveLocalLink } from './local-link'
+import { classifyLocalLink } from '../shared/local-link'
 import { captureStrataEngine, restoreStrataEngine, documentBinding } from './engine/strata-backup'
 import { hostname, networkInterfaces } from 'node:os'
 import { readTailscale, readServeEndpoint } from './engine/tailscale'
@@ -147,7 +148,7 @@ import {
 import { parseMarkdown } from '../core/markdown'
 import { analyzeComponentNode, annotatedScreenshotData, type ComponentAstNode } from '../core/markdown/components'
 import { findMarkdownByIdentity, readExplorerRoots, scanAndSeedExplorer, scanExplorer, type ExplorerScanResult } from './explorer'
-import { readDiskState, readDocument, resolveAllowedLocalPath, resolveDocumentPath, saveDocumentWithHashCheck, seedGhostFromGit } from './files'
+import { readDiskState, readDocument, resolveLocalArtifactPath, localArtifactError, isImagePath, resolveDocumentPath, saveDocumentWithHashCheck, seedGhostFromGit } from './files'
 import { IMAGE_HEADER_BYTES, imageDimensionsFromHeader } from './image-dimensions'
 import { readDraftStore, writeDraftStore } from './drafts'
 import { localImageUrl } from './protocols'
@@ -213,6 +214,7 @@ interface OpenDocumentSession {
   path: string
   diskHash: string | null
   state: DocumentState
+  bufferBlockSnapshot?: { text: string; ranges: TextRange[] }
   /** Absolute index represented by state.segments[0]. */
   segmentOffset: number
   annotations: AnnotationLog
@@ -1949,9 +1951,12 @@ export class StrataApplication implements StrataApi {
     })
   }
 
-  updateBuffer(path: string, content: string, origin: BufferOrigin = 'edit'): Promise<void> {
+  updateBuffer(path: string, content: string, origin: BufferOrigin = 'edit', blockRanges?: readonly TextRange[]): Promise<void> {
     return this.#withSession(path, async () => {
       const session = this.#writable(path)
+      if (blockRanges !== undefined) {
+        session.bufferBlockSnapshot = { text: content, ranges: blockRanges.map((range) => ({ ...range })) }
+      }
       if (content === session.state.shadow) return
       if (origin === 'edit') session.applicationRedo = []
       for (const hunk of computeHunks(session.state.shadow, content).sort((a, b) => b.before.from - a.before.from)) {
@@ -2022,7 +2027,7 @@ export class StrataApplication implements StrataApi {
         const diskText = result.disk.text
         await this.#applyApplicationStep(session, () => {
           session.state = applyExternalChange(session.state, 'disk', diskText, {
-            blockRanges: markdownBlockRanges(session.state.disk),
+            blockRanges: sessionBlockRanges(session, session.state.disk),
           }).state
         })
         await this.#persist(session)
@@ -2695,20 +2700,23 @@ export class StrataApplication implements StrataApi {
   readonly #imageMetadata = new Map<string, Promise<{ width: number; height: number } | null>>()
 
   async resolveLocalImage(documentPath: string, source: string): Promise<LocalImageResolution | null> {
-    if (/^[a-z][a-z\d+.-]*:/i.test(source) || source.startsWith('//') || source.includes('\0')) return null
+    if (!classifyLocalLink(source)) return null
     // A conversation's synthetic document resolves against its project's
     // workspace, like its Markdown links do (§6.15); no session is created for it.
     const projectBase = this.#engine.view().projects.some(project => join(project.workspaceRoot, '.conversation.md') === documentPath)
     const basePath = projectBase ? documentPath : this.#require(documentPath).path
     try {
-      const safe = await resolveAllowedLocalPath(source, basePath, this.#settings.explorerFolders)
+      const safe = await resolveLocalArtifactPath(source, basePath)
       if (!safe) return null
+      if (!isImagePath(safe)) throw new Error(`Unsupported image: ${safe}`)
+      const readable = await open(safe, 'r')
+      await readable.close()
       const details = await stat(safe, { bigint: true })
       const version = `${details.size}:${details.mtimeNs}`
       const dimensions = await this.#imageDimensions(safe, version)
       return { url: localImageUrl(safe), path: safe, version, ...(dimensions ?? {}) }
-    } catch {
-      return null
+    } catch (error) {
+      throw localArtifactError(error, source)
     }
   }
 
@@ -2744,19 +2752,13 @@ export class StrataApplication implements StrataApi {
   }
 
   async resolveLocalMarkdown(documentPath: string, source: string): Promise<LocalMarkdownPreview | null> {
-    if (/^[a-z][a-z\d+.-]*:/i.test(source) || source.startsWith('//') || source.includes('\0')) return null
+    if (classifyLocalLink(source)?.kind !== 'markdown') return null
     const projectBase = this.#engine.view().projects.some(project => join(project.workspaceRoot, '.conversation.md') === documentPath)
     const basePath = projectBase ? documentPath : this.#require(documentPath).path
-    let request: string
     try {
-      request = decodeURIComponent(source.split(/[?#]/u, 1)[0] ?? '')
-    } catch {
-      return null
-    }
-    if (!request || !['.md', '.markdown'].includes(extname(request).toLowerCase())) return null
-    try {
-      const safe = await resolveAllowedLocalPath(request, basePath, this.#settings.explorerFolders)
-      if (!safe || !['.md', '.markdown'].includes(extname(safe).toLowerCase())) return null
+      const safe = await resolveLocalArtifactPath(source, basePath)
+      if (!safe) return null
+      if (!['.md', '.markdown'].includes(extname(safe).toLowerCase())) throw new Error(`Not a Markdown file: ${safe}`)
       const limit = 256 * 1024
       const handle = await open(safe, 'r')
       try {
@@ -2772,12 +2774,13 @@ export class StrataApplication implements StrataApi {
             end -= 1
           }
         }
-        return source === null ? null : { path: safe, source, truncated: bytesRead > limit }
+        if (source === null) throw new Error(`Not a UTF-8 Markdown file: ${safe}`)
+        return { path: safe, source, truncated: bytesRead > limit }
       } finally {
         await handle.close()
       }
-    } catch {
-      return null
+    } catch (error) {
+      throw localArtifactError(error, source)
     }
   }
 
@@ -2831,8 +2834,8 @@ export class StrataApplication implements StrataApi {
         source,
         incoming,
         {
-          blockRanges: markdownBlockRanges(
-            source === 'disk' ? session.state.disk : session.state.mirror,
+          blockRanges: sessionBlockRanges(
+            session, source === 'disk' ? session.state.disk : session.state.mirror,
           ),
         },
       )
@@ -3670,6 +3673,11 @@ function persistedNumber(value: unknown): number | undefined {
 
 function persistedBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined
+}
+
+function sessionBlockRanges(session: OpenDocumentSession, source: string): TextRange[] {
+  const snapshot = session.bufferBlockSnapshot
+  return snapshot?.text === source ? snapshot.ranges : markdownBlockRanges(source)
 }
 
 function markdownBlockRanges(source: string): TextRange[] {

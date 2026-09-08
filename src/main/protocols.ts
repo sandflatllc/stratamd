@@ -1,3 +1,5 @@
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { isImagePath } from './files'
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { isIP } from 'node:net'
 import { extname, isAbsolute, relative, resolve, sep } from 'node:path'
@@ -105,12 +107,15 @@ export function installAppProtocol(options: AppProtocolOptions): void {
   protocol.handle(APP_SCHEME, async (request) => serveAppAsset(request, options.rendererRoot))
 }
 
-export interface LocalImageProtocolOptions {
-  allowedRoots: () => readonly string[] | Promise<readonly string[]>
+// A URL proves main approved this exact canonical path. No global directory
+// list or growing file registry is needed; grants expire when the app quits.
+const imageKey = randomBytes(32)
+function imageSignature(encodedPath: string): Buffer {
+  return createHmac('sha256', imageKey).update(encodedPath).digest()
 }
 
-export function installLocalImageProtocol(options: LocalImageProtocolOptions): void {
-  protocol.handle(LOCAL_IMAGE_SCHEME, async (request) => serveLocalImage(request, options))
+export function installLocalImageProtocol(): void {
+  protocol.handle(LOCAL_IMAGE_SCHEME, serveLocalImage)
 }
 
 export interface VisualImageProtocolOptions {
@@ -146,7 +151,8 @@ export function installVisualImageProtocol(options: VisualImageProtocolOptions):
 
 export function localImageUrl(path: string): string {
   if (!isAbsolute(path)) throw new Error('Local image paths must be absolute')
-  return `${LOCAL_IMAGE_SCHEME}://${LOCAL_IMAGE_HOST}/${Buffer.from(path).toString('base64url')}`
+  const encoded = Buffer.from(path).toString('base64url')
+  return `${LOCAL_IMAGE_SCHEME}://${LOCAL_IMAGE_HOST}/${encoded}/${imageSignature(encoded).toString('base64url')}`
 }
 
 async function serveAppAsset(request: Request, rendererRoot: string): Promise<Response> {
@@ -178,24 +184,28 @@ async function serveAppAsset(request: Request, rendererRoot: string): Promise<Re
   }
 }
 
-async function serveLocalImage(request: Request, options: LocalImageProtocolOptions): Promise<Response> {
+async function serveLocalImage(request: Request): Promise<Response> {
   const url = new URL(request.url)
   if (request.method !== 'GET' || url.host !== LOCAL_IMAGE_HOST) return forbidden()
 
   let requestedPath: string
   try {
-    requestedPath = Buffer.from(url.pathname.slice(1), 'base64url').toString('utf8')
+    const parts = url.pathname.slice(1).split('/')
+    if (parts.length !== 2) return forbidden()
+    const [encoded, signature] = parts as [string, string]
+    const supplied = Buffer.from(signature, 'base64url')
+    const expected = imageSignature(encoded)
+    if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return forbidden()
+    requestedPath = Buffer.from(encoded, 'base64url').toString('utf8')
   } catch {
     return forbidden()
   }
   if (!isAbsolute(requestedPath)) return forbidden()
 
   try {
-    const [candidate, roots] = await Promise.all([
-      realpath(requestedPath),
-      Promise.resolve(options.allowedRoots()).then((paths) => Promise.all(paths.map((path) => realpath(path))))
-    ])
-    if (!roots.some((root) => isContained(root, candidate))) return forbidden()
+    const candidate = await realpath(requestedPath)
+    // Refuse a file replaced by a symlink to a different target after approval.
+    if (candidate !== requestedPath) return forbidden()
     if (!(await stat(candidate)).isFile() || !isImagePath(candidate)) return forbidden()
     const file = await readFile(candidate)
     return new Response(file, {
@@ -219,13 +229,11 @@ function isContained(root: string, candidate: string): boolean {
   return child === '' || (!child.startsWith(`..${sep}`) && child !== '..' && !isAbsolute(child))
 }
 
-function isImagePath(path: string): boolean {
-  return ['.avif', '.gif', '.jpeg', '.jpg', '.png', '.svg', '.webp'].includes(extname(path).toLowerCase())
-}
-
 function mimeType(path: string): string {
   return ({
     '.avif': 'image/avif',
+    '.bmp': 'image/bmp',
+    '.ico': 'image/x-icon',
     '.css': 'text/css; charset=utf-8',
     '.gif': 'image/gif',
     '.html': 'text/html; charset=utf-8',

@@ -16,6 +16,7 @@ interface SourceSpanState {
 const sourceSpanKey = new PluginKey<SourceSpanState>('stratamd-source-spans')
 
 function changedRanges(transaction: Transaction): Array<{ from: number; to: number }> {
+  if (transaction.steps.length > 64) return [{ from: 0, to: Number.MAX_SAFE_INTEGER }]
   const ranges: Array<{ from: number; to: number }> = []
   transaction.mapping.maps.forEach((map) => {
     map.forEach((oldFrom, oldTo) => ranges.push({ from: oldFrom, to: oldTo }))

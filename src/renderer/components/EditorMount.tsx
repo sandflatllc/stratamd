@@ -7,7 +7,7 @@ import type { VisualCodeBlockSessions } from '../../editor/code-blocks'
 import { toColdEditorState } from '../../editor/index'
 import type { RendererEditorFactory, RendererEditorHandle, RendererEditorOptions } from '../editorAdapter'
 import { AGENT_COLORS, EXTERNAL_COLOR, textColorFor, USER_ANNOTATION_COLOR } from '../model'
-import { forgetFlushed, lastFlushedContent, peekPendingBuffer } from '../pendingBuffer'
+import { forgetFlushed, acknowledgeBufferEcho, peekPendingBuffer } from '../pendingBuffer'
 
 interface EditorMountProps extends RendererEditorOptions {
   createEditor: RendererEditorFactory
@@ -159,7 +159,7 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
       annotations,
       ...(saved?.kind === 'warm' ? { restore: saved.state } : {}),
       ...(saved?.kind === 'cold' ? { restoreCold: saved.state, content: saved.state.markdown } : {}),
-      onChange: (content, origin) => handlersRef.current.onChange(content, origin),
+      onChange: (content, origin, prepareBlockRanges) => handlersRef.current.onChange(content, origin, prepareBlockRanges),
       onSelection: (selection) => handlersRef.current.onSelection(selection),
       onOpenAnnotation: (id) => handlersRef.current.onOpenAnnotation(id),
       onAdjustAnnotation: (id, range) => handlersRef.current.onAdjustAnnotation(id, range),
@@ -226,8 +226,8 @@ export const EditorMount = forwardRef<RendererEditorHandle, EditorMountProps>(fu
   // older flush while newer typing waits) must not replace the editor's text:
   // that is how keystrokes typed across a flush boundary were lost (§5.3).
   useEffect(() => {
-    if (peekPendingBuffer()?.path === documentPath) return
-    if (lastFlushedContent(documentPath) === options.content) return
+    const echo = acknowledgeBufferEcho(documentPath, options.content)
+    if (peekPendingBuffer()?.path === documentPath || echo) return
     editorRef.current?.setContent(options.content)
   }, [options.content])
   useEffect(() => { editorRef.current?.setHistoryStep(options.historyStep) }, [options.historyStep])

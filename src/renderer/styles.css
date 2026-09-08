@@ -484,6 +484,7 @@ kbd { color: var(--muted); font-family: var(--font-code), "JetBrains Mono", mono
 .strata-image { display: inline-grid; min-width: 180px; min-height: 90px; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--surfaces-code); }
 .strata-image img { display: block; max-width: 100%; height: auto; }
 .strata-image__placeholder { padding: 18px; color: var(--muted); font-size: calc(13px * var(--zoom, 1)); text-align: center; }
+.strata-image--missing { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .strata-image--ready { cursor: zoom-in; }
 .strata-image--ready:focus-visible { outline: 3px solid var(--controls-primary); outline-offset: 3px; }
 .strata-image-inspector { position: fixed; z-index: 44; display: grid; grid-template-rows: auto 1fr; min-width: 0; min-height: 0; overflow: hidden; border-radius: 20px; background: var(--surfaces-window); }

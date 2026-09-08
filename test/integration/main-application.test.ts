@@ -482,7 +482,7 @@ describe('StrataApplication: agent work in the buffer, previews, and suggestions
     expect(Buffer.byteLength(preview?.source ?? '', 'utf8')).toBe(256 * 1024)
     expect(await app.resolveLocalMarkdown(path, 'notes.ts')).toBeNull()
     expect(await app.resolveLocalMarkdown(path, 'https://example.test/notes.md')).toBeNull()
-    expect(await app.resolveLocalMarkdown(path, '../outside.md')).toBeNull()
+    await expect(app.resolveLocalMarkdown(path, '../outside.md')).rejects.toThrow('File missing:')
   })
 
   it('persists folded headings in reading.json v4 without changing Markdown or meta', async () => {

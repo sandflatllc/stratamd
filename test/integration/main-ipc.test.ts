@@ -191,7 +191,16 @@ describe('renderer IPC boundary', () => {
     await expect(updateBuffer?.(event, '/tmp/plan.md', 'text', 'later')).rejects.toThrow()
     expect(api.updateBuffer).not.toHaveBeenCalled()
     await updateBuffer?.(event, '/tmp/plan.md', 'text', 'history')
-    expect(api.updateBuffer).toHaveBeenCalledWith('/tmp/plan.md', 'text', 'history')
+    expect(api.updateBuffer).toHaveBeenCalledWith('/tmp/plan.md', 'text', 'history', undefined)
+    await updateBuffer?.(event, '/tmp/plan.md', 'text', 'edit', [{ from: 0, to: 4 }])
+    expect(api.updateBuffer).toHaveBeenLastCalledWith('/tmp/plan.md', 'text', 'edit', [{ from: 0, to: 4 }])
+    for (const ranges of [
+      [{ from: -1, to: 3 }], [{ from: 0, to: 5 }], [{ from: 2, to: 2 }],
+      [{ from: 2, to: 1 }], [{ from: 0.5, to: 3 }],
+      [{ from: 2, to: 4 }, { from: 0, to: 2 }],
+      [{ from: 0, to: 3 }, { from: 2, to: 4 }],
+    ]) await expect(updateBuffer?.(event, '/tmp/plan.md', 'text', 'edit', ranges)).rejects.toThrow()
+
 
     const redo = handlers.get(IPC.redo)
     await expect(redo?.(event, '')).rejects.toThrow()

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, mkdir, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   atomicWriteDocument,
   readDocument,
-  resolveAllowedLocalPath,
+  resolveLocalArtifactPath,
   saveDocumentWithHashCheck,
   seedGhostFromGit,
 } from '../../src/main/files'
@@ -18,7 +18,7 @@ const temporaryDirectories: string[] = []
 async function temporaryDirectory(): Promise<string> {
   const path = await mkdtemp(join(tmpdir(), 'stratamd-files-'))
   temporaryDirectories.push(path)
-  return path
+  return realpath(path)
 }
 
 afterEach(async () => {
@@ -97,20 +97,22 @@ describe('ghost seeding', () => {
   })
 })
 
-describe('local path security', () => {
-  it('allows only resolved paths under the document directory or explorer roots', async () => {
+describe('local artifact paths', () => {
+  it('resolves local files and symlinks outside the document folder without Explorer roots', async () => {
     const directory = await temporaryDirectory()
     const other = await temporaryDirectory()
-    await mkdir(join(directory, 'images'))
     const document = join(directory, 'doc.md')
-    const image = join(directory, 'images', 'ok.png')
-    const secret = join(other, 'secret.png')
-    await Promise.all([writeFile(document, ''), writeFile(image, ''), writeFile(secret, '')])
-    await symlink(secret, join(directory, 'images', 'escape.png'))
-
-    expect(await resolveAllowedLocalPath('images/ok.png', document, [])).toBe(image)
-    expect(await resolveAllowedLocalPath('https://example.com/a.png', document, [])).toBeUndefined()
-    expect(await resolveAllowedLocalPath('images/escape.png', document, [])).toBeUndefined()
-    expect(await resolveAllowedLocalPath(secret, document, [other])).toBe(secret)
+    const image = join(other, 'a photo.png')
+    await writeFile(image, 'image')
+    await symlink(image, join(directory, 'alias.png'))
+    expect(await resolveLocalArtifactPath(image, document)).toBe(image)
+    expect(await resolveLocalArtifactPath('alias.png', document)).toBe(image)
+    expect(await resolveLocalArtifactPath(new URL(`file://${image}`).href, document)).toBe(image)
+    expect(await resolveLocalArtifactPath(image.replace(' ', '%20'), document)).toBe(image)
+    expect(await resolveLocalArtifactPath('https://example.com/a.png', document)).toBeUndefined()
+    expect(await resolveLocalArtifactPath('file://server/share/a.png', document)).toBeUndefined()
+    expect(await resolveLocalArtifactPath('a%00.png', document)).toBeUndefined()
+    await expect(resolveLocalArtifactPath('missing.png', document)).rejects.toThrow(`File missing: ${join(directory, 'missing.png')}`)
+    await expect(resolveLocalArtifactPath(other, document)).rejects.toThrow('Not a file')
   })
 })

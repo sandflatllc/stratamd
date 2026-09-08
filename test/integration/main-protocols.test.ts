@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
@@ -79,25 +79,25 @@ describe('custom protocols', () => {
     expect(netFetch).not.toHaveBeenCalled()
   })
 
-  it('serves only image files whose realpath is within a current allowlisted root', async () => {
-    const base = await mkdtemp(join(tmpdir(), 'stratamd-images-'))
-    const allowed = join(base, 'allowed')
-    const outside = join(base, 'outside')
-    await mkdir(allowed)
-    await mkdir(outside)
-    const image = join(allowed, 'photo.png')
-    const secret = join(outside, 'secret.png')
+  it('serves approved files anywhere without project roots and refuses forged URLs or changed symlink targets', async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), 'stratamd-images-')))
+    const image = join(base, 'photo.png')
+    const other = join(base, 'other.png')
+    const text = join(base, 'notes.md')
     await writeFile(image, Buffer.from([137, 80, 78, 71]))
-    await writeFile(secret, Buffer.from([137, 80, 78, 71]))
-    await symlink(secret, join(allowed, 'escape.png'))
-    protocols.installLocalImageProtocol({ allowedRoots: () => [allowed] })
-    const handler = handles.get('strata-image')
-
-    const permitted = await handler?.(new Request(protocols.localImageUrl(image)))
-    const escaped = await handler?.(new Request(protocols.localImageUrl(join(allowed, 'escape.png'))))
-    const denied = await handler?.(new Request(protocols.localImageUrl(secret)))
-    expect(permitted?.status).toBe(200)
-    expect(escaped?.status).toBe(403)
-    expect(denied?.status).toBe(403)
+    await writeFile(other, Buffer.from([137, 80, 78, 71]))
+    await writeFile(text, '# Notes')
+    protocols.installLocalImageProtocol()
+    const handler = handles.get('strata-image')!
+    const approved = protocols.localImageUrl(image)
+    expect((await handler(new Request(approved))).status).toBe(200)
+    const forged = `strata-image://local/${Buffer.from(other).toString('base64url')}/${approved.split('/').at(-1)}`
+    expect((await handler(new Request(forged))).status).toBe(403)
+    expect((await handler(new Request(`strata-image://local/${Buffer.from(image).toString('base64url')}`))).status).toBe(403)
+    expect((await handler(new Request(protocols.localImageUrl(text)))).status).toBe(403)
+    await rm(image)
+    expect((await handler(new Request(approved))).status).toBe(404)
+    await symlink(other, image)
+    expect((await handler(new Request(approved))).status).toBe(403)
   })
 })

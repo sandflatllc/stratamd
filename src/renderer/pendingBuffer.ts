@@ -1,4 +1,4 @@
-import type { BufferOrigin } from '../shared/contracts'
+import type { BufferOrigin, BufferBlockRange, PrepareBufferBlockRanges } from '../shared/contracts'
 
 // The newest editor content waiting for its 180 ms mirror to main lives here,
 // outside React, so a root-level crash that unmounts App cannot take it down
@@ -9,16 +9,23 @@ export interface PendingBuffer {
   path: string
   content: string
   origin: BufferOrigin
+  prepareBlockRanges?: PrepareBufferBlockRanges
 }
 
 let pending: PendingBuffer | null = null
 
-// The newest content handed to main per path, recorded when the flush starts
-// (§5.3). A view push that equals it is this editor's own echo, not news.
-const lastFlushed = new Map<string, string>()
+// Retain unacknowledged flushes, not just the newest one. An older push may
+// reach React after a newer flush starts. Recognizing both keeps that older
+// echo from replacing typing. Observing a newer echo releases earlier texts.
+const lastFlushed = new Map<string, string[]>()
 
-export function lastFlushedContent(path: string): string | undefined {
-  return lastFlushed.get(path)
+export function acknowledgeBufferEcho(path: string, content: string): boolean {
+  const flushed = lastFlushed.get(path)
+  const index = flushed?.lastIndexOf(content) ?? -1
+  if (!flushed || index < 0) return false
+  // Keep the matching value until a newer echo arrives, since views repeat it.
+  flushed.splice(0, index)
+  return true
 }
 
 /** Drop flush records for documents that are no longer open. */
@@ -47,9 +54,16 @@ export function takePendingBuffer(): PendingBuffer | null {
 export async function flushPendingBuffer(): Promise<void> {
   const taken = takePendingBuffer()
   if (!taken) return
-  lastFlushed.set(taken.path, taken.content)
+  const flushed = lastFlushed.get(taken.path) ?? []
+  if (flushed.at(-1) !== taken.content) flushed.push(taken.content)
+  lastFlushed.set(taken.path, flushed)
   try {
-    await window.strata.updateBuffer(taken.path, taken.content, taken.origin)
+    let blockRanges: readonly BufferBlockRange[] | undefined
+    try { blockRanges = taken.prepareBlockRanges?.() } catch (error) {
+      // Optional metadata must never prevent crash recovery from saving text.
+      console.warn(`StrataMD could not prepare block ranges for ${taken.path}; sending the buffer without ranges`, error)
+    }
+    await window.strata.updateBuffer(taken.path, taken.content, taken.origin, blockRanges)
   } catch (error) {
     pending = pending ?? taken
     throw error

@@ -204,6 +204,6 @@ it('resolves conversation Markdown from its registered project without an open d
   const app = await createStrataApplication({ store: new GhostStore({ dataDirectory: join(root, 'data') }), settingsStore: new SettingsStore({ configDirectory: join(root, 'config') }), engine, watch: false })
   applications.push(app)
   expect(await app.resolveLocalMarkdown(join(root, '.conversation.md'), 'notes.md')).toMatchObject({ source: '# Local notes\n' })
-  expect(await app.resolveLocalMarkdown(join(root, '.conversation.md'), '../outside.md')).toBeNull()
+  await expect(app.resolveLocalMarkdown(join(root, '.conversation.md'), '../outside.md')).rejects.toThrow('File missing:')
   expect((await app.getState()).activeDocument).toBeNull()
 })

@@ -1,3 +1,4 @@
+import { classifyLocalLink } from '../shared/local-link'
 import type { LocalMarkdownPreview } from '../shared/contracts'
 import type { Node as ProseMirrorNode } from 'prosemirror-model'
 import { Plugin, PluginKey, type Transaction } from 'prosemirror-state'
@@ -7,10 +8,7 @@ import { popoverPosition } from './popover'
 export type LocalMarkdownResolver = (source: string) => Promise<LocalMarkdownPreview | null>
 
 export function localMarkdownCandidate(source: string): string | null {
-  const value = source.trim()
-  if (!value || value.startsWith('//') || value.startsWith('#') || /^[a-z][a-z\d+.-]*:/iu.test(value)) return null
-  const path = value.split(/[?#]/u, 1)[0] ?? ''
-  return /(?:^|\/)[^/]+\.(?:md|markdown)$/iu.test(path) || /^[^/]+\.(?:md|markdown)$/iu.test(path) ? value : null
+  return classifyLocalLink(source)?.kind === 'markdown' ? source.trim() : null
 }
 
 export function markdownPreviewText(source: string): { title: string | null; excerpt: string } {
@@ -48,6 +46,14 @@ function referenceDecorations(doc: ProseMirrorNode): DecorationSet {
 
 function changedRangeContainsCandidate(transaction: Transaction): boolean {
   let found = false
+  if (transaction.steps.length > 64) {
+    transaction.doc.descendants((node) => {
+      if (found) return false
+      if (node.isText && node.marks.some((mark) => mark.type.name === 'code') && localMarkdownCandidate(node.text ?? '')) found = true
+      return !found
+    })
+    return found
+  }
   transaction.mapping.maps.forEach((stepMap, index) => {
     if (found) return
     const following = transaction.mapping.slice(index + 1)
@@ -140,10 +146,30 @@ export class ReferencePreviewController {
     this.host.append(loading)
     this.popover = loading
     this.place(origin, loading)
-    const preview = await this.resolve(source).catch(() => null)
+    let failure = `Could not preview ${source}`
+    const preview = await this.resolve(source).catch((error: unknown) => {
+      if (error instanceof Error) failure = error.message
+      return null
+    })
     if (generation !== this.generation) return
     if (!preview) {
-      this.close(false)
+      const message = document.createElement('p')
+      message.textContent = failure
+      const retry = document.createElement('button')
+      retry.type = 'button'
+      retry.className = 'quiet-button'
+      retry.textContent = 'Retry'
+      retry.addEventListener('click', () => { void this.show(origin, source) })
+      const close = document.createElement('button')
+      close.type = 'button'
+      close.className = 'quiet-button'
+      close.textContent = 'Close'
+      close.addEventListener('click', () => this.close())
+      loading.replaceChildren(message, retry, close)
+      loading.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.close() }
+      })
+      this.place(origin, loading)
       return
     }
     const { title, excerpt } = markdownPreviewText(preview.source)

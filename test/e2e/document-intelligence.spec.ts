@@ -357,7 +357,8 @@ test('invalid and nonlocal constructs stay inert and preserve their source', asy
     await expect(editor.locator('code').filter({ hasText: 'https://example.test/remote.md' })).not.toHaveAttribute('role', 'button')
     await expect(editor.locator('code').filter({ hasText: 'notes.txt' })).not.toHaveAttribute('role', 'button')
     await editor.getByRole('link', { name: 'Missing notes' }).click()
-    await expect(page.getByRole('dialog', { name: 'Preview missing.md' })).toHaveCount(0)
+    await expect(page.getByRole('dialog', { name: 'Preview missing.md' })).toContainText('File missing:')
+    await page.getByRole('dialog', { name: 'Preview missing.md' }).getByRole('button', { name: 'Close', exact: true }).click()
 
     const externalResources = await page.evaluate(() => performance.getEntriesByType('resource')
       .map((entry) => entry.name)

@@ -3,7 +3,7 @@ import type { VisualCodeBlockSessions } from '../editor/code-blocks'
 import type { LocalMarkdownResolver } from '../editor/references'
 import type { ColdEditorState, EditorRestoreState } from '../editor/types'
 import type { FindResult } from '../editor/find'
-import type { AnnotationContext, AnnotationKind, AnnotationView, BufferOrigin, HeadingReference, HunkView, RedoResult, TableViewState, UndoResult } from '../shared/contracts'
+import type { AnnotationContext, AnnotationKind, AnnotationView, BufferOrigin, PrepareBufferBlockRanges, HeadingReference, HunkView, RedoResult, TableViewState, UndoResult } from '../shared/contracts'
 import type { EditorCommand } from './components/Toolbar'
 import type { EditorHeading } from '../editor/headings'
 import type { AnnotationRange } from '../editor/annotations'
@@ -37,7 +37,7 @@ export interface RendererEditorOptions {
   historyStep: number
   restore?: EditorRestoreState
   restoreCold?: ColdEditorState
-  onChange(content: string, origin: BufferOrigin): void
+  onChange(content: string, origin: BufferOrigin, prepareBlockRanges?: PrepareBufferBlockRanges): void
   onSelection(selection: EditorSelection | null): void
   onOpenAnnotation(annotationId: string): void
   onAdjustAnnotation(annotationId: string, range: EditorSelection): void

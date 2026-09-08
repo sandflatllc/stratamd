@@ -1,6 +1,7 @@
+import { classifyLocalLink } from '../shared/local-link'
 import { execFile as execFileCallback } from 'node:child_process'
 import { promisify } from 'node:util'
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { dirname, relative, resolve, sep } from 'node:path'
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { AtomicWriteConflictError, atomicWriteFile, sha256 } from './storage'
 
@@ -163,26 +164,27 @@ export async function seedGhostFromGit(
 
 export const seedGhost = seedGhostFromGit
 
-export function isPathInside(path: string, directory: string): boolean {
-  const offset = relative(directory, path)
-  return offset === '' || (offset !== '..' && !offset.startsWith(`..${sep}`) && !isAbsolute(offset))
+/** Resolve an explicitly referenced local file, independently of Explorer membership. */
+export async function resolveLocalArtifactPath(request: string, documentPath: string): Promise<string | undefined> {
+  const link = classifyLocalLink(request)
+  if (!link) return undefined
+  const path = resolve(dirname(await resolveDocumentPath(documentPath)), link.path)
+  try {
+    const canonical = await realpath(path)
+    if (!(await stat(canonical)).isFile()) throw new Error(`Not a file: ${path}`)
+    return canonical
+  } catch (error) {
+    throw localArtifactError(error, path)
+  }
 }
 
-/** Resolves local image requests and rejects URLs, missing files, and escapes. */
-export async function resolveAllowedLocalPath(
-  request: string,
-  documentPath: string,
-  explorerFolders: readonly string[],
-): Promise<string | undefined> {
-  if (/^[a-z][a-z\d+.-]*:/i.test(request) || request.startsWith('//')) return undefined
-  const documentDirectory = dirname(await resolveDocumentPath(documentPath))
-  const requestedPath = await realpath(resolve(documentDirectory, request)).catch(() => undefined)
-  if (!requestedPath) return undefined
-  const allowedDirectories = await Promise.all([
-    realpath(documentDirectory).catch(() => documentDirectory),
-    ...explorerFolders.map((folder) => realpath(folder).catch(() => resolve(folder))),
-  ])
-  return allowedDirectories.some((directory) => isPathInside(requestedPath, directory))
-    ? requestedPath
-    : undefined
+export function localArtifactError(error: unknown, path: string): Error {
+  const code = (error as NodeJS.ErrnoException)?.code
+  if (code === 'ENOENT' || code === 'ENOTDIR') return new Error(`File missing: ${path}`)
+  if (code === 'EACCES' || code === 'EPERM') return new Error(`Access denied: ${path}`)
+  return error instanceof Error ? error : new Error(`Could not read ${path}: ${String(error)}`)
+}
+
+export function isImagePath(path: string): boolean {
+  return /\.(?:avif|bmp|gif|ico|jpe?g|png|svg|webp)$/iu.test(path)
 }

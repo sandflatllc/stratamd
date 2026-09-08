@@ -10,6 +10,7 @@ import {
   serializeEditorDocument,
   strataSchema,
   updateParsedMarkdown,
+  tryUpdateParsedMarkdown,
 } from '../../src/editor/index.js'
 import type { ParsedEditorMarkdown } from '../../src/editor/types.js'
 import { generateCorpus } from '../performance/corpus.js'
@@ -249,11 +250,12 @@ describe('updateParsedMarkdown fallback screen', () => {
     expect(reparseStats.stitched).toBe(0)
   })
 
-  it('falls back when the change touches offset 0', () => {
+  it('stitches when the change touches offset 0', () => {
     const source = paragraphs(8)
     const previous = parseMarkdownForEditor(source)
     updateAndCheck(previous, `X${source}`)
-    expect(reparseStats.fallbacks['offset-zero']).toBe(1)
+    expect(reparseStats.fallbacks).toEqual({})
+    expect(reparseStats.stitched).toBe(1)
   })
 
   it('falls back when the region borders frontmatter', () => {
@@ -301,7 +303,7 @@ describe('updateParsedMarkdown fallback screen', () => {
     expect(reparseStats.fallbacks['changed-construct']).toBe(1)
   })
 
-  it('falls back when the region borders a raw block', () => {
+  it('stitches beside a raw block that comes back byte-identical, but not when the edit touches it', () => {
     const source = `${paragraphs(4)}\n<!-- a comment -->\n\n${paragraphs(4)}`
     const previous = parseMarkdownForEditor(source)
     const htmlIndex = previous.core.blocks.findIndex((block) => block.rawKind === 'html')
@@ -309,7 +311,14 @@ describe('updateParsedMarkdown fallback screen', () => {
     const neighbour = previous.core.blocks[htmlIndex + 1]!
     const at = neighbour.span.start.offset + 4
     updateAndCheck(previous, source.slice(0, at) + 'y' + source.slice(at))
-    expect(reparseStats.fallbacks['raw-block']).toBe(1)
+    expect(reparseStats.fallbacks).toEqual({})
+    expect(reparseStats.stitched).toBe(1)
+    const html = previous.core.blocks[htmlIndex]!
+    const inside = html.span.start.offset + 5
+    updateAndCheck(previous, source.slice(0, inside) + 'y' + source.slice(inside))
+    // An edit inside the HTML block itself never stitches: the line-start screen sees the `<` before the raw-block rule does.
+    expect(Object.values(reparseStats.fallbacks).reduce((sum, count) => sum + count, 0)).toBe(1)
+    expect(reparseStats.stitched).toBe(1)
   })
 
   it('falls back when the region exceeds 32 blocks', () => {
@@ -419,4 +428,72 @@ describe('updateParsedMarkdown offset shifting', () => {
       delete process.env.STRATAMD_PARSE_VERIFY
     }
   })
+})
+
+describe('incremental parse boundaries without diagnostic full-parse substitution', () => {
+  beforeEach(() => { delete process.env.STRATAMD_PARSE_VERIFY; resetReparseStats() })
+
+  const rawBlocks = [
+    '<!-- comment\nwith another line -->',
+    '<script>\nconst value = 1\n</script>',
+    '<?processing instruction?>',
+    '<!DOCTYPE html>',
+    '<![CDATA[\ncontents\n]]>',
+    '<div>\ncontents\n</div>',
+    '<custom-tag>\ncontents\n</custom-tag>',
+    'Paragraph with <span>inline HTML</span>.',
+    'A [[wiki link]] in prose.',
+    'A $math$ expression.',
+    '$$\nmath\n$$',
+  ]
+
+  it.each(rawBlocks)('preserves raw sentinel and neighbour semantics beside %s', (raw) => {
+    const source = `# Start\n\nBefore one.\n\nBefore two.\n\n${raw}\n\nAfter one.\n\nAfter two.\n\nEnd.\n`
+    const previous = parseMarkdownForEditor(source)
+    for (const target of ['Before one', 'Before two', 'After one', 'After two']) {
+      const next = source.replace(target, `${target} edited`)
+      const stitched = updateParsedMarkdown(previous, next)
+      expectEquivalent(stitched, next)
+      expect(serializeEditorDocument(stitched, stitched.doc)).toBe(next)
+    }
+    expect(reparseStats.stitched).toBe(4)
+    expect(reparseStats.fallbacks).toEqual({})
+
+    // Joining/splitting at a raw boundary may stitch or conservatively fall
+    // back, but must always match a full parse in the production path.
+    for (const separator of ['', '\n', '\n\nNew paragraph.\n\n']) {
+      for (const next of [source.replace(`\n\n${raw}`, `${separator}${raw}`), source.replace(`${raw}\n\n`, `${raw}${separator}`)]) {
+        expectEquivalent(updateParsedMarkdown(previous, next), next)
+      }
+    }
+    const changedRaw = source.replace(raw, raw.replace(/\w/u, 'changed'))
+    expectEquivalent(updateParsedMarkdown(previous, changedRaw), changedRaw)
+  })
+
+  it.each([
+    ['One paragraph.', ''],
+    ['One paragraph.', '\n\n'],
+    ['One paragraph.', 'First.\n\nSecond.'],
+    ['# Heading\n\nParagraph.\n\nTail.', 'Heading\n\nParagraph.\n\nTail.'],
+    ['First.\n\nSecond.\n\nTail.', 'First.Second.\n\nTail.'],
+    ['First.\n\nSecond.\n\nTail.', 'Second.\n\nTail.'],
+    ['First.\r\n\r\nSecond.\r\n', '😀 First.\r\n\r\nSecond.\r\n'],
+  ])('stitches changes at document start from %s', (source, next) => {
+    const previous = parseMarkdownForEditor(source)
+    const result = updateParsedMarkdown(previous, next)
+    expectEquivalent(result, next)
+    expect(serializeEditorDocument(result, result.doc)).toBe(next)
+    expect(reparseStats.stitched).toBe(1)
+  })
+})
+
+
+it('declines optional buffer ranges when an exact snapshot would require a full parse', () => {
+  delete process.env.STRATAMD_PARSE_VERIFY
+  resetReparseStats()
+  const source = '# Plan\n\nText [ref].\n\n[ref]: https://example.com\n'
+  const parsed = parseMarkdownForEditor(source)
+  expect(tryUpdateParsedMarkdown(parsed, source)).toBe(parsed)
+  expect(tryUpdateParsedMarkdown(parsed, source.replace('Plan', 'New plan'))).toBeNull()
+  expect(reparseStats.fallbacks['link-definition']).toBe(1)
 })

@@ -45,7 +45,7 @@ export function classifyLocalLink(href: string): LocalLink | null {
     suffix = cut < 0 ? '' : raw.slice(cut)
   }
   try { path = decodeURIComponent(path) } catch { return null }
-  if (!path) return null
+  if (!path || path.includes('\0')) return null
   const ext = extension(path)
   const kind: LocalLinkKind = PAGE.has(ext) ? 'html' : MARKDOWN.has(ext) ? 'markdown' : 'other'
   return { kind, path, suffix, fileUrl: scheme === 'file' }

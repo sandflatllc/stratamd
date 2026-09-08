@@ -970,6 +970,11 @@ export type RedoResult = 'redone' | 'empty'
 /** Whether a buffer update is a new edit or the editor replaying its own history. */
 export type BufferOrigin = 'edit' | 'history'
 
+/** Top-level Markdown character offsets for the exact accompanying buffer text. */
+export interface BufferBlockRange { from: number; to: number }
+/** Runs at buffer flush; undefined leaves main's existing parse fallback in charge. */
+export type PrepareBufferBlockRanges = () => readonly BufferBlockRange[] | undefined
+
 /** A right-clicked misspelling and Electron's suggestions for it (docs/plans/completed/spellcheck-plan.md). */
 export interface SpellingContext {
   word: string
@@ -1160,7 +1165,7 @@ export interface StrataApi {
   /** Renderer-only bridge: a native paste into the focused element, so the editor's own paste handling runs (§5.15). */
   pasteFromClipboard?(): Promise<void>
   closeDocument(path: string, decision?: CloseDecision): Promise<'closed' | 'needs-decision' | 'cancelled'>
-  updateBuffer(path: string, content: string, origin: BufferOrigin): Promise<void>
+  updateBuffer(path: string, content: string, origin: BufferOrigin, blockRanges?: readonly BufferBlockRange[]): Promise<void>
   undo(path: string): Promise<UndoResult>
   redo(path: string): Promise<RedoResult>
   resolveLocalImage(documentPath: string, source: string): Promise<LocalImageResolution | null>

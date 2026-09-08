@@ -6,7 +6,7 @@ import { useWebLinkPicker } from './useWebLinkPicker'
 import { useLinkContextMenu } from './useLinkContextMenu'
 import type { WindowAction } from '../shared/contracts'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
-import type { ItemView, AnnotationContext, AnnotationKind, AnnotationView, AppView, AttachmentView, BufferOrigin, CreateDraftRequest, DocumentTabView, DocumentView, HoldVisualCommentInput, VisualAdjustmentView, VisualCaptureView, VisualMarkView, VisualPageCapture, VisualPointView, VisualRectView, HunkView, NavigationTab, PaneId, PanelSize, PaneZoom, PanelSizes, PreviewNavigation, PreviewViewportRequest, QuickSendRequest, RedoResult, ReviewTab, SendPreviewRequest, TableViewState, ThemePanelGeometry, UndoResult, VisualDestinationView, WalkthroughAction } from '../shared/contracts'
+import type { ItemView, AnnotationContext, AnnotationKind, AnnotationView, AppView, AttachmentView, BufferOrigin, PrepareBufferBlockRanges, CreateDraftRequest, DocumentTabView, DocumentView, HoldVisualCommentInput, VisualAdjustmentView, VisualCaptureView, VisualMarkView, VisualPageCapture, VisualPointView, VisualRectView, HunkView, NavigationTab, PaneId, PanelSize, PaneZoom, PanelSizes, PreviewNavigation, PreviewViewportRequest, QuickSendRequest, RedoResult, ReviewTab, SendPreviewRequest, TableViewState, ThemePanelGeometry, UndoResult, VisualDestinationView, WalkthroughAction } from '../shared/contracts'
 import { VisualSession, newVisualSession, type VisualSessionData, type VisualProposal } from './components/VisualSession'
 import { toCaptureRect, toPagePoint, toPageRect } from '../core/visual-comments'
 import { PreviewWindow } from './components/PreviewWindow'
@@ -791,12 +791,12 @@ export function App({ createEditor }: AppProps) {
     return window.strata.previewSend(previewPath, request)
   }, [flushBuffer, previewPath])
 
-  const bufferChanged = useCallback((content: string, origin: BufferOrigin) => {
+  const bufferChanged = useCallback((content: string, origin: BufferOrigin, prepareBlockRanges?: PrepareBufferBlockRanges) => {
     if (!document) return
     // A window that mixes history replay with a new edit is a new edit.
     const previous = peekPendingBuffer()
     const merged: BufferOrigin = previous?.path === document.path && previous.origin === 'edit' ? 'edit' : origin
-    setPendingBuffer({ path: document.path, content, origin: merged })
+    setPendingBuffer({ path: document.path, content, origin: merged, ...(prepareBlockRanges ? { prepareBlockRanges } : {}) })
     globalThis.document.documentElement.setAttribute('data-typing', 'true')
     if (typingTimer.current !== null) window.clearTimeout(typingTimer.current)
     typingTimer.current = window.setTimeout(() => globalThis.document.documentElement.removeAttribute('data-typing'), 700)

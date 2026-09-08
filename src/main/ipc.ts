@@ -5,7 +5,7 @@ import { providerSetupRequest } from '../shared/provider-setup'
 import { engineSettingsEditSchema, providerEditSchema } from '../shared/engine-settings'
 import type { ContextMenuParams, IpcMain, IpcMainEvent, IpcMainInvokeEvent, WebContents } from 'electron'
 import { z } from 'zod'
-import type { AppView, SpellingContext, StrataApi, BufferOrigin } from '../shared/contracts'
+import type { AppView, SpellingContext, StrataApi, BufferOrigin, BufferBlockRange } from '../shared/contracts'
 import { encodeViewUpdate, sameJson, type SyncedView } from '../shared/view-sync'
 import { IPC, type InvokeChannel } from '../preload/channels'
 import { electronFileOps, type FileOps } from './file-ops'
@@ -259,7 +259,12 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.answerEngineUserInput]: z.tuple([idSchema, idSchema, z.record(z.string(), z.unknown())]),
   [IPC.openDocument]: z.tuple([pathSchema.optional()]),
   [IPC.closeDocument]: z.tuple([pathSchema, z.enum(['save', 'discard', 'cancel']).optional()]),
-  [IPC.updateBuffer]: z.tuple([pathSchema, z.string(), z.enum(['edit', 'history'])]),
+  [IPC.updateBuffer]: z.tuple([
+    pathSchema, z.string(), z.enum(['edit', 'history']),
+    z.array(z.object({ from: z.number().int().nonnegative(), to: z.number().int().nonnegative() }).strict()).optional(),
+  ]).refine(([, content, , ranges]) => ranges === undefined || ranges.every((range, index) =>
+    range.from < range.to && range.to <= content.length && (index === 0 || ranges[index - 1]!.to <= range.from)),
+  'Block ranges must be ordered, nonempty, and within the buffer text'),
   [IPC.undo]: z.tuple([pathSchema]),
   [IPC.redo]: z.tuple([pathSchema]),
   [IPC.save]: z.tuple([pathSchema]),
@@ -505,7 +510,7 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.answerEngineUserInput]: (threadId: string, requestId: string, answers: Record<string, unknown>) => options.api.answerEngineUserInput(threadId, requestId, answers),
     [IPC.openDocument]: (path?: string) => options.api.openDocument(path),
     [IPC.closeDocument]: (path: string, decision?: 'save' | 'discard' | 'cancel') => options.api.closeDocument(path, decision),
-    [IPC.updateBuffer]: (path: string, content: string, origin: BufferOrigin) => options.api.updateBuffer(path, content, origin),
+    [IPC.updateBuffer]: (path: string, content: string, origin: BufferOrigin, blockRanges?: readonly BufferBlockRange[]) => options.api.updateBuffer(path, content, origin, blockRanges),
     [IPC.undo]: (path: string) => options.api.undo(path),
     [IPC.redo]: (path: string) => options.api.redo(path),
     [IPC.save]: (path: string) => options.api.save(path),

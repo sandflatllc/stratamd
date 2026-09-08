@@ -5,6 +5,7 @@ const runId = process.env.STRATAMD_PERF_RUN_ID ?? 'latest'
 
 const SPEC_BY_PROFILE: Record<string, string> = {
   idle: 'idle.spec.ts',
+  'external-edit-review': 'external-edit-review.spec.ts',
   tabs: 'tabs.spec.ts',
   keystroke: 'keystroke-trace.spec.ts',
   scroll: 'scroll-trace.spec.ts',

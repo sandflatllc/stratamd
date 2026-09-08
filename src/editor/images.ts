@@ -1,3 +1,4 @@
+import { classifyLocalLink } from '../shared/local-link'
 import type { Node as ProseMirrorNode } from 'prosemirror-model'
 import type { NodeView, NodeViewConstructor } from 'prosemirror-view'
 import { toolbarButton } from './dom.js'
@@ -146,15 +147,9 @@ const imageMimeTypes = new Set([
   'image/x-icon',
 ])
 
-/**
- * A Markdown image source is local only when it has no URL scheme. Absolute
- * and relative POSIX paths are both passed to the main process for its final
- * realpath and allowed-root check.
- */
+/** Local paths and local file URLs are resolved by main; remote URLs stay inert. */
 export function isLocalImageSource(source: string): boolean {
-  const value = source.trim()
-  if (value.length === 0 || value.startsWith('//') || value.startsWith('#')) return false
-  return !/^[a-z][a-z\d+.-]*:/iu.test(value)
+  return classifyLocalLink(source) !== null
 }
 
 function byteBuffer(bytes: ArrayBuffer | Uint8Array): ArrayBuffer {
@@ -162,26 +157,6 @@ function byteBuffer(bytes: ArrayBuffer | Uint8Array): ArrayBuffer {
   const copy = new Uint8Array(bytes.byteLength)
   copy.set(bytes)
   return copy.buffer
-}
-
-function normalizedAbsolutePath(documentPath: string, source: string): string | null {
-  if (documentPath.includes('\0') || source.includes('\0') || !documentPath.startsWith('/')) return null
-  const slash = documentPath.lastIndexOf('/')
-  const combined = source.startsWith('/') ? source : `${documentPath.slice(0, slash + 1)}${source}`
-  const segments: string[] = []
-  for (const segment of combined.split('/')) {
-    if (segment.length === 0 || segment === '.') continue
-    if (segment === '..') segments.pop()
-    else segments.push(segment)
-  }
-  return `/${segments.join('/')}`
-}
-
-function base64Url(value: string): string {
-  const bytes = new TextEncoder().encode(value)
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '')
 }
 
 function trustedProtocolUrl(value: string): boolean {
@@ -198,14 +173,10 @@ function trustedProtocolUrl(value: string): boolean {
   }
 }
 
-/**
- * Produces a request for the registered Electron protocol. The protocol
- * handler still realpaths the target and checks document and explorer roots.
- */
+/** Main validates the file and issues its signed image URL. */
 export const resolveImageThroughMainProtocol: LocalImageResolver = async ({ documentPath, source }) => {
   if (!isLocalImageSource(source)) return null
-  const path = normalizedAbsolutePath(documentPath, source)
-  return path === null ? null : { url: `strata-image://local/${base64Url(path)}` }
+  return window.strata.resolveLocalImage(documentPath, source)
 }
 
 class LocalImageNodeView implements NodeView {
@@ -251,6 +222,10 @@ class LocalImageNodeView implements NodeView {
     this.settled()
   }
 
+  stopEvent(event: Event): boolean {
+    return event.target instanceof Element && event.target.closest('button') !== null
+  }
+
   ignoreMutation(): boolean {
     return true
   }
@@ -275,6 +250,12 @@ class LocalImageNodeView implements NodeView {
     label.className = 'strata-image__placeholder'
     label.textContent = text
     this.dom.append(label)
+  }
+
+  private failure(message: string): void {
+    this.placeholder(message, 'missing')
+    this.dom.setAttribute('role', 'group')
+    this.dom.append(toolbarButton('Retry', () => this.load(), { className: 'quiet-button' }))
   }
 
   private altText(): string {
@@ -308,7 +289,7 @@ class LocalImageNodeView implements NodeView {
       .then(async (resolved) => {
         if (generation !== this.generation) return
         if (resolved === null) {
-          this.placeholder('Image unavailable', 'missing')
+          this.failure(`Could not load image: ${source}`)
           finish()
           return
         }
@@ -319,7 +300,7 @@ class LocalImageNodeView implements NodeView {
         let dimensions: { width: number; height: number } | null = null
         if ('url' in resolved) {
           if (!trustedProtocolUrl(resolved.url)) {
-            this.placeholder('Image unavailable', 'missing')
+            this.failure(`Could not load image: ${source}`)
             finish()
             return
           }
@@ -328,7 +309,7 @@ class LocalImageNodeView implements NodeView {
           if (typeof resolved.width === 'number' && typeof resolved.height === 'number' && resolved.width > 0 && resolved.height > 0) dimensions = { width: resolved.width, height: resolved.height }
         } else {
           if (!imageMimeTypes.has(resolved.mimeType.toLowerCase())) {
-            this.placeholder('Image unavailable', 'missing')
+            this.failure(`Could not load image: ${source}`)
             finish()
             return
           }
@@ -351,7 +332,7 @@ class LocalImageNodeView implements NodeView {
         if (typeof this.node.attrs.title === 'string') image.title = this.node.attrs.title
         image.draggable = false
         image.addEventListener('error', () => {
-          if (generation === this.generation) { this.placeholder('Image unavailable', 'missing'); finish() }
+          if (generation === this.generation) { this.failure(`Could not read or decode image: ${source}`); finish() }
         }, { once: true })
         const decoded = (): void => {
           if (generation !== this.generation) return
@@ -393,8 +374,8 @@ class LocalImageNodeView implements NodeView {
         }
         if (this.inspection?.isActive(this.key)) inspect()
       })
-      .catch(() => {
-        if (generation === this.generation) { this.placeholder('Image unavailable', 'missing'); finish() }
+      .catch((error: unknown) => {
+        if (generation === this.generation) { this.failure(error instanceof Error ? error.message : `Could not load image: ${source}`); finish() }
       })
   }
 }

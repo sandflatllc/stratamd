@@ -1,6 +1,6 @@
 import { EditorState } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
-import { createHeadingPlugin, headingsForState, parseMarkdownForEditor, projectHeadings, strataSchema } from '../../src/editor/index'
+import { createHeadingPlugin, headingsForState, parseMarkdownForEditor, projectHeadings, strataSchema, createSourceSpanPlugin, getTrackedSourceBlocks } from '../../src/editor/index'
 import { headingOutline } from '../../src/renderer/components/Contents'
 
 describe('live document heading index', () => {
@@ -46,4 +46,24 @@ describe('live document heading index', () => {
     state = state.apply(state.tr.setBlockType(0, state.doc.content.size, strataSchema.nodes.paragraph))
     expect(headingsForState(state)).toEqual([])
   })
+})
+
+
+it.each([63, 65])('preserves headings and source tracking through %i-step transactions', (steps) => {
+  const parsed = parseMarkdownForEditor('Before.\n\n## Existing heading\n\nNew heading.\n')
+  let state = EditorState.create({ doc: parsed.doc, plugins: [createHeadingPlugin(), createSourceSpanPlugin()] })
+  const original = headingsForState(state)[0]!
+  const transaction = state.tr
+  for (let step = 0; step < steps - 1; step++) transaction.insertText('x', 1)
+  const last = transaction.doc.lastChild!
+  const position = transaction.doc.content.size - last.nodeSize
+  transaction.setBlockType(position, transaction.doc.content.size, strataSchema.nodes.heading, { ...last.attrs, level: 3 })
+  state = state.apply(transaction)
+  expect(headingsForState(state)).toMatchObject([
+    { id: original.id, text: 'Existing heading', position: original.position + steps - 1 },
+    { text: 'New heading.', level: 3 },
+  ])
+  expect(getTrackedSourceBlocks(state).map(({ id, span }) => ({ id, span })))
+    .toEqual(parsed.blocks.map(({ id, span }) => ({ id, span })))
+  expect(getTrackedSourceBlocks(state)[0]?.dirty).toBe(true)
 })

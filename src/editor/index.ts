@@ -11,7 +11,7 @@ import { Fragment, type Mark, type Node as ProseMirrorNode } from 'prosemirror-m
 import { EditorState, NodeSelection, Selection, TextSelection, type Command, type Transaction } from 'prosemirror-state'
 import { tableEditing } from 'prosemirror-tables'
 import { EditorView } from 'prosemirror-view'
-import type { AnnotationView, BufferOrigin, HeadingReference, HunkView, RedoResult, TableViewState, UndoResult } from '../shared/contracts.js'
+import type { AnnotationView, BufferOrigin, PrepareBufferBlockRanges, HeadingReference, HunkView, RedoResult, TableViewState, UndoResult } from '../shared/contracts.js'
 import type { EditorCommand } from '../renderer/components/Toolbar.js'
 import {
   createAnnotationPlugin,
@@ -31,6 +31,7 @@ import {
   parseMarkdownForEditor,
   serializeEditorDocument,
   updateParsedMarkdown,
+  tryUpdateParsedMarkdown,
 } from './markdown.js'
 import { markdownClipboardTextParser } from './paste.js'
 import { openEditorPopover, type PopoverHandle } from './popover.js'
@@ -92,7 +93,7 @@ export interface StrataEditorOptions {
   ariaLabel?: string
   pendingHunks?: readonly (ReviewRange | HunkView)[]
   annotations?: readonly (AnnotationRange | AnnotationView)[]
-  onChange?(markdown: string, origin: BufferOrigin): void
+  onChange?(markdown: string, origin: BufferOrigin, prepareBlockRanges?: PrepareBufferBlockRanges): void
   onSelection?(selection: EditorSelection | null): void
   onOpenAnnotation?(id: string): void
   /** The user dragged an annotation handle; the range is an exact markdown slice of the current buffer. */
@@ -356,6 +357,17 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     if (currentParse.markdown !== currentMarkdown) currentParse = { markdown: currentMarkdown, parsed: updateParsedMarkdown(currentParse.parsed, currentMarkdown) }
     return currentParse.parsed
   }
+  const reportChange = (origin: BufferOrigin): void => {
+    const content = currentMarkdown
+    // Capture the text, never node source attributes or a later DOM state. This
+    // producer can outlive the mounted editor when crash recovery flushes it.
+    options.onChange?.(content, origin, () => {
+      const snapshot = tryUpdateParsedMarkdown(currentParse.parsed, content)
+      if (!snapshot) return undefined
+      if (currentMarkdown === content) currentParse = { markdown: content, parsed: snapshot }
+      return snapshot.blocks.map((block) => ({ ...block.span }))
+    })
+  }
   let mode: EditorMode = options.sourceMode ? 'source' : 'visual'
   let readOnly = options.readOnly === true
   let suppressChange = false
@@ -561,7 +573,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
           .setMeta('addToHistory', false))
       }
     }
-    options.onChange?.(result.text, 'history')
+    reportChange('history')
     return true
   }
   const runHistory = (direction: 'undo' | 'redo'): boolean => {
@@ -879,7 +891,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
       currentMarkdown = after
       source.value = currentMarkdown
       renderSourceMirror()
-      options.onChange?.(currentMarkdown, fromHistory ? 'history' : 'edit')
+      reportChange(fromHistory ? 'history' : 'edit')
       document.documentElement.dataset.editorTransactionMs = (performance.now() - transactionStarted).toFixed(3)
     },
     handleDOMEvents: {
@@ -1284,7 +1296,7 @@ export function createStrataEditor(element: HTMLElement, options: StrataEditorOp
     }
     if (sourceReparseTimer !== null) window.clearTimeout(sourceReparseTimer)
     sourceReparseTimer = window.setTimeout(() => { sourceReparseTimer = null; reparseSource() }, SOURCE_REPARSE_MS)
-    options.onChange?.(currentMarkdown, 'edit')
+    reportChange('edit')
   })
   source.addEventListener('mousedown', () => { sourceKeyboardSelection = false })
   source.addEventListener('keydown', (event) => {

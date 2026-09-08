@@ -178,12 +178,7 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
   // zoom roles must not exist. Linux keeps no menu; macOS gets the minimal one.
   Menu.setApplicationMenu(buildApplicationMenu())
   installAppProtocol({ rendererRoot, ...(options.devServerUrl ? { devServerUrl: options.devServerUrl } : {}) })
-  installLocalImageProtocol({
-    allowedRoots: async () => {
-      const view = await options.api.getState()
-      return imageRoots(view)
-    }
-  })
+  installLocalImageProtocol()
   installVisualImageProtocol({ read: async (kind, id) => options.api.readVisualImage ? options.api.readVisualImage(kind, id) : null })
 
   const createWindow = async (): Promise<BrowserWindow> => {
@@ -392,15 +387,6 @@ export function hardenWindow(window: BrowserWindow, openExternal = openExternalU
   window.webContents.on('will-attach-webview', (event) => event.preventDefault())
   window.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false))
   window.webContents.session.setPermissionCheckHandler(() => false)
-}
-
-function imageRoots(view: AppView): string[] {
-  const roots = view.explorer.map((folder) => folder.path)
-  if (view.activeDocument) roots.push(dirname(view.activeDocument.path))
-  // Transcript images resolve against their project's workspace (§6.15), the
-  // same base conversation Markdown links use, so the protocol serves it too.
-  for (const project of view.engine.projects) if (project.workspaceRoot) roots.push(project.workspaceRoot)
-  return [...new Set(roots)]
 }
 
 if (!process.env.VITEST) {
