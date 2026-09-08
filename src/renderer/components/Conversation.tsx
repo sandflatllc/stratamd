@@ -16,6 +16,7 @@ import { ConversationNavigator } from './ConversationNavigator'
 import { isOwnerComment } from '../../core/conversation-delivery'
 import { Resizer } from './Resizer'
 import { MessageMarkdown } from '../messageMarkdown'
+import { TranscriptImageDialog } from './TranscriptImageDialog'
 
 const AGENTS_COLLAPSED_KEY = 'conversation-agents-collapsed'
 
@@ -214,6 +215,8 @@ function TurnChecklist({ items, onReply, onOpen, onAct, onDismiss }: { items: re
 
 export function Conversation({ visible = true, onDocumentContext, documentMeasure = 860, onDocumentMeasure, engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput, items = [], onReplyItem, onQueueReply, onDismissItem, onOpenItem, onActItem, onOpenDocument, onCopyText, visualComments = [], onOpenVisual, onShowVisual, onMarkUpImage, consumedAttachmentIds }: ConversationProps) {
   const selected = activeThread(engine)
+  const [inspectedImage, setInspectedImage] = useState<{ url: string; name: string } | null>(null)
+  useEffect(() => setInspectedImage(null), [engine.activeThreadId])
   const [expandedWork, setExpandedWork] = useState<Record<string, boolean>>({})
   /** The owner's own turn disclosures. A navigation reveal is separate: it comes from the target and ends when the owner closes that turn. */
   const [expandedTurns, setExpandedTurns] = useState<Record<string, boolean>>({})
@@ -331,7 +334,15 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
   // Find and comment markers reach into folded turns: the target's turn stays open for that navigation, apart from the owner's own disclosures.
   const targetMessage = workspace.target && dismissedReveal !== workspace.target.serial ? thread.messages.find((message) => message.id === workspace.target?.message) : undefined
   const revealedTurn = targetMessage ? turns.find(turn => turn.messages.some(message => message.id === targetMessage.id))?.id : null
-  return <section ref={panelRef} className="conversation-panel" aria-label="Conversation" data-placement={placement} style={placement === 'center' ? { '--conversation-measure': `${documentMeasure}px` } as CSSProperties : undefined} onKeyDownCapture={workspace.onKeyDown}>
+  const inspectImage = (target: EventTarget) => {
+    if (!(target instanceof Element) || !target.closest('.conversation-messages')) return false
+    const image = target instanceof HTMLImageElement ? target : target.closest('.strata-image, .conversation-sent-images button')?.querySelector('img')
+    if (!(image instanceof HTMLImageElement)) return false
+    setInspectedImage({ url: image.currentSrc || image.src, name: image.alt || 'Transcript image' })
+    return true
+  }
+  return <section ref={panelRef} className="conversation-panel" aria-label="Conversation" data-placement={placement} style={placement === 'center' ? { '--conversation-measure': `${documentMeasure}px` } as CSSProperties : undefined} onClickCapture={event => { if (inspectImage(event.target)) { event.preventDefault(); event.stopPropagation() } }} onKeyDownCapture={event => { if ((event.key === 'Enter' || event.key === ' ') && inspectImage(event.target)) { event.preventDefault(); event.stopPropagation() } else workspace.onKeyDown(event) }}>
+    {visible && inspectedImage && <TranscriptImageDialog image={inspectedImage} onClose={() => setInspectedImage(null)} onAnnotate={onMarkUpImage} />}
     <header>
       <div className="conversation-title">
         {onMove && <button type="button" className="conversation-placement" aria-label={placement === 'side' ? 'Open in center' : 'Move to side'} title={placement === 'side' ? 'Open in center' : 'Move to side'} onClick={onMove}><PlacementIcon target={placement === 'side' ? 'center' : 'side'} /></button>}
