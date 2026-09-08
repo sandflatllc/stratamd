@@ -18,7 +18,7 @@ async function fixture() {
   await mkdir(join(source, 'scripts'), { recursive: true })
   await cp(resolve('scripts/verify.mjs'), join(source, 'scripts/verify.mjs'))
   await cp(resolve('scripts/verification'), join(source, 'scripts/verification'), { recursive: true })
-  await writeFile(join(source, 'scripts/verify-fixture.mjs'), `import { verify } from './verification/run.mjs'; await verify(process.argv.slice(2), { lockRoot: ${JSON.stringify(join(home, 'locks'))} });`)
+  await writeFile(join(source, 'scripts/verify-fixture.mjs'), `import { verify } from './verification/run.mjs'; await verify(process.argv.slice(2), { lockRoot: ${JSON.stringify(join(home, 'locks'))}, electronStallMs: process.env.FIXTURE_ELECTRON_STALL_MS ? Number(process.env.FIXTURE_ELECTRON_STALL_MS) : undefined });`)
   await mkdir(join(source, 'native/unix-support/build/Release'), { recursive: true })
   await writeFile(join(source, 'native/unix-support/build/Release/unix_support.node'), 'fixture')
   await writeFile(join(source, '.gitignore'), 'node_modules/\nnative/unix-support/build/\nout/\n')
@@ -29,7 +29,14 @@ const fs = require('node:fs');
 if (process.env.FIXTURE_WAIT) { const child = require('node:child_process').spawn(process.execPath, ['-e', 'process.on(\"SIGTERM\", () => {}); setInterval(() => {}, 1000)'], {detached:true,stdio:'ignore'}); child.unref(); fs.writeFileSync(process.env.FIXTURE_WAIT + '.child', String(child.pid)); fs.writeFileSync(process.env.FIXTURE_WAIT, process.cwd()); setInterval(() => {}, 1000); }
 else if (process.argv.includes('--noEmit')) {}
 else if (process.argv.includes('build')) { fs.mkdirSync('out'); fs.writeFileSync('out/index.js', 'build'); }
-else if (process.argv[1].endsWith('playwright')) { fs.writeFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_FILE, JSON.stringify({stats:{expected:1,unexpected:0,skipped:0,flaky:0},suites:[]})); }
+else if (process.argv[1].endsWith('playwright')) {
+  if (process.env.FIXTURE_ELECTRON_STALL) {
+    const child = require('node:child_process').spawn(process.execPath, ['-e', 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000)'], {detached:true,stdio:'ignore'});
+    child.unref(); fs.writeFileSync(process.env.FIXTURE_ELECTRON_STALL + '.child', String(child.pid));
+    fs.writeFileSync(process.env.STRATAMD_VERIFY_ELECTRON_PROGRESS, JSON.stringify({event:'test-begin'}));
+    process.stdout.write('fixture electron started\\n'); setInterval(() => {}, 1000);
+  } else fs.writeFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_FILE, JSON.stringify({stats:{expected:1,unexpected:0,skipped:0,flaky:0},suites:[]}));
+}
 else { const out = process.argv.find(a => a.startsWith('--outputFile=')); if (out) fs.writeFileSync(out.slice(13), JSON.stringify({numPassedTests: 1, numFailedTests: 0, testResults: [{name:'fixture', assertionResults:[{status:'pending',fullName:'intentional skip'}]}]})); }
 `
   for (const name of ['tsc', 'vitest', 'electron-vite', 'playwright']) await writeFile(join(source, 'node_modules/.bin', name), binary, { mode: 0o755 })
@@ -71,7 +78,7 @@ it('isolates edits and builds, retains artifacts, and cancels ownership before t
   expect(await second.done, second.output()).toBe(0)
   const reports = await f.reports()
   expect(reports.map(report => report.status)).toEqual(['interrupted', 'passed'])
-  expect(await readFile(join(reports[0].output, 'typecheck.log'), 'utf8')).toBe('')
+  expect(await readFile(join(reports[0].output, 'typecheck.log'), 'utf8')).toContain(`Process cleanup captured descendants: ${ownedChild}`)
   expect(await readFile(join(reports[0].output, 'candidate/input.txt'), 'utf8')).toBe('original')
   expect(reports[1].results.unit.skipped[0].title).toBe('intentional skip')
 }, 20_000)
@@ -115,4 +122,26 @@ it('a focused pass cannot replace the full ordered gate or its stress coverage',
   const stress = f.run(['--reuse'], {}, 'stress'); expect(await stress.done, stress.output()).toBe(0)
   expect((await f.reports()).at(-1)).toMatchObject({ coverage: { mode: 'stress', repetitions: 2, ordinaryWorkers: process.platform === 'darwin' ? 1 : process.env.CI ? 2 : 8, clipboardWorkers: 1, managedWorkers: 1 } })
   expect((await f.reports()).at(-1).reusedFrom).toBeUndefined()
+}, 20_000)
+
+it('streams CI Electron progress and stops an owned stalled process tree', async () => {
+  const f = await fixture(), marker = join(f.root, 'electron-stall')
+  const stalled = f.run(['--e2e', 'test/e2e/fixture.spec.ts'], { CI: 'true', FIXTURE_ELECTRON_STALL: marker, FIXTURE_ELECTRON_STALL_MS: '5000' })
+  expect(await stalled.done, stalled.output()).toBe(1)
+  expect(stalled.output()).toContain('fixture electron started')
+  expect(stalled.output()).toContain('made no test-event progress')
+  const report = (await f.reports()).at(-1)
+  const electron = report.stages.find((stage: { name: string }) => stage.name === 'electron setup execution cleanup')
+  expect(electron.invocation.args).toContain('--max-failures=3')
+  expect(report.status).toBe('failed')
+  expect(report.error).toContain('made no test-event progress')
+  const electronLog = await readFile(join(report.output, 'electron-setup-execution-cleanup.log'), 'utf8')
+  expect(electronLog).toContain('fixture electron started')
+  const ownedChild = (await readFile(marker + '.child', 'utf8')).trim()
+  expect(electronLog).toContain(`Process cleanup captured descendants:`)
+  expect(electronLog).toContain(ownedChild)
+  await expect.poll(() => {
+    try { return execFileSync('ps', ['-o', 'stat=', '-p', ownedChild], { encoding: 'utf8' }).trim().startsWith('Z') }
+    catch { return true }
+  }).toBe(true)
 }, 20_000)

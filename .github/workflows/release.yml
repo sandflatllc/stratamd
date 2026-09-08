@@ -24,7 +24,11 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
       - run: node node_modules/electron/install.js
+        timeout-minutes: 5
+      - run: ./node_modules/.bin/node-gyp rebuild --directory native/unix-support
+        timeout-minutes: 5
       # Builds the .app and proves the packaged CLI and bundle layout work.
       - run: pnpm test:packaged
       - run: |

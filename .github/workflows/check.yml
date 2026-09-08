@@ -27,10 +27,12 @@ jobs:
         with:
           python-version: "3.12.3"
       - run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
       # pnpm's build-script approval does not reliably run electron's install
       # script, which downloads the binary; run it explicitly so dist/ exists
       # before anything depends on it.
       - run: node node_modules/electron/install.js
+        timeout-minutes: 5
       # Ubuntu 24.04 runners restrict unprivileged user namespaces, so any
       # Electron started outside Playwright (the dictionary fetch, the
       # second-instance spec's direct spawn) needs the setuid sandbox helper
@@ -40,9 +42,12 @@ jobs:
       # The spellcheck e2e spec seeds Hunspell dictionaries from the profile;
       # a fresh runner has none, so fetch en-US through Electron's own path.
       - run: xvfb-run --auto-servernum npx electron scripts/fetch-spell-dictionary.mjs
+        timeout-minutes: 5
       # Native desktop-composition evidence needs the X11 capture command.
       - run: sudo apt-get update && sudo apt-get install -y imagemagick gcc-13 g++-13 make
+        timeout-minutes: 10
       - run: ./node_modules/.bin/node-gyp rebuild --directory native/unix-support
+        timeout-minutes: 5
       - run: node scripts/verify.mjs full --task ci
       - run: node scripts/verify.mjs stress --task ci
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -51,6 +56,7 @@ jobs:
       # update-desktop-database/update-mime-database; the runner image ships
       # without them, so the packaged-CLI test's real setup run needs both.
       - run: sudo apt-get install -y desktop-file-utils shared-mime-info
+        timeout-minutes: 5
       - run: xvfb-run -a node scripts/verify.mjs packaged --task ci --finish-task
       - uses: actions/upload-artifact@v4
         if: always()
@@ -74,8 +80,11 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
       - run: node node_modules/electron/install.js
+        timeout-minutes: 5
       - run: ./node_modules/.bin/node-gyp rebuild --directory native/unix-support
+        timeout-minutes: 5
       - run: node scripts/verify.mjs full --task ci
       - run: node scripts/verify.mjs stress --task ci
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -94,6 +103,7 @@ jobs:
       - run: |
           strata_package_app=$(python3 -c 'import os,pathlib; print(next(pathlib.Path(os.environ["STRATAMD_VERIFY_HOME"]).glob("runs/*/package/mac*/StrataMD.app")))')
           ditto -c -k --keepParent "$strata_package_app" StrataMD-mac.zip
+        timeout-minutes: 5
       - uses: actions/upload-artifact@v4
         with:
           name: StrataMD-mac

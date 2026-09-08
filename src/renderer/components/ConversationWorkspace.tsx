@@ -122,9 +122,12 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
     if (!thread) return
     if (held.some(comment => comment.id === id)) await window.strata.actMessageComment(thread.id, id, 'discard')
     else {
+      const discardedDraft = replyDraft
+      const key = answerKey(id)
+      const discardedAnswer = answerDrafts.current.get(key)
       await window.strata.discardItemReply(thread.id, id)
-      answerDrafts.current.delete(answerKey(id))
-      setReplyDraft(current => current?.itemId === id ? null : current)
+      if (answerDrafts.current.get(key) === discardedAnswer) answerDrafts.current.delete(key)
+      setReplyDraft(current => current?.itemId === id && current === discardedDraft ? null : current)
     }
     setSelection(current => current?.id === id ? null : current)
     setDiscussion(current => current === id ? null : current)

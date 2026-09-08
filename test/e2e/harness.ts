@@ -249,7 +249,8 @@ export class Scenario {
   }
 
   async captureEvidence(): Promise<void> {
-    if (!this.app || !this.tracing) return
+    const app = this.app
+    if (!app || !this.tracing) return
     this.tracing = false
     const name = `electron-${this.testInfo.parallelIndex}-${this.testInfo.testId.replace(/[^a-zA-Z0-9]/g, '').slice(-12)}-${[...scenarioEvidence(this.testInfo)].indexOf(this)}-${this.launches}`
     const trace = this.testInfo.outputPath(`${name}.zip`)
@@ -260,12 +261,12 @@ export class Scenario {
       await this.page?.screenshot({ path: screenshot }).then(() => this.screenshots.push(screenshot)).catch(() => undefined)
     }
     try {
-      await this.app.context().tracing.stop({ path: trace })
+      await app.context().tracing.stop({ path: trace })
       this.traces.push(trace)
     } catch (error) {
       // A process may exit through a native close action before teardown. Raw
       // trace data is already in this invocation's directory, even on a crash.
-      const child = this.app.process()
+      const child = app.process()
       if ((child.exitCode === null && child.signalCode === null) || !/Target page, context or browser has been closed/.test(String(error))) throw error
       await this.testInfo.attach('electron-trace-note', { body: `Electron exited before archive export. Raw trace: ${this.rawTraces}`, contentType: 'text/plain' })
     }

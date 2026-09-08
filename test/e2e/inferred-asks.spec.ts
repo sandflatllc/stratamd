@@ -65,12 +65,43 @@ for (const placement of ['side', 'center'] as const) test(`passage answer popup 
     expect(zoomBox.y+zoomBox.height).toBeLessThanOrEqual(viewport.height)
     await page.screenshot({path:testInfo.outputPath('answer-popup-zoom.png')})
     await popup.getByRole('button', { name: 'Close answer' }).click()
+    // The cleared thread view can arrive before the discard acknowledgment.
+    // Reopening and editing in that interval must outlive the old completion.
+    await scenario.app!.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (...args: unknown[]) => Promise<unknown>> })._invokeHandlers
+      const original = handlers.get('strata:discard-item-reply')!
+      const gate = { waiting: false, release: () => {} }
+      const ready = new Promise<void>(resolve => { gate.release = resolve })
+      Object.assign(globalThis, { __discardReplyGate: gate })
+      handlers.set('strata:discard-item-reply', async (...args) => {
+        const result = await original(...args)
+        gate.waiting = true
+        await ready
+        return result
+      })
+    })
     await page.getByRole('button', { name: 'Remove held reply: Keep the icon alone on that row.' }).click()
+    await expect.poll(() => scenario.app!.evaluate(() => (globalThis as unknown as { __discardReplyGate: { waiting: boolean } }).__discardReplyGate.waiting)).toBe(true)
+    await expect(first).not.toHaveText('✓ Drafted')
     await first.click()
     await expect(field).toHaveValue('')
+    await field.fill('A fresh answer after removal.')
+    await scenario.app!.evaluate(() => (globalThis as unknown as { __discardReplyGate: { release(): void } }).__discardReplyGate.release())
+    await page.evaluate(async () => {
+      await window.strata.getState()
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    })
+    await expect(field).toHaveValue('A fresh answer after removal.')
+    await field.press('Enter')
+    await expect(page.getByRole('button', { name: 'Remove held reply: A fresh answer after removal.' })).toBeVisible()
+    await first.click()
+    await expect(field).toHaveValue('A fresh answer after removal.')
     await page.getByRole('button',{name:'StrataMD menu'}).click()
     await expect(popup).toHaveCount(0)
-  } finally {await scenario.dispose();await engine.close()}
+  } finally {
+    await scenario.app?.evaluate(() => (globalThis as unknown as { __discardReplyGate?: { release(): void } }).__discardReplyGate?.release()).catch(() => undefined)
+    await scenario.dispose();await engine.close()
+  }
 })
 
 test('an ask decoration resize preserves the passage being read inside a long reply', async ({}, testInfo) => {

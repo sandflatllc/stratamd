@@ -73,6 +73,45 @@ test('panel resize persists across an application restart', async ({}, testInfo)
   }
 })
 
+test('a pending zoom reset survives a view push with the previous saved zoom', async ({}, testInfo) => {
+  const scenario = await Scenario.create(testInfo, '# Pending zoom reset\n')
+  await scenario.writeSettings({ zoom: { explorer: 1, editor: 1.1, rightRail: 1, composer: 1, themePanel: 1 } })
+  try {
+    const page = await scenario.launch()
+    const editor = page.locator('[data-pane="editor"]')
+    await expect(editor.locator('.ProseMirror')).toHaveCSS('font-size', '23.1px')
+    await scenario.app!.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (...args: unknown[]) => Promise<unknown>> })._invokeHandlers
+      const original = handlers.get('strata:update-settings')!
+      const gate = { waiting: false, release: () => {} }
+      const ready = new Promise<void>(resolve => { gate.release = resolve })
+      Object.assign(globalThis, { __zoomWriteGate: gate })
+      handlers.set('strata:update-settings', async (...args) => {
+        if ((args[1] as { zoom?: unknown }).zoom) { gate.waiting = true; await ready }
+        return original(...args)
+      })
+    })
+    await openAppMenu(page)
+    await page.getByRole('menuitem', { name: 'Reset zoom' }).click()
+    await expect(editor.locator('.ProseMirror')).toHaveCSS('font-size', '21px')
+    await expect.poll(() => scenario.app!.evaluate(() => (globalThis as unknown as { __zoomWriteGate: { waiting: boolean } }).__zoomWriteGate.waiting)).toBe(true)
+    const motion = await page.evaluate(async () => {
+      const next = !(await window.strata.getState()).settings.animatedBackground
+      await window.strata.updateSettings({ animatedBackground: next })
+      return String(next)
+    })
+    await expect(page.locator('.app-shell')).toHaveAttribute('data-motion', motion)
+    await expect(editor.locator('.ProseMirror')).toHaveCSS('font-size', '21px')
+    await scenario.app!.evaluate(() => (globalThis as unknown as { __zoomWriteGate: { release(): void } }).__zoomWriteGate.release())
+    const settings = join(String(scenario.env.XDG_CONFIG_HOME), 'stratamd', 'settings.json')
+    await expect.poll(async () => JSON.parse(await readFile(settings, 'utf8')).zoom.editor).toBe(1)
+    await expect(editor.locator('.ProseMirror')).toHaveCSS('font-size', '21px')
+  } finally {
+    await scenario.app?.evaluate(() => (globalThis as unknown as { __zoomWriteGate?: { release(): void } }).__zoomWriteGate?.release()).catch(() => undefined)
+    await scenario.dispose()
+  }
+})
+
 test('per-pane text zoom follows the hovered pane, resets from one button, and persists across restart', async ({}, testInfo) => {
   const value = await Scenario.create(testInfo, '# Zoom\n\nScale me.\n', 'zoom.md')
   try {
@@ -360,7 +399,7 @@ test('keyboard reaches and operates direct Keep and Revert actions', async ({}, 
 })
 
 
-test('keyboard operates composer recipient previews and an item thread', async ({}, testInfo) => {
+test('keyboard operates composer recipient previews', async ({}, testInfo) => {
   const original = '# Keyboard\n\nReply to this sentence.\n'
   const edited = '# Keyboard\n\nReply to this sentence.\n\nOwner edit.\n'
   const engine: FakeEngine = await startEngine({ titles: { t1: 'Agent A', t2: 'Agent B' } })
@@ -394,7 +433,19 @@ test('keyboard operates composer recipient previews and an item thread', async (
     await expect(agentBRecipient).not.toBeChecked()
     await page.keyboard.press('Escape')
     await expect(composer).toBeHidden()
+  } finally {
+    await value.dispose()
+    await engine.close()
+  }
+})
 
+test('keyboard cancels annotation entry and operates an item thread', async ({}, testInfo) => {
+  const original = '# Keyboard\n\nReply to this sentence.\n'
+  const engine: FakeEngine = await startEngine({ titles: { t1: 'Agent A' } })
+  const value = await seededScenario(testInfo, engine.origin, original, 'keyboard-thread.md')
+  try {
+    const page = await value.launch()
+    await attachAgents(value, engine, [['t1', 'Agent A']])
     const editor = page.getByRole('textbox', { name: /Document editor/i })
     await selectTextInVisualEditor(page, 'Reply to this sentence.')
     const annotationMenu = page.getByRole('menu', { name: /Annotate selection/i })

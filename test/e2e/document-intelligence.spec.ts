@@ -2,7 +2,7 @@ import { expectActiveDocument, expectDocumentListed, openDocsMenu } from './harn
 import { expect, test } from './test'
 import { dirname, join } from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
-import { Scenario, primaryKey, switchToDocument } from './harness'
+import { Scenario, lineEndKey, primaryKey, switchToDocument } from './harness'
 
 const markdown = `# Document intelligence
 
@@ -354,7 +354,7 @@ test('a nested fold keeps source identity through a heading rename and restart',
     const heading = deep.getByRole('heading', { name: 'Deep section', exact: true })
     // Click the text edge rather than the flexed heading's empty trailing width.
     await heading.click({ position: { x: 8, y: 8 } })
-    await page.keyboard.press('End')
+    await page.keyboard.press(lineEndKey)
     await page.keyboard.insertText(' renamed')
     const renamedMarkdown = nestedFoldMarkdown.replace('#### Deep section', '#### Deep section renamed')
     await scenario.waitForBuffer(renamedMarkdown)
@@ -381,7 +381,7 @@ test('typing from a folded heading opens the new text temporarily', async ({}, t
     await fold.getByRole('button', { name: 'Collapse section' }).click()
     const heading = fold.getByRole('heading', { name: 'Deep section', exact: true })
     await heading.click({ position: { x: 8, y: 8 } })
-    await page.keyboard.press('End')
+    await page.keyboard.press(lineEndKey)
     await page.keyboard.press('Enter')
     await page.keyboard.insertText('Visible while editing.')
     await expect(page.getByText('Visible while editing.', { exact: true })).toBeVisible()

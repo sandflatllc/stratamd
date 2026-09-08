@@ -1,5 +1,5 @@
 import { expect, test } from './test'
-import { Scenario, primaryKey, selectTextInVisualEditor, sourceEditor } from './harness'
+import { Scenario, lineEndKey, primaryKey, selectTextInVisualEditor, sourceEditor } from './harness'
 
 // Link and image forms (usability round 2 §2.8). window.prompt does not exist
 // in Electron, so these used to fail silently; now an in-editor form opens,
@@ -50,7 +50,7 @@ test('Ctrl+K adds a link to the selection, edits an existing link, and the Image
 
     // The Image menu inserts an image with alt text.
     await page.getByText('sits here').click()
-    await page.keyboard.press('End')
+    await page.keyboard.press(lineEndKey)
     await page.getByRole('toolbar', { name: 'Formatting' }).getByLabel('Image', { exact: true }).click()
     await page.getByRole('menuitem', { name: 'Insert image…' }).click()
     const addImage = page.getByRole('dialog', { name: 'Add image' })

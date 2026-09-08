@@ -1,5 +1,5 @@
 import { expect, test } from './test'
-import { Scenario, selectTextInVisualEditor } from './harness'
+import { Scenario, lineEndKey, selectTextInVisualEditor } from './harness'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 import { agentActs, annotationByText, attachThread, openThread, uploadsFor } from './cockpit-agent'
 
@@ -118,7 +118,7 @@ test('keyboard passage and rail document decisions expose explicit anchors', asy
 
     const title = page.getByRole('heading', { name: 'Review', exact: true })
     await title.click({ position: { x: 8, y: 8 } })
-    await page.keyboard.press('End')
+    await page.keyboard.press(lineEndKey)
     await page.keyboard.press('Enter')
     await page.keyboard.insertText('Inserted above the decision heading.')
     await annotations.getByRole('button', { name: 'New decision' }).click()

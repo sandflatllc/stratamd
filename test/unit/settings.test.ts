@@ -1,7 +1,7 @@
 import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_SETTINGS,
   SettingsStore,
@@ -44,6 +44,34 @@ describe('settings', () => {
     const store = new SettingsStore({ configDirectory: await temporaryDirectory() })
     const updated = await store.update({ zoom: { editor: 1.3 } })
     expect(updated.zoom).toEqual({ explorer: 1, editor: 1.3, rightRail: 1, composer: 1, themePanel: 1 })
+  })
+
+  it('merges overlapping updates after the preceding save and continues after a failed write', async () => {
+    const store = new SettingsStore({ configDirectory: await temporaryDirectory() })
+    let persisted = structuredClone(DEFAULT_SETTINGS)
+    let releaseFirst!: () => void
+    let firstSaveEntered!: () => void
+    const held = new Promise<void>(resolve => { releaseFirst = resolve })
+    const entered = new Promise<void>(resolve => { firstSaveEntered = resolve })
+    vi.spyOn(store, 'load').mockImplementation(async () => structuredClone(persisted))
+    const save = vi.spyOn(store, 'save').mockImplementation(async settings => {
+      if (settings.zoom.editor === 1.1) { firstSaveEntered(); await held }
+      persisted = normalizeSettings(settings)
+      return persisted
+    })
+    const first = store.update({ zoom: { editor: 1.1 } })
+    await entered
+    const reset = store.update({ zoom: { editor: 1 }, panels: { documentMeasure: 1200 } })
+    const motion = store.update({ ambientMotion: false })
+    releaseFirst()
+    await Promise.all([first, reset, motion])
+    expect(persisted.zoom.editor).toBe(1)
+    expect(persisted.panels.documentMeasure).toBe(1200)
+    expect(persisted.ambientMotion).toBe(false)
+    save.mockRejectedValueOnce(new Error('write failed'))
+    await expect(store.update({ zoom: { editor: 1.2 } })).rejects.toThrow('write failed')
+    await store.update({ zoom: { explorer: 1.3 } })
+    expect(persisted.zoom).toMatchObject({ editor: 1, explorer: 1.3 })
   })
 
   it('migrates flat version-zero panels and constrains handoff ranges', () => {

@@ -185,6 +185,7 @@ export function App({ createEditor }: AppProps) {
   const committedPanels = useRef<PanelSizes | null>(null)
   const pendingPanelWrites = useRef(0)
   const committedZoom = useRef<PaneZoom | null>(null)
+  const pendingZoomWrites = useRef(0)
   /** Pending changes and open suggestions seen per document, for the agent-activity note (§5.4). */
   const activitySeen = useRef(new Map<string, ActivitySnapshot>())
   const showTarget = useRef<(target: ReviewTarget) => void>(() => undefined)
@@ -241,7 +242,7 @@ export function App({ createEditor }: AppProps) {
     if (!document) return
     void perform(() => window.strata.updateWalkthrough(document.path, action))
   }, [document, perform])
-  const openTheme = useCallback(() => { setThemeOpen(true); void perform(() => window.strata.openThemeSample()) }, [perform])
+  const openTheme = useCallback(() => { void perform(async () => { await window.strata.openThemeSample(); setThemeOpen(true) }) }, [perform])
 
   useEffect(() => {
     let mounted = true
@@ -258,7 +259,7 @@ export function App({ createEditor }: AppProps) {
         committedPanels.current = next.settings.panelSizes
         setPanelSizes(next.settings.panelSizes)
       }
-      if (shouldAdoptPushed(next.settings.zoom, committedZoom.current)) {
+      if (zoomPersist.current === null && pendingZoomWrites.current === 0 && shouldAdoptPushed(next.settings.zoom, committedZoom.current)) {
         committedZoom.current = next.settings.zoom
         setZoom(next.settings.zoom); zoomRef.current = next.settings.zoom
       }
@@ -303,7 +304,15 @@ export function App({ createEditor }: AppProps) {
     zoomRef.current = next
     setZoom(next)
     if (zoomPersist.current !== null) window.clearTimeout(zoomPersist.current)
-    const persist = () => { zoomPersist.current = null; committedZoom.current = next; void perform(() => window.strata.updateSettings({ zoom: next })) }
+    const persist = () => {
+      zoomPersist.current = null
+      committedZoom.current = next
+      pendingZoomWrites.current++
+      void perform(async () => {
+        try { await window.strata.updateSettings({ zoom: next }) }
+        finally { pendingZoomWrites.current-- }
+      })
+    }
     if (immediate) persist()
     else zoomPersist.current = window.setTimeout(persist, 250)
   }, [perform])

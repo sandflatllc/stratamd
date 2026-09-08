@@ -5,7 +5,7 @@ import { expect, test } from './test'
 import { mapMarkdownBlocks } from '../../src/core/blocks'
 import { readFile } from 'node:fs/promises'
 import { credentialPath, seededScenario, startEngine } from './cockpit-engine-harness'
-import { primaryKey } from './harness'
+import { documentEndKey, primaryKey } from './harness'
 
 test('1 pairing: host plus code pairs through the dialog, shows the server, and pairing again replaces the credential', async ({}, testInfo) => {
   const engine = await startEngine({ pairingCodes: ['first-code', 'second-code'] })
@@ -62,7 +62,7 @@ test('1 and 2 read side: disconnect is isolated and reconnect restores the activ
     await navigation.getByRole('tab', { name: 'Contents' }).click()
     const editor = page.getByRole('textbox', { name: /document editor/i })
     await editor.click()
-    await page.keyboard.press('Control+End')
+    await page.keyboard.press(documentEndKey)
     await page.keyboard.type(' Still here.')
     await expect(editor).toContainText('Still here.')
     await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).activeDocument?.content).toContain('Still here.')

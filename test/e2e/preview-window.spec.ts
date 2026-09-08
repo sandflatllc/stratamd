@@ -162,9 +162,24 @@ test('a panel beside the page leaves it showing; dragged over the page it hides 
     await expect.poll(visible).toBe(true)
 
     // Theme opens its sample document too; the web views menu brings the page back with the panel still open.
+    await scenario.app!.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (...args: unknown[]) => Promise<unknown>> })._invokeHandlers
+      const original = handlers.get('strata:open-theme-sample')!
+      const gate = { waiting: false, release: () => {} }
+      const ready = new Promise<void>(resolve => { gate.release = resolve })
+      Object.assign(globalThis, { __themeSampleGate: gate })
+      handlers.set('strata:open-theme-sample', async (...args) => {
+        gate.waiting = true
+        await ready
+        return original(...args)
+      })
+    })
     await openAppMenu(page)
     await page.getByRole('menuitem', { name: 'Theme', exact: true }).click()
     const panel = page.getByRole('dialog', { name: 'Theme' })
+    await expect.poll(() => scenario.app!.evaluate(() => (globalThis as unknown as { __themeSampleGate: { waiting: boolean } }).__themeSampleGate.waiting)).toBe(true)
+    await expect(panel).toHaveCount(0)
+    await scenario.app!.evaluate(() => (globalThis as unknown as { __themeSampleGate: { release(): void } }).__themeSampleGate.release())
     await expect(panel).toBeVisible()
     await page.getByRole('button', { name: 'Web views menu' }).click()
     await page.getByRole('menu', { name: 'Open web views' }).getByRole('menuitem', { name: /^Cockpit project · Clients · Mesa Office/ }).click()
@@ -192,6 +207,7 @@ test('a panel beside the page leaves it showing; dragged over the page it hides 
     await expect(panel).toHaveCount(0)
     await expect.poll(visible).toBe(true)
   } finally {
+    await scenario.app?.evaluate(() => (globalThis as unknown as { __themeSampleGate?: { release(): void } }).__themeSampleGate?.release()).catch(() => undefined)
     await scenario.dispose()
     await site.close()
     await engine.close()

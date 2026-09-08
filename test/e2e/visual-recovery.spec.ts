@@ -102,8 +102,9 @@ test('the Mesa-style review reads as numbered sections with Contents, the walkth
   await expect(page.getByText('None attached', { exact: true })).toBeVisible()
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
   await capture(page, 'shell-walkthrough-annotations')
-  await expect(page).toHaveScreenshot('shell-walkthrough-annotations.png', { ...SNAPSHOT, mask: masks(page) })
-  await expect(page.locator('.navigation-rail')).toHaveScreenshot('contents-walkthrough.png', SNAPSHOT)
+  // Keep independent captures available for review even when an earlier baseline differs.
+  await expect.soft(page).toHaveScreenshot('shell-walkthrough-annotations.png', { ...SNAPSHOT, mask: masks(page) })
+  await expect.soft(page.locator('.navigation-rail')).toHaveScreenshot('contents-walkthrough.png', SNAPSHOT)
 
   await reviewTabs.getByRole('tab', { name: /^Changes/ }).click()
   await expect.poll(() => page.locator('.changes-panel .change-row').count()).toBeGreaterThanOrEqual(2)
@@ -131,7 +132,7 @@ test('the Mesa-style review reads as numbered sections with Contents, the walkth
   await expect(islands.getByRole('button', { name: 'Discuss row' })).toHaveCount(0)
   expect(await head.getByRole('button').count()).toBeLessThanOrEqual(6)
   await capture(page, 'table-default')
-  await expect(head).toHaveScreenshot('table-header.png', SNAPSHOT)
+  await expect.soft(head).toHaveScreenshot('table-header.png', SNAPSHOT)
 
   await islands.locator('.strata-source-table td').filter({ hasText: /^Sales$/ }).click()
   await expect(islands.locator('.strata-table-utilities')).toBeVisible()
@@ -218,7 +219,7 @@ test('a single document shows all nine approved components with their own visual
   expect(new Set(tops).size).toBe(1)
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
   await capture(page, 'components-sampler')
-  await expect(page.locator('.editor-island')).toHaveScreenshot('components-sampler.png', SNAPSHOT)
+  await expect.soft(page.locator('.editor-island')).toHaveScreenshot('components-sampler.png', SNAPSHOT)
   expect(await readFile(value.file, 'utf8')).toBe(written)
   const externalResources = await page.evaluate(() => performance.getEntriesByType('resource').map((entry) => entry.name).filter((url) => /^https?:/u.test(url)))
   expect(externalResources).toEqual([])

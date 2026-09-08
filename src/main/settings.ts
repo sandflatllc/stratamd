@@ -215,6 +215,7 @@ export class SettingsStore {
   readonly configDirectory: string
   readonly path: string
   #recovery: SettingsRecovery | null = null
+  #updates: Promise<unknown> = Promise.resolve()
 
   constructor(options: SettingsStoreOptions = {}) {
     this.configDirectory = options.configDirectory
@@ -273,15 +274,20 @@ export class SettingsStore {
     return normalized
   }
 
-  async update(patch: SettingsPatch): Promise<Settings> {
-    const current = await this.load()
-    return this.save({
-      ...current,
-      ...patch,
-      formatVersion: CURRENT_SETTINGS_VERSION,
-      panels: { ...current.panels, ...patch.panels },
-      zoom: { ...current.zoom, ...patch.zoom },
+  update(patch: SettingsPatch): Promise<Settings> {
+    // A later gesture must read the preceding save, and must finish after it.
+    const update = this.#updates.then(async () => {
+      const current = await this.load()
+      return this.save({
+        ...current,
+        ...patch,
+        formatVersion: CURRENT_SETTINGS_VERSION,
+        panels: { ...current.panels, ...patch.panels },
+        zoom: { ...current.zoom, ...patch.zoom },
+      })
     })
+    this.#updates = update.catch(() => undefined)
+    return update
   }
 }
 

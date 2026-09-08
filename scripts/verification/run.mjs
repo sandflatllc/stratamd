@@ -145,12 +145,13 @@ try {
       const deps = await fingerprint(join(candidate, 'node_modules'), await filesIn(join(candidate, 'node_modules')))
       if (copied !== identity.source || deps !== identity.dependencies || await fingerprint(root, await inputFiles(root)) !== identity.source || await fingerprint(dependencies, await filesIn(dependencies)) !== identity.dependencies) throw new Error('Inputs changed while staging; candidate refused')
     })
-    const env = { ...process.env, STRATAMD_E2E_WORKERS: String(ordinary), PLAYWRIGHT_JSON_OUTPUT_FILE: join(output, 'electron.json'), STRATAMD_VERIFY_ELECTRON_TIMING: join(output, 'electron-timing.json'), STRATAMD_VERIFY_UNIT_RETRIES: join(output, 'unit-retries.json') }
+    const electronProgress = join(output, 'electron-progress.json')
+    const env = { ...process.env, STRATAMD_E2E_WORKERS: String(ordinary), PLAYWRIGHT_JSON_OUTPUT_FILE: join(output, 'electron.json'), STRATAMD_VERIFY_ELECTRON_TIMING: join(output, 'electron-timing.json'), STRATAMD_VERIFY_ELECTRON_PROGRESS: electronProgress, STRATAMD_VERIFY_UNIT_RETRIES: join(output, 'unit-retries.json') }
     // An external bundle or test-output path would escape candidate isolation.
     for (const key of ['STRATAMD_E2E_ENGINE_BUNDLE', 'STRATAMD_ENGINE_BUNDLE', 'STRATAMD_PACKAGE_OUTPUT', 'STRATAMD_PACKAGED_TEST', 'STRATAMD_PACKAGED_ROOT', 'STRATAMD_E2E_DISPLAYS', 'PLAYWRIGHT_HTML_OUTPUT_DIR']) delete env[key]
     for (const key of Object.keys(env)) if (/CAPTURES/.test(key)) delete env[key]
     if (dictionaries) env.STRATAMD_SPELL_DICTIONARIES = join(candidate, 'build/dictionaries')
-    const run = (name, command, argv) => timed(name, () => runProcess(command, argv, { cwd: candidate, env, log: join(output, `${name.replaceAll(' ', '-')}.log`), signal: controller.signal }), { command, args: argv })
+    const run = (name, command, argv, processOptions = {}) => timed(name, () => runProcess(command, argv, { cwd: candidate, env, log: join(output, `${name.replaceAll(' ', '-')}.log`), signal: controller.signal, ...processOptions }), { command, args: argv })
     if (mode === 'full' || mode === 'focused') await run('typecheck', './node_modules/.bin/tsc', ['--noEmit'])
     if (mode === 'full' || options.unit.length) await run('unit integration', './node_modules/.bin/vitest', ['run', ...options.unit, '--reporter=default', '--reporter=json', '--reporter=./scripts/verification/unit-reporter.mjs', `--outputFile=${join(output, 'unit.json')}`])
     if (mode === 'managed') {
@@ -171,8 +172,10 @@ try {
     if (['full', 'stress', 'managed'].includes(mode) || options.e2e.length) {
       await run('build', './node_modules/.bin/electron-vite', ['build'])
       report.buildIdentity = await fingerprint(join(candidate, 'out'), await filesIn(join(candidate, 'out')))
-      const argv = ['test', ...options.e2e, '--reporter=list,json,./scripts/verification/electron-reporter.cjs', `--output=${join(output, 'test-results')}`, `--repeat-each=${report.coverage.repetitions}`, ...(mode === 'managed' ? ['--project=managed'] : [])]
-      await run('electron setup execution cleanup', platform() === 'linux' ? 'xvfb-run' : './node_modules/.bin/playwright', platform() === 'linux' ? ['-a', './node_modules/.bin/playwright', ...argv] : argv)
+      const argv = ['test', ...options.e2e, '--reporter=list,json,./scripts/verification/electron-reporter.cjs', `--output=${join(output, 'test-results')}`, `--repeat-each=${report.coverage.repetitions}`, ...(process.env.CI ? ['--max-failures=3'] : []), ...(mode === 'managed' ? ['--project=managed'] : [])]
+      const stallMs = settings.electronStallMs ?? 120_000
+      if (!Number.isFinite(stallMs) || stallMs <= 0) throw new Error('Electron stall timeout must be a positive number')
+      await run('electron setup execution cleanup', platform() === 'linux' ? 'xvfb-run' : './node_modules/.bin/playwright', platform() === 'linux' ? ['-a', './node_modules/.bin/playwright', ...argv] : argv, process.env.CI ? { progress: { file: electronProgress, timeoutMs: stallMs } } : {})
     }
     await timed('integrity', async () => {
       if (await fingerprint(candidate, files) !== identity.source || await fingerprint(join(candidate, 'node_modules'), await filesIn(join(candidate, 'node_modules'))) !== identity.dependencies) throw new Error('Candidate inputs changed during verification; result contaminated')
