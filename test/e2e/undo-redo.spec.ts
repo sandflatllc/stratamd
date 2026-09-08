@@ -236,12 +236,17 @@ test.describe('undo and redo timeline', () => {
     await page.keyboard.press(primaryKey('/'))
     const source = page.getByRole('textbox', { name: /source editor/i })
     await expect(source).toBeVisible()
+    const parsedEditor = page.getByRole('textbox', { name: /document editor/i, includeHidden: true })
 
     await source.focus()
     await page.keyboard.press(documentEndKey)
     await page.keyboard.type('First line.\n')
+    // Source history is recorded by the delayed parse. Observe that edit before
+    // moving Date.now past the group boundary; changing Date does not run timers.
+    await expect(parsedEditor).toContainText('First line.')
     await page.clock.setFixedTime(await page.evaluate(() => Date.now()) + GROUP_GAP)
     await page.keyboard.type('Second line.\n')
+    await expect(parsedEditor).toContainText('Second line.')
     await page.clock.setFixedTime(await page.evaluate(() => Date.now()) + GROUP_GAP)
     const afterTyping = `${BASE}First line.\nSecond line.\n`
     await value.waitForBuffer(afterTyping)
@@ -251,6 +256,7 @@ test.describe('undo and redo timeline', () => {
     await page.keyboard.press(selectToLineEndKey)
     await page.keyboard.press('Backspace')
     await page.keyboard.press('Backspace')
+    await expect(parsedEditor).not.toContainText('Second line.')
     await page.clock.setFixedTime(await page.evaluate(() => Date.now()) + GROUP_GAP)
     const afterDelete = `${BASE}First line.\n`
     await value.waitForBuffer(afterDelete)
