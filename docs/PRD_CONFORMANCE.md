@@ -213,7 +213,7 @@ The upgrade fixtures use distinct runtime manifests around the same official ser
 | Safe package output and isolated login registration | `package-output.test.ts`, `t3-connect.test.ts`; fresh package proof in `docs/release/bundled-engine.md` |
 | Bounded recovery, bootstrap ownership, interrupted restore, conservative retention | `managed-recovery-boundaries.test.ts`, `managed-process.test.ts` |
 | Unreadable comment stores and durable multi-owner capture protection | `visual-store-safety.test.ts` |
-| Never-shown guest captures and native desktop composition; stock snapshot schema | `preview-composition.spec.ts`, `preview-window.spec.ts` |
+| Local HTML paints in the native window on open, tab return, overlay dismissal, and tray reopen; background captures retain page state; stock snapshot schema | `preview-composition.spec.ts`, `preview-window.spec.ts` |
 | Tray close/reopen retains preview state; closing with tray mode off stops the owned engine | `managed-engine.spec.ts`, `computer-controls.spec.ts`; fresh package window-close proof in `docs/release/bundled-engine.md` |
 | Navigation retains annotation sessions; requested images and strict per-reply history | `preview-annotate.spec.ts`, `engine-visual-comments.test.ts`, `visual-comments.test.ts` |
 | Accent reset, edited-field refresh, Connect discovery and status deduplication | `managed-settings.test.ts`, `engine-settings-edit.test.ts`, `connect-repair.test.ts` |

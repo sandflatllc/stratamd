@@ -1,9 +1,9 @@
-import { app, BrowserWindow, nativeImage } from 'electron'
+import { app, BrowserWindow, nativeImage, type WebContentsView } from 'electron'
 import { createServer } from 'node:http'
-import { mkdir, writeFile, mkdtemp } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import assert from 'node:assert/strict'
 import { PreviewHost } from '../../src/main/preview/host'
 const root = process.env.STRATA_COMPOSITION_OUTPUT!
@@ -18,7 +18,9 @@ app.whenReady().then(async () => {
  let win:BrowserWindow
  const makeWindow=async()=>{win=new BrowserWindow({x:0,y:0,width:800,height:600,frame:false,show:true,webPreferences:{sandbox:true}});await win.loadURL('data:text/html,<body style="background:%230044ee;margin:0;color:white"><h1>STRATA SHELL</h1></body>');host.attachWindow(win)}
  await makeWindow()
- const owner=await host.openOwnerTab({projectId:'p',url:address+'/red'})
+ const localPage=join(root,'local-preview.html')
+ await writeFile(localPage,'<body style="margin:0;background:rgb(238,17,17);height:3000px"><input id="note"></body>')
+ const owner=await host.openOwnerTab({projectId:'p',url:pathToFileURL(localPage).href})
  await host.query(owner,'new Promise(r=>document.readyState==="complete"?r(true):window.addEventListener("load",()=>r(true)))')
  host.reportBounds({tabId:owner,bounds:{x:200,y:120,width:500,height:400}})
  await host.query(owner,'document.querySelector("#note").value="kept form";window.scrollTo(0,350);true')
@@ -26,16 +28,27 @@ app.whenReady().then(async () => {
  assert(result.ok)
  const agent=(result.result as {tabId:string}).tabId
  const neverShown=await host.capture(agent);assert(neverShown.width>0)
- const states: Array<{name:string;shellVisible:boolean;freshCapture:boolean;formAndScrollKept:boolean;size:string}>=[]
+ const states: Array<{name:string;shellVisible:boolean;pageVisible:boolean;freshCapture:boolean;formAndScrollKept:boolean;size:string}>=[]
  async function check(name:string, shown:string|null) {
    await host.query(owner,'new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
    const desktop=join(root,name+'-desktop.png')
+   const shownView=shown?win!.contentView.children.find(view=>(view as WebContentsView).webContents===host.contentsOf(shown)):null
+   if(shown)assert(shownView,`Selected page has no native view during ${name}`)
+   const bounds=shownView?.getBounds()
+   const expectedPage=shown?await host.query(shown,'getComputedStyle(document.body).backgroundColor') as string:null
+   const rgb=expectedPage?.match(/\d+/g)?.map(Number)
    const deadline=Date.now()+5000
    while(true){
      execFileSync('import',['-window','root',desktop])
      const image=nativeImage.createFromPath(desktop), bytes=image.toBitmap(),offset=(80*image.getSize().width+80)*4
-     if(bytes[offset]===238&&bytes[offset+1]===68&&bytes[offset+2]===0)break
-     if(Date.now()>deadline)throw new Error(`Shell covered during ${name}`)
+     const shellVisible=bytes[offset]===238&&bytes[offset+1]===68&&bytes[offset+2]===0
+     // A guest capture can succeed while its native view stays blank. Read the
+     // actual composed desktop inside the page as well as outside it.
+     const pageOffset=((bounds?bounds.y+Math.floor(bounds.height/2):250)*image.getSize().width+(bounds?bounds.x+Math.floor(bounds.width/2):350))*4
+     const expected=rgb?[rgb[2],rgb[1],rgb[0]]:[238,68,0]
+     const pageVisible=expected.every((value,index)=>bytes[pageOffset+index]===value)
+     if(shellVisible&&pageVisible)break
+     if(Date.now()>deadline)throw new Error(`Wrong native composition during ${name}: shell=${shellVisible}, page=${pageVisible}`)
      await new Promise(resolve=>setImmediate(resolve))
    }
    const expected=shown?host.contentsOf(shown):null
@@ -47,13 +60,20 @@ app.whenReady().then(async () => {
    assert.deepEqual([...bytes.subarray(offset,offset+3)],[255,0,255])
    assert.equal(await host.query(owner,'document.querySelector("#note").value'),'kept form')
    assert.equal(await host.query(owner,'window.scrollY'),350)
-   states.push({name,shellVisible:true,freshCapture:true,formAndScrollKept:true,size:frame.width+'x'+frame.height})
+   states.push({name,shellVisible:true,pageVisible:true,freshCapture:true,formAndScrollKept:true,size:frame.width+'x'+frame.height})
  }
+ await check('local-page-open',owner)
  host.reportBounds({tabId:agent,bounds:{x:200,y:120,width:500,height:400}});await check('two-tabs',agent)
  host.reportBounds({tabId:null,bounds:null});await check('document',null)
  host.reportBounds({tabId:agent,bounds:{x:200,y:120,width:500,height:400}});host.setOverlay(true);await check('annotation-menu',null);host.setOverlay(false)
+ await check('overlay-dismissed',agent)
+ host.reportBounds({tabId:owner,bounds:{x:200,y:120,width:500,height:400}});await check('local-page-return',owner)
  host.resize(agent,{mode:'freeform',width:390,height:844});win!.setSize(1024,700);host.reportBounds({tabId:agent,bounds:{x:300,y:100,width:390,height:550}});await check('device-resize',agent)
- win!.hide();win!.show();await check('tray-reopen',agent)
+ win!.hide()
+ const hiddenFrame=await host.capture(agent)
+ assert(hiddenFrame.width>0)
+ await writeFile(join(root,'tray-hidden-guest.png'),hiddenFrame.bytes)
+ win!.show();await check('tray-reopen',agent)
  win!.destroy();await makeWindow();host.reportBounds({tabId:agent,bounds:{x:200,y:120,width:390,height:400}});await check('reattached',agent)
  await host.withScratchView({workingFolder:root,url:address+'/red',viewport:{width:500,height:400}},async()=>{await check('scratch-comparison',agent)})
  // Actual host results and screenshot pixels exercise the stock boundary.

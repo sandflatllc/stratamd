@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { readFile, cp } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { stockSnapshotEncoder } from '../fixtures/stock-preview-schema'
 import { Scenario } from './harness'
@@ -19,7 +19,7 @@ test('background guests preserve fresh captures and state without covering the c
     const electron = createRequire(import.meta.url)('electron') as string
     await execute(electron, ['--ozone-platform=x11', bundle], { env: { ...scenario.env, STRATA_COMPOSITION_OUTPUT: scenario.root }, timeout: 25000 })
     const report = JSON.parse(await readFile(join(scenario.root, 'report.json'), 'utf8'))
-    expect(report.states).toHaveLength(7)
+    expect(report.states).toHaveLength(10)
     if (process.env.STRATAMD_ENGINE_BUNDLE) {
       const encode = await stockSnapshotEncoder(process.env.STRATAMD_ENGINE_BUNDLE, scenario.root)
       const snapshot = JSON.parse(await readFile(join(scenario.root, 'snapshot.json'), 'utf8')).result
@@ -27,7 +27,12 @@ test('background guests preserve fresh captures and state without covering the c
       expect(() => encode({ ...snapshot, loading: true })).not.toThrow()
       expect(() => encode({ ...snapshot, loading: undefined })).toThrow()
     }
-    expect(report.states.every((state: { shellVisible: boolean; freshCapture: boolean; formAndScrollKept: boolean }) => state.shellVisible && state.freshCapture && state.formAndScrollKept)).toBe(true)
-    for (const state of report.states) for (const kind of ['desktop', 'guest']) await testInfo.attach(`${state.name}-${kind}`, { path: join(scenario.root, `${state.name}-${kind}.png`) })
-  } finally { await scenario.dispose() }
+    expect(report.states.every((state: { shellVisible: boolean; pageVisible: boolean; freshCapture: boolean; formAndScrollKept: boolean }) => state.shellVisible && state.pageVisible && state.freshCapture && state.formAndScrollKept)).toBe(true)
+  } finally {
+    try {
+      for (const name of await readdir(scenario.root)) {
+        if (name.endsWith('.png') || name === 'report.json') await testInfo.attach(name, { path: join(scenario.root, name) })
+      }
+    } finally { await scenario.dispose() }
+  }
 })
