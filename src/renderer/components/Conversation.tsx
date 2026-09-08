@@ -1,3 +1,5 @@
+import { useHeldUserInputs } from '../useHeldUserInputs'
+import { focusConversationComposer } from '../focusConversationComposer'
 import { ConversationMessage } from './ConversationMessage'
 import { useConversationWorkspace } from './ConversationWorkspace'
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
@@ -89,11 +91,12 @@ function openRequests(activities: EngineActivityView[], kind: 'approval' | 'user
   return [...open.values()]
 }
 
-function UserInputCard({ activity, onAnswer }: { activity: EngineActivityView; onAnswer(requestId: string, answers: Record<string, unknown>): void }) {
+function UserInputCard({ activity, held, onAnswer }: { activity: EngineActivityView; held: Record<string, string> | undefined; onAnswer(requestId: string, answers: Record<string, string>): void }) {
   const payload = record(activity.payload)
   const questions = Array.isArray(payload.questions) ? payload.questions.map(record) : []
   const requestId = typeof payload.requestId === 'string' ? payload.requestId : ''
-  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [answers, setAnswers] = useState<Record<string, string>>(held ?? {})
+  useEffect(() => setAnswers(held ?? {}), [held])
   const rows = questions.length ? questions : [{ id: 'answer', question: activity.summary }]
   const questionId = (question: Record<string, unknown>, index: number) => typeof question.id === 'string' ? question.id : typeof question.header === 'string' ? question.header : `answer-${index}`
   return <section className="conversation-request" data-kind="user-input"><form onSubmit={event => { event.preventDefault(); onAnswer(requestId, answers) }}>
@@ -105,7 +108,7 @@ function UserInputCard({ activity, onAnswer }: { activity: EngineActivityView; o
         <input aria-label={`Answer ${id}`} placeholder="Other answer" value={answers[id] ?? ''} onChange={event => setAnswers(previous => ({ ...previous, [id]: event.target.value }))} />
       </fieldset>
     })}
-    <button type="submit" disabled={rows.some((question, index) => !answers[questionId(question, index)]?.trim())}>Answer</button>
+    <button type="submit" disabled={rows.some((question, index) => !answers[questionId(question, index)]?.trim())}>Hold answer</button>
   </form></section>
 }
 
@@ -123,7 +126,7 @@ interface ConversationProps {
   onStart(threadId: string, input: import('../../shared/contracts').ConversationInput): Promise<void>
   onStop(threadId: string): void
   onApproval(threadId: string, requestId: string, decision: 'accept' | 'decline'): void
-  onUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): void
+  onUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
   items?: readonly ItemView[]
   onReplyItem?(item: ItemView, text: string): void
   /** Message-anchored replies queue in the main process (§5.4); dismissals are remembered per message (§5.12). */
@@ -227,6 +230,8 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
   const [agentsCollapsed, setAgentsCollapsed] = useState(() => engineStorage.getItem(AGENTS_COLLAPSED_KEY) === '1')
   const [agentsDialog, setAgentsDialog] = useState<{ focus?: string | undefined } | null>(null)
   const thread = selected?.thread
+  const heldInputs = useHeldUserInputs(thread?.id)
+  const [inputError, setInputError] = useState('')
 
   const panelRef = useRef<HTMLElement>(null)
   const history = useRef<ConversationHistory>(null)
@@ -320,6 +325,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
       row?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true })
     })
   }
+  const pendingInputs = userInputs.flatMap(activity => { const id = String(record(activity.payload).requestId ?? ''); return heldInputs.answers[id] ? [{ id, answers: heldInputs.answers[id]! }] : [] })
   const allItems = useMemo(() => thread ? [...items, ...(thread.items ?? []).filter(item => !isOwnerComment(item))] : [...items], [items, thread])
   /** Replies queued in the main process for this thread's message items; they ride the next Send. */
   const queuedCount = thread ? (thread.items ?? []).filter((item) => item.draftReply !== undefined).length : 0
@@ -415,7 +421,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
           })}
           {headerIndex === -1 && workingRow}
           {approvals.filter(activity => turn.activities.some(candidate => candidate.id === activity.id)).map((activity) => { const payload = record(activity.payload); const requestId = String(payload.requestId ?? ''); return <section className="conversation-request" data-kind="approval" key={activity.id}><strong>{typeof payload.detail === 'string' ? payload.detail : activity.summary}</strong><div className="conversation-actions"><button type="button" onClick={() => onApproval(thread.id, requestId, 'accept')}>Approve</button><button type="button" onClick={() => onApproval(thread.id, requestId, 'decline')}>Decline</button></div></section> })}
-          {userInputs.filter(activity => turn.activities.some(candidate => candidate.id === activity.id)).map((activity) => <UserInputCard key={activity.id} activity={activity} onAnswer={(requestId, answers) => onUserInput(thread.id, requestId, answers)} />)}
+          {userInputs.filter(activity => turn.activities.some(candidate => candidate.id === activity.id)).map((activity) => <UserInputCard key={activity.id} activity={activity} held={heldInputs.answers[String(record(activity.payload).requestId ?? '')]} onAnswer={(requestId, answers) => { try { heldInputs.hold(requestId, answers); setInputError(''); focusConversationComposer(panelRef.current) } catch (failure) { setInputError(String(failure)) } }} />)}
           <TurnChecklist items={allItems.filter((item) => !item.inferred && item.threadId === thread.id && item.turnId === turn.turnId)} onReply={(item, value) => { if (item.annotationId && onReplyItem) onReplyItem(item, value); else onQueueReply?.(thread.id, item, value) }} onDismiss={(item) => onDismissItem?.(thread.id, item)} onOpen={item => { if (item.annotationId) onOpenItem?.(item); else workspace.open(item.id) }} {...(onActItem ? { onAct: onActItem } : {})} />
         </section>
       })}
@@ -427,6 +433,6 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
     {visible && <button type="button" className="conversation-latest" data-direction={jumpToResponse ? 'up' : 'down'} aria-label={jumpToResponse ? 'Latest response' : 'Newest'} title={jumpToResponse ? 'Read the latest response from its start' : 'Jump to the newest message'} onClick={() => { if (jumpToResponse) workspace.jumpToLatest(); else history.current?.scrollToBottom() }}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 7.5 6 3.5l4 4" /></svg></button>}
     </div>
     {visible && workspace.overlay}
-    <ConversationComposer deliveryId={workspace.previewId} key={`composer:${thread.id}`} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} context={<div className="conversation-context">{placement === 'side' && onDocumentContext && <button type="button" onClick={onDocumentContext}>Document context</button>}{workspace.tray}</div>} queuedCount={workspace.selectedCount} reservedAttachments={workspace.selectedCount > 0 || (thread.outcomes?.length ?? 0) > 0 ? 1 : 0} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} running={running} onStop={() => onStop(thread.id)} onSend={async input => { await onStart(thread.id, { ...input, ...workspace.outgoing }); workspace.sent() }} visualComments={heldVisual} {...(onOpenVisual ? { onOpenVisual: (comment: VisualCommentView) => onOpenVisual(comment.id) } : {})} {...(onMarkUpImage ? { onMarkUpImage } : {})} {...(consumedAttachmentIds ? { consumedAttachmentIds } : {})} />
+    <ConversationComposer deliveryId={workspace.previewId} key={`composer:${thread.id}`} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} context={<div className="conversation-context">{placement === 'side' && onDocumentContext && <button type="button" onClick={onDocumentContext}>Document context</button>}{workspace.tray}{pendingInputs.map(entry => <div className="conversation-context-entry" key={entry.id}><span>Held answer: {Object.values(entry.answers).join(' · ')}</span><button type="button" aria-label={`Remove held answer: ${Object.values(entry.answers).join(' · ')}`} onClick={() => { try { heldInputs.remove(entry.id); setInputError('') } catch (failure) { setInputError(String(failure)) } }}>×</button></div>)}{inputError && <p role="alert">{inputError}</p>}</div>} queuedCount={workspace.selectedCount + pendingInputs.length} reservedAttachments={workspace.selectedCount > 0 || (thread.outcomes?.length ?? 0) > 0 ? 1 : 0} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} running={running} onStop={() => onStop(thread.id)} onSend={async input => { for (const entry of pendingInputs) { await onUserInput(thread.id, entry.id, entry.answers); heldInputs.remove(entry.id) }; if (input.text.trim() || input.attachments?.length || input.visual?.length || workspace.selectedCount || thread.outcomes?.length) { await onStart(thread.id, { ...input, ...workspace.outgoing }); workspace.sent() } }} visualComments={heldVisual} {...(onOpenVisual ? { onOpenVisual: (comment: VisualCommentView) => onOpenVisual(comment.id) } : {})} {...(onMarkUpImage ? { onMarkUpImage } : {})} {...(consumedAttachmentIds ? { consumedAttachmentIds } : {})} />
   </section>
 }

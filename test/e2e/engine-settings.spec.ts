@@ -106,7 +106,7 @@ test('settings and provider dialogs keep controls reachable at approved and smal
       expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
       await reviewCapture(page, { path: testInfo.outputPath(`settings-advanced-${width}.png`), animations: 'disabled' })
       await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
-      await openAppMenu(page); await page.getByRole('menuitem', { name: 'Accounts', exact: true }).click()
+      await openAppMenu(page); await page.getByRole('menuitem', { name: 'Usage Limits', exact: true }).click()
       await page.getByRole('button', { name: 'Manage Codex work' }).click()
       const manage = page.getByRole('dialog', { name: 'Codex work', exact: true })
       const colors = await manage.locator('.provider-accent button[data-color]').evaluateAll(elements => elements.map(element => getComputedStyle(element).backgroundColor))

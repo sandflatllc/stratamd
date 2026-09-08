@@ -169,7 +169,7 @@ export function AnnotationComposer({ initialText = "", messageTarget = false, se
     // both yield when Escape is already claimed.
     window.addEventListener('keydown', key, true)
     return () => window.removeEventListener('keydown', key, true)
-  }, [kind, onDismiss, onRemove, selection])
+  }, [kind, onDismiss, selection])
   useEffect(() => {
     // Transcript selections remain pinned while interacting with the overlay,
     // so its initial pill also needs explicit click-away dismissal.

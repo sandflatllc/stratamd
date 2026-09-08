@@ -203,7 +203,6 @@ function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEn
                 <div className="accounts-list">
                   {accounts.map((account) => <AccountRow account={account} engine={engine} auto={account.instanceId === auto} now={now} onPark={onPark} onManage={() => onManage(account)} key={account.instanceId} />)}
                 </div>
-                <DialogResize name="Usage Limits" />
       </section>
             )
           })}
@@ -222,7 +221,6 @@ function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEn
                   </div>
                 ))}
               </div>
-              <DialogResize name="Usage Limits" />
       </section>
           )}
         </div>

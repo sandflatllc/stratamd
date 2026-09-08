@@ -1,4 +1,4 @@
-import { focusConversationComposer } from '../focusConversationComposer'
+import { holdConversationContext } from '../focusConversationComposer'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction, type MutableRefObject, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import type { HoldVisualCommentInput, VisualAdjustmentView, VisualCaptureView, VisualDestinationView, VisualMarkView, VisualPointView, VisualRectView, VisualStrokeView } from '../../shared/contracts'
 import { nextRegionLabel } from '../../core/visual-comments'
@@ -67,7 +67,6 @@ export interface VisualSessionProps {
   /** A plain notice when the live page changed under the session. */
   notice?: string | null
   onHold(input: HoldVisualCommentInput): Promise<string>
-  onSend(id: string): Promise<void>
   /** Removes the original photo from its conversation draft when attachment is cancelled. */
   onCancelAttachment?(): Promise<void>
   onClose(): void
@@ -80,7 +79,7 @@ function inTextField(target: EventTarget | null): boolean {
   return target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement || (target instanceof HTMLElement && target.isContentEditable)
 }
 
-export function VisualSession({ sessionId, session: controlled, setSession: setControlled, closeRequest, capture: opened, captures: all, commentId, source, page, onScroll, projectId, destination, place, initial, describe, onAdjust, adjustStatus, notice, onHold, onSend, onCancelAttachment, onClose, onError }: VisualSessionProps) {
+export function VisualSession({ sessionId, session: controlled, setSession: setControlled, closeRequest, capture: opened, captures: all, commentId, source, page, onScroll, projectId, destination, place, initial, describe, onAdjust, adjustStatus, notice, onHold, onCancelAttachment, onClose, onError }: VisualSessionProps) {
   const captures = all && all.length ? all : [opened]
   const capture = captures[captures.length - 1]!
   const [local, setLocal] = useState(() => { const data = newVisualSession(initial); if (data.requested) data.requestedFor = JSON.stringify([data.adjusted, data.marks, data.strokes, captures.map(frame => frame.id)]); return data })
@@ -247,11 +246,12 @@ export function VisualSession({ sessionId, session: controlled, setSession: setC
   }
   const resetAdjustments = async () => { setHistory([]); await applyAdjustments([], false) }
 
-  const holdAndClose = useCallback(async () => {
+  const holdAndClose = useCallback(() => holdConversationContext(async () => {
     if (!hasContent()) { await finishSession(); return }
     const id = await hold()
-    if (id) { await finishSession(); focusConversationComposer() }
-  }, [hold, onClose])
+    if (!id) return false
+    await finishSession()
+  }), [hold, onClose])
 
   const cancel = async () => {
     if (holding.current || latest.current.busy || ending.current) return

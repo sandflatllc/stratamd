@@ -1336,7 +1336,8 @@ export class T3EngineClient implements EngineReadClient {
     const state = this.#conversations.threads[threadId]
     if (!state?.replies[itemId]) return
     const { [itemId]: _dropped, ...replies } = state.replies
-    this.#conversations.threads[threadId] = { ...state, replies }
+    const askDrafts = { ...state.askDrafts }; delete askDrafts[itemId]
+    this.#conversations.threads[threadId] = { ...state, replies, askDrafts }
     await writeConversationsStore(this.#conversationsPath, this.#conversations)
     this.#publish()
   }

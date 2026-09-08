@@ -12,7 +12,8 @@ export function DialogResize({ name }: { name: string }) {
   }
   return <button type="button" className="utility-dialog-resize" aria-label={`Resize ${name}`} title="Drag to resize. Arrow keys change width and height." onPointerDown={event => {
     event.preventDefault()
-    const bounds = event.currentTarget.closest('[role="dialog"]')!.getBoundingClientRect()
+    const dialog = event.currentTarget.closest<HTMLElement>('[role="dialog"]')!
+    const bounds = { width: dialog.offsetWidth, height: dialog.offsetHeight }
     drag.current = { x: event.clientX, y: event.clientY, width: bounds.width, height: bounds.height }
     event.currentTarget.setPointerCapture(event.pointerId)
   }} onPointerMove={event => {
@@ -21,7 +22,8 @@ export function DialogResize({ name }: { name: string }) {
   }} onPointerUp={() => { drag.current = null }} onPointerCancel={() => { drag.current = null }} onKeyDown={event => {
     if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return
     event.preventDefault(); event.stopPropagation()
-    const bounds = event.currentTarget.closest('[role="dialog"]')!.getBoundingClientRect()
+    const dialog = event.currentTarget.closest<HTMLElement>('[role="dialog"]')!
+    const bounds = { width: dialog.offsetWidth, height: dialog.offsetHeight }
     const step = event.shiftKey ? 40 : 10
     resize(event.currentTarget, bounds.width + (event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0), bounds.height + (event.key === 'ArrowDown' ? step : event.key === 'ArrowUp' ? -step : 0))
   }}>◢</button>

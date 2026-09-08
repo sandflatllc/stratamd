@@ -1,11 +1,11 @@
 .transcript-image-backdrop { z-index: 80; }
-.transcript-image-dialog { width: min(1400px, calc(100vw - 64px)); height: calc(100vh - 64px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--surfaces-window); color: var(--text); box-shadow: 0 16px 64px #0005; }
+.transcript-image-dialog { width: min(1400px, calc(100vw - 64px)); height: calc(100vh - 64px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--surfaces-window); color: var(--text); box-shadow: 0 16px 64px var(--shadow); }
 .transcript-image-dialog header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
 .transcript-image-dialog header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .transcript-image-dialog header > div { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .transcript-image-dialog button { padding: 6px 12px; }
-.transcript-image-viewport { flex: 1; min-height: 0; overflow: auto; }
-.transcript-image-size { min-width: 100%; min-height: 100%; display: grid; place-items: center; }
-.transcript-image-size img { width: 100%; height: 100%; object-fit: contain; }
+.transcript-image-viewport { position: relative; flex: 1; min-height: 0; overflow: auto; }
+.transcript-image-size { position: absolute; top: 0; left: 0; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; }
+.transcript-image-size img { display: block; min-width: 0; min-height: 0; width: 100%; height: 100%; object-fit: contain; }
 .conversation-sent-images { display: grid; gap: 12px; margin-top: 12px; }
 .conversation-sent-images > button { padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; cursor: zoom-in; background: transparent; }

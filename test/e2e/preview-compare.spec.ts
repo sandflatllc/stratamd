@@ -69,7 +69,8 @@ async function sendButtonComment(page: Page, engine: FakeEngine, window: Locator
   await page.mouse.click(button.x, button.y)
   await expect(dialog.locator('.visual-chip').filter({ hasText: 'New client button' })).toBeVisible()
   await dialog.getByRole('textbox', { name: 'Visual comment' }).fill(note)
-  await dialog.getByRole('button', { name: 'Send now' }).click()
+  await dialog.getByRole('button', { name: 'Hold' }).click()
+    await page.getByRole('textbox', { name: 'Message conversation' }).filter({ visible: true }).press('Enter')
   await expect(dialog).toBeHidden()
   await expect.poll(async () => (await visualComments(page)).find((comment) => comment.status === 'sent')?.id ?? null).not.toBeNull()
   return (await visualComments(page)).find((comment) => comment.status === 'sent')!.id
@@ -202,7 +203,8 @@ test('a Then / now taken after an adjustment session shows no change until the c
     await expect(adjustments.locator('[data-kind="text-size"] output')).toHaveText('slightly larger')
     await expect(dialog.locator('.visual-surface img[data-requested]')).toBeVisible()
     await dialog.getByRole('textbox', { name: 'Visual comment' }).fill('Bigger, like this.')
-    await dialog.getByRole('button', { name: 'Send now' }).click()
+    await dialog.getByRole('button', { name: 'Hold' }).click()
+    await page.getByRole('textbox', { name: 'Message conversation' }).filter({ visible: true }).press('Enter')
     await expect(dialog).toBeHidden()
     await expect.poll(async () => (await visualComments(page)).find((comment) => comment.status === 'sent')?.id ?? null).not.toBeNull()
     const sent = (await visualComments(page)).find((comment) => comment.status === 'sent')!

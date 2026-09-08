@@ -10,7 +10,7 @@ test('provider configuration preserves fields, model preferences persist, and th
     await scenario.writeSettings({ theme: 'strata-night', animatedBackground: false })
     const page = await scenario.launch()
     await scenario.app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1440, 1000))
-    const openAccounts = async () => { await openAppMenu(page); await page.getByRole('menuitem', { name: 'Accounts' }).click() }
+    const openAccounts = async () => { await openAppMenu(page); await page.getByRole('menuitem', { name: 'Usage Limits' }).click() }
     await openAccounts()
     const capture = (step: string) => parityCapture(page, `provider-${step}`)
     await capture('overview')
@@ -22,7 +22,7 @@ test('provider configuration preserves fields, model preferences persist, and th
     await page.getByRole('textbox', { name: 'Binary path', exact: true }).fill('/opt/bin/codex')
     await capture('advanced')
     await page.getByRole('button', { name: 'Save changes' }).click()
-    await expect(page.getByRole('dialog', { name: 'Accounts', exact: true })).toBeVisible()
+    await expect(page.getByRole('dialog', { name: 'Usage Limits', exact: true })).toBeVisible()
     const settingsWrite = engine.rpcRequests.find(request => request.tag === 'server.updateSettings')!
     expect(settingsWrite.payload).toMatchObject({ patch: { providerInstances: { codex: { driver: 'codex', displayName: 'Codex renamed', config: { homePath: '/home/owner/.codex-work', binaryPath: '/opt/bin/codex', preserved: 'keep' } } } } })
     await page.getByRole('button', { name: 'Manage Codex work' }).click()

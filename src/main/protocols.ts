@@ -42,7 +42,7 @@ export function registerPrivilegedSchemes(): void {
         standard: true,
         secure: true,
         supportFetchAPI: false,
-        corsEnabled: false,
+        corsEnabled: true,
         stream: true
       }
     },
@@ -201,6 +201,7 @@ async function serveLocalImage(request: Request, options: LocalImageProtocolOpti
     return new Response(file, {
       status: 200,
       headers: {
+        'Access-Control-Allow-Origin': `${APP_SCHEME}://${APP_HOST}`,
         'Cache-Control': 'no-store',
         'Content-Security-Policy': "sandbox; default-src 'none'",
         'Content-Type': mimeType(candidate),

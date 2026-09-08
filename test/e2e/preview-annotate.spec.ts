@@ -113,7 +113,8 @@ test('Annotate captures the frame and hides the view, Mark names things from the
     expect(snapshot).not.toContain('Move this into the header row')
     expect(snapshot).not.toContain('Send now')
     // The clock repaints every 200 ms; Send is not refused for that.
-    await dialog.getByRole('button', { name: 'Send now' }).click()
+    await dialog.getByRole('button', { name: 'Hold' }).click()
+    await page.getByRole('textbox', { name: 'Message conversation' }).filter({ visible: true }).press('Enter')
     await expect(dialog).toBeHidden()
     await expect.poll(() => engine.commands.filter((command) => command.type === 'thread.turn.start').length).toBe(1)
     const turn = engine.commands.find((command) => command.type === 'thread.turn.start')!.message as { attachments: Array<{ id: string }> }
@@ -160,7 +161,8 @@ test('marking after a scroll takes a second capture at the new position, and Sen
     // The earlier mark is listed as made at another scroll position.
     await expect(dialog.locator('.visual-chip[data-elsewhere]').filter({ hasText: 'New client button' })).toBeVisible()
     await dialog.getByRole('textbox', { name: 'Visual comment' }).fill('Both ends of the page.')
-    await dialog.getByRole('button', { name: 'Send now' }).click()
+    await dialog.getByRole('button', { name: 'Hold' }).click()
+    await page.getByRole('textbox', { name: 'Message conversation' }).filter({ visible: true }).press('Enter')
     await expect(dialog).toBeHidden()
     await expect.poll(() => engine.commands.filter((command) => command.type === 'thread.turn.start').length).toBe(1)
     const turn = engine.commands.find((command) => command.type === 'thread.turn.start')!.message as { attachments: Array<{ id: string }> }
@@ -191,7 +193,8 @@ test('a React page without stamps sends its component sources, and a static page
     await page.mouse.click(book.x, book.y)
     await expect(dialog.locator('.visual-chip').filter({ hasText: 'Book a visit button' })).toContainText('found')
     await dialog.getByRole('textbox', { name: 'Visual comment' }).fill('Make this the primary button.')
-    await dialog.getByRole('button', { name: 'Send now' }).click()
+    await dialog.getByRole('button', { name: 'Hold' }).click()
+    await page.getByRole('textbox', { name: 'Message conversation' }).filter({ visible: true }).press('Enter')
     await expect(dialog).toBeHidden()
     await expect.poll(() => engine.commands.filter((command) => command.type === 'thread.turn.start').length).toBe(1)
     const fiber = contextOf(engine, 0)
@@ -205,7 +208,8 @@ test('a React page without stamps sends its component sources, and a static page
     // A long line is cut short in its chip; the brief carries the whole text.
     await expect(dialog.locator('.visual-chip').filter({ hasText: 'Mesa Office keeps small practices' })).toContainText('found')
     await dialog.getByRole('textbox', { name: 'Visual comment' }).fill('Give this line more room.')
-    await dialog.getByRole('button', { name: 'Send now' }).click()
+    await dialog.getByRole('button', { name: 'Hold' }).click()
+    await page.getByRole('textbox', { name: 'Message conversation' }).filter({ visible: true }).press('Enter')
     await expect(dialog).toBeHidden()
     await expect.poll(() => engine.commands.filter((command) => command.type === 'thread.turn.start').length).toBe(2)
     const plain = contextOf(engine, 1)
@@ -241,7 +245,8 @@ test('a page that navigated away refuses Send and keeps the draft', async ({}, t
     await card.getByRole('button', { name: 'Open', exact: true }).click()
     dialog = page.getByRole('dialog', { name: 'Mark up the page' })
     await expect(dialog).toBeVisible()
-    await dialog.getByRole('button', { name: 'Send now' }).click()
+    await dialog.getByRole('button', { name: 'Hold' }).click()
+    await page.getByRole('textbox', { name: 'Message conversation' }).filter({ visible: true }).press('Enter')
     await expect(page.getByRole('alert')).toContainText('The page has moved on since you marked it')
     expect(engine.commands.filter((command) => command.type === 'thread.turn.start')).toHaveLength(0)
     await expect(card.locator('.visual-status')).toHaveText('held')
@@ -268,7 +273,8 @@ test('Show me restores size and scroll and outlines the thing while the tab stil
     await page.mouse.click(button.x, button.y)
     await expect(dialog.locator('.visual-chip').filter({ hasText: 'New client button' })).toBeVisible()
     await dialog.getByRole('textbox', { name: 'Visual comment' }).fill('Into the header row.')
-    await dialog.getByRole('button', { name: 'Send now' }).click()
+    await dialog.getByRole('button', { name: 'Hold' }).click()
+    await page.getByRole('textbox', { name: 'Message conversation' }).filter({ visible: true }).press('Enter')
     await expect(dialog).toBeHidden()
     await expect.poll(() => engine.commands.filter((command) => command.type === 'thread.turn.start').length).toBe(1)
     // The page moves on: a device size and a scroll. Show me brings back the size and scroll of the comment and outlines the button.

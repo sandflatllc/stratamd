@@ -19,7 +19,7 @@ test('the logo groups secondary actions without account notifications', async ({
     await expect(page.getByRole('button', { name: 'Engine status' })).toHaveText(/Connected/)
     await openAppMenu(page)
     const menu = page.getByRole('menu', { name: 'StrataMD', exact: true })
-    await expect(menu.getByRole('menuitem')).toHaveText([/Open file/, /Terminal/, 'Open preview', 'Accounts', 'Usage', 'Engine', 'Settings', 'Theme', 'Reset zoom'])
+    await expect(menu.getByRole('menuitem')).toHaveText([/Open file/, /Terminal/, 'Open preview', 'Usage Limits', 'Token Use', 'Engine', 'Settings', 'Theme', 'Reset zoom'])
     await expect(menu.getByRole('separator')).toHaveCount(2)
     const capture = process.env.STRATAMD_FRAMELESS_CAPTURES
     if (capture) {
@@ -31,8 +31,8 @@ test('the logo groups secondary actions without account notifications', async ({
     await menu.getByRole('menuitem', { name: 'Reset zoom' }).click()
     await openAppMenu(page)
     await expect(menu.getByRole('menuitem', { name: 'Reset zoom' })).toHaveCount(0)
-    await menu.getByRole('menuitem', { name: 'Accounts', exact: true }).click()
-    await expect(page.getByRole('dialog', { name: 'Accounts', exact: true })).toBeVisible()
+    await menu.getByRole('menuitem', { name: 'Usage Limits', exact: true }).click()
+    await expect(page.getByRole('dialog', { name: 'Usage Limits', exact: true })).toBeVisible()
   } finally {
     await value?.dispose()
     await engine.close()
