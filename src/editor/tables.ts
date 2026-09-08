@@ -73,6 +73,20 @@ function button(label: string, action: () => void, pressed?: boolean): HTMLButto
   return toolbarButton(label, action, { ...(pressed === undefined ? {} : { pressed }) })
 }
 
+/**
+ * DOM writes that only happen when the value differs. Every table view renders
+ * on every editor transaction; rewriting an identical attribute or stylesheet
+ * still invalidates styles for the whole document, and with a hundred tables
+ * that dominated the per-keystroke style work.
+ */
+function setData(element: HTMLElement, key: string, value: string): void {
+  if (element.dataset[key] !== value) element.dataset[key] = value
+}
+
+function setHidden(element: HTMLElement, hidden: boolean): void {
+  if (element.hidden !== hidden) element.hidden = hidden
+}
+
 function option(value: string, text: string): HTMLOptionElement {
   const item = document.createElement('option')
   item.value = value
@@ -90,8 +104,11 @@ class TableNodeView implements NodeView {
   readonly #derived: HTMLDivElement
   readonly #style: HTMLStyleElement
   #node: ProseMirrorNode
+  /** Bumped on every node update, so the derived view knows when its rows changed. */
+  #nodeVersion = 0
   #revealed = false
   #toolbarKey = ''
+  #derivedKey = ''
   /** Session-only: the owner opened the utility row on a table that is not active. */
   #toolsOpen = false
 
@@ -130,6 +147,7 @@ class TableNodeView implements NodeView {
   update(node: ProseMirrorNode): boolean {
     if (node.type !== this.#node.type) return false
     this.#node = node
+    this.#nodeVersion += 1
     queueMicrotask(() => this.render())
     return true
   }
@@ -161,6 +179,12 @@ class TableNodeView implements NodeView {
   setRevealed(value: boolean): void {
     this.#revealed = value
     this.render()
+  }
+
+  /** Whether this view shows the manager's focused table. */
+  isFocusedTable(): boolean {
+    const reference = this.manager.focusedTable === null ? null : this.reference()
+    return reference !== null && tableReferenceKey(reference) === this.manager.focusedTable
   }
 
   isRevealed(): boolean {
@@ -367,22 +391,31 @@ class TableNodeView implements NodeView {
     const key = tableReferenceKey(state.table)
     const transformed = state.presentation !== 'table' || state.sort !== null || state.filter !== null || state.hiddenColumns.length > 0
     const showingSource = !transformed || this.#revealed
-    this.dom.dataset.tableKey = key
-    this.dom.dataset.presentation = state.presentation
-    this.dom.dataset.density = state.density
-    this.dom.dataset.centerFocus = String(this.manager.focusedTable === key)
+    this.manager.syncFocusAttribute(this.view.dom)
+    setData(this.dom, 'tableKey', key)
+    setData(this.dom, 'presentation', state.presentation)
+    setData(this.dom, 'density', state.density)
+    setData(this.dom, 'centerFocus', String(this.manager.focusedTable === key))
     this.dom.classList.toggle('is-temporarily-revealed', this.#revealed)
-    this.#source.hidden = !showingSource
-    this.#derived.hidden = showingSource
-    this.dom.dataset.focusedRow = state.focusedRow === null ? '' : String(state.focusedRow)
-    this.dom.dataset.focusedColumn = state.focusedColumn === null ? '' : String(state.focusedColumn)
+    setHidden(this.#source, !showingSource)
+    setHidden(this.#derived, showingSource)
+    setData(this.dom, 'focusedRow', state.focusedRow === null ? '' : String(state.focusedRow))
+    setData(this.dom, 'focusedColumn', state.focusedColumn === null ? '' : String(state.focusedColumn))
     const hiddenReviewCount = this.manager.hiddenReviewCount(this)
-    this.dom.dataset.hiddenReviewCount = String(hiddenReviewCount)
+    setData(this.dom, 'hiddenReviewCount', String(hiddenReviewCount))
     const currentCell = state.focusedRow !== null && state.focusedColumn !== null
       ? `.strata-source-table tbody > tr:nth-child(${state.focusedRow + 2}) > *:nth-child(${state.focusedColumn + 1}) { outline:2px solid var(--controls-focus); outline-offset:-3px; background:color-mix(in srgb, var(--controls-selected) 16%, transparent); }`
       : ''
-    this.#style.textContent = `${state.columnWidths.map((width, index) => width ? `.strata-source-table tr > *:nth-child(${index + 1}), .strata-table-derived tr > *:nth-child(${index + 1}) { width:${width}px; min-width:${width}px; }` : '').join('\n')}\n${currentCell}`
-    if (transformed) this.#renderDerived(state)
+    const styleText = `${state.columnWidths.map((width, index) => width ? `.strata-source-table tr > *:nth-child(${index + 1}), .strata-table-derived tr > *:nth-child(${index + 1}) { width:${width}px; min-width:${width}px; }` : '').join('\n')}\n${currentCell}`
+    if (this.#style.textContent !== styleText) this.#style.textContent = styleText
+    if (transformed) {
+      // The derived view depends only on the view state and the table's rows.
+      const derivedKey = JSON.stringify([state, this.#nodeVersion])
+      if (derivedKey !== this.#derivedKey) {
+        this.#derivedKey = derivedKey
+        this.#renderDerived(state)
+      }
+    }
 
     const bodyRows = Math.max(0, this.#node.childCount - 1)
     const shownRows = transformed ? this.#projectedRowCount(state, bodyRows) : bodyRows
@@ -473,6 +506,7 @@ export class TableNodeViewManager {
   focusedTable: string | null
   #referenceDocument: ProseMirrorNode | null = null
   #references: PositionedTable[] = []
+  #editorDom: HTMLElement | null = null
 
   constructor(readonly options: TableNodeViewOptions) {
     this.#states = [...(options.states ?? [])]
@@ -487,6 +521,19 @@ export class TableNodeViewManager {
 
   remove(nodeView: TableNodeView): void {
     this.#views.delete(nodeView)
+    if (this.#editorDom) this.syncFocusAttribute(this.#editorDom)
+  }
+
+  /**
+   * The editor root carries `data-table-focus` while a focused table view is
+   * present, and the stylesheet hides its siblings from that attribute. The
+   * former `:has()` rule on the root made every mutation inside the editor
+   * restyle the whole document.
+   */
+  syncFocusAttribute(editorDom: HTMLElement): void {
+    this.#editorDom = editorDom
+    const focused = this.focusedTable !== null && [...this.#views].some((view) => view.isFocusedTable())
+    if (editorDom.hasAttribute('data-table-focus') !== focused) editorDom.toggleAttribute('data-table-focus', focused)
   }
 
   referenceAt(doc: ProseMirrorNode, position: number): TableReference | null {

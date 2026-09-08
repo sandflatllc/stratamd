@@ -179,7 +179,7 @@ button:disabled { opacity: .42; cursor: not-allowed; }
    before transforms in CSS rendering, so this order is render-identical to
    filter and animation on one element. */
 .ambient-page > i > span, .ambient-layer > i > span { position: absolute; display: block; will-change: transform; }
-[data-typing="true"] .ambient-page *, [data-typing="true"] .ambient-layer * { animation-play-state: paused !important; }
+/* Typing pauses ambient motion through the ticker (ambientTicker.ts), which holds every ambient-* animation's clock while data-typing is set. A stylesheet rule keyed on that root attribute restyled the whole document on every keystroke. */
 
 /* Aliases resolve where they are declared, so the theme's overrides on .app-shell only reach them if they are declared here too. */
 .app-shell {
@@ -1144,7 +1144,7 @@ input.theme-panel-name:hover, input.theme-panel-name:focus { background: var(--c
 .strata-table-derived table[aria-label="Compared table rows"] td::before { display: block; margin-bottom: 3px; color: var(--muted); font-family: var(--mono); font-size: calc(8px * var(--zoom, 1)); font-weight: 500; letter-spacing: .08em; text-transform: uppercase; content: attr(data-label); }
 .strata-table-derived table[aria-label="Compared table rows"] tr:hover td { background: var(--visuals-table-hover); }
 .strata-table-block.is-temporarily-revealed { outline: 2px solid var(--controls-warning); outline-offset: 2px; }
-.strata-prosemirror:has(> .strata-table-block[data-center-focus="true"]) > :not(.strata-table-block[data-center-focus="true"]) { display: none; }
+.strata-prosemirror[data-table-focus] > :not(.strata-table-block[data-center-focus="true"]) { display: none; }
 .strata-table-block[data-center-focus="true"] { min-height: calc(100vh - 190px); margin-top: 0; }
 .strata-table-block[data-center-focus="true"] .strata-table-scroll { max-height: none; }
 .strata-table-block[data-center-focus="true"] .strata-table-title { max-width: none; font-size: calc(20px * var(--zoom, 1)); }
