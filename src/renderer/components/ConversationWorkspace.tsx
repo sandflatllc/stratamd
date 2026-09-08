@@ -121,7 +121,12 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   useEffect(() => { if (discussion === null) transcript?.current?.releaseReading() }, [discussion])
   const removeHeld = async (id: string) => {
     if (!thread) return
-    await window.strata.actMessageComment(thread.id, id, 'discard')
+    if (held.some(comment => comment.id === id)) await window.strata.actMessageComment(thread.id, id, 'discard')
+    else {
+      await window.strata.discardItemReply(thread.id, id)
+      answerDrafts.current.delete(answerKey(id))
+      setReplyDraft(current => current?.itemId === id ? null : current)
+    }
     setSelection(current => current?.id === id ? null : current)
     setDiscussion(current => current === id ? null : current)
     setExcluded(current => current.filter(candidate => candidate !== id))
@@ -167,7 +172,7 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   </div>
   const tray = <>
     {(held.length > 0 || queued.length > 0 || preview) && <details className="conversation-context-tray" open><summary>Pending context · {held.length + queued.length + (thread?.outcomes?.length ?? 0)}</summary>
-      {[...held.map(comment => ({ id: comment.id, text: comment.text, label: `Held ${comment.kind}`, removable: true })), ...queued.map(item => ({ id: item.id, text: item.draftReply!, label: 'Reply', removable: false }))].map(entry => <div className="conversation-context-entry" key={entry.id}><label><input type="checkbox" aria-label={`Include ${entry.label.toLowerCase()}: ${entry.text}`} checked={!excluded.includes(entry.id)} onChange={() => setExcluded(previous => previous.includes(entry.id) ? previous.filter(id => id !== entry.id) : [...previous, entry.id])} /><button type="button" onClick={() => open(entry.id)}>{entry.label}: {entry.text}</button></label>{entry.removable && <button type="button" className="conversation-context-remove" aria-label={`Remove held comment: ${entry.text}`} title="Remove held comment" onClick={() => void attempt(() => removeHeld(entry.id))}>×</button>}</div>)}
+      {[...held.map(comment => ({ id: comment.id, text: comment.text, label: `Held ${comment.kind}`, removable: true })), ...queued.map(item => ({ id: item.id, text: item.draftReply!, label: 'Reply', removable: true }))].map(entry => <div className="conversation-context-entry" key={entry.id}><label><input type="checkbox" aria-label={`Include ${entry.label.toLowerCase()}: ${entry.text}`} checked={!excluded.includes(entry.id)} onChange={() => setExcluded(previous => previous.includes(entry.id) ? previous.filter(id => id !== entry.id) : [...previous, entry.id])} /><button type="button" onClick={() => open(entry.id)}>{entry.label}: {entry.text}</button></label>{entry.removable && <button type="button" className="conversation-context-remove" aria-label={`Remove held ${entry.label === 'Reply' ? 'reply' : 'comment'}: ${entry.text}`} title="Remove held context" onClick={() => void attempt(() => removeHeld(entry.id))}>×</button>}</div>)}
       {!!thread?.outcomes?.length && <p>{thread.outcomes.length} action outcomes</p>}
       {preview && <details><summary>Delivery preview</summary><pre>{preview}</pre></details>}
     </details>}
@@ -176,7 +181,7 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
     {error && <p role="alert">{error}</p>}
     {navigationFailure && <p role="alert" className="conversation-navigation-failure">The passage in message {navigationFailure.target.message} is not ready yet. <button type="button" onClick={retryNavigation}>Retry</button></p>}
   </>
-  const overlay = selection && thread ? <AnnotationComposer messageTarget initialText={comments.find(comment => comment.id === selection.id)?.text ?? ''} selection={selection.range} spelling={null} size={{ width: 360, height: -1 }} zoom={Number(getComputedStyle(document.querySelector(`[data-message-id="${CSS.escape(selection.message)}"]`) ?? document.body).getPropertyValue('--zoom')) || 1} onSize={() => {}} onDismiss={() => setSelection(null)} onSubmit={() => {}} recipients={[{ id: thread.id, name: thread.title, color: "grape", attached: true }]} leadAgentId={null} activeConversationId={thread.id} onHold={(kind, text) => void attempt(() => hold(kind, text, false))} onSend={(kind, text) => void attempt(() => hold(kind, text, true))} onReplaceWord={() => {}} onAddToDictionary={() => {}} /> : null
+  const overlay = selection && thread ? <AnnotationComposer messageTarget initialText={comments.find(comment => comment.id === selection.id)?.text ?? ''} selection={selection.range} spelling={null} size={{ width: 360, height: -1 }} zoom={Number(getComputedStyle(document.querySelector(`[data-message-id="${CSS.escape(selection.message)}"]`) ?? document.body).getPropertyValue('--zoom')) || 1} onSize={() => {}} onDismiss={() => setSelection(null)} onRemove={selection.id ? () => void attempt(() => removeHeld(selection.id!)) : undefined} onSubmit={() => {}} recipients={[{ id: thread.id, name: thread.title, color: "grape", attached: true }]} leadAgentId={null} activeConversationId={thread.id} onHold={(kind, text) => void attempt(() => hold(kind, text, false))} onSend={(kind, text) => void attempt(() => hold(kind, text, true))} onReplaceWord={() => {}} onAddToDictionary={() => {}} /> : null
   const bounds = panel.current?.querySelector('.conversation-reading-area')?.getBoundingClientRect()
   const recordWidth = Math.min(420, window.innerWidth - 32)
   const recordPosition = bounds ? { position: 'fixed' as const, left: Math.max(16, Math.min(panel.current?.dataset.placement === 'side' ? bounds.left + 40 : bounds.right - recordWidth - 12, window.innerWidth - recordWidth - 16)), bottom: window.innerHeight - bounds.bottom + 12, width: recordWidth, maxHeight: Math.max(120, bounds.height * .6) } : undefined

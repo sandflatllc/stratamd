@@ -18,6 +18,7 @@ interface AnnotationComposerProps {
   zoom: number
   onSize(size: PanelSize, commit: boolean): void
   onDismiss(): void
+  onRemove?: (() => void) | undefined
   onSubmit(kind: AnnotationKind, text: string, options?: string[]): void
   /** Attached threads and the active conversation in this project (§5.6). */
   recipients: RecipientView[]
@@ -108,7 +109,7 @@ function claimedByTextField(target: EventTarget | null): boolean {
     || (target instanceof HTMLElement && target.isContentEditable)
 }
 
-export function AnnotationComposer({ initialText = "", messageTarget = false, selection, spelling, size, zoom, onSize, onDismiss, onSubmit, recipients: candidates, leadAgentId, activeConversationId, onHold, onSend, onStartThread, onReplaceWord, onAddToDictionary, onCut, onCopy, onPaste, onSelectAll }: AnnotationComposerProps) {
+export function AnnotationComposer({ initialText = "", messageTarget = false, selection, spelling, size, zoom, onSize, onDismiss, onRemove, onSubmit, recipients: candidates, leadAgentId, activeConversationId, onHold, onSend, onStartThread, onReplaceWord, onAddToDictionary, onCut, onCopy, onPaste, onSelectAll }: AnnotationComposerProps) {
   const [kind, setKind] = useState<AnnotationKind | null>(null)
   const [text, setText] = useState('')
   const [options, setOptions] = useState(['', ''])
@@ -166,7 +167,7 @@ export function AnnotationComposer({ initialText = "", messageTarget = false, se
     // both yield when Escape is already claimed.
     window.addEventListener('keydown', key, true)
     return () => window.removeEventListener('keydown', key, true)
-  }, [kind, onDismiss, selection])
+  }, [kind, onDismiss, onRemove, selection])
   useEffect(() => {
     // Transcript selections remain pinned while interacting with the overlay,
     // so its initial pill also needs explicit click-away dismissal.
@@ -301,7 +302,7 @@ export function AnnotationComposer({ initialText = "", messageTarget = false, se
       )}
       {kind === 'decision'
         ? <div className="composer-actions"><button type="button" className="quiet-button" onClick={onDismiss}>Cancel</button><button type="submit" className="primary-button">Add</button></div>
-        : <><div className="composer-hint">{candidates.length === 0 ? 'Hold keeps this private. Start thread sends it as the first turn.' : 'Esc discards · Shift+Enter new line'}</div><div className="composer-actions"><button type="button" className="quiet-button" onClick={onDismiss}>Cancel</button><button type="button" className="quiet-button" disabled={!text.trim()} onClick={() => onHold(kind, text)}>Hold</button>{candidates.length === 0 && onStartThread
+        : <><div className="composer-hint">{candidates.length === 0 ? 'Hold keeps this private. Start thread sends it as the first turn.' : 'Esc discards · Shift+Enter new line'}</div><div className="composer-actions">{onRemove && <button type="button" className="quiet-button" onClick={onRemove}>Remove</button>}<button type="button" className="quiet-button" onClick={onDismiss}>Cancel</button><button type="button" className="quiet-button" disabled={!text.trim()} onClick={() => onHold(kind, text)}>Hold</button>{candidates.length === 0 && onStartThread
           ? <button type="button" className="primary-button" disabled={!text.trim()} onClick={() => onStartThread(kind, text)}>Start thread</button>
           : <button type="button" className="primary-button" disabled={!text.trim() || recipients.length === 0} onClick={() => onSend(kind, text, recipients)}>Send</button>}</div></>}
       <button type="button" className="composer-resize" aria-label="Resize annotation composer" onPointerDown={startResize} />
