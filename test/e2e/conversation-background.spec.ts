@@ -15,6 +15,9 @@ test('conversations keep the panel background, with an inline side header and no
     })
     const editor = page.locator('main[data-pane="editor"]')
     const rail = page.locator('.navigation-rail')
+    // Theme IPC completion precedes React's commit; capture the requested theme after it renders.
+    await expect(editor.locator('.ambient-layer')).toHaveClass(/ambient-layer-glow-orbs/)
+    await expect(rail.locator('> .ambient-side-treatment')).toHaveAttribute('data-style', 'animation')
     // Distinct colors catch a window-colored child covering the panel background.
     await page.locator('.app-shell').evaluate((element) => {
       const shell = element as HTMLElement
