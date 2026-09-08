@@ -86,10 +86,12 @@ jobs:
         timeout-minutes: 5
       - run: ./node_modules/.bin/node-gyp rebuild --directory native/unix-support
         timeout-minutes: 5
+      # Native runtime setup is the slowest Mac-specific failure path. Check it
+      # before the full UI suite so recovery failures keep useful early evidence.
+      - run: node scripts/verify.mjs managed --task ci
       - run: node scripts/verify.mjs full --task ci
       - run: node scripts/verify.mjs stress --task ci
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-      - run: node scripts/verify.mjs managed --task ci
       - run: node scripts/verify.mjs packaged --task ci --finish-task
       # Playwright traces and screenshots are the only way to see a Mac-only
       # e2e failure without owning a Mac.
