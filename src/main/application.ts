@@ -1458,19 +1458,35 @@ export class StrataApplication implements StrataApi {
     return true
   }
 
+  /** Which document a completed message's strata block attaches, by message id; a completed message rarely changes text. */
+  readonly #bootstrapDocuments = new Map<string, { text: string; document: string | null }>()
+
+  #bootstrapDocumentOf(message: AppView['engine']['projects'][number]['threads'][number]['messages'][number]): string | null {
+    const cached = this.#bootstrapDocuments.get(message.id)
+    if (cached && cached.text === message.text) return cached.document
+    const block = parseStrataBlock(message.text)
+    const entry = block?.results.length === 1 ? block.results[0]?.entry : undefined
+    const document = entry?.verb === 'attach' ? entry.document : null
+    this.#bootstrapDocuments.set(message.id, { text: message.text, document })
+    return document
+  }
+
+  #engineIdentity(): string | undefined {
+    return this.#engine.identity ?? this.#engine.view().identity
+  }
+
   async #reconcileEngineView(view: AppView['engine']): Promise<void> {
     const acknowledged = new Set(view.projects.flatMap((project) => project.threads.flatMap((thread) => thread.messages.map((message) => message.id))))
+    const listed = new Set(acknowledged)
+    for (const id of this.#bootstrapDocuments.keys()) if (!listed.has(id)) this.#bootstrapDocuments.delete(id)
+    let anyChanged = false
     for (const session of [...this.#sessions.values()]) {
       await this.#withSession(session.path, async () => {
-        if (this.#sessions.get(session.path) !== session || view.identity !== this.#engine.view().identity) return
+        if (this.#sessions.get(session.path) !== session || view.identity !== this.#engineIdentity()) return
         let changed = this.#selectDocumentEngine(session, view.identity)
         for (const thread of view.projects.flatMap((project) => project.threads)) {
           if (session.attachments[thread.id]) continue
-          const bootstrap = thread.messages.find((message) => {
-            if (message.role !== 'assistant' || message.streaming) return false
-            const block = parseStrataBlock(message.text)
-            return block?.results.length === 1 && block.results[0]?.entry?.verb === 'attach' && block.results[0].entry.document === session.path
-          })
+          const bootstrap = thread.messages.find((message) => message.role === 'assistant' && !message.streaming && this.#bootstrapDocumentOf(message) === session.path)
           if (!bootstrap) continue
           const attachment = this.#newThreadAttachment(session, thread.id)
           if (!attachment) continue
@@ -1499,11 +1515,12 @@ export class StrataApplication implements StrataApi {
             if (message.role === 'assistant' && !message.streaming) changed = await this.#applyStrataMessage(session, threadId, message.id, message.turnId ?? message.id, message.text) || changed
           }
         }
-        if (changed) await this.#persist(session)
+        if (changed) { anyChanged = true; await this.#persist(session) }
         await this.#dispatchEngineDeliveries(session)
       })
     }
-    this.#publish()
+    // Every engine update already published the application state before this ran.
+    if (anyChanged) this.#publish()
   }
 
   async #applyStrataMessage(session: OpenDocumentSession, threadId: string, messageId: string, turnId: string, text: string): Promise<boolean> {

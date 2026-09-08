@@ -156,6 +156,8 @@ export interface EngineClientOptions {
 }
 
 export interface EngineReadClient {
+  /** The connection identity, without projecting the whole view to read it. */
+  readonly identity?: string | undefined
   initialize(connect?: boolean): Promise<void>
   shutdown(): Promise<void>
   view(): EngineView
@@ -403,7 +405,7 @@ export class T3EngineClient implements EngineReadClient {
   /** Comparisons owed to ready replies, taken after the state is written. */
   #comparisons: Array<{ id: string; number: number; replyId: string }> = []
   #comparing = false
-  #messageCache = new Map<string, { text: string; prose: string; blocks: ReturnType<typeof mapMarkdownBlocks>["blocks"]; visualReplies: Array<{ id: string; revision?: number; ready: boolean }> }>()
+  #messageCache = new Map<string, { text: string; prose: string; blocks: ReturnType<typeof mapMarkdownBlocks>["blocks"]; visualReplies: Array<{ id: string; revision?: number; ready: boolean }>; strata: ReturnType<typeof parseStrataBlock> }>()
   #publishTimer: ReturnType<typeof setTimeout> | null = null
   #configTimer: ReturnType<typeof setTimeout> | null = null
   #connecting: Promise<void> | null = null
@@ -532,6 +534,10 @@ export class T3EngineClient implements EngineReadClient {
     return () => this.#listeners.delete(listener)
   }
 
+  get identity(): string | undefined {
+    return this.#identity
+  }
+
   view(): EngineView {
     // Parsed message data is kept only for messages a loaded thread still lists.
     const projected = new Set<string>()
@@ -552,7 +558,7 @@ export class T3EngineClient implements EngineReadClient {
           createdAt: message.createdAt,
           updatedAt: message.updatedAt,
           attachmentCount: message.attachments?.length ?? 0,
-          ...(!message.streaming && message.role === 'assistant' ? (() => { projected.add(message.id); let cached = this.#messageCache.get(message.id); if (!cached || cached.text !== message.text) { const parsed = parseStrataBlock(message.text); const prose = parsed?.prose ?? message.text; cached = { text: message.text, prose, blocks: mapMarkdownBlocks(`message:${message.id}`, prose).blocks, visualReplies: visualRepliesIn(parsed) }; this.#messageCache.set(message.id, cached) } return { prose: cached.prose, blocks: cached.blocks, ...(cached.visualReplies.length ? { visualReplies: cached.visualReplies } : {}) } })() : {}),
+          ...(!message.streaming && message.role === 'assistant' ? (() => { projected.add(message.id); let cached = this.#messageCache.get(message.id); if (!cached || cached.text !== message.text) { const parsed = parseStrataBlock(message.text); const prose = parsed?.prose ?? message.text; cached = { text: message.text, prose, blocks: mapMarkdownBlocks(`message:${message.id}`, prose).blocks, visualReplies: visualRepliesIn(parsed), strata: parsed }; this.#messageCache.set(message.id, cached) } return { prose: cached.prose, blocks: cached.blocks, ...(cached.visualReplies.length ? { visualReplies: cached.visualReplies } : {}) } })() : {}),
         })) : []
         const activities = detailThread?.id === thread.id ? detailThread.activities.map((activity) => ({
           id: activity.id,
@@ -2415,7 +2421,10 @@ export class T3EngineClient implements EngineReadClient {
         state.comments ??= []; state.receipts ??= []; state.outcomes ??= []
         for (const message of thread.messages) {
           if (message.role !== 'assistant' || message.streaming) continue
-          for (const result of parseStrataBlock(message.text)?.results ?? []) {
+          // The projection just parsed this completed message; reuse that instead of parsing it on every publish.
+          const cached = this.#messageCache.get(message.id)
+          const parsed = cached && cached.text === message.text ? cached.strata : parseStrataBlock(message.text)
+          for (const result of parsed?.results ?? []) {
             const entry = result.entry
             if (result.error && result.conversationTarget) {
               const key = `${message.id}:${result.index}`
