@@ -337,6 +337,8 @@ export class T3EngineClient implements EngineReadClient {
   readonly #composeCommentImage: ComposeCommentImage
   #evidence: VisualEvidenceStore
   #visualMutations: Promise<unknown> = Promise.resolve()
+  /** Sends waiting to prepare still need their source messages after navigation. */
+  #sendingThreads = new Map<string, number>()
   #deliveries = new Map<string, Promise<void>>()
   #acceptedTurns = new Set<string>()
   #visualPath: string
@@ -844,7 +846,7 @@ export class T3EngineClient implements EngineReadClient {
    * so a Send from the preview or a card is acknowledged without the conversation being opened.
    */
   #followedThreadIds(): string[] {
-    const ids = new Set<string>(this.#watched)
+    const ids = new Set<string>([...this.#watched, ...this.#sendingThreads.keys()])
     if (this.#reading.activeThreadId) ids.add(this.#reading.activeThreadId)
     for (const [threadId, state] of Object.entries(this.#conversations.threads)) if (state.pending.length > 0) ids.add(threadId)
     // A sent visual revision awaits the agent's reply in its thread; the reply is what moves the card.
@@ -865,7 +867,17 @@ export class T3EngineClient implements EngineReadClient {
 
   async startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string; context?: import("../../core/conversation-delivery").ConversationDelivery }): Promise<void> {
     this.#asks.cancel(threadId)
-    return this.#operations.run(() => this.#serializeVisual(() => this.#startTurn(threadId, input)))
+    return this.#operations.run(async () => {
+      this.#sendingThreads.set(threadId, (this.#sendingThreads.get(threadId) ?? 0) + 1)
+      try { await this.#serializeVisual(() => this.#startTurn(threadId, input)) }
+      finally {
+        const remaining = this.#sendingThreads.get(threadId)! - 1
+        if (remaining) this.#sendingThreads.set(threadId, remaining)
+        else this.#sendingThreads.delete(threadId)
+        try { await this.#subscribeThreads() }
+        catch (error) { logError('engine', `Thread subscriptions could not be updated after Send in ${threadId}`, error) }
+      }
+    })
   }
 
   async #startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string; context?: import("../../core/conversation-delivery").ConversationDelivery }): Promise<void> {
@@ -900,7 +912,13 @@ export class T3EngineClient implements EngineReadClient {
       return comment
     })
     const outcomes = input.context?.outcomes ?? state?.outcomes ?? []
-    const messages = this.view().projects.flatMap(project => project.threads).find(thread => thread.id === threadId)?.messages ?? []
+    let messages = this.view().projects.flatMap(project => project.threads).find(thread => thread.id === threadId)?.messages ?? []
+    // A held comment can outlive its cached transcript. Reload before deciding
+    // its source changed; the send reservation keeps this snapshot available.
+    if (!input.context && comments.some(comment => !resolveMessageAnchor(comment, messages.find(message => message.id === comment.anchor.message)))) {
+      await this.#refreshThread(threadId)
+      messages = this.view().projects.flatMap(project => project.threads).find(thread => thread.id === threadId)?.messages ?? []
+    }
     const messageId = input.messageId ?? randomUUID()
     const userAttachments = input.attachments ?? []
     // Visual comments (docs/plans/open/visual-review): each held draft freezes one revision; the marked capture for every

@@ -550,3 +550,100 @@ it('detaches terminal subscriptions by attachment id and never closes a server s
     expect(server.requests.some(request => request.tag === 'terminal.close')).toBe(false)
   } finally { await client.shutdown() }
 })
+
+it.each(['send', 'refuse', 'overlap'] as const)('retains queued comment sources across navigation and releases reservations: %s', async mode => {
+  const directory = await mkdtemp(join(tmpdir(), 'strata-send-lifetime-'))
+  const server = liveServer()
+  const snapshot = shell()
+  snapshot.threads.push({ ...snapshot.threads[0]!, id: 't2', session: { ...snapshot.threads[0]!.session, threadId: 't2' } })
+  const source = 'Understanding and checking are different jobs.\n\nThe map needs both.'
+  const commands: Array<{ type: string; threadId: string; commandId: string; message: { messageId: string; role: string; text: string; attachments: unknown[] } }> = []
+  const uploads: string[] = []
+  let release!: () => void, entered!: () => void
+  const blocked = new Promise<void>(resolve => { release = resolve })
+  const dispatchStarted = new Promise<void>(resolve => { entered = resolve })
+  const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input)
+    if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+    if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
+    if (url.endsWith('/api/orchestration/shell')) return Response.json(snapshot)
+    if (url.endsWith('/upload/signed')) { uploads.push(new TextDecoder().decode(init!.body as Uint8Array)); return new Response('') }
+    if (url.endsWith('/api/orchestration/dispatch')) {
+      const command = JSON.parse(String(init?.body))
+      commands.push(command)
+      if (command.threadId === 't2') { entered(); await blocked }
+      return Response.json({ sequence: 6 })
+    }
+    const result = detail(source)
+    if (url.endsWith('/threads/t2')) result.thread = { ...result.thread, id: 't2' }
+    return Response.json(result)
+  }) as typeof globalThis.fetch
+  const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
+  const selection = { model: 'gpt-5.6', instanceId: 'codex-main', effort: 'medium', access: 'full-access' as const }
+  const sends: Array<Promise<unknown>> = []
+  try {
+    await client.pair('http://engine.test', 'code')
+    await client.openThread('t1')
+    const id = await client.holdMessageComment('t1', { messageId: 'm1', from: 0, to: 44, kind: 'comment', text: 'Explain how these connect.' })
+    const previous = client.startTurn('t2', { ...selection, text: 'Earlier send' })
+    sends.push(previous)
+    await dispatchStarted
+    const refused = mode !== 'send' ? client.startTurn('t1', { ...selection, text: '', comments: { [id]: 99 } }).then(() => null, error => error.message) : null
+    if (refused) sends.push(refused)
+    const sending = mode !== 'refuse' ? client.startTurn('t1', { ...selection, text: '', comments: { [id]: 1 } }) : null
+    if (sending) sends.push(sending)
+    await client.openThread('t2')
+    expect(client.view().projects[0]!.threads[0]!.messages[0]?.text).toBe(source)
+    release()
+    await previous
+    if (refused) expect(await refused).toContain(`Comment ${id} changed`)
+    if (sending) {
+      await sending
+      expect(commands.filter(command => command.threadId === 't1')).toHaveLength(1)
+      expect(uploads).toHaveLength(1)
+      expect(uploads[0]).toContain('Explain how these connect.')
+      expect(uploads[0]).toContain('Understanding and checking are different jobs.')
+      // Acknowledgment removes the persisted pending-delivery reservation too.
+      const command = commands.find(command => command.threadId === 't1')!
+      server.push('orchestration.subscribeThread', [{ kind: 'event', event: { sequence: 7, eventId: 'ack', aggregateKind: 'thread', aggregateId: 't1', type: 'thread.message-sent', occurredAt: at, commandId: command.commandId, causationEventId: null, correlationId: null, metadata: {}, payload: { ...command.message, threadId: 't1', turnId: null, streaming: false, createdAt: at, updatedAt: at } } }])
+      await vi.waitFor(() => expect(client.view().projects[0]!.threads[0]!.comments?.[0]?.state).toBe('open'))
+      await client.watchThreads([])
+    }
+    expect(client.view().projects[0]!.threads[0]!.messages).toHaveLength(0)
+    expect(client.view().activeThreadId).toBe('t2')
+  } finally { release(); await Promise.allSettled(sends); await client.shutdown() }
+})
+
+it('reloads an evicted comment source before sending and still refuses an actually changed source', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'strata-send-reload-'))
+  const server = liveServer(), snapshot = shell()
+  snapshot.threads.push({ ...snapshot.threads[0]!, id: 't2', session: { ...snapshot.threads[0]!.session, threadId: 't2' } })
+  let source = 'Original passage.', dispatched = 0
+  const fetch = vi.fn(async (input: string | URL | Request) => {
+    const url = String(input)
+    if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+    if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
+    if (url.endsWith('/api/orchestration/shell')) return Response.json(snapshot)
+    if (url.endsWith('/upload/signed')) return new Response('')
+    if (url.endsWith('/api/orchestration/dispatch')) { dispatched++; return Response.json({ sequence: 6 }) }
+    const result = detail(source)
+    if (url.endsWith('/threads/t2')) result.thread = { ...result.thread, id: 't2' }
+    return Response.json(result)
+  }) as typeof globalThis.fetch
+  const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
+  try {
+    await client.pair('http://engine.test', 'code')
+    await client.openThread('t1')
+    const id = await client.holdMessageComment('t1', { messageId: 'm1', from: 0, to: source.length, kind: 'comment', text: 'Clarify this.' })
+    await client.openThread('t2')
+    expect(client.view().projects[0]!.threads[0]!.messages).toHaveLength(0)
+    const input = { text: '', model: 'gpt-5.6', instanceId: 'codex-main', effort: 'medium', access: 'full-access' as const, comments: { [id]: 1 } }
+    source = 'The passage really changed.'
+    await expect(client.startTurn('t1', input)).rejects.toThrow(`Target unavailable for comment ${id}`)
+    expect(dispatched).toBe(0)
+    expect(client.view().projects[0]!.threads[0]!.comments?.[0]?.state).toBe('held')
+    source = 'Original passage.'
+    await client.startTurn('t1', input)
+    expect(dispatched).toBe(1)
+  } finally { await client.shutdown() }
+})

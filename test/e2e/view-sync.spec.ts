@@ -47,6 +47,7 @@ test.describe('view sync', () => {
       )
       expect(diagnostics.seq).toBeGreaterThan(5)
       expect(diagnostics.verifyMismatches).toBe(0)
+      expect(diagnostics.resyncs).toBe(0)
     } finally {
       await scenario.dispose()
     }

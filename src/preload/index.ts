@@ -16,9 +16,12 @@ let saveRequest = 0
 let lastSave: { request: number; path: string; error: string | null } | null = null
 
 let synced: SyncedView | null = null
-let resyncing: Promise<AppView> | null = null
+let resyncing: Promise<void> | null = null
 let resyncs = 0
 let verifyMismatches = 0
+const viewListeners = new Set<(view: AppView) => void>()
+let notifiedSeq = -1
+let receivedSeq = -1
 
 const fetchState = async (): Promise<AppView> => {
   const envelope = await invoke<SyncedView>(IPC.state)
@@ -34,12 +37,46 @@ const isSpellingContext = (value: unknown): value is SpellingContext => {
     && candidate.suggestions.every((entry) => typeof entry === 'string')
 }
 
-const resyncState = (): Promise<AppView> => {
-  if (resyncing === null) {
-    resyncing = fetchState().finally(() => { resyncing = null })
+const notifyState = (): void => {
+  if (!synced || synced.seq <= notifiedSeq) return
+  notifiedSeq = synced.seq
+  for (const listener of viewListeners) {
+    try { listener(synced.view) }
+    catch (error) { console.error('StrataMD state listener failed', error) }
   }
-  return resyncing
 }
+
+const resyncState = (): void => {
+  if (resyncing !== null) return
+  resyncs += 1
+  resyncing = fetchState().then(() => {
+    resyncing = null
+    notifyState()
+    // A newer patch may have arrived while this snapshot was in flight. If
+    // it could not be applied, fetch again even when no more updates follow.
+    if (synced && synced.seq < receivedSeq) resyncState()
+  }).catch(error => {
+    resyncing = null
+    console.error('StrataMD state resynchronization failed', error)
+  })
+}
+
+// The preload owns one sequence cursor. Apply each IPC update once, then fan
+// out to EngineScope, App, and any other subscribers sharing that cursor.
+ipcRenderer.on(IPC.stateChanged, (_event, update: unknown): void => {
+  if (!isViewUpdate(update)) return
+  receivedSeq = Math.max(receivedSeq, update.seq)
+  if (synced && update.seq <= synced.seq) { notifyState(); return }
+  const result = applyViewUpdate(synced, update)
+  if (result.status === 'applied') {
+    if (update.verify !== undefined && !sameJson(result.synced.view, update.verify)) {
+      verifyMismatches += 1
+      console.error(`StrataMD view sync: merged view diverged from the published view at seq ${update.seq}`)
+      synced = { seq: update.seq, view: update.verify }
+    } else synced = result.synced
+    notifyState()
+  } else resyncState()
+})
 
 const windowApi: WindowApi = {
   getState: () => invoke<WindowState>(IPC.windowState),
@@ -72,25 +109,9 @@ const api: StrataApi & {
   saveDiagnostics: () => ({ issued: saveRequest, completed: lastSave }),
   viewSyncDiagnostics: () => ({ seq: synced?.seq ?? 0, resyncs, verifyMismatches }),
   subscribe(listener) {
-    const wrapped = (_event: Electron.IpcRendererEvent, update: unknown): void => {
-      if (!isViewUpdate(update)) return
-      const result = applyViewUpdate(synced, update)
-      if (result.status === 'applied') {
-        if (update.verify !== undefined && !sameJson(result.synced.view, update.verify)) {
-          verifyMismatches += 1
-          console.error(`StrataMD view sync: merged view diverged from the published view at seq ${update.seq}`)
-          synced = { seq: update.seq, view: update.verify }
-        } else {
-          synced = result.synced
-        }
-        listener(synced.view)
-        return
-      }
-      resyncs += 1
-      void resyncState().then((view) => listener(view))
-    }
-    ipcRenderer.on(IPC.stateChanged, wrapped)
-    return () => ipcRenderer.removeListener(IPC.stateChanged, wrapped)
+    const receive = (view: AppView) => listener(view)
+    viewListeners.add(receive)
+    return () => { viewListeners.delete(receive) }
   },
   pairEngine: (request) => invoke<void>(IPC.pairEngine, request),
   manageEngine: (action) => invoke<void>(IPC.manageEngine, action),
