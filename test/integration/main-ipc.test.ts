@@ -158,10 +158,14 @@ describe('renderer IPC boundary', () => {
       removeListener: vi.fn()
     }
     const renderer = { id: 1, isDestroyed: () => false, send: vi.fn(), getURL: () => 'app://stratamd/' }
-    registerStrataIpc({ ipcMain: ipcMain as never, api: fakeApi(), renderer: renderer as never })
+    const registration = registerStrataIpc({ ipcMain: ipcMain as never, api: fakeApi(), renderer: renderer as never })
     const getState = handlers.get(IPC.state)
+    const event = { sender: renderer, senderFrame: { url: 'app://stratamd/' } }
 
-    await expect(getState?.({ sender: renderer, senderFrame: { url: 'app://stratamd/' } })).resolves.toEqual({ seq: 1, view })
+    await expect(getState?.(event)).resolves.toEqual({ seq: 1, view })
+    await expect(getState?.(event)).resolves.toEqual({ seq: 1, view })
+    registration.publish({ ...view, tabs: [{ path: '/tmp/next.md', name: 'next.md', pendingCount: 0, active: true, dirty: false }] })
+    expect(renderer.send).toHaveBeenLastCalledWith(IPC.stateChanged, expect.objectContaining({ seq: 2, base: 1 }))
     await expect(getState?.({ sender: { ...renderer, id: 2 }, senderFrame: { url: 'app://stratamd/' } })).rejects.toThrow('unknown renderer')
     await expect(getState?.({ sender: renderer, senderFrame: { url: 'https://evil.invalid/' } })).rejects.toThrow('untrusted URL')
   })

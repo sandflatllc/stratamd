@@ -4,7 +4,7 @@ import { cp, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/p
 import { hostname, homedir, platform, release, arch } from 'node:os'
 import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { digest, filesIn, fingerprint, inputFiles, copyInputs, copyDependencies, validateLinks } from './inputs.mjs'
+import { changedFiles, digest, filesIn, fingerprint, inputFiles, copyInputs, copyDependencies, validateLinks } from './inputs.mjs'
 import { acquireLock } from './lock.mjs'
 import { runProcess } from './process.mjs'
 import { updateTask } from './records.mjs'
@@ -178,7 +178,16 @@ try {
       await run('electron setup execution cleanup', platform() === 'linux' ? 'xvfb-run' : './node_modules/.bin/playwright', platform() === 'linux' ? ['-a', './node_modules/.bin/playwright', ...argv] : argv, process.env.CI ? { progress: { file: electronProgress, timeoutMs: stallMs } } : {})
     }
     await timed('integrity', async () => {
-      if (await fingerprint(candidate, files) !== identity.source || await fingerprint(join(candidate, 'node_modules'), await filesIn(join(candidate, 'node_modules'))) !== identity.dependencies) throw new Error('Candidate inputs changed during verification; result contaminated')
+      const candidateDependencies = join(candidate, 'node_modules')
+      const finalDependencyFiles = await filesIn(candidateDependencies)
+      const sourceChanged = await fingerprint(candidate, files) !== identity.source
+      const dependenciesChanged = await fingerprint(candidateDependencies, finalDependencyFiles) !== identity.dependencies
+      if (sourceChanged || dependenciesChanged) {
+        const sourceChanges = sourceChanged ? await changedFiles(root, candidate, files) : []
+        const dependencyChanges = dependenciesChanged ? await changedFiles(dependencies, candidateDependencies, dependencyFiles, finalDependencyFiles) : []
+        const describe = (label, names) => names.length ? `${label}: ${names.slice(0, 20).join(', ')}${names.length > 20 ? ` (+${names.length - 20} more)` : ''}` : null
+        throw new Error(`Candidate inputs changed during verification; result contaminated. ${[describe('Source', sourceChanges), describe('Dependencies', dependencyChanges)].filter(Boolean).join('; ')}`)
+      }
       if (report.buildIdentity && await fingerprint(join(candidate, 'out'), await filesIn(join(candidate, 'out'))) !== report.buildIdentity) throw new Error('Build output changed during verification; result contaminated')
       if (report.bundleIdentity && await fingerprint(join(candidate, 'build/engine'), await filesIn(join(candidate, 'build/engine'))) !== report.bundleIdentity) throw new Error('Engine bundle changed during verification; result contaminated')
       if (report.packageIdentity && await fingerprint(join(output, 'package'), await filesIn(join(output, 'package'))) !== report.packageIdentity) throw new Error('Package changed during verification; result contaminated')

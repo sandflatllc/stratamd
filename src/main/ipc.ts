@@ -6,7 +6,7 @@ import { engineSettingsEditSchema, providerEditSchema } from '../shared/engine-s
 import type { ContextMenuParams, IpcMain, IpcMainEvent, IpcMainInvokeEvent, WebContents } from 'electron'
 import { z } from 'zod'
 import type { AppView, SpellingContext, StrataApi, BufferOrigin } from '../shared/contracts'
-import { encodeViewUpdate, type SyncedView } from '../shared/view-sync'
+import { encodeViewUpdate, sameJson, type SyncedView } from '../shared/view-sync'
 import { IPC, type InvokeChannel } from '../preload/channels'
 import { electronFileOps, type FileOps } from './file-ops'
 import { logError, logRendererReport } from './log'
@@ -435,7 +435,10 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
       // engine mutation publishes synchronously), so never rewind lastSent.
       const before = nextSeq
       const view = await options.api.getState()
-      return before === nextSeq ? record(view) : lastSent!
+      if (before !== nextSeq) return lastSent!
+      // Repeated reads must not create an unseen sequence between the
+      // renderer's current state and the next pushed patch.
+      return lastSent && sameJson(lastSent.view, view) ? lastSent : record(view)
     },
     [IPC.pairEngine]: (request: Parameters<StrataApi['pairEngine']>[0]) => options.api.pairEngine(request),
     [IPC.manageEngine]: (action: 'restart' | 'use-managed' | 'show-log') => { if (!options.api.manageEngine) throw new Error('Local engine controls are unavailable'); return options.api.manageEngine(action) },

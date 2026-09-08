@@ -23,6 +23,26 @@ export async function fingerprint(root, files) {
   }
   return hash.digest('hex')
 }
+async function fileIdentity(root, name) {
+  try {
+    const path = join(root, name), stat = await lstat(path)
+    const bytes = stat.isSymbolicLink() ? await readlink(path) : await readFile(path)
+    return `${stat.mode}:${digest(bytes)}`
+  } catch (error) {
+    if (error.code === 'ENOENT') return null
+    throw error
+  }
+}
+/** Names inputs whose bytes, mode, link target or presence changed between two trees. */
+export async function changedFiles(expectedRoot, actualRoot, expectedFiles, actualFiles = expectedFiles) {
+  const names = [...new Set([...expectedFiles, ...actualFiles])].sort()
+  const changed = []
+  for (let index = 0; index < names.length; index += 32) {
+    const rows = await Promise.all(names.slice(index, index + 32).map(async name => [name, await fileIdentity(expectedRoot, name), await fileIdentity(actualRoot, name)]))
+    changed.push(...rows.filter(([, expected, actual]) => expected !== actual).map(([name]) => name))
+  }
+  return changed
+}
 export async function inputFiles(root) {
   const names = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root }).toString().split('\0').filter(Boolean)
   const existing = []
