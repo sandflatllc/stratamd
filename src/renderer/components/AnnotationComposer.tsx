@@ -69,6 +69,7 @@ export function handleAnnotationTextKey(
   recipients: readonly string[],
   onSubmit: AnnotationSubmit,
   onSend: (kind: DraftKind, text: string, recipients: string[]) => void,
+  onHold?: (kind: DraftKind, text: string) => void,
 ): void {
   if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
   if (kind === 'decision' && !hasPrimaryModifier(event)) return
@@ -78,6 +79,7 @@ export function handleAnnotationTextKey(
     submitAnnotation(kind, text, options, onSubmit)
     return
   }
+  if (text.trim() && onHold) { onHold(kind, text); return }
   if (text.trim() && recipients.length > 0) onSend(kind, text, [...recipients])
 }
 
@@ -287,7 +289,7 @@ export function AnnotationComposer({ initialText = "", messageTarget = false, se
         ref={textarea}
         value={text}
         onChange={(event) => setText(event.target.value)}
-        onKeyDown={(event) => handleAnnotationTextKey(event, kind, text, options, recipients, onSubmit, onSend)}
+        onKeyDown={(event) => handleAnnotationTextKey(event, kind, text, options, recipients, onSubmit, onSend, messageTarget ? onHold : undefined)}
         placeholder={kind === 'suggestion' ? 'Replacement markdown…' : kind === 'decision' ? 'What needs to be decided?' : 'Your note…'}
         aria-label={kind === 'suggestion' ? 'Replacement markdown' : kind === 'decision' ? 'Decision prompt' : 'Annotation text'}
       />
@@ -302,9 +304,9 @@ export function AnnotationComposer({ initialText = "", messageTarget = false, se
       )}
       {kind === 'decision'
         ? <div className="composer-actions"><button type="button" className="quiet-button" onClick={onDismiss}>Cancel</button><button type="submit" className="primary-button">Add</button></div>
-        : <><div className="composer-hint">{candidates.length === 0 ? 'Hold keeps this private. Start thread sends it as the first turn.' : 'Esc discards · Shift+Enter new line'}</div><div className="composer-actions">{onRemove && <button type="button" className="quiet-button" onClick={onRemove}>Remove</button>}<button type="button" className="quiet-button" onClick={onDismiss}>Cancel</button><button type="button" className="quiet-button" disabled={!text.trim()} onClick={() => onHold(kind, text)}>Hold</button>{candidates.length === 0 && onStartThread
+        : <><div className="composer-hint">{messageTarget ? 'Enter holds · Enter again in chat sends · Shift+Enter new line' : candidates.length === 0 ? 'Hold keeps this private. Start thread sends it as the first turn.' : 'Esc discards · Shift+Enter new line'}</div><div className="composer-actions">{onRemove && <button type="button" className="quiet-button" onClick={onRemove}>Remove</button>}<button type="button" className="quiet-button" onClick={onDismiss}>Cancel</button><button type="button" className="quiet-button" disabled={!text.trim()} onClick={() => onHold(kind, text)}>Hold</button>{!messageTarget && (candidates.length === 0 && onStartThread
           ? <button type="button" className="primary-button" disabled={!text.trim()} onClick={() => onStartThread(kind, text)}>Start thread</button>
-          : <button type="button" className="primary-button" disabled={!text.trim() || recipients.length === 0} onClick={() => onSend(kind, text, recipients)}>Send</button>}</div></>}
+          : <button type="button" className="primary-button" disabled={!text.trim() || recipients.length === 0} onClick={() => onSend(kind, text, recipients)}>Send</button>)}</div></>}
       <button type="button" className="composer-resize" aria-label="Resize annotation composer" onPointerDown={startResize} />
     </form>
   )

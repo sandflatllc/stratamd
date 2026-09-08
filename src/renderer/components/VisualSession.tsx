@@ -1,3 +1,4 @@
+import { focusConversationComposer } from '../focusConversationComposer'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction, type MutableRefObject, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import type { HoldVisualCommentInput, VisualAdjustmentView, VisualCaptureView, VisualDestinationView, VisualMarkView, VisualPointView, VisualRectView, VisualStrokeView } from '../../shared/contracts'
 import { nextRegionLabel } from '../../core/visual-comments'
@@ -249,7 +250,7 @@ export function VisualSession({ sessionId, session: controlled, setSession: setC
   const holdAndClose = useCallback(async () => {
     if (!hasContent()) { await finishSession(); return }
     const id = await hold()
-    if (id) await finishSession()
+    if (id) { await finishSession(); focusConversationComposer() }
   }, [hold, onClose])
 
   const cancel = async () => {
@@ -266,23 +267,8 @@ export function VisualSession({ sessionId, session: controlled, setSession: setC
     finally { holding.current = false; setBusy(false) }
   }
 
-  const sendNow = useCallback(async () => {
-    if (!latest.current.text.trim() && latest.current.marks.length === 0 && latest.current.strokes.length === 0) { onError('Mark something or write a note before sending'); return }
-    const id = await hold()
-    if (!id) return
-    setBusy(true)
-    try { await onSend(id); await finishSession() }
-    catch (error) {
-      onError(error instanceof Error ? error.message : 'The comment could not be sent')
-      const state = await window.strata.getState().catch(() => null)
-      const saved = state?.engine.projects.flatMap(project => project.visualComments ?? []).find(comment => comment.id === id)
-      if (saved?.status === 'failed' && !saved.draft) await finishSession()
-    }
-    finally { setBusy(false) }
-  }, [hold, onClose, onError, onSend])
-
-  const actions = useRef({ holdAndClose, sendNow, finishSession })
-  useLayoutEffect(() => { actions.current = { holdAndClose, sendNow, finishSession }; if (closeRequest) closeRequest.current = holdAndClose; return () => { if (closeRequest?.current === holdAndClose) closeRequest.current = null } })
+  const actions = useRef({ holdAndClose, finishSession })
+  useLayoutEffect(() => { actions.current = { holdAndClose, finishSession }; if (closeRequest) closeRequest.current = holdAndClose; return () => { if (closeRequest?.current === holdAndClose) closeRequest.current = null } })
 
   // Escape holds what is there and closes; the tool letters switch tools outside the note.
   useEffect(() => {
@@ -294,7 +280,7 @@ export function VisualSession({ sessionId, session: controlled, setSession: setC
         if (hasContent()) void actions.current.holdAndClose(); else void actions.current.finishSession()
         return
       }
-      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); void actions.current.sendNow(); return }
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && (inTextField(event.target) || event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); void actions.current.holdAndClose(); return }
       if (event.ctrlKey || event.metaKey || event.altKey || inTextField(event.target)) return
       const next = TOOLS.find(([, , letter]) => letter.toLowerCase() === event.key.toLowerCase())
       if (next) { event.preventDefault(); setTool(next[0]) }
@@ -405,7 +391,7 @@ export function VisualSession({ sessionId, session: controlled, setSession: setC
           {shownMarks.map((mark) => <span key={mark.id} className="visual-mark-label" data-kind={mark.kind} style={{ left: mark.rect.x * scale, top: mark.rect.y * scale } as CSSProperties}>{mark.label}{mark.found && <i aria-label="found"> ✓</i>}</span>)}
         </div>
       </div>
-      <form className="visual-card" data-pane="composer" onSubmit={(event) => { event.preventDefault(); void sendNow() }}>
+      <form className="visual-card" data-pane="composer" onSubmit={(event) => { event.preventDefault(); void holdAndClose() }}>
         {notice && <p className="visual-notice" role="status">{notice}</p>}
         <textarea ref={textarea} aria-label="Visual comment" placeholder="What should change here?" value={text} disabled={busy} onChange={(event) => setText(event.target.value)} />
         {summary.length > 0 && <div className="visual-chips" aria-label="Marked things">
@@ -419,8 +405,7 @@ export function VisualSession({ sessionId, session: controlled, setSession: setC
         <footer>
           <span className="visual-context" title={`${place} · ${destination.threadTitle}`}>Send to this conversation</span>
           <button type="button" className="quiet-button" disabled={busy} onClick={() => void cancel()}>{source ? 'Cancel attachment' : 'Discard'}</button>
-          <button type="button" className="quiet-button" disabled={busy} onClick={() => void holdAndClose()}>Hold</button>
-          <button type="submit" className="primary-button" disabled={busy}>Send now</button>
+          <button type="submit" className="primary-button" disabled={busy}>Hold</button>
         </footer>
       </form>
     </div>

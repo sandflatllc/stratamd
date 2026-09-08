@@ -1,3 +1,4 @@
+import { focusConversationComposer } from '../focusConversationComposer'
 import { createPortal } from 'react-dom'
 import { readDraft } from '../conversationDrafts'
 import { InlineMarkdown } from '../inlineMarkdown'
@@ -85,12 +86,11 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
       if (comment.state === 'held') setSelection({ message: comment.anchor.message, id, range: { ...range, quote: comment.selection, singleBlock: true, left: window.innerWidth / 2, top: window.innerHeight / 2, annotationKind: comment.kind } })
     }
   }
-  const hold = async (kind: DraftKind, text: string, send: boolean) => {
+  const hold = async (kind: DraftKind, text: string) => {
     if (!thread || !selection) return
     const id = await window.strata.holdMessageComment(thread.id, { ...(selection.id ? { id: selection.id } : {}), messageId: selection.message, from: selection.range.from, to: selection.range.to, kind, text })
-    const revision = (comments.find(comment => comment.id === id)?.revision ?? 0) + 1
     setSelection(null)
-    if (send) await onStart(thread.id, { text: '', model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, comments: { [id]: revision } })
+    focusConversationComposer(panel.current)
   }
   const matches = useMemo(() => {
     if (!query.trim()) return []
@@ -144,6 +144,20 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   }
   const replyRecord = thread?.items?.find(item => item.id === replyItem)
   const focusReply = (id: string) => setReplyDraft({ itemId: id, text: answerDrafts.current.get(answerKey(id)) ?? thread?.items?.find(item => item.id === id)?.answerDraft ?? thread?.items?.find(item => item.id === id)?.draftReply ?? '' })
+  const holdReply = async () => {
+    if (!thread || !replyItem || !reply.trim()) return
+    const submitted = replyDraft
+    const key = answerKey(replyItem)
+    await window.strata.queueItemReply(thread.id, replyItem, reply)
+    if (answerDrafts.current.get(key) === reply) answerDrafts.current.delete(key)
+    setReplyDraft(current => current === submitted ? null : current)
+    focusConversationComposer(panel.current)
+  }
+  const replyKey = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
+    event.preventDefault(); event.stopPropagation()
+    void attempt(holdReply)
+  }
   const latestResponse = thread?.messages.findLast(message => message.role === 'assistant')
   const openItems = (thread?.items ?? []).filter(item => !isOwnerComment(item) && item.status !== 'done')
   const kindLabel = (kind: string) => kind.charAt(0).toUpperCase() + kind.slice(1)
@@ -176,12 +190,12 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
       {!!thread?.outcomes?.length && <p>{thread.outcomes.length} action outcomes</p>}
       {preview && <details><summary>Delivery preview</summary><pre>{preview}</pre></details>}
     </details>}
-    {replyItem && !replyRecord?.inferred && <div className="conversation-reply-composer"><strong>Reply to {replyRecord?.text || replyRecord?.quote || replyItem}</strong><textarea aria-label="Discussion reply" value={reply} onChange={event => setReply(event.target.value)} />{replyRecord?.options?.map(option => <button type="button" key={option} onClick={() => setReply(option)}>{option}</button>)}<button type="button" onClick={() => setReply('')}>Other</button><button type="button" disabled={!reply.trim()} onClick={() => void attempt(async () => { const submitted = replyDraft; await window.strata.queueItemReply(thread!.id, replyItem, reply); setReplyDraft(current => current === submitted ? null : current) })}>Queue reply</button><button type="button" onClick={() => setReplyDraft(null)}>Cancel</button></div>}
+    {replyItem && !replyRecord?.inferred && <div className="conversation-reply-composer"><strong>Reply to {replyRecord?.text || replyRecord?.quote || replyItem}</strong><textarea aria-label="Discussion reply" onKeyDown={replyKey} value={reply} onChange={event => setReply(event.target.value)} />{replyRecord?.options?.map(option => <button type="button" key={option} onClick={() => setReply(option)}>{option}</button>)}<button type="button" onClick={() => setReply('')}>Other</button><button type="button" disabled={!reply.trim()} onClick={() => void attempt(holdReply)}>Hold</button><button type="button" onClick={() => setReplyDraft(null)}>Cancel</button></div>}
     {thread?.deliveries?.map(delivery => <details key={delivery.messageId}><summary>{delivery.phase === 'uploading' ? 'Delivery upload incomplete' : 'Delivery ready to dispatch'}</summary><pre>{delivery.text}</pre><button type="button" onClick={() => void attempt(() => onStart(thread.id, { messageId: delivery.messageId, text: '', model: thread.model, effort: thread.effort, access: thread.access }))}>Retry delivery</button></details>)}
     {error && <p role="alert">{error}</p>}
     {navigationFailure && <p role="alert" className="conversation-navigation-failure">The passage in message {navigationFailure.target.message} is not ready yet. <button type="button" onClick={retryNavigation}>Retry</button></p>}
   </>
-  const overlay = selection && thread ? <AnnotationComposer messageTarget initialText={comments.find(comment => comment.id === selection.id)?.text ?? ''} selection={selection.range} spelling={null} size={{ width: 360, height: -1 }} zoom={Number(getComputedStyle(document.querySelector(`[data-message-id="${CSS.escape(selection.message)}"]`) ?? document.body).getPropertyValue('--zoom')) || 1} onSize={() => {}} onDismiss={() => setSelection(null)} onRemove={selection.id ? () => void attempt(() => removeHeld(selection.id!)) : undefined} onSubmit={() => {}} recipients={[{ id: thread.id, name: thread.title, color: "grape", attached: true }]} leadAgentId={null} activeConversationId={thread.id} onHold={(kind, text) => void attempt(() => hold(kind, text, false))} onSend={(kind, text) => void attempt(() => hold(kind, text, true))} onReplaceWord={() => {}} onAddToDictionary={() => {}} /> : null
+  const overlay = selection && thread ? <AnnotationComposer messageTarget initialText={comments.find(comment => comment.id === selection.id)?.text ?? ''} selection={selection.range} spelling={null} size={{ width: 360, height: -1 }} zoom={Number(getComputedStyle(document.querySelector(`[data-message-id="${CSS.escape(selection.message)}"]`) ?? document.body).getPropertyValue('--zoom')) || 1} onSize={() => {}} onDismiss={() => setSelection(null)} onRemove={selection.id ? () => void attempt(() => removeHeld(selection.id!)) : undefined} onSubmit={() => {}} recipients={[{ id: thread.id, name: thread.title, color: "grape", attached: true }]} leadAgentId={null} activeConversationId={thread.id} onHold={(kind, text) => void attempt(() => hold(kind, text))} onSend={(kind, text) => void attempt(() => hold(kind, text))} onReplaceWord={() => {}} onAddToDictionary={() => {}} /> : null
   const bounds = panel.current?.querySelector('.conversation-reading-area')?.getBoundingClientRect()
   const recordWidth = Math.min(420, window.innerWidth - 32)
   const recordPosition = bounds ? { position: 'fixed' as const, left: Math.max(16, Math.min(panel.current?.dataset.placement === 'side' ? bounds.left + 40 : bounds.right - recordWidth - 12, window.innerWidth - recordWidth - 16)), bottom: window.innerHeight - bounds.bottom + 12, width: recordWidth, maxHeight: Math.max(120, bounds.height * .6) } : undefined
@@ -213,9 +227,9 @@ export function useConversationWorkspace(thread: EngineThreadView | undefined, o
   const answerView = replyRecord?.inferred && replyItem ? createPortal(<section ref={answerRoot} style={recordPosition} className="conversation-discussion conversation-answer-popup" role="dialog" aria-label="Your answer">
     <header><strong>Your answer</strong><button type="button" className="popover-close" aria-label="Close answer" onClick={closeAnswer}>×</button></header>
     {replyRecord.unavailable && <p>Original passage unavailable</p>}
-    <div className="reply-box"><textarea key={replyItem} autoFocus aria-label="Your answer" placeholder="Write your answer…" value={reply} onChange={event => { const text = event.target.value; answerDrafts.current.set(answerKey(replyItem), text); setReply(text); void attempt(() => window.strata.saveAskDraft(thread?.engineIdentity ?? null, thread!.id, replyItem, text)) }} /></div>
+    <div className="reply-box"><textarea key={replyItem} autoFocus aria-label="Your answer" onKeyDown={replyKey} placeholder="Write your answer…" value={reply} onChange={event => { const text = event.target.value; answerDrafts.current.set(answerKey(replyItem), text); setReply(text); void attempt(() => window.strata.saveAskDraft(thread?.engineIdentity ?? null, thread!.id, replyItem, text)) }} /></div>
     <small>Included in your next Send</small>
-    <div className="conversation-answer-actions"><button type="button" className="quiet-button" onClick={closeAnswer}>Cancel</button><button type="button" className="primary-button" disabled={!reply.trim()} onClick={() => void attempt(async () => { const submitted = replyDraft; const key = answerKey(replyItem); await window.strata.queueItemReply(thread!.id, replyItem, reply); if (answerDrafts.current.get(key) === reply) answerDrafts.current.delete(key); setReplyDraft(current => current === submitted ? null : current) })}>Queue reply</button></div>
+    <div className="conversation-answer-actions"><button type="button" className="quiet-button" onClick={closeAnswer}>Cancel</button><button type="button" className="primary-button" disabled={!reply.trim()} onClick={() => void attempt(holdReply)}>Hold</button></div>
     {error && <p role="alert">{error}</p>}
   </section>, document.querySelector('.app-shell') ?? document.body) : null
   const navigate = (marker: ConversationMarker) => {
