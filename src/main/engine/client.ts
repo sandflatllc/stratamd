@@ -533,6 +533,8 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   view(): EngineView {
+    // Parsed message data is kept only for messages a loaded thread still lists.
+    const projected = new Set<string>()
     const projects: EngineProjectView[] = (this.#shell?.projects ?? []).map((project) => ({
       id: project.id,
       title: project.title,
@@ -550,7 +552,7 @@ export class T3EngineClient implements EngineReadClient {
           createdAt: message.createdAt,
           updatedAt: message.updatedAt,
           attachmentCount: message.attachments?.length ?? 0,
-          ...(!message.streaming && message.role === 'assistant' ? (() => { let cached = this.#messageCache.get(message.id); if (!cached || cached.text !== message.text) { const parsed = parseStrataBlock(message.text); const prose = parsed?.prose ?? message.text; cached = { text: message.text, prose, blocks: mapMarkdownBlocks(`message:${message.id}`, prose).blocks, visualReplies: visualRepliesIn(parsed) }; this.#messageCache.set(message.id, cached) } return { prose: cached.prose, blocks: cached.blocks, ...(cached.visualReplies.length ? { visualReplies: cached.visualReplies } : {}) } })() : {}),
+          ...(!message.streaming && message.role === 'assistant' ? (() => { projected.add(message.id); let cached = this.#messageCache.get(message.id); if (!cached || cached.text !== message.text) { const parsed = parseStrataBlock(message.text); const prose = parsed?.prose ?? message.text; cached = { text: message.text, prose, blocks: mapMarkdownBlocks(`message:${message.id}`, prose).blocks, visualReplies: visualRepliesIn(parsed) }; this.#messageCache.set(message.id, cached) } return { prose: cached.prose, blocks: cached.blocks, ...(cached.visualReplies.length ? { visualReplies: cached.visualReplies } : {}) } })() : {}),
         })) : []
         const activities = detailThread?.id === thread.id ? detailThread.activities.map((activity) => ({
           id: activity.id,
@@ -612,6 +614,7 @@ export class T3EngineClient implements EngineReadClient {
       }),
     }))
     const accounts = this.#accountViews()
+    if (this.#messageCache.size > projected.size) for (const id of this.#messageCache.keys()) if (!projected.has(id)) this.#messageCache.delete(id)
     return {
       ...(this.#identity ? { identity: this.#identity } : {}),
       state: this.#state,
