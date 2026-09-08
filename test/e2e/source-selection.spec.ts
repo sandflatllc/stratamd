@@ -29,6 +29,8 @@ test('the selection carries into source view and back, and source typing lands i
 
     // Typing in source view: the visual view catches up once typing pauses.
     await page.keyboard.press(primaryKey('/'))
+    await expect(source).toBeVisible()
+    await expect(source).toBeFocused()
     await source.evaluate((node: HTMLTextAreaElement) => { const end = node.value.indexOf('here.') + 'here.'.length; node.setSelectionRange(end, end) })
     await page.keyboard.type(' Added in source.', { delay: 15 })
     await page.keyboard.press(primaryKey('/'))
