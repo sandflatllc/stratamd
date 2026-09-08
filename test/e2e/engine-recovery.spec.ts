@@ -1,8 +1,11 @@
-import { expect, test } from './managed-test'
+import { expect, test as base } from './test'
+import { withManagedScenario } from './managed-test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setSource } from './harness'
 import { copyRuntimeDirectory } from '../../src/platform/runtime-copy'
+
+const test = withManagedScenario(base)
 
 test('restoring through This computer keeps newer document text and restores matching account preferences @managed', async ({ managedScenario }) => {
   test.skip(!process.env.STRATAMD_ENGINE_BUNDLE, 'Requires the stock runtime')

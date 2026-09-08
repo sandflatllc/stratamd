@@ -1,7 +1,10 @@
 import { reviewCapture } from './captures'
-import { expect, test } from './managed-test'
+import { expect, test as base } from './test'
+import { withManagedScenario } from './managed-test'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+
+const test = withManagedScenario(base)
 
 test('This computer manages real pairing links and login choices in an isolated stock environment @managed', async ({ managedScenario }, testInfo) => {
   test.skip(!process.env.STRATAMD_ENGINE_BUNDLE, 'Requires the stock runtime')

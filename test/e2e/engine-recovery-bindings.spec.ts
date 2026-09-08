@@ -1,9 +1,12 @@
-import { expect, test } from './managed-test'
+import { expect, test as base } from './test'
+import { withManagedScenario } from './managed-test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { copyRuntimeDirectory } from '../../src/platform/runtime-copy'
 import { GhostStore } from '../../src/main/storage'
 import { threadCreateCommand } from '../../src/main/engine/t3-contract'
+
+const test = withManagedScenario(base)
 
 test('engine rollback restores an existing document conversation link and Lead without starting an agent turn @managed', async ({ managedScenario }) => {
   test.skip(!process.env.STRATAMD_ENGINE_BUNDLE, 'Requires the stock runtime')
