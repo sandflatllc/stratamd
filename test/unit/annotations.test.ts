@@ -17,6 +17,7 @@ import {
   mapAnnotationsThroughEdit,
   nearestQuoteStart,
   relocateAnnotation,
+  relocateOpenAnnotations,
   rejectSuggestion,
   rejectAllSuggestions,
   recordHunkVerdict,
@@ -180,6 +181,29 @@ describe('annotation log', () => {
       'orphaned',
       'reattached',
     ])
+  })
+
+  it('relocates a batch exactly as one relocation per annotation would', () => {
+    const document = 'First phrase here. Second phrase here. Same words. Same words. Fourth phrase here.'
+    let log = createAnnotationLog()
+    log = createAnnotation(log, document, { id: 'keep', kind: 'comment', author: 'user', quote: 'First phrase', text: 'stays' }).log
+    log = createAnnotation(log, document, { id: 'moved', kind: 'comment', author: 'user', quote: 'Second phrase', text: 'moves' }).log
+    log = createAnnotation(log, document, { id: 'ambiguous', kind: 'comment', author: 'user', quote: 'Same words', precededBy: 'here. ', text: 'context' }).log
+    log = createAnnotation(log, document, { id: 'lost', kind: 'comment', author: 'user', quote: 'Fourth phrase', text: 'vanishes' }).log
+    log = createAnnotation(log, document, { id: 'whole', kind: 'decision', author: 'user', quote: '', text: 'Overall?', options: ['Approve', 'Revise'], anchorKind: 'document' }).log
+    log = relocateAnnotation(log, 'lost', 'No fourth phrase anymore.').log
+    log = resolveAnnotation(log, 'keep').log
+    const edited = 'Intro line.\nFirst phrase here. Same words. Same words. Second phrase here. Fourth phrase here.'
+    const mapped = mapAnnotationsThroughEdit(log, { start: 0, deleteCount: 0, insertText: 'Intro line.\n' })
+    let sequential = mapped
+    for (const annotation of Object.values(mapped.annotations)) if (annotation.status !== 'resolved') sequential = relocateAnnotation(sequential, annotation.id, edited).log
+    const batch = relocateOpenAnnotations(mapped, edited)
+    expect(batch).toEqual(sequential)
+    expect(batch.annotations.lost?.status).toBe('open')
+    expect(batch.annotations.ambiguous?.status).toBe('orphaned')
+    expect(batch.annotations.moved?.line).toBe(2)
+    expect(batch.events.slice(-2).map((event) => event.type)).toEqual(['orphaned', 'reattached'])
+    expect(relocateOpenAnnotations(batch, edited)).toBe(batch)
   })
 
   it('accepts a suggestion into shadow only and emits accepted for its agent author', () => {

@@ -84,6 +84,7 @@ import {
   nearestQuoteStart,
   pruneResolvedAnnotations,
   relocateAnnotation,
+  relocateOpenAnnotations,
   rejectAllSuggestions as rejectAllAnnotationSuggestions,
   rejectSuggestion as rejectAnnotationSuggestion,
   replyToAnnotation,
@@ -1944,9 +1945,7 @@ export class StrataApplication implements StrataApi {
           insertText: hunk.added
         })
       }
-      for (const annotation of Object.values(session.annotations.annotations)) {
-        if (annotation.status !== 'resolved') session.annotations = relocateAnnotation(session.annotations, annotation.id, session.state.shadow).log
-      }
+      session.annotations = relocateOpenAnnotations(session.annotations, session.state.shadow)
       session.mirror?.schedule(session.state.shadow)
       await this.#persist(session, { debounce: true })
       this.#publish()
@@ -3517,15 +3516,6 @@ function restoredRecords(previous: AnnotationLog, restored: AnnotationLog): Anno
   return records
 }
 
-function relocateOpenAnnotations(log: AnnotationLog, document: string): AnnotationLog {
-  let next = log
-  for (const annotation of Object.values(log.annotations)) {
-    if (annotation.status !== 'resolved') {
-      next = relocateAnnotation(next, annotation.id, document).log
-    }
-  }
-  return next
-}
 
 function mapAndRelocateAnnotations(
   log: AnnotationLog,

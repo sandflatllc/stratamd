@@ -944,6 +944,69 @@ export function relocateAnnotation(
   return withEvent(log, relocated, 'reattached', 'user', null)
 }
 
+/** Line starts for one document version, so many relocations share one scan instead of each walking from offset 0. */
+function lineStarts(document: string): number[] {
+  const starts = [0]
+  for (let index = 0; index < document.length; index += 1) if (document.charCodeAt(index) === 10) starts.push(index + 1)
+  return starts
+}
+
+function lineFromStarts(starts: readonly number[], offset: number): number {
+  let low = 0
+  let high = starts.length - 1
+  while (low < high) {
+    const middle = (low + high + 1) >> 1
+    if (starts[middle]! <= offset) low = middle
+    else high = middle - 1
+  }
+  return low + 1
+}
+
+/**
+ * Relocates every unresolved annotation against one document version. The
+ * outcome per annotation matches `relocateAnnotation`; the difference is one
+ * new annotation map and one line index for the whole batch instead of a map
+ * copy and a line scan per annotation, which grew quadratically with the
+ * number of annotations on a document.
+ */
+export function relocateOpenAnnotations(log: AnnotationLog, document: string): AnnotationLog {
+  let annotations: Record<string, Annotation> | null = null
+  const events: AnnotationEvent[] = []
+  let nextSeq = log.nextSeq
+  let starts: number[] | null = null
+  const write = (annotation: Annotation) => {
+    annotations ??= { ...log.annotations }
+    annotations[annotation.id] = annotation
+  }
+  const record = (annotation: Annotation, type: AnnotationEventType) => {
+    const event: AnnotationEvent = { seq: nextSeq, type, annotationId: annotation.id, author: 'user', agent: null }
+    nextSeq += 1
+    events.push(event)
+    write({ ...annotation, seq: event.seq })
+  }
+  for (const annotation of Object.values(log.annotations)) {
+    if (annotation.status === 'resolved') continue
+    if (annotationAnchorKind(annotation) === 'document') {
+      if (annotation.anchor.kind !== 'document') write({ ...annotation, anchor: { ...annotation.anchor, kind: 'document' as const }, line: 1 })
+      continue
+    }
+    const anchor = relocationCandidate(document, annotation)
+    if (anchor === null) {
+      if (annotation.status !== 'orphaned') record({ ...annotation, status: 'orphaned' }, 'orphaned')
+      continue
+    }
+    starts ??= lineStarts(document)
+    const line = lineFromStarts(starts, anchor.start)
+    if (annotation.status === 'orphaned') { record({ ...annotation, status: 'open', anchor, line }, 'reattached'); continue }
+    // A mapped anchor that still names the same exact text and context stays the same object.
+    const current = annotation.anchor
+    if (annotation.status === 'open' && annotation.line === line && current.start === anchor.start && current.end === anchor.end && current.quote === anchor.quote && current.prefix === anchor.prefix && current.suffix === anchor.suffix && current.kind === anchor.kind) continue
+    write({ ...annotation, status: 'open', anchor, line })
+  }
+  if (annotations === null) return log
+  return { nextSeq, annotations, events: events.length ? [...log.events, ...events] : log.events }
+}
+
 export interface BatchSuggestionResult {
   log: AnnotationLog
   shadow: string
