@@ -54,7 +54,7 @@ import { StagedAttachmentStore } from './staged-attachments'
 import { attachmentLimitMessage, attachmentSummary, MAX_ATTACHMENTS } from '../../core/composer-attachments'
 import { accountViews, chooseInstance, emptyAccountsStore, providerInstancesOf, readAccountsStore, recordMeasurements, terminalShimTargets, writeAccountsStore, type AccountsStore, type AccountMeasurement, type EngineProviderInstance } from './accounts'
 import { writeTerminalShims } from '../account-shims'
-import { logError, logWarn } from '../log'
+import { logError, logInfo, logWarn } from '../log'
 import type { ConversationInput, ModelOption, EngineModelView, StartThreadInput, EngineProjectView, EngineThreadChange, EngineThreadView, EngineView } from '../../shared/contracts'
 import { assertSupportedPlatform } from '../../platform/runtime'
 import { mapMarkdownBlocks, parseStrataBlock } from '../../core/blocks'
@@ -409,6 +409,8 @@ export class T3EngineClient implements EngineReadClient {
   #publishTimer: ReturnType<typeof setTimeout> | null = null
   #configTimer: ReturnType<typeof setTimeout> | null = null
   #connecting: Promise<void> | null = null
+  /** The provider configuration read after the latest connection; sends and thread creation wait for it. */
+  #configReady: Promise<void> = Promise.resolve()
   readonly #shellWaiters = new Set<() => void>()
   readonly #previewHost: PreviewHostBridge | null
   readonly #previewClientId = `strata-${randomUUID()}`
@@ -485,7 +487,8 @@ export class T3EngineClient implements EngineReadClient {
     this.#conversations = await readConversationsStore(this.#conversationsPath)
     this.#visual = await readVisualCommentsStore(this.#visualPath, this.#evidence.directory)
     // Evidence outlives its comment only until this sweep; sent comments keep theirs while they exist.
-    await this.#evidence.sweep(referencedEvidence(this.#visual)).catch((error: unknown) => logError('engine', 'Visual evidence could not be tidied', error))
+    // It runs behind the other visual operations rather than ahead of the connection.
+    void this.#operations.run(() => this.#serializeVisual(() => this.#evidence.sweep(referencedEvidence(this.#visual)))).catch((error: unknown) => logError('engine', 'Visual evidence could not be tidied', error))
     if (!this.#credential || !connect) return
     this.#running = true
     await this.reconnect()
@@ -799,16 +802,23 @@ export class T3EngineClient implements EngineReadClient {
       this.#state = 'connecting'
       this.#problem = null
       this.#publish()
+      const refreshing = performance.now()
       await this.#refresh()
+      logInfo('startup', `Engine shell and followed threads took ${Math.round(performance.now() - refreshing)} ms`)
       if (!this.#reachable()) { this.#scheduleReconnect(); return }
       await this.#renewIfDue()
       try {
+        const subscribing = performance.now()
         await this.#subscribe()
+        logInfo('startup', `Engine subscriptions took ${Math.round(performance.now() - subscribing)} ms`)
         this.#reconnectAttempt = 0
         this.#scheduleRenewal()
-        // Accounts (§5.13) read over the same socket once it is up; a failure keeps the last measurement.
-        await this.#refreshConfig()
+        // The transport is usable now. Accounts (§5.13) read over the same socket next and publish
+        // when they arrive; a failure keeps the last measurement. Sends wait for this refresh.
         this.#publish()
+        const configuring = performance.now()
+        this.#configReady = this.#refreshConfig().then(() => { logInfo('startup', `Engine configuration took ${Math.round(performance.now() - configuring)} ms`); this.#publish() })
+        this.#configReady.catch(() => undefined)
       } catch (error) {
         this.#state = 'disconnected'
         this.#problem = error instanceof Error ? error.message : 'The engine socket is unreachable'
@@ -844,12 +854,21 @@ export class T3EngineClient implements EngineReadClient {
     const added = [...next].filter((id) => !this.#watched.has(id) && !this.#threads.has(id))
     this.#watched = next
     if (!this.#reachable()) return
-    for (const id of added) {
-      if (!this.#shell?.threads.some((thread) => thread.id === id)) continue
-      try { await this.#refreshThread(id) } catch (error) { logError('engine', `Thread ${id} could not be loaded`, error) }
-    }
+    await this.#refreshThreads(added.filter((id) => this.#shell?.threads.some((thread) => thread.id === id)), (id, error) => logError('engine', `Thread ${id} could not be loaded`, error))
     await this.#subscribeThreads()
     this.#publish()
+  }
+
+  /** Loads several thread details with a few requests in flight instead of one after another. A failure stops the batch unless `onError` absorbs it. */
+  async #refreshThreads(ids: readonly string[], onError?: (id: string, error: unknown) => void): Promise<void> {
+    let next = 0
+    await Promise.all(Array.from({ length: Math.min(4, ids.length) }, async () => {
+      for (;;) {
+        const id = ids[next++]
+        if (id === undefined) return
+        try { await this.#refreshThread(id) } catch (error) { if (onError) onError(id, error); else throw error }
+      }
+    }))
   }
 
   /**
@@ -892,6 +911,7 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async #startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string; context?: import("../../core/conversation-delivery").ConversationDelivery }): Promise<void> {
+    await this.#configReady
     this.#asks.cancel(threadId)
     const thread = this.#shell?.threads.find((candidate) => candidate.id === threadId)
     if (!thread) throw new Error(`Thread was not found: ${threadId}`)
@@ -1377,6 +1397,7 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async #createThread(input: StartThreadInput): Promise<string> {
+    await this.#configReady
     if (!this.#shell?.projects.some((project) => project.id === input.projectId)) throw new Error(`Project was not found: ${input.projectId}`)
     const threadId = input.threadId ?? randomUUID()
     const existing = this.#shell?.threads.find((thread) => thread.id === threadId)
@@ -1768,7 +1789,7 @@ export class T3EngineClient implements EngineReadClient {
           this.#threads.delete(active)
           await this.#writeReading()
         }
-        for (const id of this.#followedThreadIds()) await this.#refreshThread(id)
+        await this.#refreshThreads(this.#followedThreadIds())
         this.#state = 'connected'
         this.#problem = null
       } catch (error) {

@@ -13,7 +13,7 @@ const ROTATE_BYTES = 2 * 1024 * 1024
 
 export interface LogRecord {
   time: string
-  level: 'warn' | 'error'
+  level: 'info' | 'warn' | 'error'
   scope: string
   message: string
   name?: string
@@ -66,7 +66,7 @@ export class LogFile {
 }
 
 export function makeRecord(
-  level: 'warn' | 'error',
+  level: 'info' | 'warn' | 'error',
   scope: string,
   message: string,
   error?: unknown,
@@ -97,6 +97,11 @@ let defaultLog: LogFile | null = null
 function log(): LogFile {
   if (!defaultLog) defaultLog = new LogFile(join(getDataDirectory(), 'logs'))
   return defaultLog
+}
+
+/** Startup stage timings and other plain facts worth keeping beside the failures. */
+export function logInfo(scope: string, message: string): void {
+  log().write(makeRecord('info', scope, message))
 }
 
 export function logWarn(scope: string, message: string): void {

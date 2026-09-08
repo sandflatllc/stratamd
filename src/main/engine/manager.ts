@@ -9,6 +9,7 @@ import { dirname, join } from 'node:path'
 import { atomicWriteFile, ensurePrivateDirectory } from '../storage'
 import { processStamp, takeEngineLock, verifiedProcess, type OwnedProcess } from './managed-process'
 import { stageRuntime, verifyRuntime, type StagedRuntime } from './managed-runtime'
+import { logInfo } from '../log'
 import type { ManagedEngineView } from '../../shared/contracts'
 
 interface RuntimeRecord extends OwnedProcess { phase?: 'bootstrap' | 'ready'; version: string; nodeVersion: string; runtimeDirectory: string; generation: string; address: string; environmentId: string }
@@ -68,6 +69,8 @@ export class LocalEngineManager {
   async #start(): Promise<void> {
     this.#pendingRuntime = null
     this.#publish({ state: 'starting', problem: null })
+    const startedAt = performance.now()
+    const stage = (name: string, since: number) => logInfo('startup', `Engine ${name} took ${Math.round(performance.now() - since)} ms`)
     this.#release ??= await takeEngineLock(this.#options.directory)
     const baseDirectory = join(this.#options.directory, 't3')
     await ensurePrivateDirectory(baseDirectory)
@@ -76,11 +79,13 @@ export class LocalEngineManager {
     }
     let bundled: StagedRuntime
     let stagingProblem: string | null = null
+    const stagingStarted = performance.now()
     try { bundled = await stageRuntime(this.#options.bundle, this.#options.directory) } catch (error) {
       if (!this.#record) throw error
       bundled = await this.#runtime(this.#record.version)
       stagingProblem = `The new bundled engine could not be verified. The previous runtime was kept. ${String(error)}`
     }
+    stage('runtime staging and verification', stagingStarted)
     let runtime = bundled
     try {
       const selected = JSON.parse(await readFile(join(this.#options.directory, 'selected-runtime.json'), 'utf8'))
@@ -89,6 +94,7 @@ export class LocalEngineManager {
     let journal: { backupId: string; targetVersion: string } | null = null
     try { journal = JSON.parse(await readFile(join(this.#options.directory, 'transition.json'), 'utf8')) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
     let adopted = false
+    const processStarted = performance.now()
     if (this.#record && await verifiedProcess(this.#record)) {
       if (this.#record.baseDirectory !== baseDirectory) throw new Error(`A surviving engine does not own ${baseDirectory}. It was left running.`)
       if (await this.#options.authenticate(this.#record.address)) {
@@ -121,9 +127,11 @@ export class LocalEngineManager {
       const initial = this.#record && this.#record.version !== runtime.version ? await this.#runtime(this.#record.version) : runtime
       await this.#launch(initial, baseDirectory)
     }
+    stage(adopted ? 'adoption of the surviving process' : 'process launch and readiness', processStarted)
     this.#monitor()
     if (this.#record?.version !== runtime.version) await this.#runTransition(() => this.#upgrade(runtime))
     if (stagingProblem) this.#publish({ problem: stagingProblem })
+    stage('start', startedAt)
   }
   async #runtime(version: string): Promise<StagedRuntime> {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(version)) throw new Error('Invalid engine runtime version')
