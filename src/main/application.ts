@@ -813,9 +813,9 @@ export class StrataApplication implements StrataApi {
           directory: join(this.#store.dataDirectory, 'engine'), bundle: this.#managedBundle!,
           changed: () => this.#publish(),
           network: () => this.#settings.engine,
-          reserveChange: async () => {
+          reserveChange: async reason => {
             if (this.#providerSetupPreparing || this.#providerSetup.busy || this.#connect.busy) throw new Error('Finish the current setup first.')
-            await this.#engine.prepareLocalSetup?.()
+            if (this.#engine.view().state === 'connected') await this.#engine.prepareLocalSetup?.(reason !== 'restore')
             let resumeDocuments: (() => void) | undefined
             try {
               resumeDocuments = await this.#pauseDocuments()
@@ -874,8 +874,7 @@ export class StrataApplication implements StrataApi {
     }
     if (this.#providerSetupPreparing || this.#providerSetup.busy || this.#connect.busy) throw new Error('Finish or cancel provider setup before changing engines.')
     if (!this.#managedBundle) throw new Error('This build has no bundled engine')
-    if (this.#engine.view().projects.some(project => project.threads.some(thread => thread.status === 'running' || thread.status === 'starting'))) throw new Error('Wait for active conversations to finish before restarting the engine.')
-    if (this.#engine.view().state === 'connected') await this.#engine.prepareLocalSetup?.()
+    if (action === 'use-managed' && this.#engine.view().state === 'connected') await this.#engine.prepareLocalSetup?.()
     try {
     if (action === 'use-managed') {
       await Promise.all([...this.#sessionTurns.values()])
@@ -1460,6 +1459,11 @@ export class StrataApplication implements StrataApi {
       if (!match || match.matches === 0) missing.push(mark.label)
     }
     return { refusal: visualSendRefusal({ pageReplaced: false, missing }), found }
+  }
+
+  async continueInterruptedThread(threadId: string): Promise<void> {
+    if (!this.#engine.continueInterruptedThread) throw new Error('This engine does not support continuation recovery.')
+    await this.#engine.continueInterruptedThread(threadId)
   }
 
   async compactContext(threadId: string, input: import('../shared/context-compaction').CompactContextInput): Promise<void> {

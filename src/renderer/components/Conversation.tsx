@@ -1,4 +1,6 @@
 import { openDocumentPreview } from '../documentPreview'
+
+import { ThreadRecoveryNotice } from './ThreadRecoveryNotice'
 import { BrowserEvidence } from './BrowserEvidence'
 import type { BrowserEvidenceView } from '../../shared/browser-evidence'
 import { UserInputDialog } from './UserInputDialog'
@@ -364,7 +366,7 @@ export function Conversation({ browserEvidence = [], onOpenBrowserEvidence, visi
   /** Replies queued in the main process for this thread's message items; they ride the next Send. */
   const queuedCount = thread ? (thread.items ?? []).filter((item) => item.draftReply !== undefined).length : 0
 
-  if (engine.state === 'disconnected' || engine.state === 'connecting') return <div className="engine-empty" data-testid="conversation-disconnected">{engine.server ?? 'Engine'} is {engine.state === 'connecting' ? 'connecting' : 'disconnected'}.<button type="button" onClick={onReconnect}>Reconnect</button></div>
+  if (!thread && (engine.state === 'disconnected' || engine.state === 'connecting')) return <div className="engine-empty" data-testid="conversation-disconnected">{engine.server ?? 'Engine'} is {engine.state === 'connecting' ? 'connecting' : 'disconnected'}.<button type="button" onClick={onReconnect}>Reconnect</button></div>
   if (!thread && passage) return <section className="conversation-panel" aria-label="Conversation" data-placement={placement}>
     <header><strong>Comment discussion</strong></header>
     <div className="conversation-passage">{passage}</div>
@@ -476,6 +478,7 @@ export function Conversation({ browserEvidence = [], onOpenBrowserEvidence, visi
         <span>{sendFailure.message}</span>
         <div className="conversation-actions"><button type="button" disabled={sendFailure.disabled} onClick={sendFailure.retry}>Retry send</button></div>
       </section>}
+      <ThreadRecoveryNotice key={thread.id} engine={engine} thread={thread} onReconnect={onReconnect} />
       <TranscriptStaging />
       <ContextCompactionNotice engine={engine} thread={thread} />
       </div>

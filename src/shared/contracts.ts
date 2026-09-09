@@ -284,6 +284,8 @@ export interface EngineTurnView {
 }
 
 export interface EngineThreadView {
+  recovery?: import("./thread-recovery").ThreadRecovery
+
   compaction?: import("./context-compaction").ContextCompactionView
   engineIdentity?: string | undefined
   askScan?: AskScanView | undefined
@@ -1039,6 +1041,8 @@ export interface StartThreadFromDocumentInput extends StartThreadInput {
 export type PairEngineRequest = { link: string } | { host: string; code: string }
 
 export interface EngineSettings {
+  continueThreadsAfterServerUpdate?: boolean
+
   identity?: string | null
 
   addProjectBaseDirectory?: string | undefined
@@ -1151,6 +1155,7 @@ export interface StrataApi {
   /** Adjustments (phase 4): apply the whole set of Strata's overrides to the live page and capture the result; remove only those overrides. */
   adjustPreview(tabId: string, targets: Array<{ markId: string; identity: VisualMarkIdentityView; declarations: Record<string, string> }>): Promise<VisualPageCapture & { applied: string[] }>
   clearPreviewOverrides(tabId: string): Promise<void>
+  continueInterruptedThread(threadId: string): Promise<void>
   compactContext(threadId: string, input: import("./context-compaction").CompactContextInput): Promise<void>
   stopConversationTurn(threadId: string): Promise<void>
   answerEngineApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>

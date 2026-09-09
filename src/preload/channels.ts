@@ -76,6 +76,7 @@ export const IPC = {
   stageConversationAttachment: 'strata:stage-conversation-attachment',
   discardConversationAttachment: 'strata:discard-conversation-attachment',
   retainConversationAttachments: 'strata:retain-conversation-attachments',
+  continueInterruptedThread: 'strata:continue-interrupted-thread',
   compactContext: 'strata:compact-context',
   stopConversationTurn: 'strata:stop-conversation-turn',
   answerEngineApproval: 'strata:answer-engine-approval',

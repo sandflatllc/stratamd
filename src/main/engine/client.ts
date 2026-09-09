@@ -1,5 +1,7 @@
 import { checkedInEnvironment, mergeProjectDefaults, type ProjectDefaults, type ProjectDefaultsEdit } from '../../shared/project-defaults'
 import { MAX_DOCUMENT_BYTES, type DocumentSource } from '../../shared/documents'
+
+import { threadRecoverySchema, reconcileThreadRecovery, type ThreadRecovery } from '../../shared/thread-recovery'
 import { validatedModelOptions } from '../../shared/custom-models'
 import type { BrowserEvidenceTransfer } from '../../shared/browser-evidence'
 import { inputPayload, pendingUserInputs } from '../../core/user-input'
@@ -109,6 +111,8 @@ const RENEWAL_CHECK_MS = 6 * 60 * 60 * 1_000
 const RENEWAL_SCOPE = 'access:write'
 
 interface EngineReadingState {
+  recovery?: Record<string, ThreadRecovery>
+
   formatVersion: 1
   activeThreadId: string | null
   lastVisited: Record<string, number>
@@ -213,7 +217,8 @@ export interface EngineReadClient {
   listRefs?(cwd: string, query?: string): Promise<import('../../shared/contracts').EngineRefs>
   readSupport?(): Promise<EngineSupport>
   reportActivity?(activity: EngineActivity, managed: boolean): Promise<void>
-  prepareLocalSetup?(): Promise<void>
+  prepareLocalSetup?(allowContinuation?: boolean): Promise<void>
+  continueInterruptedThread?(threadId: string): Promise<void>
   resumeAfterMaintenance?(): Promise<void>
   freezeForBackup?(): Promise<void>
   assertNoPendingSends?(): void
@@ -535,6 +540,7 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async shutdown(): Promise<void> {
+    await this.#rememberInterruptedWork()
     await this.#asks.stop()
     await this.#cancelUsage()
     this.#usageAttempt.clear()
@@ -610,6 +616,7 @@ export class T3EngineClient implements EngineReadClient {
         })) : []
         return {
           id: thread.id,
+          ...(this.#reading.recovery?.[thread.id] ? { recovery: this.#reading.recovery[thread.id] } : {}),
           engineIdentity: this.#identity,
           projectId: thread.projectId,
           title: thread.title,
@@ -1697,11 +1704,16 @@ export class T3EngineClient implements EngineReadClient {
   }
   async resumeAfterMaintenance(): Promise<void> { this.#asks.policy(!this.#backgroundAllowed, false); this.#operations.resume(); await this.#operations.run(() => this.#retryPendingCommands()) }
 
-  async prepareLocalSetup(): Promise<void> {
+  async prepareLocalSetup(allowContinuation = false): Promise<void> {
     await this.#operations.switch(async () => {
       const response = await this.#request(T3_HTTP.shell)
       const shell = shellSnapshot.parse(await response.json())
-      if (shell.threads.some(thread => thread.session?.status === 'running' || thread.session?.status === 'starting')) throw new Error('Wait for active conversations before changing this computer.')
+      if (shell.threads.some(thread => thread.session?.status === 'running' || thread.session?.status === 'starting')) {
+        const enabled = allowContinuation && (await this.readSettings()).continueThreadsAfterServerUpdate === true
+        if (!enabled) throw new Error('Wait for active conversations before changing this computer, or enable continuation after restart.')
+        this.assertNoPendingSends()
+        await this.#rememberInterruptedWork()
+      }
       this.#reserveLocalSetup()
       this.#asks.policy(true, true)
       void this.#asks.stop()
@@ -1736,6 +1748,47 @@ export class T3EngineClient implements EngineReadClient {
       await this.#dispatch({ type: 'project.meta.update', commandId: `strata-project-defaults-${randomUUID()}`, projectId: edit.projectId, ...patch })
       return this.readProjectDefaults(edit.projectId)
     }))
+  }
+
+  async #rememberInterruptedWork(): Promise<void> {
+    let changed = false
+    for (const thread of this.#shell?.threads ?? []) {
+      if (!['running', 'starting'].includes(thread.session?.status ?? '')) continue
+      const prior = this.#reading.recovery?.[thread.id]
+      if (prior?.state === 'reconnecting' || prior?.state === 'waiting') continue
+      this.#reading.recovery ??= {}
+      this.#reading.recovery[thread.id] = { priorTurnId: thread.session?.activeTurnId ?? null, state: 'reconnecting' }
+      changed = true
+    }
+    if (changed) await this.#writeReading()
+  }
+
+  async continueInterruptedThread(threadId: string): Promise<void> {
+    await this.#operations.run(async () => {
+      if (!this.#reachable()) throw new Error('Reconnect before continuing interrupted work.')
+      await this.#refreshThread(threadId)
+      const thread = this.#threads.get(threadId)?.detail?.thread
+      const recovery = this.#reading.recovery?.[threadId]
+      if (thread && recovery?.messageId && thread.messages.some(message => message.id === recovery.messageId)) { recovery.state = 'continued'; recovery.source = 'message'; await this.#writeReading(); this.#publish(); return }
+      if (!thread || !recovery || recovery.state !== 'failed') throw new Error('The engine has not reported a failed recovery for this thread. Check its status before continuing.')
+      if (['running', 'starting'].includes(thread.session?.status ?? '')) throw new Error('This conversation already has active work. No continuation was sent.')
+      const latest = thread.latestTurn as { turnId?: string; state?: string } | null
+      if (latest?.state === 'completed' && latest.turnId === recovery.priorTurnId) throw new Error('This work already completed. No continuation was sent.')
+      this.assertNoPendingSends()
+      recovery.messageId ??= randomUUID()
+      recovery.commandId ??= `strata-recovery-${recovery.messageId}`
+      recovery.createdAt ??= new Date(this.#now()).toISOString()
+      recovery.state = 'waiting'; recovery.source = 'message'; delete recovery.failure
+      await this.#writeReading(); this.#publish()
+      try {
+        await this.#dispatch(turnStartCommand.parse({ type: 'thread.turn.start', commandId: recovery.commandId, threadId, createdAt: recovery.createdAt,
+          message: { messageId: recovery.messageId, role: 'user', text: 'Continue where you left off.', attachments: [] },
+          modelSelection: thread.modelSelection, runtimeMode: thread.runtimeMode, interactionMode: thread.interactionMode,
+        }))
+        recovery.state = 'continued'
+      } catch (error) { recovery.state = 'failed'; recovery.failure = error instanceof Error ? error.message : String(error); throw error }
+      finally { this.#reading.recovery![threadId] = recovery; await this.#writeReading(); this.#publish() }
+    })
   }
 
   async readSettings(): Promise<EngineSettings> {
@@ -2227,6 +2280,7 @@ export class T3EngineClient implements EngineReadClient {
 
   #onSocketClosed(socket: EngineSocket, reason: string): void {
     if (this.#socket !== socket) return
+    void this.#rememberInterruptedWork().catch(error => logError('engine', 'Interrupted work could not be saved', error))
     this.#socket = null
     this.#shellStream = null
     this.#previewStream = null
@@ -2797,6 +2851,15 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   #publish(): void {
+    let recoveryChanged = false
+    for (const thread of this.#shell?.threads ?? []) {
+      const previous = this.#reading.recovery?.[thread.id]
+      if (!previous) continue
+      const next = reconcileThreadRecovery(previous, { ...thread, messages: this.#threads.get(thread.id)?.detail?.thread.messages }, this.#reachable())
+      if (JSON.stringify(previous) !== JSON.stringify(next)) { this.#reading.recovery![thread.id] = next; recoveryChanged = true }
+    }
+    if (recoveryChanged) void this.#writeReading().catch(error => logError('engine', 'Recovery status could not be saved', error))
+
     // A phone or another client can start a turn without using Strata's dispatch path.
     // Stop only our reader as soon as that active session reaches the subscription.
     for (const thread of this.#shell?.threads ?? []) {
@@ -2906,7 +2969,9 @@ export class T3EngineClient implements EngineReadClient {
       if (value.formatVersion !== 1 || (value.activeThreadId !== null && typeof value.activeThreadId !== 'string') || !value.lastVisited || typeof value.lastVisited !== 'object') return this.#reading
       const attention: Record<string, number> = {}
       if (value.attention && typeof value.attention === 'object') for (const [threadId, count] of Object.entries(value.attention)) if (typeof count === 'number' && count > 0) attention[threadId] = count
-      return { formatVersion: 1, activeThreadId: value.activeThreadId ?? null, lastVisited: value.lastVisited as Record<string, number>, attention }
+      const recovery: Record<string, ThreadRecovery> = {}
+      for (const [id, raw] of Object.entries(value.recovery ?? {})) { const parsed = threadRecoverySchema.safeParse(raw); if (parsed.success) recovery[id] = parsed.data }
+      return { formatVersion: 1, activeThreadId: value.activeThreadId ?? null, lastVisited: value.lastVisited as Record<string, number>, attention, recovery }
     } catch {
       return this.#reading
     }

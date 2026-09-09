@@ -183,6 +183,7 @@ const api: StrataApi & {
   stageConversationAttachment: (input) => invoke<{ id: string; sizeBytes: number }>(IPC.stageConversationAttachment, input),
   discardConversationAttachment: (id) => invoke<void>(IPC.discardConversationAttachment, id),
   retainConversationAttachments: (ids) => invoke<void>(IPC.retainConversationAttachments, ids),
+  continueInterruptedThread: threadId => invoke<void>(IPC.continueInterruptedThread, threadId),
   compactContext: (threadId, input) => invoke<void>(IPC.compactContext, threadId, input),
   stopConversationTurn: (threadId) => invoke<void>(IPC.stopConversationTurn, threadId),
   answerEngineApproval: (threadId, requestId, decision) => invoke<void>(IPC.answerEngineApproval, threadId, requestId, decision),

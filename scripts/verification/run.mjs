@@ -159,7 +159,7 @@ try {
       report.bundleIdentity = await fingerprint(join(candidate, 'build/engine'), await filesIn(join(candidate, 'build/engine')))
       env.STRATAMD_E2E_ENGINE_BUNDLE = join(candidate, 'build/engine')
       env.STRATAMD_ENGINE_BUNDLE = join(candidate, 'build/engine')
-      await run('unit integration', './node_modules/.bin/vitest', ['run', 'test/integration/managed-engine.test.ts', 'test/integration/managed-attachments.test.ts', 'test/integration/managed-connections.test.ts', 'test/integration/managed-settings.test.ts', 'test/integration/engine-upgrade.test.ts', '--reporter=default', '--reporter=json', '--reporter=./scripts/verification/unit-reporter.mjs', `--outputFile=${join(output, 'unit.json')}`])
+      await run('unit integration', './node_modules/.bin/vitest', ['run', 'test/integration/managed-engine.test.ts', 'test/integration/managed-continuation.test.ts', 'test/integration/managed-attachments.test.ts', 'test/integration/managed-connections.test.ts', 'test/integration/managed-settings.test.ts', 'test/integration/engine-upgrade.test.ts', '--reporter=default', '--reporter=json', '--reporter=./scripts/verification/unit-reporter.mjs', `--outputFile=${join(output, 'unit.json')}`])
     }
     if (mode === 'packaged') {
       await run('package preparation', process.execPath, ['scripts/build-packaged.mjs', join(output, 'package')])

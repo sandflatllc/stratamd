@@ -2539,3 +2539,8 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 
 .document-stage:has(.document-replacement) { flex-wrap: wrap; }
 .document-replacement { flex-basis: 100%; color: var(--muted); margin: 0 0 16px; }
+
+
+.restart-continuation-choice { display: flex; align-items: center; gap: 12px; }
+.thread-recovery-notice[data-state="failed"] { border: 1px solid var(--controls-danger); }
+.thread-recovery-notice button { background: transparent; color: var(--text); font-weight: 700; }

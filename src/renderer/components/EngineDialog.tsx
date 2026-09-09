@@ -1,3 +1,4 @@
+import { RestartContinuationSetting } from './RestartContinuationSetting'
 import { EngineRecovery } from './EngineRecovery'
 import { ComputerControls } from './ComputerControls'
 import { useState, type ReactNode } from 'react'
@@ -94,6 +95,7 @@ export function EngineDialog({ engine, onPair, onReconnect, onClose, onOpenAccou
           </div>
         </form>
         </details>
+        {engine.state === 'connected' && <RestartContinuationSetting />}
         {children}
     </SetupDialog>
   )

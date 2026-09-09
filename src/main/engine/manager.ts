@@ -20,7 +20,7 @@ export interface EngineManagerOptions {
   authenticate(address: string): Promise<boolean>
   reconnect(): Promise<void>
   changed(view: ManagedEngineView): void
-  reserveChange?(): Promise<() => Promise<void>>
+  reserveChange?(reason?: 'upgrade' | 'restore' | 'restart'): Promise<() => Promise<void>>
   captureState?(directory: string): Promise<void>
   restoreState?(directory: string): Promise<void>
   healthyIntervalMs?: number
@@ -169,7 +169,7 @@ export class LocalEngineManager {
     let release: (() => Promise<void>) | undefined
     let backup: EngineBackup | undefined
     try {
-      try { release = await this.#options.reserveChange?.() } catch (error) {
+      try { release = await this.#options.reserveChange?.('upgrade') } catch (error) {
         this.#pendingRuntime = runtime
         this.#publish({ problem: `Engine update is waiting. ${String(error)}` }); return
       }
@@ -208,7 +208,7 @@ export class LocalEngineManager {
     const bundled = JSON.parse(await readFile(join(this.#options.bundle, 'runtime.json'), 'utf8'))
     this.#changing = true
     try {
-      release = await this.#options.reserveChange?.()
+      release = await this.#options.reserveChange?.('restore')
       await this.#halt(false)
       archive = await createEngineBackup(this.#options.directory, current, 'newer-work', this.#options.captureState ?? (async () => undefined))
       await atomicWriteFile(join(this.#options.directory, 'transition.json'), JSON.stringify({ backupId: backup.id, targetVersion: backup.version }))
@@ -326,7 +326,21 @@ export class LocalEngineManager {
     this.#publish({ state: 'recovering' })
     this.#restartTimer = setTimeout(() => { this.#restartTimer = null; void this.start() }, [1000, 3000, 10_000][this.#attempt++]!)
   }
-  async restart(): Promise<void> { await this.stop(); this.#attempt = 0; await this.start() }
+  async restart(): Promise<void> {
+    // Automatic crash recovery may already be bootstrapping its replacement.
+    await this.#starting
+    await this.#runTransition(async () => {
+      const release = await this.#options.reserveChange?.('restart')
+      this.#changing = true
+      try {
+        await this.#halt(false)
+        this.#attempt = 0; this.#stopping = false
+        if (this.#record) await this.#launch(await this.#runtime(this.#record.version), join(this.#options.directory, 't3'))
+        else await this.start()
+      } catch (error) { this.#publish({ state: 'failed', problem: String(error) }); throw error }
+      finally { this.#changing = false; await release?.() }
+    })
+  }
   async stop(): Promise<void> {
     this.#stopping = true
     if (this.#healthTimer) clearInterval(this.#healthTimer)
