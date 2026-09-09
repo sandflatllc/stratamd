@@ -2455,3 +2455,10 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .connection-diagnostics { margin-block: 18px; }
 .local-engine-status { margin-top: 0; }
 .pairing-qr { display: block; width: 240px; max-width: 100%; height: auto; background: white; margin-block: 12px; }
+
+.custom-model-editor { display: grid; gap: 10px; padding: 12px; margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; }
+.custom-model-editor h3 { margin: 0 0 8px; }
+.custom-model-option { display: contents; }
+.custom-model-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.custom-model-invalid { color: var(--controls-danger); font-size: 12px; }
+.custom-model-editor [aria-invalid="true"] { border-color: var(--controls-danger); }

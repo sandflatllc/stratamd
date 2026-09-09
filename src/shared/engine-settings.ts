@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { customModelSchema } from './custom-models'
 import type { EngineSettings, ProviderInstanceSettings } from './contracts'
 
 const option = z.object({ id: z.string().min(1), value: z.union([z.string(), z.boolean()]) }).strict()
@@ -29,7 +30,7 @@ export const providerEnvironmentSchema = z.array(z.object({ name: z.string().reg
 export const providerPatchSchema = z.object({
   driver: z.string().min(1).max(64).optional(), displayName: z.string().trim().min(1).max(256).optional(), enabled: z.boolean().optional(),
   accentColor: z.string().regex(/^(?:|#[0-9a-fA-F]{6})$/).optional(), environment: providerEnvironmentSchema.optional(),
-  config: z.object({ binaryPath: z.string().optional(), homePath: z.string().optional(), shadowHomePath: z.string().optional(), launchArgs: z.string().optional(), autoCompactWindow: z.string().regex(/^(?:|[1-9]\d{5}|1000000)$/).optional(), apiEndpoint: z.string().optional(), serverUrl: z.string().optional(), serverPassword: z.string().optional(), customModels: z.array(z.string().trim().min(1).max(512)).max(256).optional() }).strict().optional(),
+  config: z.object({ binaryPath: z.string().optional(), homePath: z.string().optional(), shadowHomePath: z.string().optional(), launchArgs: z.string().optional(), autoCompactWindow: z.string().regex(/^(?:|[1-9]\d{5}|1000000)$/).optional(), apiEndpoint: z.string().optional(), serverUrl: z.string().optional(), serverPassword: z.string().optional(), customModels: z.array(customModelSchema).max(256).optional() }).strict().optional(),
 }).strict()
 const record = z.record(z.string(), z.unknown())
 export const engineSettingsEditSchema = z.object({ identity: z.string().nullable(), base: record, patch: engineSettingsPatchSchema }).strict()

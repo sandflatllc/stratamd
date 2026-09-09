@@ -1,3 +1,4 @@
+import { supportsOption } from '../shared/custom-models'
 import { accountForModel } from '../core/accountState'
 import { engineStorage, engineStorageKey } from './engineStorage'
 import { flagshipModel } from '../shared/modelSelection'
@@ -162,8 +163,8 @@ export function availableModels(engine: EngineView): EngineModelView[] {
 }
 export function defaultOptions(model?: EngineModelView): ModelOption[] {
   return (model?.options ?? []).flatMap((descriptor) => {
-    const value = descriptor.currentValue ?? descriptor.options?.find((option) => option.isDefault)?.id
-    return value === undefined ? [] : [{ id: descriptor.id, value }]
+    const value = supportsOption(descriptor, descriptor.currentValue) ? descriptor.currentValue : descriptor.options?.find(option => option.isDefault)?.id
+    return supportsOption(descriptor, value) ? [{ id: descriptor.id, value }] : []
   })
 }
 export function selectionForModel(model: EngineModelView, access: ComposerSelection['access'], previous?: ComposerSelection): ComposerSelection {
@@ -171,7 +172,7 @@ export function selectionForModel(model: EngineModelView, access: ComposerSelect
   if (previous?.instanceId === model.instanceId) {
     for (const option of previous.options ?? []) {
       const descriptor = model.options.find(descriptor => descriptor.id === option.id)
-      const supported = descriptor?.type === 'boolean' ? typeof option.value === 'boolean' : descriptor?.options?.some(value => value.id === option.value)
+      const supported = descriptor && supportsOption(descriptor, option.value)
       if (!supported) continue
       const index = options.findIndex(value => value.id === option.id)
       if (index === -1) options.push(option)

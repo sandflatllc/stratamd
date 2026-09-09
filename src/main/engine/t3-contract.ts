@@ -207,7 +207,7 @@ export const providerUsageWindow = z.object({ usedPercent: z.number().min(0).max
 export const providerUsage = z.object({ session: providerUsageWindow.nullable(), weekly: providerUsageWindow.nullable(), planLabel: id.optional(), applicable: z.boolean() }).passthrough()
 export const serverProviderAuth = z.object({ status: z.enum(['authenticated', 'unauthenticated', 'unknown']), type: id.optional(), label: id.optional(), email: id.optional() }).passthrough()
 const optionDescriptor = z.object({
-  id, label: id, type: z.enum(['select', 'boolean']), currentValue: z.union([z.string(), z.boolean()]).optional(),
+  id, label: id, description: z.string().optional(), promptInjectedValues: z.array(z.string()).optional(), type: z.enum(['select', 'boolean']), currentValue: z.union([z.string(), z.boolean()]).optional(),
   options: z.array(z.object({ id, label: id, description: z.string().optional(), isDefault: z.boolean().optional() })).optional(),
 })
 const providerModel = z.object({ slug: id, name: id, isDefault: z.boolean().optional(), capabilities: z.object({ optionDescriptors: z.array(z.unknown()).transform((items) => items.flatMap((item) => { const parsed = optionDescriptor.safeParse(item); return parsed.success ? [parsed.data] : [] })).optional() }).nullable().optional() })

@@ -1,3 +1,4 @@
+import { validatedModelOptions } from '../../shared/custom-models'
 import { legacyCommentNote, sentCommentsFromDelivery } from '../../core/sent-comments'
 import { installRelayClient } from './relay-install'
 import { accountForModel } from '../../core/accountState'
@@ -935,6 +936,8 @@ export class T3EngineClient implements EngineReadClient {
     if (catalog.length && !catalog.some(model => model.slug === input.model)) throw new Error(`Model ${input.model} is not available on subscription ${instanceId}.`)
     // Validate routing before uploading files or consuming queued replies.
     await this.#resolveInstance(thread.projectId, instanceId, input.model)
+    const selectedModel = catalog.find(model => model.slug === input.model)
+    const options = validatedModelOptions(selectedModel, input.options ?? turnOptions(input, thread, selectedModel))
     // A conversation Send carries the queued item replies as its attachment (§5.4), keyed by item id; the text stays the owner's note.
     const state = this.#conversations.threads[threadId]
     if (input.context && (input.context.threadId !== threadId || input.context.deliveryId !== input.messageId)) throw new Error('Conversation context belongs to another delivery')
@@ -1047,7 +1050,7 @@ export class T3EngineClient implements EngineReadClient {
       ...(workspace ? { bootstrap: { prepareWorktree: { projectCwd: this.#shell!.projects.find(project => project.id === thread.projectId)!.workspaceRoot, baseBranch: workspace.baseBranch, branch: `t3/${randomUUID().replaceAll('-', '').slice(0, 8)}`, startFromOrigin: workspace.startFromOrigin }, runSetupScript: true } } : {}),
       type: 'thread.turn.start', commandId: input.commandId ?? `strata-${messageId}`, threadId, createdAt: new Date(this.#now()).toISOString(),
       message: { messageId, role: 'user', text: appendVisualContext(text, briefs), attachments: [] },
-      modelSelection: { instanceId, model: input.model, options: input.options ?? turnOptions(input, thread, this.#models.find(model => model.instanceId === instanceId && model.slug === input.model)) },
+      modelSelection: { instanceId, model: input.model, options },
       runtimeMode: input.access, interactionMode: thread.interactionMode,
     })
     const current = state ?? emptyConversationState()
@@ -1419,12 +1422,13 @@ export class T3EngineClient implements EngineReadClient {
       return threadId
     }
     const instanceId = await this.#resolveInstance(input.projectId, input.instanceId ?? null, input.model)
+    const options = validatedModelOptions(this.#models.find(model => model.instanceId === instanceId && model.slug === input.model), input.options ?? (input.effort ? [{ id: 'effort', value: input.effort }] : []))
     if (input.workspace) {
       this.#conversations.threads[threadId] = { ...(this.#conversations.threads[threadId] ?? emptyConversationState()), workspace: worktreeRequest.parse(input.workspace) }
       await writeConversationsStore(this.#conversationsPath, this.#conversations)
     }
     await this.#dispatch(threadCreateCommand.parse({ type: 'thread.create', commandId: `strata-create-${threadId}`, threadId, projectId: input.projectId, title: input.title,
-      modelSelection: { instanceId, model: input.model, options: input.options ?? (input.effort ? [{ id: 'effort', value: input.effort }] : []) }, runtimeMode: input.access,
+      modelSelection: { instanceId, model: input.model, options }, runtimeMode: input.access,
       interactionMode: 'default', branch: input.branch ?? null, worktreePath: input.worktreePath ?? null, createdAt: new Date(this.#now()).toISOString() }))
     await this.openThread(threadId)
     return threadId

@@ -225,6 +225,8 @@ export interface EngineActivityView {
 
 export interface ModelOption { id: string; value: string | boolean }
 export interface ModelOptionDescriptor {
+  description?: string | undefined
+  promptInjectedValues?: string[] | undefined
   id: string
   label: string
   type: 'select' | 'boolean'
