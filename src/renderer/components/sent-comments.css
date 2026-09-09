@@ -1,0 +1,21 @@
+.conversation-sent-comments { margin-top: 12px; font-size: calc(15px * var(--zoom, 1)); }
+.conversation-panel[data-placement="center"] .conversation-sent-comments { font-size: calc(17px * var(--zoom, 1)); }
+.conversation-sent-comment + .conversation-sent-comment { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 18px; }
+.conversation-sent-quote { border-left: 3px solid var(--document-quote); border-radius: 0 6px 6px 0; padding: 8px 12px; background: color-mix(in srgb, var(--surfaces-transcript) 32%, transparent); }
+.conversation-sent-quote-label { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 4px; color: var(--muted); font-size: .75em; }
+.conversation-sent-quote-label button { border: 0; padding: 0; background: none; color: var(--controls-primary-highlight); font: inherit; cursor: pointer; }
+.conversation-sent-quote-label button:hover { text-decoration: underline; }
+.conversation-sent-quote blockquote { margin: 0; }
+.conversation-sent-quote .conversation-prose { color: var(--document-quote); font-size: .95em; }
+.conversation-sent-quote .conversation-prose > :first-child { margin-top: 0; }
+.conversation-sent-quote .conversation-prose > :last-child { margin-bottom: 0; }
+.conversation-sent-response { margin: 10px 0 0; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+.sent-passage-dialog { display: flex; flex-direction: column; width: min(780px, calc(100vw - 48px)); max-height: calc(100vh - 64px); min-height: 0; border: 1px solid var(--line); border-radius: 14px; background: var(--surfaces-panel); color: var(--text); overflow: hidden; }
+.sent-passage-dialog > header { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 22px; border-bottom: 1px solid var(--line); }
+.sent-passage-dialog > header strong { color: var(--document-headings); font-size: calc(19px * var(--zoom, 1)); }
+.sent-passage-dialog > header button { border: 1px solid var(--line); border-radius: 7px; padding: 4px 12px; background: var(--surfaces-user-message); color: var(--text); cursor: pointer; }
+.sent-passage-body { overflow: auto; min-height: 0; padding: 18px 22px; font-size: calc(17px * var(--zoom, 1)); }
+
+::highlight(sent-passage) { background: var(--selection-background); color: var(--selection-text); }
+.conversation-message.user[data-sent-comments] { padding: 14px 18px 18px; }
+.conversation-panel[data-placement="side"] .conversation-message.user[data-sent-comments] { width: 100%; padding: 10px 12px 12px; }

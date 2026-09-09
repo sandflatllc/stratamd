@@ -24,6 +24,7 @@ export const T3_RPC = {
   cloneRepository: 'sourceControl.cloneRepository',
   readSettings: 'server.getSettings',
   createAttachmentUploadUrl: 'attachments.createUploadUrl',
+  createAssetUrl: 'assets.createUrl',
   previewAutomationConnect: 'previewAutomation.connect',
   previewAutomationRespond: 'previewAutomation.respond',
 } as const
@@ -50,6 +51,7 @@ export const tokenExchangeResult = z.object({
   scope: id,
 }).passthrough()
 export const websocketTicketResult = z.object({ ticket: id, expiresAt: isoDate }).passthrough()
+export const assetUrlResult = z.object({ relativeUrl: id, expiresAt: z.number() }).passthrough()
 export const attachmentUploadResult = z.object({ attachmentId: id, relativeUrl: id, expiresAt: z.number() }).passthrough()
 
 export const modelOption = z.object({ id: z.string(), value: z.unknown() }).passthrough()

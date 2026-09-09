@@ -204,6 +204,8 @@ export interface EngineMessageView {
   /** T3's last write to the message; the end of a turn's final answer when timing a fold. */
   updatedAt?: string
   attachmentCount: number
+  /** Exact passage feedback from this message's frozen delivery. */
+  sentComments?: import("../core/sent-comments").SentComments
   /** Immutable markdown blocks, namespaced by the stable message id. */
   blocks?: Array<{ id: string; from: number; to: number; text: string }>
   prose?: string

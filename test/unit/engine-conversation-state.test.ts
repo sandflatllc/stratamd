@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { anchorAsks, askSourceHash } from '../../src/core/asks'
+import { conversationDelivery, messageAnchor, renderConversationDelivery } from '../../src/core/conversation-delivery'
 import { T3EngineClient } from '../../src/main/engine/client'
 import { fakeEngineServer } from './support/fake-engine-socket'
 
@@ -17,15 +18,17 @@ const thread = {
 const shell = { snapshotSequence: 10, projects: [{ id: 'p1', title: 'Project', workspaceRoot: '/work', defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at }], threads: [thread], updatedAt: at }
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve))
 
-function engine() {
+function engine(saved?: { messageId: string; text: string; body: string; unavailable?: boolean }) {
   let failUploads = false
   let failDispatch = false
   const commands: Array<Record<string, unknown>> = []
   const uploads: string[] = []
   const messages: unknown[] = [{ id: 'm1', role: 'assistant', text: questions, attachments: [], turnId: 'turn-1', streaming: false, createdAt: at, updatedAt: at }]
-  const server = fakeEngineServer((tag) => tag.startsWith('orchestration.subscribe') ? [{ kind: 'synchronized' }] : tag === 'attachments.createUploadUrl' ? { attachmentId: `upload-${uploads.length + 1}`, relativeUrl: '/upload/next', expiresAt: 1 } : null)
+  if (saved) messages.push({ id: saved.messageId, role: 'user', text: saved.text, attachments: [{ id: 'legacy-file', type: 'file', name: `conversation-${saved.messageId}.md`, mimeType: 'text/markdown', sizeBytes: saved.body.length }], turnId: 'turn-2', streaming: false, createdAt: at, updatedAt: at })
+  const server = fakeEngineServer((tag) => tag === 'assets.createUrl' ? { relativeUrl: '/api/assets/signed/context.md', expiresAt: 1 } : tag.startsWith('orchestration.subscribe') ? [{ kind: 'synchronized' }] : tag === 'attachments.createUploadUrl' ? { attachmentId: `upload-${uploads.length + 1}`, relativeUrl: '/upload/next', expiresAt: 1 } : null)
   const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input)
+    if (url.endsWith('/api/assets/signed/context.md')) return new Response(saved?.body ?? '', { status: saved?.unavailable ? 404 : 200 })
     if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
     if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
     if (url.endsWith('/upload/next')) { if (failUploads) return new Response('', { status: 503 }); uploads.push(new TextDecoder().decode(init?.body as Uint8Array)); return new Response('', { status: 200 }) }
@@ -125,7 +128,12 @@ it('recovers rejected uploads after restart with frozen comments and replies, pr
   expect(second.view().projects[0]!.threads[0]!.items!.find(candidate => candidate.id === item.id)?.draftReply).toBe('Later reply')
   fake.acknowledge('delivery-frozen', 'Saved note')
   await vi.waitFor(() => expect(second.view().projects[0]!.threads[0]!.comments![0]!.state).toBe('open'))
+  const sent = second.view().projects[0]!.threads[0]!.messages.find(message => message.id === 'delivery-frozen')!.sentComments
+  expect(sent).toMatchObject({ note: 'Saved note', comments: [{ id, text: 'A multiline\ncomment', selection: questions.slice(3, 30) }] })
   await second.shutdown()
+  const third = new T3EngineClient(options); await third.initialize(); await third.openThread('t1')
+  expect(third.view().projects[0]!.threads[0]!.messages.find(message => message.id === 'delivery-frozen')!.sentComments).toEqual(sent)
+  await third.shutdown()
 })
 
 it('reuses uploaded references and command identity after a lost dispatch response', async () => {
@@ -224,4 +232,36 @@ it('holds two comments through restart, quick-sends a third, then sends only one
   expect(fake.uploads[1]).not.toContain('Second stays')
   expect(second.view().projects[0]!.threads[0]!.comments?.find(comment => comment.id === two)?.state).toBe('held')
   await second.shutdown()
+})
+
+for (const unavailable of [false, true]) it(`restores legacy sent feedback from its attachment, unavailable=${unavailable}`, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'strata-sent-history-'))
+  const seed = engine()
+  const sourceClient = new T3EngineClient({ dataDirectory: directory, fetch: seed.fetch, webSocket: seed.server.WebSocket })
+  await sourceClient.pair('http://engine.test', 'code'); await sourceClient.openThread('t1')
+  const message = sourceClient.view().projects[0]!.threads[0]!.messages[0]!
+  const annotation = { id: 'c_old', anchor: messageAnchor(message, 3, 30), selection: questions.slice(3, 30), text: 'Exactly what I said.\nAnd this.', source: questions, kind: 'comment' as const, state: 'open' as const, revision: 1, replies: [] }
+  const body = renderConversationDelivery(conversationDelivery('t1', 'old-send', [annotation], {}, [message], []))
+  await sourceClient.shutdown()
+  const fake = engine({ messageId: 'old-send', text: 'Comments on 1 passages.', body, unavailable })
+  const options = { dataDirectory: directory, fetch: fake.fetch, webSocket: fake.server.WebSocket, publishDelayMs: 0 }
+  const client = new T3EngineClient(options)
+  const published = vi.fn(); client.subscribe(published)
+  await client.initialize(); await client.openThread('t1')
+  const sentMessage = () => client.view().projects[0]!.threads[0]!.messages.find(message => message.id === 'old-send')!
+  if (unavailable) {
+    await client.shutdown()
+    expect(sentMessage().sentComments).toBeUndefined()
+    expect(sentMessage().text).toBe('Comments on 1 passages.')
+  } else {
+    await vi.waitFor(() => expect(sentMessage().sentComments).toMatchObject({ note: '', comments: [{ selection: annotation.selection, text: annotation.text }] }))
+    await vi.waitFor(() => expect(published.mock.calls.some(([view]) => view.projects[0]?.threads[0]?.messages.some((message: { sentComments?: unknown }) => message.sentComments))).toBe(true))
+    await client.shutdown()
+    // Once restored, history is independent of attachment availability and current comment records.
+    const offline = engine({ messageId: 'old-send', text: 'Comments on 1 passages.', body: '', unavailable: true })
+    const restarted = new T3EngineClient({ ...options, fetch: offline.fetch, webSocket: offline.server.WebSocket })
+    await restarted.initialize(); await restarted.openThread('t1')
+    expect(restarted.view().projects[0]!.threads[0]!.messages.find(message => message.id === 'old-send')!.sentComments?.comments[0]?.text).toBe(annotation.text)
+    await restarted.shutdown()
+  }
 })

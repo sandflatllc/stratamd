@@ -1,3 +1,4 @@
+import { SentComments } from './SentComments'
 import { useHeldUserInputs } from '../useHeldUserInputs'
 import { holdConversationContext } from '../focusConversationComposer'
 import { ConversationMessage } from './ConversationMessage'
@@ -445,14 +446,16 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
               return <Fragment key={row.id}>{foldRow}<WorkGroup group={group} expanded={expanded} onToggle={() => setExpandedWork((value) => ({ ...value, [group.id]: !expanded }))} /></Fragment>
             }
             const message = row.message
-            const prose = message.prose ?? message.text
+            const sentComments = message.role === 'user' ? message.sentComments : undefined
+            const prose = sentComments?.note ?? message.prose ?? message.text
             const blocks = message.blocks ?? []
             const longUserMessage = message.role === 'user' && shouldCollapseUserMessage(prose)
             const messageExpanded = expandedMessages[message.id] ?? false
-            return <Fragment key={row.id}>{foldRow}<article className={`conversation-message ${message.role}`} data-history-row data-message-id={message.id} data-streaming={message.streaming || undefined} data-turn-trace={hidden || undefined}>
-              <small>{message.role === 'assistant' ? 'Agent' : message.role === 'user' ? 'You' : 'System'}{message.role === 'user' && <span className="conversation-chip">{message.attachmentCount > 0 ? `${message.attachmentCount} attached` : 'Message'}</span>}{message.role === 'assistant' && <button type="button" className="conversation-copy" aria-label="Copy assistant message" onClick={() => onCopyText?.(prose)}>Copy</button>}</small>
+            return <Fragment key={row.id}>{foldRow}<article className={`conversation-message ${message.role}`} data-history-row data-message-id={message.id} data-sent-comments={sentComments ? '' : undefined} data-streaming={message.streaming || undefined} data-turn-trace={hidden || undefined}>
+              <small>{message.role === 'assistant' ? 'Agent' : message.role === 'user' ? 'You' : 'System'}{message.role === 'user' && <span className="conversation-chip">{sentComments ? `${sentComments.comments.length} comment${sentComments.comments.length === 1 ? '' : 's'}${message.attachmentCount > 1 ? ` · ${message.attachmentCount - 1} attached` : ''}` : message.attachmentCount > 0 ? `${message.attachmentCount} attached` : 'Message'}</span>}{message.role === 'assistant' && <button type="button" className="conversation-copy" aria-label="Copy assistant message" onClick={() => onCopyText?.(prose)}>Copy</button>}</small>
               <div className={longUserMessage && !messageExpanded ? 'conversation-user-collapsed' : undefined} data-annotatable={message.role === 'assistant' && !message.streaming || undefined} data-block-ids={blocks.map((block) => block.id).join(' ')}>{message.role === 'assistant' && !message.streaming ? <ConversationMessage message={message} asks={asksByMessage.get(message.id) ?? NO_ASKS} comments={commentsByMessage.get(message.id) ?? NO_COMMENTS} pinned={workspace.selection?.message === message.id || workspace.discussion?.anchor.message === message.id || workspace.answerMessage === message.id} target={workspace.target} root={selected.root} folds={workspace.folds(message.id)} {...callbacksFor(message.id)} /> : <MessageMarkdown text={prose} />}</div>
               {longUserMessage && <button type="button" className="conversation-message-toggle" aria-expanded={messageExpanded} onClick={() => setExpandedMessages((value) => ({ ...value, [message.id]: !messageExpanded }))}>{messageExpanded ? 'Show less' : 'Show more'}</button>}
+              {sentComments && <SentComments comments={sentComments.comments} />}
               {message.role === 'user' && threadVisual.flatMap(comment => comment.revisions.filter(revision => revision.deliveryId === message.id).map(revision => <div className="conversation-sent-images" key={`${comment.id}:${revision.number}`}>
                 {(revision.images ?? []).map((url, index) => <button type="button" key={url} aria-label={`Inspect annotated image: ${revision.text || comment.title}`} onClick={() => onOpenVisual?.(comment.id)}><img src={url} alt={`Annotated image ${index + 1}: ${revision.text || comment.title}`} style={{ display: 'block', maxWidth: '100%', height: 'auto' }} /></button>)}
               </div>))}

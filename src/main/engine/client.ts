@@ -1,3 +1,4 @@
+import { legacyCommentNote, sentCommentsFromDelivery } from '../../core/sent-comments'
 import { installRelayClient } from './relay-install'
 import { accountForModel } from '../../core/accountState'
 import type { ComposeCommentImage } from '../visual-comment-image'
@@ -20,6 +21,7 @@ import {
   pairingCredentialResult,
   websocketTicketResult,
   attachmentUploadResult,
+  assetUrlResult,
   turnStartCommand,
   turnInterruptCommand,
   threadCreateCommand,
@@ -336,6 +338,7 @@ export class T3EngineClient implements EngineReadClient {
   #readingPath: string
   #commandsPath: string
   #accountsPath: string
+  #restoringComments = new Set<string>()
   #conversationsPath: string
   #staged: StagedAttachmentStore
   readonly #composeCommentImage: ComposeCommentImage
@@ -561,6 +564,7 @@ export class T3EngineClient implements EngineReadClient {
           createdAt: message.createdAt,
           updatedAt: message.updatedAt,
           attachmentCount: message.attachments?.length ?? 0,
+          ...(message.role === 'user' && this.#conversations.threads[thread.id]?.sentComments?.[message.id] ? { sentComments: this.#conversations.threads[thread.id]!.sentComments![message.id]! } : {}),
           ...(!message.streaming && message.role === 'assistant' ? (() => { projected.add(message.id); let cached = this.#messageCache.get(message.id); if (!cached || cached.text !== message.text) { const parsed = parseStrataBlock(message.text); const prose = parsed?.prose ?? message.text; cached = { text: message.text, prose, blocks: mapMarkdownBlocks(`message:${message.id}`, prose).blocks, visualReplies: visualRepliesIn(parsed), strata: parsed }; this.#messageCache.set(message.id, cached) } return { prose: cached.prose, blocks: cached.blocks, ...(cached.visualReplies.length ? { visualReplies: cached.visualReplies } : {}) } })() : {}),
         })) : []
         const activities = detailThread?.id === thread.id ? detailThread.activities.map((activity) => ({
@@ -1029,10 +1033,11 @@ export class T3EngineClient implements EngineReadClient {
       for (const id of storedSheets) await this.#evidence.discard(id).catch(() => undefined)
       throw error
     }
-    const text = input.text.trim() || (frozen.length ? visualSendSummary(frozen.map(({ revision }) => revision)) : queued ? `Replies to ${Object.keys(queued).length} item${Object.keys(queued).length === 1 ? '' : 's'}.` : comments.length ? `Comments on ${comments.length} passages.` : userAttachments.length ? attachmentSummary(userAttachments) : outcomes.length ? 'Conversation outcomes.' : '')
+    const text = input.text.trim() || (frozen.length ? visualSendSummary(frozen.map(({ revision }) => revision)) : queued ? `Replies to ${Object.keys(queued).length} item${Object.keys(queued).length === 1 ? '' : 's'}.` : comments.length ? `Comments on ${comments.length} passage${comments.length === 1 ? '' : 's'}.` : userAttachments.length ? attachmentSummary(userAttachments) : outcomes.length ? 'Conversation outcomes.' : '')
     if (!text) throw new Error('Write a message or queue a reply, or attach a file before sending')
     const briefs = frozen.map(({ comment, revision, names }) => visualBrief(comment, revision, names))
     const contextFile: PreparedAttachment | undefined = contextNeeded ? { kind: 'text', name: `conversation-${messageId}.md`, text: renderConversationDelivery(input.context ?? conversationDelivery(threadId, messageId, comments, queued ?? {}, messages, outcomes)) } : undefined
+    const sentComments = contextFile?.kind === 'text' ? sentCommentsFromDelivery(contextFile.text, threadId, messageId, input.text.trim() || frozen.length || queued ? text : '') : null
     const attachmentInputs: PreparedAttachment[] = [
       ...userAttachments.map((attachment): PreparedAttachment => attachment.kind === 'image' ? { kind: 'image', id: attachment.id, name: attachment.name, mimeType: attachment.mimeType, sizeBytes: attachment.sizeBytes } : { kind: 'text', name: attachment.name, text: attachment.text }),
       ...visualAttachments,
@@ -1048,6 +1053,7 @@ export class T3EngineClient implements EngineReadClient {
     const current = state ?? emptyConversationState()
     this.#conversations.threads[threadId] = {
       ...current,
+      ...(sentComments ? { sentComments: { ...current.sentComments, [messageId]: sentComments } } : {}),
       replies: Object.fromEntries(Object.entries(current.replies).filter(([id, reply]) => !queued?.[id] || queued[id]!.text !== reply.text)),
       comments: (current.comments ?? []).map(comment => comments.some(selected => selected.id === comment.id) ? { ...comment, state: 'pending' } : comment),
       pending: [...current.pending, { deliveryId: messageId, itemIds: Object.keys(queued ?? {}), replies: queued ?? {}, commentIds: comments.map(comment => comment.id), outcomeKeys: outcomes.map(outcome => `${outcome.message}:${outcome.index}`), ...(frozen.length ? { visual: frozen.map(({ comment, revision }) => ({ id: comment.id, revision: revision.number })) } : {}) }],
@@ -1283,9 +1289,15 @@ export class T3EngineClient implements EngineReadClient {
       await writeConversationsStore(this.#conversationsPath, this.#conversations)
     }
     const command = turnStartCommand.parse(prepared.command)
+    const state = this.#conversations.threads[threadId]!
+    // Also retain sends prepared by an older build before its upload retry.
+    const context = prepared.attachments.find(attachment => attachment.kind === 'text' && attachment.name === `conversation-${messageId}.md`)
+    if (!state.sentComments?.[messageId] && context?.kind === 'text') {
+      const sent = sentCommentsFromDelivery(context.text, threadId, messageId, visibleVisualMessage(command.message.text))
+      if (sent) { sent.note = legacyCommentNote(sent.note, sent.comments.length); (state.sentComments ??= {})[messageId] = sent; await writeConversationsStore(this.#conversationsPath, this.#conversations) }
+    }
     command.message.attachments = prepared.attachments.map((attachment) => ({ ...attachment.uploaded! }))
     await this.#dispatch(command, `turn:${messageId}`, messageId)
-    const state = this.#conversations.threads[threadId]!
     if (command.bootstrap) delete state.workspace
     state.prepared = (state.prepared ?? []).filter((entry) => entry.messageId !== messageId)
     await writeConversationsStore(this.#conversationsPath, this.#conversations)
@@ -2175,6 +2187,42 @@ export class T3EngineClient implements EngineReadClient {
     entry.sequence = detail.snapshotSequence
     this.#threads.set(threadId, entry)
     this.#reconcileAsks(threadId, askCompletionChanged(previous, detail.thread))
+    const restoreKey = `${identity}:${threadId}`
+    if (!this.#restoringComments.has(restoreKey) && this.#operations.accepting) {
+      this.#restoringComments.add(restoreKey)
+      void this.#operations.run(() => this.#restoreSentComments(threadId, detail)).catch(error => logWarn('engine', `Saved comments in ${threadId} could not be restored: ${error}`)).finally(() => this.#restoringComments.delete(restoreKey))
+    }
+  }
+
+  /** Older messages already carry the exact feedback in a signed engine attachment. */
+  async #restoreSentComments(threadId: string, detail: T3ThreadDetailSnapshot): Promise<void> {
+    const identity = this.#identity
+    const server = this.#credential?.server
+    if (!server) return
+    for (const message of detail.thread.messages) {
+      if (identity !== this.#identity) return
+      if (message.role !== 'user' || this.#conversations.threads[threadId]?.sentComments?.[message.id]) continue
+      const attachment = message.attachments?.find(value => value.type === 'file' && value.name === `conversation-${message.id}.md`)
+      if (!attachment) continue
+      try {
+        const asset = assetUrlResult.parse(await this.#rpc(T3_RPC.createAssetUrl, { resource: { _tag: 'attachment', attachmentId: attachment.id, fileName: attachment.name, mimeType: attachment.mimeType } }, 'saved comment'))
+        const url = new URL(asset.relativeUrl, server)
+        if (url.origin !== new URL(server).origin || !url.pathname.startsWith('/api/assets/')) throw new Error('The saved comment URL is outside the paired engine')
+        const response = await this.#fetch(url, { signal: AbortSignal.timeout(5_000) })
+        if (!response.ok) throw new Error(`The engine could not read ${attachment.name} (${response.status})`)
+        const sent = sentCommentsFromDelivery(await response.text(), threadId, message.id, visibleVisualMessage(message.text))
+        if (!sent || identity !== this.#identity) continue
+        sent.note = legacyCommentNote(sent.note, sent.comments.length)
+        await this.#serializeVisual(async () => {
+          if (identity !== this.#identity) return
+          const state = this.#conversations.threads[threadId] ??= emptyConversationState()
+          state.sentComments ??= {}
+          state.sentComments[message.id] ??= sent
+          await writeConversationsStore(this.#conversationsPath, this.#conversations)
+          this.#publishSoon()
+        })
+      } catch (error) { logWarn('engine', `Saved comments for message ${message.id} could not be restored: ${error}`) }
+    }
   }
 
   async #request(path: string): Promise<Response> {

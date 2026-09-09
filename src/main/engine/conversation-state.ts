@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { sentCommentsSchema, type SentComments } from '../../core/sent-comments'
 import { normalizeAskScans } from '../../core/asks'
 import { worktreeRequest } from './t3-contract'
 import { readFile } from 'node:fs/promises'
@@ -19,6 +20,8 @@ export interface ConversationState {
   comments?: import("../../core/conversation-delivery").MessageComment[]
   outcomes?: import("../../core/conversation-delivery").ConversationOutcome[]
   receipts?: string[]
+  /** Frozen passage/response pairs, keyed by the user message that delivered them. */
+  sentComments?: Record<string, SentComments>
   /** Queued replies keyed by item id, each carrying what the item asked so the delivery can quote it. */
   replies: Record<string, QueuedReply>
   /** Replies delivered but not yet acknowledged by the engine's message-sent event. */
@@ -105,6 +108,7 @@ export function normalizeConversationsStore(value: unknown): ConversationsStore 
       comments: Array.isArray(raw.comments) ? raw.comments.flatMap(entry => { const parsed = commentSchema.safeParse(entry); return parsed.success ? [parsed.data as import('../../core/conversation-delivery').MessageComment] : [] }) : [],
       outcomes: Array.isArray(raw.outcomes) ? raw.outcomes.flatMap(entry => { const parsed = outcomeSchema.safeParse(entry); return parsed.success ? [parsed.data as import('../../core/conversation-delivery').ConversationOutcome] : [] }) : [],
       receipts: strings(raw.receipts),
+      sentComments: isRecord(raw.sentComments) ? Object.fromEntries(Object.entries(raw.sentComments).flatMap(([id, value]) => { const parsed = sentCommentsSchema.safeParse(value); return parsed.success ? [[id, parsed.data]] : [] })) : {},
       asks: normalizeAskScans(raw.asks),
       askDrafts: isRecord(raw.askDrafts) ? Object.fromEntries(Object.entries(raw.askDrafts).filter((entry): entry is [string, string] => typeof entry[1] === 'string')) : {},
       replies: replies(raw.replies),
