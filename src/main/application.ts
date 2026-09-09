@@ -1430,6 +1430,10 @@ export class StrataApplication implements StrataApi {
     await this.#engine.respondApproval(threadId, requestId, decision)
   }
 
+  async dismissEngineUserInput(threadId: string, requestId: string): Promise<void> {
+    await this.#engine.dismissUserInput(threadId, requestId)
+  }
+
   async answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void> {
     await this.#engine.respondUserInput(threadId, requestId, answers)
   }

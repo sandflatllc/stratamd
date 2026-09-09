@@ -647,3 +647,42 @@ it('reloads an evicted comment source before sending and still refuses an actual
     expect(dispatched).toBe(1)
   } finally { await client.shutdown() }
 })
+
+it('preserves native question identity and mode after reconnect, dismisses async without a turn, and refuses blocking dismissal', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'strata-engine-native-questions-'))
+  const server = liveServer()
+  const commands: Array<Record<string, unknown>> = []
+  let resolved = false
+  const activities = () => [
+    { id: 'async', kind: 'user-input.requested', tone: 'info', summary: 'Question', turnId: 'turn-1', createdAt: at, payload: { requestId: 'native-async', responseMode: 'message', questions: [{ id: 'release', question: 'Which release?' }] } },
+    { id: 'blocking', kind: 'user-input.requested', tone: 'info', summary: 'Question', turnId: 'turn-1', createdAt: at, payload: { requestId: 'native-blocking', questions: [{ id: 'date', question: 'Which date?' }] } },
+    ...(resolved ? [{ id: 'resolved', kind: 'user-input.resolved', tone: 'info', summary: 'User input dismissed', turnId: 'turn-1', createdAt: at, payload: { requestId: 'native-async', responseMode: 'message' } }] : []),
+  ]
+  const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input)
+    if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+    if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
+    if (url.endsWith('/api/orchestration/dispatch')) {
+      commands.push(JSON.parse(String(init?.body)))
+      resolved = true
+      return Response.json({ sequence: 6 })
+    }
+    if (url.endsWith('/api/orchestration/shell')) return Response.json(shell())
+    const snapshot = detail()
+    return Response.json({ ...snapshot, thread: { ...snapshot.thread, activities: activities() } })
+  }) as typeof globalThis.fetch
+  const client = new T3EngineClient({ dataDirectory: directory, fetch, now: () => Date.parse(at), webSocket: server.WebSocket })
+  try {
+    await client.pair('http://engine.test', 'code')
+    await client.openThread('t1')
+    await client.reconnect()
+    expect(client.view().projects[0]?.threads[0]?.activities.map(activity => activity.payload)).toEqual(activities().map(activity => activity.payload))
+    await expect(client.dismissUserInput('t1', 'native-blocking')).rejects.toThrow('cannot be dismissed')
+    expect(commands).toEqual([])
+    await client.dismissUserInput('t1', 'native-async')
+    expect(commands).toEqual([{ type: 'thread.user-input.dismiss', commandId: expect.any(String), threadId: 't1', requestId: 'native-async', createdAt: at }])
+    await client.reconnect()
+    await expect(client.dismissUserInput('t1', 'native-async')).rejects.toThrow('cannot be dismissed')
+    expect(commands).toHaveLength(1)
+  } finally { await client.shutdown() }
+})

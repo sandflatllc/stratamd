@@ -55,3 +55,13 @@ it('retains an unqueued answer across a rescan and refuses its stale range after
   state.askDrafts = {}
   expect(askItems([old], 't', state)).toEqual([])
 })
+
+it('retires saved inference when a matching native request arrives later, without losing an owner draft', () => {
+  const state = emptyConversationState(), source = message('m', 'Which date?')
+  const asks = anchorAsks(source.id, source.text, [{ quote: source.text }])
+  state.asks = { m: { sourceHash: askSourceHash(source.text), state: 'done', asks } }
+  const activities = [{ id: 'native', kind: 'user-input.requested', tone: 'info' as const, summary: 'Question', turnId: 'turn', createdAt: '', payload: { requestId: 'native-id', responseMode: 'message', questions: [{ id: 'date', question: 'Which date?' }] } }]
+  expect(askItems([source], 't', state, activities)).toEqual([])
+  state.askDrafts = { [asks[0]!.id]: 'Friday' }
+  expect(askItems([source], 't', state, activities)).toEqual([expect.objectContaining({ answerDraft: 'Friday' })])
+})

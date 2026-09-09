@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
-import type { EngineMessageView, ItemView, StoredAsk, StoredAskScan } from '../shared/contracts'
+import type { EngineActivityView, EngineMessageView, ItemView, StoredAsk, StoredAskScan } from '../shared/contracts'
 import type { ConversationState } from '../main/engine/conversation-state'
+import { nativeQuestionTexts } from './user-input'
 import { inferQuestions } from './inference'
 import { parseStrataBlock } from './blocks'
 
@@ -75,7 +76,7 @@ export function preserveAskAnswers(messageId: string, next: StoredAskScan, state
   return { ...next, asks: [...incoming, ...older] }
 }
 
-export function askItems(messages: readonly EngineMessageView[], threadId: string, state: ConversationState | undefined): ItemView[] {
+export function askItems(messages: readonly EngineMessageView[], threadId: string, state: ConversationState | undefined, activities: readonly EngineActivityView[] = []): ItemView[] {
   if (!state) return []
   const latest = messages.findLast(m => m.role === 'assistant')
   const retained = retainedAskIds(state)
@@ -91,6 +92,12 @@ export function askItems(messages: readonly EngineMessageView[], threadId: strin
     const hash = message ? askSourceHash(askSource(message)) : null
     for (const ask of record.asks) {
       const valid = !!message && (ask.sourceHash ?? record.sourceHash) === hash
+      // A native request may arrive after inference has already completed. Keep owner work,
+      // but retire the untouched duplicate even when the native request is now resolved.
+      if (valid && !retained.has(ask.id) && nativeQuestionTexts(activities, message.turnId).some(quote => {
+        const range = locateAsk(askSource(message), quote)
+        return range && range.from < ask.to && ask.from < range.to
+      })) continue
       if ((latest?.id === messageId && valid && !ask.retained) || retained.has(ask.id)) add(message, messageId, ask, valid)
     }
   }

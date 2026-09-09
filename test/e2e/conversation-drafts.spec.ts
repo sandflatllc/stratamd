@@ -47,8 +47,10 @@ test('draft markers restore text and files and discard preserves a held answer',
     await page.getByRole('button', { name: 'Open Live engine thread', exact: true }).click()
     await expect(input).toHaveValue('Keep the next step visible after the offer.')
     await expect(conversation.getByRole('button', { name: 'Remove reference.md', exact: true })).toBeVisible()
-    await conversation.getByRole('button', { name: 'Version one', exact: true }).click()
-    await conversation.getByRole('button', { name: 'Hold answer', exact: true }).click()
+    await conversation.getByRole('button', { name: 'Answer question', exact: true }).click()
+    const answerDialog = page.getByRole('dialog', { name: 'Answer question', exact: true })
+    await answerDialog.getByRole('button', { name: 'Version one', exact: true }).click()
+    await answerDialog.getByRole('button', { name: 'Hold answer', exact: true }).click()
     await expect(conversation.getByText('Held answer: Version one', { exact: true })).toBeVisible()
     const heldComment = await page.evaluate(async () => {
       const path = (await window.strata.getState()).activeDocument!.path

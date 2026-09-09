@@ -201,6 +201,7 @@ export const threadUnsnoozeCommand = z.object({ type: z.literal('thread.unsnooze
 export const threadMetaUpdateCommand = z.object({ type: z.literal('thread.meta.update'), commandId: id, threadId: id, title: id.optional(), modelSelection: modelSelection.optional() }).strict()
 export const approvalRespondCommand = z.object({ type: z.literal('thread.approval.respond'), ...commandBase, requestId: id, decision: z.enum(['accept', 'acceptForSession', 'acceptAlways', 'decline', 'cancel']) }).passthrough()
 export const userInputRespondCommand = z.object({ type: z.literal('thread.user-input.respond'), ...commandBase, requestId: id, answers: z.record(z.string(), z.unknown()) }).passthrough()
+export const userInputDismissCommand = z.object({ type: z.literal('thread.user-input.dismiss'), ...commandBase, requestId: id }).strict()
 export const dispatchResult = z.object({ sequence: nonNegativeInt }).passthrough()
 
 export const providerUsageWindow = z.object({ usedPercent: z.number().min(0).max(100), resetsAt: isoDate.nullable(), measuredAt: isoDate, source: z.enum(['probe', 'session']) }).passthrough()

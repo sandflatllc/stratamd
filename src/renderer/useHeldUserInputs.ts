@@ -12,8 +12,8 @@ function read(key: string): Answers {
 }
 
 /** Provider questions wait with other held context, scoped to this engine and thread. */
-export function useHeldUserInputs(threadId: string | undefined) {
-  const key = `held-user-inputs:${threadId ?? ''}`
+export function useHeldUserInputs(threadId: string | undefined, kind = 'held-user-inputs') {
+  const key = `${kind}:${threadId ?? ''}`
   const [snapshot, setSnapshot] = useState(() => ({ key, answers: read(key) }))
   useEffect(() => {
     const refresh = () => setSnapshot({ key, answers: read(key) })

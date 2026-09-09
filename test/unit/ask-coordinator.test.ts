@@ -83,3 +83,16 @@ it('does not publish unchanged scan state during repeated Send cancellation', as
   expect(s.changed).not.toHaveBeenCalled()
   await s.coordinator.stop()
 })
+
+it('excludes a native question from prose inference, including native requests arriving during scanning', async () => {
+  const s = setup()
+  let finish!: (asks: Array<{ quote: string }>) => void
+  s.scan.mockImplementationOnce(() => new Promise(resolve => finish = resolve))
+  s.coordinator.observe('t', true)
+  await vi.waitFor(() => expect(s.scan).toHaveBeenCalledTimes(1))
+  s.setThread({ ...s.thread, activities: [{ id: 'native', kind: 'user-input.requested', tone: 'info', summary: 'Question', turnId: 'turn', createdAt: '', payload: { requestId: 'stable-native-id', responseMode: 'message', questions: [{ id: 'date', question: 'Which date?' }] } }] })
+  finish([{ quote: 'Which date?' }])
+  await vi.waitFor(() => expect(s.coordinator.view(s.thread)).toMatchObject({ state: 'done', count: 0 }))
+  expect(s.state.asks?.m1?.asks).toEqual([])
+  await s.coordinator.stop()
+})

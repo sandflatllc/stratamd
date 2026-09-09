@@ -1,6 +1,7 @@
 import type { AskScanView, EngineThreadView, StoredAskScan } from '../../shared/contracts'
 import type { ConversationState } from './conversation-state'
 import { anchorAsks, askSource, askSourceHash } from '../../core/asks'
+import { nativeQuestionTexts } from '../../core/user-input'
 import { AskScanQueue } from './ask-scan'
 
 interface Options {
@@ -59,7 +60,7 @@ export class AskCoordinator {
     this.cancel(threadId)
     const generation = this.#generation.get(threadId) ?? 0, epoch = this.#epoch, turnId = thread.latestTurn?.id
     const source = askSource(message), sourceHash = askSourceHash(source)
-    const registered = (thread.items ?? []).filter(item => !item.inferred && item.messageId === messageId && ['question','decision'].includes(item.kind)).map(item => item.text || item.quote)
+    const registered = (thread.items ?? []).filter(item => !item.inferred && item.messageId === messageId && ['question','decision'].includes(item.kind)).map(item => item.text || item.quote).concat(nativeQuestionTexts(thread.activities ?? [], message.turnId))
     const current = () => {
       const now = this.options.thread(threadId), latest = now?.messages.findLast(m => m.role === 'assistant')
       return epoch === this.#epoch && generation === this.#generation.get(threadId) && now?.latestTurn?.id === turnId && latest?.id === messageId && askSourceHash(askSource(latest)) === sourceHash && !latest.streaming && !isRunning(now!)
@@ -79,7 +80,7 @@ export class AskCoordinator {
         this.#working.set(threadId, { messageId, state: 'working', count: 0, reason: 'Finding asks; click to cancel' }); this.options.changed()
         const found = await this.options.scan(source, registered, signal)
         if (!current() || signal.aborted) return
-        await this.options.save(threadId, messageId, { sourceHash, state: 'done', asks: anchorAsks(messageId, source, found, registered) }, current)
+        await this.options.save(threadId, messageId, { sourceHash, state: 'done', asks: anchorAsks(messageId, source, found, registered.concat(nativeQuestionTexts(this.options.thread(threadId)?.activities ?? [], message.turnId))) }, current)
       } catch (error) {
         if (current()) await this.options.save(threadId, messageId, { sourceHash, state: 'cancelled', asks: previousAsks, reason: error instanceof Error ? error.message : 'Ask scan failed' }, current)
       } finally {

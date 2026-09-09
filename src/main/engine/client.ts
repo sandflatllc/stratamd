@@ -1,5 +1,6 @@
 import { validatedModelOptions } from '../../shared/custom-models'
 import type { BrowserEvidenceTransfer } from '../../shared/browser-evidence'
+import { inputPayload, pendingUserInputs } from '../../core/user-input'
 import { legacyCommentNote, sentCommentsFromDelivery } from '../../core/sent-comments'
 import { installRelayClient } from './relay-install'
 import { accountForModel } from '../../core/accountState'
@@ -36,6 +37,7 @@ import {
   threadMetaUpdateCommand,
   approvalRespondCommand,
   userInputRespondCommand,
+  userInputDismissCommand,
   dispatchResult,
   T3_HTTP,
   T3_RPC,
@@ -175,6 +177,7 @@ export interface EngineReadClient {
   startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string; context?: import("../../core/conversation-delivery").ConversationDelivery }): Promise<void>
   interrupt(threadId: string): Promise<void>
   respondApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
+  dismissUserInput(threadId: string, requestId: string): Promise<void>
   respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
   createThread?(input: StartThreadInput): Promise<string>
   createProject?(input: { title: string; workspaceRoot: string; createWorkspaceRootIfMissing?: boolean }): Promise<string>
@@ -624,7 +627,7 @@ export class T3EngineClient implements EngineReadClient {
           comments: this.#conversations.threads[thread.id]?.comments ?? [],
           outcomes: this.#conversations.threads[thread.id]?.outcomes ?? [],
           deliveries: (this.#conversations.threads[thread.id]?.prepared ?? []).map(entry => ({ messageId: entry.messageId, text: entry.attachments.map(a => a.kind === 'text' ? a.text : `[${a.kind === 'binary' ? 'File' : 'Image'} ${a.name}]`).join('\n'), phase: entry.attachments.every(a => a.uploaded) ? 'prepared' as const : 'uploading' as const })),
-          items: (() => { const explicit = postedMessageItems(messages, thread.id); return applyConversationState([...explicit.filter(item => !this.#conversations.threads[thread.id]?.comments?.some(comment => comment.id === item.id)), ...(this.#conversations.threads[thread.id]?.comments ?? []).map((comment): import("../../shared/contracts").ItemView => ({ id: comment.id, kind: comment.kind, status: comment.state === "held" || comment.state === "pending" ? "drafted" : isOwnerComment(comment) || comment.state === "resolved" ? "done" : "open", review: "unreviewed", text: comment.text, quote: comment.selection, order: 0, threadId: thread.id, turnId: messages.find(message => message.id === comment.anchor.message)?.turnId ?? null, messageId: comment.anchor.message, annotationId: null, hunkId: null, inferred: false, source: { kind: "message", anchor: comment.anchor }, discussion: comment.replies, ...(comment.options ? { options: comment.options } : {}), unavailable: !resolveMessageAnchor(comment, messages.find(message => message.id === comment.anchor.message)) })), ...askItems(messages, thread.id, this.#conversations.threads[thread.id])], this.#conversations.threads[thread.id]) })(),
+          items: (() => { const explicit = postedMessageItems(messages, thread.id); return applyConversationState([...explicit.filter(item => !this.#conversations.threads[thread.id]?.comments?.some(comment => comment.id === item.id)), ...(this.#conversations.threads[thread.id]?.comments ?? []).map((comment): import("../../shared/contracts").ItemView => ({ id: comment.id, kind: comment.kind, status: comment.state === "held" || comment.state === "pending" ? "drafted" : isOwnerComment(comment) || comment.state === "resolved" ? "done" : "open", review: "unreviewed", text: comment.text, quote: comment.selection, order: 0, threadId: thread.id, turnId: messages.find(message => message.id === comment.anchor.message)?.turnId ?? null, messageId: comment.anchor.message, annotationId: null, hunkId: null, inferred: false, source: { kind: "message", anchor: comment.anchor }, discussion: comment.replies, ...(comment.options ? { options: comment.options } : {}), unavailable: !resolveMessageAnchor(comment, messages.find(message => message.id === comment.anchor.message)) })), ...askItems(messages, thread.id, this.#conversations.threads[thread.id], activities)], this.#conversations.threads[thread.id]) })(),
           documents,
         }
       }),
@@ -1782,6 +1785,18 @@ export class T3EngineClient implements EngineReadClient {
 
   async respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void> {
     return this.#operations.run(() => this.#respondUserInput(threadId, requestId, answers))
+  }
+
+  async dismissUserInput(threadId: string, requestId: string): Promise<void> {
+    return this.#operations.run(async () => {
+      const activities = this.#threads.get(threadId)?.detail?.thread.activities ?? []
+      const request = pendingUserInputs(activities).find(activity => inputPayload(activity).requestId === requestId)
+      if (!request || inputPayload(request).responseMode !== 'message') throw new Error(`Question ${requestId} in conversation ${threadId} cannot be dismissed.`)
+      await this.#dispatch(userInputDismissCommand.parse({
+        type: 'thread.user-input.dismiss', commandId: randomUUID(), threadId, requestId,
+        createdAt: new Date(this.#now()).toISOString(),
+      }))
+    })
   }
 
   async #respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void> {

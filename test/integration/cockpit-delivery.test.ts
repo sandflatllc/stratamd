@@ -21,6 +21,7 @@ class DeliveryEngine implements EngineReadClient {
   openThread = async () => {}
   interrupt = async () => {}
   respondApproval = async () => {}
+  dismissUserInput = async () => {}
   respondUserInput = async () => {}
   subscribe(listener: (view: EngineView) => void) { this.#listeners.add(listener); return () => this.#listeners.delete(listener) }
   view(): EngineView {

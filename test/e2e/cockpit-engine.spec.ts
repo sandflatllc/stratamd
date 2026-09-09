@@ -110,8 +110,10 @@ test('2 conversation: moves between placements and dispatches a message, approva
 
     await center.getByRole('button', { name: 'Approve' }).click()
     await expect.poll(() => engine.commands.some((command) => command.type === 'thread.approval.respond')).toBe(true)
-    await center.getByRole('button', { name: 'Version one' }).click()
-    await center.getByRole('button', { name: 'Hold answer', exact: true }).click()
+    await center.getByRole('button', { name: 'Answer question', exact: true }).click()
+    const answerDialog = page.getByRole('dialog', { name: 'Answer question' })
+    await answerDialog.getByRole('button', { name: 'Version one' }).click()
+    await answerDialog.getByRole('button', { name: 'Hold answer', exact: true }).click()
     await expect(center.getByRole('textbox', { name: 'Message conversation' })).toBeFocused()
     expect(engine.commands.some(command => command.type === 'thread.user-input.respond')).toBe(false)
     await center.getByRole('textbox', { name: 'Message conversation' }).press('Enter')

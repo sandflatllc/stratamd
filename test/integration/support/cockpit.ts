@@ -41,6 +41,7 @@ export class FakeEngine implements EngineReadClient {
   reconnect = async () => {}
   interrupt = async () => {}
   respondApproval = async () => {}
+  dismissUserInput = async () => {}
   respondUserInput = async () => {}
   async openThread(threadId: string) { this.#activeThreadId = threadId; this.#publish() }
   subscribe(listener: (view: EngineView) => void) { this.#listeners.add(listener); return () => this.#listeners.delete(listener) }

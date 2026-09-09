@@ -1134,6 +1134,7 @@ export interface StrataApi {
   clearPreviewOverrides(tabId: string): Promise<void>
   stopConversationTurn(threadId: string): Promise<void>
   answerEngineApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
+  dismissEngineUserInput(threadId: string, requestId: string): Promise<void>
   answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
   createEngineThread(input: StartThreadInput): Promise<string>
   /** Adds a T3 project for a folder no project contains yet (§5.7 Add project); returns its id. */

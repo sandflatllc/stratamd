@@ -53,6 +53,8 @@ export interface ConversationComposerProps {
   branch?: string | null
   /** While the agent works, the Send button becomes Stop, as in T3. Enter still sends. */
   running?: boolean
+  /** Native held answers need an explicit Send while their asynchronous turn continues. */
+  sendWhileRunning?: boolean
   onStop?(): void
   onSend(input: ConversationInput): Promise<void>
   /** Held visual comments addressed to this thread; each rides the next Send as a staged card (docs/plans/open/visual-review). */
@@ -64,7 +66,7 @@ export interface ConversationComposerProps {
   consumedAttachmentIds?: readonly string[]
 }
 
-export function ConversationComposer({ deliveryId, engine, thread, projectId, draftKey, initial, centered = false, queuedCount = 0, reservedAttachments = 0, context, canSendContext = false, workspaceControls, workspace, branch, running = false, onStop, onSend, visualComments = [], onOpenVisual, onMarkUpImage, consumedAttachmentIds = [] }: ConversationComposerProps) {
+export function ConversationComposer({ deliveryId, engine, thread, projectId, draftKey, initial, centered = false, queuedCount = 0, reservedAttachments = 0, context, canSendContext = false, workspaceControls, workspace, branch, running = false, sendWhileRunning = false, onStop, onSend, visualComments = [], onOpenVisual, onMarkUpImage, consumedAttachmentIds = [] }: ConversationComposerProps) {
   const [draft] = useState(() => readDraft(draftKey))
   const [text, setText] = useState(draft.text)
   const [attachments, setAttachmentsState] = useState<DraftAttachment[]>(draft.attachments ?? [])
@@ -280,7 +282,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
         <div className="chat-send-actions"><input ref={fileInput} className="conversation-attachment-input" type="file" multiple hidden onChange={(event) => {
           const files = Array.from(event.target.files ?? []); event.target.value = ''
           if (files.length) void stageFiles(files, false)
-        }} /><button type="button" aria-label="Attach file" disabled={busy || canSendContext} onClick={() => fileInput.current?.click()}>＋</button><ContextWindowMeter activities={boundThread?.activities ?? []} />{running && !busy && onStop
+        }} /><button type="button" aria-label="Attach file" disabled={busy || canSendContext} onClick={() => fileInput.current?.click()}>＋</button><ContextWindowMeter activities={boundThread?.activities ?? []} />{running && !busy && onStop && !sendWhileRunning
           ? <button className="chat-send chat-stop" type="button" aria-label="Stop" title="Stop the agent" onClick={onStop}><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="2" /></svg></button>
           : <button className="chat-send" type="submit" aria-label="Send" disabled={busy || !valid || !canSend}>{busy ? '…' : '↑'}</button>}</div>
       </div>

@@ -69,6 +69,7 @@ export const IPC = {
   retainConversationAttachments: 'strata:retain-conversation-attachments',
   stopConversationTurn: 'strata:stop-conversation-turn',
   answerEngineApproval: 'strata:answer-engine-approval',
+  dismissEngineUserInput: 'strata:dismiss-engine-user-input',
   answerEngineUserInput: 'strata:answer-engine-user-input',
   spelling: 'strata:spelling',
   addDictionaryWord: 'strata:add-dictionary-word',

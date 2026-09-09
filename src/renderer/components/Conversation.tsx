@@ -1,5 +1,7 @@
 import { BrowserEvidence } from './BrowserEvidence'
 import type { BrowserEvidenceView } from '../../shared/browser-evidence'
+import { UserInputDialog } from './UserInputDialog'
+import { pendingUserInputs, inputPayload } from '../../core/user-input'
 import { SentComments } from './SentComments'
 import { useHeldUserInputs } from '../useHeldUserInputs'
 import { holdConversationContext } from '../focusConversationComposer'
@@ -119,26 +121,6 @@ function openRequests(activities: EngineActivityView[], kind: 'approval' | 'user
   return [...open.values()]
 }
 
-function UserInputCard({ activity, held, onAnswer }: { activity: EngineActivityView; held: Record<string, string> | undefined; onAnswer(requestId: string, answers: Record<string, string>): void }) {
-  const payload = record(activity.payload)
-  const questions = Array.isArray(payload.questions) ? payload.questions.map(record) : []
-  const requestId = typeof payload.requestId === 'string' ? payload.requestId : ''
-  const [answers, setAnswers] = useState<Record<string, string>>(held ?? {})
-  useEffect(() => setAnswers(held ?? {}), [held])
-  const rows = questions.length ? questions : [{ id: 'answer', question: activity.summary }]
-  const questionId = (question: Record<string, unknown>, index: number) => typeof question.id === 'string' ? question.id : typeof question.header === 'string' ? question.header : `answer-${index}`
-  return <section className="conversation-request" data-kind="user-input"><form onSubmit={event => { event.preventDefault(); onAnswer(requestId, answers) }}>
-    {rows.map((question, index) => {
-      const id = questionId(question, index)
-      const options = Array.isArray(question.options) ? question.options.map(record) : []
-      return <fieldset key={id}><legend>{String(question.question ?? question.prompt ?? activity.summary)}</legend>
-        {options.map((option, index) => { const label = String(option.label ?? option.value ?? `Option ${index + 1}`); return <button type="button" aria-pressed={answers[id] === label} key={label} onClick={() => setAnswers(previous => ({ ...previous, [id]: label }))}>{label}</button> })}
-        <input aria-label={`Answer ${id}`} placeholder="Other answer" value={answers[id] ?? ''} onChange={event => setAnswers(previous => ({ ...previous, [id]: event.target.value }))} />
-      </fieldset>
-    })}
-    <button type="submit" disabled={rows.some((question, index) => !answers[questionId(question, index)]?.trim())}>Hold answer</button>
-  </form></section>
-}
 
 interface ConversationProps {
   browserEvidence?: BrowserEvidenceView[] | undefined
@@ -262,6 +244,9 @@ export function Conversation({ browserEvidence = [], onOpenBrowserEvidence, visi
   const [agentsDialog, setAgentsDialog] = useState<{ focus?: string | undefined } | null>(null)
   const thread = selected?.thread
   const heldInputs = useHeldUserInputs(thread?.id)
+  const inputDrafts = useHeldUserInputs(thread?.id, 'user-input-drafts')
+  const [answerRequest, setAnswerRequest] = useState<string | null>(null)
+  useEffect(() => setAnswerRequest(null), [thread?.id])
   const [inputError, setInputError] = useState('')
 
   const panelRef = useRef<HTMLElement>(null)
@@ -306,7 +291,7 @@ export function Conversation({ browserEvidence = [], onOpenBrowserEvidence, visi
   }, [thread?.latestTurn])
 
   const approvals = useMemo(() => thread ? openRequests(thread.activities, 'approval') : [], [thread?.activities])
-  const userInputs = useMemo(() => thread ? openRequests(thread.activities, 'user-input') : [], [thread?.activities])
+  const userInputs = useMemo(() => thread ? pendingUserInputs(thread.activities) : [], [thread?.activities])
   const turns = useMemo(() => conversationTurns(thread?.messages ?? [], thread?.activities ?? [], thread?.activeTurnId ?? null), [thread])
   const workGroups = useMemo(() => turns.flatMap((turn, index) => groupWorkRows(
     deriveWorkEntries(turn.activities).map(entry => ({ ...entry, turnId: turn.id })),
@@ -470,7 +455,16 @@ export function Conversation({ browserEvidence = [], onOpenBrowserEvidence, visi
           })}
           {headerIndex === -1 && workingRow}
           {approvals.filter(activity => turn.activities.some(candidate => candidate.id === activity.id)).map((activity) => { const payload = record(activity.payload); const requestId = String(payload.requestId ?? ''); return <section className="conversation-request" data-kind="approval" key={activity.id}><strong>{typeof payload.detail === 'string' ? payload.detail : activity.summary}</strong><div className="conversation-actions"><button type="button" onClick={() => onApproval(thread.id, requestId, 'accept')}>Approve</button><button type="button" onClick={() => onApproval(thread.id, requestId, 'decline')}>Decline</button></div></section> })}
-          {userInputs.filter(activity => turn.activities.some(candidate => candidate.id === activity.id)).map((activity) => <UserInputCard key={activity.id} activity={activity} held={heldInputs.answers[String(record(activity.payload).requestId ?? '')]} onAnswer={(requestId, answers) => void holdConversationContext(async () => { heldInputs.hold(requestId, answers); setInputError('') }, panelRef.current).catch(failure => setInputError(String(failure)))} />)}
+          {userInputs.filter(activity => turn.activities.some(candidate => candidate.id === activity.id)).map(activity => {
+            const requestId = String(inputPayload(activity).requestId)
+            return <section className="conversation-request" data-kind="user-input" key={requestId}><strong>{heldInputs.answers[requestId] ? `Answer held · ${Object.values(heldInputs.answers[requestId]!).join(' · ')}` : 'Question from agent'}</strong><button type="button" onClick={() => setAnswerRequest(requestId)}>{heldInputs.answers[requestId] ? 'Edit answer' : 'Answer question'}</button></section>
+          })}
+          {turn.activities.filter(activity => activity.kind === 'user-input.resolved').map(activity => {
+            const payload = inputPayload(activity)
+            const dismissed = activity.summary === 'User input dismissed'
+            const answers = Object.values(record(payload.answers)).filter(value => typeof value === 'string').join(' · ')
+            return <section className="conversation-request conversation-input-result" data-kind="user-input-result" key={activity.id}><strong>{dismissed ? 'Question dismissed' : `Answer sent${answers ? ` · ${answers}` : ''}`}</strong><small>{dismissed ? 'The agent can continue without an answer.' : 'The agent received your answer.'}</small></section>
+          })}
           <TurnChecklist items={allItems.filter((item) => !item.inferred && item.threadId === thread.id && item.turnId === turn.turnId)} onReply={(item, value) => { if (item.annotationId && onReplyItem) onReplyItem(item, value); else onQueueReply?.(thread.id, item, value) }} onDismiss={(item) => onDismissItem?.(thread.id, item)} onOpen={item => { if (item.annotationId) onOpenItem?.(item); else workspace.open(item.id) }} {...(onActItem ? { onAct: onActItem } : {})} />
         </section>
       })}
@@ -482,6 +476,12 @@ export function Conversation({ browserEvidence = [], onOpenBrowserEvidence, visi
     {visible && <button type="button" className="conversation-latest" data-direction={jumpToResponse ? 'up' : 'down'} aria-label={jumpToResponse ? 'Latest response' : 'Newest'} title={jumpToResponse ? 'Read the latest response from its start' : 'Jump to the newest message'} onClick={() => { if (jumpToResponse) workspace.jumpToLatest(); else history.current?.scrollToBottom() }}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 7.5 6 3.5l4 4" /></svg></button>}
     </div>
     {visible && workspace.overlay}
-    <ConversationComposer deliveryId={workspace.previewId} key={`composer:${thread.id}`} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} context={<div className="conversation-context">{placement === 'side' && onDocumentContext && <button type="button" onClick={onDocumentContext}>Document context</button>}{workspace.tray}{pendingInputs.map(entry => <div className="conversation-context-entry" key={entry.id}><span>Held answer: {Object.values(entry.answers).join(' · ')}</span><button type="button" aria-label={`Remove held answer: ${Object.values(entry.answers).join(' · ')}`} onClick={() => { try { heldInputs.remove(entry.id); setInputError('') } catch (failure) { setInputError(String(failure)) } }}>×</button></div>)}{inputError && <p role="alert">{inputError}</p>}</div>} queuedCount={workspace.selectedCount + pendingInputs.length} reservedAttachments={workspace.selectedCount > 0 || (thread.outcomes?.length ?? 0) > 0 ? 1 : 0} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} running={running} onStop={() => onStop(thread.id)} onSend={async input => { for (const entry of pendingInputs) { await onUserInput(thread.id, entry.id, entry.answers); heldInputs.remove(entry.id) }; if (input.text.trim() || input.attachments?.length || input.visual?.length || workspace.selectedCount || thread.outcomes?.length) { await onStart(thread.id, { ...input, ...workspace.outgoing }); workspace.sent() } }} visualComments={heldVisual} {...(onOpenVisual ? { onOpenVisual: (comment: VisualCommentView) => onOpenVisual(comment.id) } : {})} {...(onMarkUpImage ? { onMarkUpImage } : {})} {...(consumedAttachmentIds ? { consumedAttachmentIds } : {})} />
+    {visible && userInputs.filter(activity => inputPayload(activity).requestId === answerRequest).map(activity => <UserInputDialog key={`${thread.id}:${answerRequest}`} activity={activity} draft={inputDrafts.answers[answerRequest!] ?? heldInputs.answers[answerRequest!]} held={!!heldInputs.answers[answerRequest!]} onDraft={answers => inputDrafts.hold(answerRequest!, answers)} onClose={() => setAnswerRequest(null)} onHold={async answers => {
+      await holdConversationContext(async () => { heldInputs.hold(answerRequest!, answers); setAnswerRequest(null); setInputError('') }, panelRef.current)
+    }} onDismiss={async () => {
+      await window.strata.dismissEngineUserInput(thread.id, answerRequest!)
+      heldInputs.remove(answerRequest!); inputDrafts.remove(answerRequest!); setAnswerRequest(null)
+    }} />)}
+    <ConversationComposer deliveryId={workspace.previewId} key={`composer:${thread.id}`} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} context={<div className="conversation-context">{placement === 'side' && onDocumentContext && <button type="button" onClick={onDocumentContext}>Document context</button>}{workspace.tray}{pendingInputs.map(entry => <div className="conversation-context-entry" key={entry.id}><span>Held answer: {Object.values(entry.answers).join(' · ')}</span><button type="button" aria-label={`Remove held answer: ${Object.values(entry.answers).join(' · ')}`} onClick={() => { try { heldInputs.remove(entry.id); setInputError('') } catch (failure) { setInputError(String(failure)) } }}>×</button></div>)}{inputError && <p role="alert">{inputError}</p>}</div>} queuedCount={workspace.selectedCount + pendingInputs.length} reservedAttachments={workspace.selectedCount > 0 || (thread.outcomes?.length ?? 0) > 0 ? 1 : 0} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} running={running} sendWhileRunning={pendingInputs.length > 0} onStop={() => onStop(thread.id)} onSend={async input => { for (const entry of pendingInputs) { await onUserInput(thread.id, entry.id, entry.answers); heldInputs.remove(entry.id); inputDrafts.remove(entry.id) }; if (input.text.trim() || input.attachments?.length || input.visual?.length || workspace.selectedCount || thread.outcomes?.length) { await onStart(thread.id, { ...input, ...workspace.outgoing }); workspace.sent() } }} visualComments={heldVisual} {...(onOpenVisual ? { onOpenVisual: (comment: VisualCommentView) => onOpenVisual(comment.id) } : {})} {...(onMarkUpImage ? { onMarkUpImage } : {})} {...(consumedAttachmentIds ? { consumedAttachmentIds } : {})} />
   </section>
 }

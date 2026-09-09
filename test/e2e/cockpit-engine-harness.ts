@@ -29,6 +29,8 @@ export interface FakeEngineOptions {
   longHistory?: boolean
   /** Whether `t1` starts with an open approval and an open user-input request; defaults to true. False leaves it plainly running. */
   pendingRequests?: boolean
+  userInputResponseMode?: 'message'
+  rejectFirstUserInput?: 'respond' | 'dismiss'
   /** T3 background liveness per seeded thread (§6.9 thread states): `monitoring` draws the robot, `working` the pulse after the turn settles. */
   liveness?: Partial<Record<'t1' | 't2', 'working' | 'monitoring'>>
   /** Accepts Strata as a preview automation host and lets a test send it browser requests (docs/plans/open/visual-review, phase 2). Off by default, so shell baselines never show Browser shared. */
@@ -163,6 +165,8 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   let stoppedAt: string | null = null
   const stop = (how: 'interrupted' | 'completed' = 'interrupted') => { status = 'stopped'; outcome = how; stoppedAt = new Date().toISOString() }
   let approvalOpen = options.pendingRequests ?? true
+  let rejectUserInput = options.rejectFirstUserInput
+  let inputResolution: Record<string, unknown> | undefined
   let inputOpen = options.pendingRequests ?? true
   let sequence = 2
   const commands: Array<Record<string, unknown>> = []
@@ -244,7 +248,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       { id: 'live-update', tone: 'tool', kind: 'tool.updated', summary: 'Running build', payload: { itemType: 'command_execution', detail: 'electron-vite build', toolCallId: 'call-live', status: 'inProgress' }, turnId: 'turn-1', createdAt: at },
     ] : [
       ...(approvalOpen ? [{ id: 'a1', tone: 'approval', kind: 'approval.requested', summary: 'Command approval requested', payload: { requestId: 'approval-1', detail: 'Run the cockpit verification?' }, turnId: 'turn-1', createdAt: at }] : [{ id: 'a2', tone: 'approval', kind: 'approval.resolved', summary: 'Approval resolved', payload: { requestId: 'approval-1' }, turnId: 'turn-1', createdAt: at }]),
-      ...(inputOpen ? [{ id: 'u1', tone: 'info', kind: 'user-input.requested', summary: 'User input requested', payload: { requestId: 'input-1', questions: [{ id: 'release', question: 'Which release?', options: [{ label: 'Version one' }] }] }, turnId: 'turn-1', createdAt: at }] : [{ id: 'u2', tone: 'info', kind: 'user-input.resolved', summary: 'User input submitted', payload: { requestId: 'input-1' }, turnId: 'turn-1', createdAt: at }]),
+      ...(inputOpen ? [{ id: 'u1', tone: 'info', kind: 'user-input.requested', summary: 'User input requested', payload: { requestId: 'input-1', ...(options.userInputResponseMode ? { responseMode: options.userInputResponseMode } : {}), questions: [{ id: 'release', question: 'Which release?', options: [{ label: 'Version one' }] }] }, turnId: 'turn-1', createdAt: at }] : [{ id: 'u2', tone: 'info', kind: 'user-input.resolved', summary: inputResolution?.type === 'thread.user-input.dismiss' ? 'User input dismissed' : 'User input submitted', payload: { requestId: 'input-1', ...(inputResolution?.answers ? { answers: inputResolution.answers } : {}), ...(options.userInputResponseMode ? { responseMode: options.userInputResponseMode } : {}) }, turnId: 'turn-1', createdAt: at }]),
       { id: 'tool-1', tone: 'tool', kind: 'tool.completed', summary: 'Updated cockpit files', payload: {}, turnId: 'turn-1', createdAt: at },
       ...(options.agentTasks ? agentTaskActivities(at) : []),
     ]
@@ -357,11 +361,12 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
         if (typeof command.commandId === 'string' && commands.some((known) => known.commandId === command.commandId)) { response.end(JSON.stringify({ sequence })); return }
         if (command.type === 'thread.turn.start' && rejectNextTurn) { rejectNextTurn = false; response.statusCode = 400; response.end(JSON.stringify({ error: 'Test refusal' })); return }
         if (command.type === 'thread.meta.update' && command.modelSelection && rejectNextModelSettings) { rejectNextModelSettings = false; response.statusCode = 400; response.end(JSON.stringify({ error: 'Settings refusal' })); return }
+        if (rejectUserInput && command.type === `thread.user-input.${rejectUserInput}`) { rejectUserInput = undefined; response.statusCode = 400; response.end(JSON.stringify({ error: 'Question response refused' })); return }
         commands.push(command)
         if (command.type === 'thread.turn.start') status = 'running'
         if (command.type === 'thread.turn.interrupt') stop()
         if (command.type === 'thread.approval.respond') approvalOpen = false
-        if (command.type === 'thread.user-input.respond') inputOpen = false
+        if (command.type === 'thread.user-input.respond' || command.type === 'thread.user-input.dismiss') { inputOpen = false; inputResolution = command }
         if (command.type === 'thread.create') createdThreads.push({ branch: command.branch as string | null, worktreePath: command.worktreePath as string | null, id: String(command.threadId), projectId: String(command.projectId), title: String(command.title), modelSelection: command.modelSelection, runtimeMode: String(command.runtimeMode) })
         if (command.type === 'project.create') createdProjects.push({ id: String(command.projectId), title: String(command.title), workspaceRoot: String(command.workspaceRoot) })
         const threadId = String(command.threadId)
