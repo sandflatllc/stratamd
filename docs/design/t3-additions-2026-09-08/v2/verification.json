@@ -1,5 +1,5 @@
 {
-  "recordedAt": "2026-09-09T06:23:58.959429+00:00",
+  "recordedAt": "2026-09-09T06:32:28.116241+00:00",
   "viewport": [
     1440,
     1000
@@ -65,7 +65,7 @@
   "inputHashes": {
     "screen.html": "f6aa5db9efd6dee7227d3d7eadd8728e7f372c66d3010b960d3334d865c532c6",
     "screen.js": "cbc240276703c30ea6f41ae03f42b2a4d575338f723862e21ffb1e4ee0684ff7",
-    "proposals.js": "f811bcc0f97825e66b08e8766516e0cb6c8d58b68943985ae618ab65152bbd9f",
+    "proposals.js": "9419d1268c25f57cf3fa59bfe439887f180e203cfdb996f4f47b152549472112",
     "proposals.css": "a0164994f6b6c9ceff8bb5d57848baf0e1efad29cd42dc343b0b965ee2a71dae",
     "reference/annotation.json": "b029465e674147b9b5e3a9e04362e6d758b088a6c4692e4899c3e688a4a9fdaf",
     "reference/engine.json": "2bc6c7f7037eb01e7ca0a6bfce7d4afc8aac36319096b58474f27a1dd266e5bc",

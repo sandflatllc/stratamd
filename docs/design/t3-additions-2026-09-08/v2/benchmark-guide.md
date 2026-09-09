@@ -84,3 +84,7 @@ The existing gallery service serves this directory tree at port 43871. Re-runnin
 ## Model option contract correction
 
 The numeric maximum-output example was replaced with T3-supported select and boolean controls: Reasoning effort and Fast mode. The invalid state shows an unsupported stored value and prevents saving. The model editor retains the approved layout and uses Strata's existing Switch. This corrects the fixture to the actual provider contract; it does not add a numeric option type or change the saved owner approval.
+
+## Import contract correction
+
+T3 discovers and imports by project folder. The import fixtures now select repository-grouped projects and show explicit destinations. They do not offer unsupported individual-conversation or provider-home filters. Progress counts completed projects and stays indeterminate within a project. The approved Strata dialog and row styling remain the benchmark.

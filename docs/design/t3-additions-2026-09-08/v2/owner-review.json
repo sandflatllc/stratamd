@@ -202,5 +202,18 @@
       "options",
       "invalid"
     ]
+  },
+  "importContractCorrection": {
+    "status": "Fixture aligned to actual project-level import; historical approval retained",
+    "reason": "agentSessions.scan/import exposes project candidates and whole-project import, not selectable agent homes or individual messages/conversations",
+    "scope": "Repository-grouped project selection, explicit folder destination, completed-project progress and idempotent retry; no fabricated message counts",
+    "states": [
+      "sources",
+      "select",
+      "confirm",
+      "progress",
+      "partial",
+      "done"
+    ]
   }
 }
