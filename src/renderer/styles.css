@@ -2482,3 +2482,26 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .user-input-private { flex: 1; max-width: 250px; margin: 0 auto 0 0; color: var(--muted); font-size: 12px; line-height: 18px; }
 .conversation-request[data-kind="user-input"] { grid-template-columns: 1fr auto; align-items: center; }
 .conversation-input-result small { color: var(--muted); }
+/* Provider-reported quota windows share the Accounts dialog's typography and spacing. */
+.quota-tabs { display: flex; align-items: center; gap: 12px; padding: 22px 0; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+.quota-tabs > .engine-hint { margin-left: auto; }
+.quota-tabs button[aria-pressed="true"] { color: var(--controls-primary); }
+.account-quota { width: 100%; display: grid; gap: 4px; }
+.account-quota-label { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
+.account-quota-label > span { color: var(--muted); white-space: nowrap; }
+.account-quota-bar { position: relative; display: block; height: 6px; border-radius: 4px; background: var(--bg); }
+.account-quota-bar > i { display: block; height: 100%; border-radius: inherit; background: var(--controls-primary); }
+.account-quota-bar > em { position: absolute; top: -2px; width: 2px; height: 10px; background: var(--text); }
+.account-quota[data-stale] { opacity: .6; }
+.account-quota[data-tone="hot"] .account-quota-bar > i { background: var(--controls-danger); }
+.account-quota[data-tone="warn"] .account-quota-bar > i { background: var(--controls-warning); }
+.combined-quota { display: grid; gap: 30px; padding: 28px 0; }
+.quota-legend-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.quota-legend-row .engine-hint { margin: 0; color: var(--muted); }
+.account-reset { text-align: right; }
+.account-reset-confirm, .account-quota-problem { text-align: left; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surfaces-inset); font-size: 13px; }
+.account-reset-confirm p, .account-quota-problem p { margin: 3px 0; }
+.account-quota-problem { border-color: var(--controls-danger); }
+.account-reset-confirm button + button { margin-left: 8px; }
+
+.account-source-row { grid-template-columns: minmax(0, 1fr) 250px; }

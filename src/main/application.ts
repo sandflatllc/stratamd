@@ -1188,6 +1188,11 @@ export class StrataApplication implements StrataApi {
     return this.#engine.onTerminalEvent?.(listener) ?? (() => undefined)
   }
 
+  async consumeResetCredit(input: import('../shared/usage-limits').ConsumeResetCreditInput): Promise<import('../shared/usage-limits').ConsumeResetCreditResult> {
+    if (!this.#engine.consumeResetCredit) throw new Error('This engine does not support reset credits')
+    return this.#engine.consumeResetCredit(input)
+  }
+
   async refreshAccounts(): Promise<void> {
     if (!this.#engine.refreshAccounts) throw new Error('This engine does not report accounts')
     await this.#engine.refreshAccounts()

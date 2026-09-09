@@ -146,6 +146,7 @@ const api: StrataApi & {
   writeEngineTerminal: (input) => invoke(IPC.writeEngineTerminal, input),
   resizeEngineTerminal: (input) => invoke(IPC.resizeEngineTerminal, input),
   closeEngineTerminal: (input) => invoke(IPC.closeEngineTerminal, input),
+  consumeResetCredit: input => invoke<import('../shared/usage-limits').ConsumeResetCreditResult>(IPC.consumeResetCredit, input),
   refreshAccounts: () => invoke<void>(IPC.refreshAccounts),
   holdMessageComment: (threadId, input) => invoke<string>(IPC.holdMessageComment, threadId, input),
   actMessageComment: (threadId, itemId, action) => invoke<void>(IPC.actMessageComment, threadId, itemId, action),

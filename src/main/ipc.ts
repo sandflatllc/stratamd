@@ -1,3 +1,4 @@
+import { consumeResetCreditInput } from '../shared/usage-limits'
 import { isLocalPage } from './local-link'
 import { recoveryRequest } from '../shared/engine-recovery'
 import { computerRequest } from '../shared/computer'
@@ -227,6 +228,7 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.writeEngineTerminal]: z.tuple([terminalWriteInput]),
   [IPC.resizeEngineTerminal]: z.tuple([terminalResizeInput]),
   [IPC.closeEngineTerminal]: z.tuple([terminalTarget]),
+  [IPC.consumeResetCredit]: z.tuple([consumeResetCreditInput]),
   [IPC.refreshAccounts]: z.tuple([]),
   [IPC.holdMessageComment]: z.tuple([idSchema, z.object({ id: idSchema.optional(), messageId: idSchema, from: z.number().int().nonnegative(), to: z.number().int().positive(), kind: z.enum(['comment', 'question', 'suggestion']), text: z.string().min(1).max(20000) }).strict()]),
   [IPC.actMessageComment]: z.tuple([idSchema, idSchema, z.enum(['resolve', 'reopen', 'discard'])]),
@@ -482,6 +484,7 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.writeEngineTerminal]: (input: Parameters<StrataApi['writeEngineTerminal']>[0]) => options.api.writeEngineTerminal(input),
     [IPC.resizeEngineTerminal]: (input: Parameters<StrataApi['resizeEngineTerminal']>[0]) => options.api.resizeEngineTerminal(input),
     [IPC.closeEngineTerminal]: (input: Parameters<StrataApi['closeEngineTerminal']>[0]) => options.api.closeEngineTerminal(input),
+    [IPC.consumeResetCredit]: (input: Parameters<StrataApi['consumeResetCredit']>[0]) => options.api.consumeResetCredit(input),
     [IPC.refreshAccounts]: () => options.api.refreshAccounts(),
     [IPC.holdMessageComment]: (threadId: string, input: Parameters<StrataApi['holdMessageComment']>[1]) => options.api.holdMessageComment(threadId, input),
     [IPC.actMessageComment]: (threadId: string, itemId: string, action: 'resolve' | 'reopen' | 'discard') => options.api.actMessageComment(threadId, itemId, action),

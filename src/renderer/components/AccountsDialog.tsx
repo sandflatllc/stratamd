@@ -1,5 +1,6 @@
+import { CombinedQuota, QuotaBar, ResetCredits, SourceQuota, quotaWindows } from './AccountQuota'
 import { DialogResize } from './DialogResize'
-import { accountForModel, usageWindowStale } from '../../core/accountState'
+import { accountForModel } from '../../core/accountState'
 import { ProviderInstall } from './ProviderInstall'
 import { generatedModelSchema } from '../../shared/engine-settings'
 import { useEffect, useRef, useState } from 'react'
@@ -86,19 +87,6 @@ export function usageTone(usedPercent: number): 'ok' | 'warn' | 'hot' {
   return 'ok'
 }
 
-function UsageBar({ label, window, now }: { label: string; window: AccountView['session']; now: number }) {
-  if (!window) return null
-  const percent = Math.max(0, Math.min(100, window.usedPercent))
-  const stale = usageWindowStale(window, now)
-  return (
-    <div className="account-usage" data-window={label.toLowerCase()} data-stale={stale || undefined} title={stale ? 'Last reading is out of date' : undefined} data-tone={usageTone(percent)}>
-      <span>{label}</span>
-      <span className="account-bar" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)} aria-label={`${label} usage`}><i style={{ width: `${percent}%` }} /></span>
-      <small><b>{Math.round(window.usedPercent)}%</b>{window.resetsAt && <span title={new Date(window.resetsAt).toLocaleString()}>{Date.parse(window.resetsAt) <= now ? 'Reset passed' : shortResetLabel(window.resetsAt, now)}</span>}</small>
-    </div>
-  )
-}
-
 function AccountRow({ account, engine, auto, now, onPark, onManage }: { account: AccountView; engine: EngineView; auto: boolean; now: number; onPark: AccountsDialogProps['onPark']; onManage(): void }) {
   const baseAccount = account
   if (account.driver === 'claudeAgent') account = accountForModel(account, 'fable', now)
@@ -124,14 +112,10 @@ function AccountRow({ account, engine, auto, now, onPark, onManage }: { account:
         </div>
         {account.measuredAt && <span className="account-measured" title={new Date(account.measuredAt).toLocaleString()}>Checked {measurementAge(account.measuredAt, now)}</span>}
       </div>
-      <div className="account-windows" title={account.driver === 'claudeAgent' ? 'Fable and All models are weekly limits. Session is the shared five-hour limit.' : undefined}>
-        {account.usageAvailable === false && <small>Usage unavailable for this connection</small>}
-        {(account.modelWindows ?? []).toSorted((a, b) => Number(b.model.toLowerCase() === 'fable') - Number(a.model.toLowerCase() === 'fable')).map(window => <UsageBar key={window.model} label={window.model} window={window} now={now} />)}
-        {account.driver === 'claudeAgent' && account.usageAvailable !== false && !account.modelWindows?.some(window => window.model.toLowerCase() === 'fable') && <small>Fable usage not reported</small>}
+      <div className="account-windows">
+        {quotaWindows(account).map(window => <QuotaBar key={window.id} window={window} now={now} />)}
+        {!quotaWindows(account).length && <small>{account.usageAvailable === false ? 'Usage unavailable for this connection' : account.usageUnsupported ? 'This account does not support usage reports.' : 'This provider has not reported usage. Limits are unknown.'}</small>}
         {account.usageRefreshing && <small role="status">Refreshing usage…</small>}
-        {account.usageProblem && account.state !== 'stale' && <small title={account.usageProblem}>Refresh failed · showing last reading</small>}
-        <UsageBar label="Session" window={account.session} now={now} />
-        <UsageBar label={account.driver === 'claudeAgent' ? 'All models' : 'Weekly'} window={account.weekly} now={now} />
       </div>
       <button type="button" className="account-park" aria-pressed={account.parked} aria-label={`${account.parked ? 'Unpark' : 'Park'} ${account.name}`} onClick={() => onPark(account.instanceId, !account.parked)}>
         <span className="account-park-track" aria-hidden="true" />
@@ -159,6 +143,7 @@ function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEn
   const generatedAccount = engine.accounts.find(account => account.instanceId === generatedInstance)
   const generatedUnavailable = generatedInstance && (!generatedAccount?.installed || !(generatedAccount.providerReady ?? generatedAccount.usable))
   const [now, setNow] = useState(Date.now)
+  const [combined, setCombined] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState('')
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 10000); return () => clearInterval(timer) }, [])
@@ -180,6 +165,8 @@ function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEn
           {!engine.accounts.some(account => account.usable) && <p className="engine-hint">Documents keep working while you set up an account.</p>}
           {generatedUnavailable && <p className="engine-hint">The account for generated text is not ready. <button type="button" className="text-action" onClick={onOpenSettings}>Choose a model in Settings</button>.</p>}
           {engine.accounts.length === 0 && <div className="empty-subtle">No provider accounts reported yet.</div>}
+          <div className="quota-tabs"><button className="quiet-button" aria-pressed={!combined} onClick={() => setCombined(false)}>By account</button><button className="quiet-button" aria-pressed={combined} onClick={() => setCombined(true)}>Combined</button><span className="engine-hint">{engine.accounts.some(account => account.measuredAt) ? `Updated ${measurementAge(engine.accounts.flatMap(account => account.measuredAt ? [account.measuredAt] : []).sort().at(-1)!, now)}` : 'No usage report received'}</span></div>
+          {combined ? <><CombinedQuota accounts={engine.accounts} sources={engine.usageLimitSources} now={now} /><button className="quiet-button" onClick={() => setCombined(false)}>Show accounts</button></> : <>
           {active.map((driver) => {
             const accounts = engine.accounts.filter((account) => account.driver === driver)
             const fable = driver === 'claudeAgent' && accounts.some(account => account.modelWindows?.some(window => window.model.toLowerCase() === 'fable'))
@@ -206,6 +193,7 @@ function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEn
       </section>
             )
           })}
+          <SourceQuota engine={engine} now={now} />
           {inactive.length > 0 && (
             <section className="accounts-group" data-inactive aria-label="Not set up">
               <div className="accounts-group-head">
@@ -223,6 +211,9 @@ function AccountsOverview({ engine, onPark, onTerminalDefault, onClose, onOpenEn
               </div>
       </section>
           )}
+          </>}
+          {engine.accounts.some(account => account.usageProblem || account.state === 'stale') && <div className="account-quota-problem" role="alert"><p>Refresh failed or usage is out of date. The bars show the last report, not current limits.</p> <button className="quiet-button" disabled={refreshing || engine.state !== 'connected'} onClick={() => void refresh()}>Retry refresh</button></div>}
+          {!combined && <ResetCredits engine={engine} now={now} />}
         </div>
         <div className="modal-actions accounts-actions">
           {engine.terminalShimDirectory && <p className="engine-hint">Terminal launchers live in <code>{engine.terminalShimDirectory}</code>. Put that directory on PATH before the provider binaries.</p>}

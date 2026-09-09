@@ -233,3 +233,67 @@ it('explicit Refresh bypasses disabled polling and exposes failed readings witho
     await vi.waitFor(() => expect(client.view().accounts[0]).toMatchObject({ state: 'ready', usageProblem: null, usageRefreshing: false }))
   } finally { await client.shutdown() }
 })
+
+it('maps remote engine windows, sparse updates, failed probes and unsupported reports without local probes', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'strata-reported-usage-'))
+  const weekly = { id: 'primary', kind: 'weekly', label: 'Week', usedPercent: 26, resetsAt: '2026-09-05T12:00:00.000Z', windowDurationMins: 10080 }
+  let report: Record<string, unknown> = { checkedAt: at, windows: [weekly, { ...weekly, id: 'monthly', kind: 'monthly', label: 'Monthly', usedPercent: 100 }] }
+  const config = () => ({ providers: [{ ...provider('codex-work', 'codex'), usageLimits: report }, provider('claude-main', 'claudeAgent')], usageLimitSources: [], settings: {} })
+  const server = fakeEngineServer(tag => tag === 'server.getConfig' ? config() : tag.includes('subscribe') ? [] : null)
+  const measureUsage = vi.fn(async () => null)
+  const client = new T3EngineClient({ dataDirectory: directory, now: () => nowMs, fetch: fetchFor(shell()), webSocket: server.WebSocket, measureUsage, localUsageAvailable: () => true })
+  try {
+    await client.pair('http://engine.test', 'code')
+    expect(client.view().accounts[0]).toMatchObject({ state: 'limited', pressure: 100, session: null, weekly: null, measuredAt: at, windows: [{ id: 'primary' }, { id: 'monthly' }] })
+    expect(measureUsage).not.toHaveBeenCalled()
+    report = { checkedAt: at, windows: [{ ...weekly, usedPercent: 42 }] }
+    server.push('subscribeServerConfig', [{ version: 1, type: 'providerStatuses', payload: config() }])
+    await vi.waitFor(() => expect(client.view().accounts[0]?.windows?.[0]?.usedPercent).toBe(42))
+    expect(client.view().accounts[0]?.windows).toHaveLength(2)
+    report = { checkedAt: '2026-09-03T12:01:00.000Z', windows: [], unavailable: { reason: 'probeFailed', message: 'Provider is offline' } }
+    await client.refreshAccounts()
+    expect(client.view().accounts[0]).toMatchObject({ measuredAt: at, usageProblem: 'Provider is offline', windows: [{ usedPercent: 42 }, { usedPercent: 100 }] })
+    report = { checkedAt: at, windows: [], unavailable: { reason: 'unsupported' } }
+    await client.refreshAccounts()
+    expect(client.view().accounts[0]).toMatchObject({ windows: [], usageUnsupported: true, pressure: 0, state: 'ready' })
+  } finally { await client.shutdown() }
+})
+
+it('guards reset credits and returns the actual provider outcome for instances and source accounts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'strata-reset-credit-'))
+  let report: Record<string, unknown> = { checkedAt: at, windows: [], resetCredits: { availableCount: 1 } }
+  let outcome = 'nothingToReset'
+  const sourceReport = { checkedAt: at, windows: [], resetCredits: { availableCount: 1, nextCreditId: 'credit-1' } }
+  const server = fakeEngineServer(tag => tag === 'server.getConfig' ? { providers: [{ ...provider('codex-work', 'codex'), usageLimits: report }], usageLimitSources: [{ id: 'hub', kind: 'cliproxy', label: 'Hub', checkedAt: at, accounts: [{ id: 'hub-account', driver: 'codex', usageLimits: sourceReport }] }] } : tag === 'provider.consumeResetCredit' ? { outcome } : tag.includes('subscribe') ? [] : null)
+  const client = new T3EngineClient({ dataDirectory: directory, now: () => nowMs, fetch: fetchFor(shell()), webSocket: server.WebSocket })
+  try {
+    await client.pair('http://engine.test', 'code')
+    expect(client.view().accounts).toHaveLength(1)
+    expect(client.view().usageLimitSources?.[0]?.accounts).toHaveLength(1)
+    await expect(client.consumeResetCredit({ instanceId: 'codex-work' })).resolves.toEqual({ outcome: 'nothingToReset' })
+    outcome = 'alreadyRedeemed'
+    await expect(client.consumeResetCredit({ sourceId: 'hub', accountId: 'hub-account', creditId: 'credit-1' })).resolves.toEqual({ outcome: 'alreadyRedeemed' })
+    expect(server.requests.filter(request => request.tag === 'provider.consumeResetCredit').at(-1)?.payload).toEqual({ sourceId: 'hub', accountId: 'hub-account', creditId: 'credit-1' })
+    await expect(client.consumeResetCredit({ sourceId: 'hub', accountId: 'hub-account', creditId: 'old-credit' })).rejects.toThrow('No current reset credit')
+    report = { ...report, resetCredits: { availableCount: 0 } }
+    await client.refreshAccounts()
+    await expect(client.consumeResetCredit({ instanceId: 'codex-work' })).rejects.toThrow('No current reset credit')
+    expect(server.requests.filter(request => request.tag === 'provider.consumeResetCredit')).toHaveLength(2)
+  } finally { await client.shutdown() }
+})
+
+it('keeps native model-scoped limits selective and retains reset metadata across sparse updates', async () => {
+  const { providerInstancesOf, accountViews, emptyAccountsStore, recordMeasurements } = await import('../../src/main/engine/accounts')
+  const { serverConfigSlice } = await import('../../src/main/engine/t3-contract')
+  const { accountForModel } = await import('../../src/core/accountState')
+  const resetsAt = '2026-09-05T12:00:00.000Z'
+  const parse = (windows: unknown[]) => providerInstancesOf(serverConfigSlice.parse({ providers: [{ ...provider('claude', 'claudeAgent'), usageLimits: { checkedAt: at, windows } }] }))
+  const full = parse([{ id: 'seven_day_fable', kind: 'weekly', label: 'Weekly · Fable', usedPercent: 100, resetsAt, windowDurationMins: 10080 }, { id: 'seven_day', kind: 'weekly', label: 'Weekly', usedPercent: 10, resetsAt, windowDurationMins: 10080 }])
+  let store = recordMeasurements(emptyAccountsStore(), full, at)
+  const sparse = parse([{ id: 'seven_day', kind: 'weekly', label: 'Weekly', usedPercent: 15 }])
+  store = recordMeasurements(store, sparse, at)
+  const account = accountViews(store, sparse, nowMs)[0]!
+  expect(account.windows).toMatchObject([{ id: 'seven_day_fable', usedPercent: 100 }, { id: 'seven_day', usedPercent: 15, resetsAt, windowDurationMins: 10080 }])
+  expect(accountForModel(account, 'claude-fable-5-1', nowMs)).toMatchObject({ usable: false, reason: 'Fable limit reached' })
+  expect(accountForModel(account, 'claude-sonnet-5', nowMs)).toMatchObject({ usable: true, pressure: 15 })
+})

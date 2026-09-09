@@ -4,6 +4,7 @@ import { inputPayload, pendingUserInputs } from '../../core/user-input'
 import { historyScanSchema, historyImportResultSchema, isPrivateHistoryPath } from '../../shared/history-import'
 import { contextCompactionResult, type ContextCompactionRequest, type CompactContextInput } from "../../shared/context-compaction"
 import { selectedProviderCommands, supportsManualCompaction } from "../../shared/provider-commands"
+import { mergeUsageSources, consumeResetCreditInput, consumeResetCreditResult, usageLimitSources, type ConsumeResetCreditInput, type ConsumeResetCreditResult, type UsageLimitSources } from '../../shared/usage-limits'
 import { legacyCommentNote, sentCommentsFromDelivery } from '../../core/sent-comments'
 import { installRelayClient } from './relay-install'
 import { accountForModel } from '../../core/accountState'
@@ -223,6 +224,7 @@ export interface EngineReadClient {
   browseFolder?(path: string): Promise<EngineFolderListing>
   lookupRepository?(repository: string): Promise<EngineRepository>
   cloneRepository?(input: CloneRepositoryInput): Promise<{ cwd: string }>
+  consumeResetCredit?(input: ConsumeResetCreditInput): Promise<ConsumeResetCreditResult>
   refreshAccounts?(): Promise<void>
   /** Keeps a composer image until it is sent or removed (§6.0). */
   stageAttachment?(input: { name: string; mimeType: string; bytes: Uint8Array }): Promise<{ id: string; sizeBytes: number }>
@@ -372,6 +374,7 @@ export class T3EngineClient implements EngineReadClient {
   readonly #terminalListeners = new Set<(push: import('../../shared/contracts').TerminalPush) => void>()
   #accounts: AccountsStore = emptyAccountsStore()
   #providers: EngineProviderInstance[] = []
+  #usageSources: UsageLimitSources = []
   #models: EngineModelView[] = []
   #settingsWrite: Promise<unknown> = Promise.resolve()
   #accountsWrite: Promise<void> = Promise.resolve()
@@ -653,6 +656,7 @@ export class T3EngineClient implements EngineReadClient {
       providerCommands: this.#providers.flatMap(provider => provider.commands ? [provider.commands] : []),
       activeThreadId: this.#reading.activeThreadId,
       accounts,
+      usageLimitSources: this.#usageSources,
       models: this.#models.map(model => ({ order: this.#accounts.modelPreferences?.[model.instanceId]?.order?.indexOf(model.slug) ?? -1, ...model, favorite: this.#accounts.modelPreferences?.[model.instanceId]?.favorites.includes(model.slug) ?? false, hidden: this.#accounts.modelPreferences?.[model.instanceId]?.hidden.includes(model.slug) ?? false })).sort((left, right) => left.instanceId === right.instanceId ? (left.order < 0 ? 1e6 : left.order) - (right.order < 0 ? 1e6 : right.order) : 0),
       terminalDefaults: { ...this.#accounts.terminalDefaults },
       autoInstanceIds: Object.fromEntries([...new Set(accounts.map((account) => account.driver))].map((driver) => [driver, chooseInstance(this.#accounts, accounts, null, driver, driver === 'claudeAgent' ? 'fable' : '', this.#now())])),
@@ -671,7 +675,7 @@ export class T3EngineClient implements EngineReadClient {
 
   #accountViews() {
     return accountViews(this.#accounts, this.#providers, this.#now()).map(account => {
-      const usageProblem = this.#usageProblems.get(account.instanceId) ?? null
+      const usageProblem = this.#usageProblems.get(account.instanceId) ?? account.usageProblem ?? null
       return { ...account, usageProblem, usageRefreshing: this.#usageJobs.has(account.instanceId), ...(usageProblem && account.state === 'ready' ? { state: 'stale' as const, reason: usageProblem } : {}) }
     })
   }
@@ -709,6 +713,22 @@ export class T3EngineClient implements EngineReadClient {
    * then reads the configuration that carries the fresh usage. A server too
    * old to refresh still answers the read.
    */
+  async consumeResetCredit(raw: ConsumeResetCreditInput): Promise<ConsumeResetCreditResult> {
+    return this.#operations.run(async () => {
+      const input = consumeResetCreditInput.parse(raw)
+      if (this.#state !== 'connected') throw new Error('Connect the engine before using a reset credit.')
+      const limits = 'instanceId' in input ? this.#providers.find(provider => provider.instanceId === input.instanceId)?.usageLimits : this.#usageSources.find(source => source.id === input.sourceId && !source.error)?.accounts.find(account => account.id === input.accountId)?.usageLimits
+      const credits = limits?.resetCredits
+      if (!limits || limits.unavailable || !credits || credits.availableCount < 1 || this.#now() - Date.parse(limits.checkedAt) > 600000 || credits.nextExpiresAt && Date.parse(credits.nextExpiresAt) <= this.#now() || 'creditId' in input && input.creditId !== credits.nextCreditId) throw new Error('No current reset credit is reported for this account. Refresh its usage first.')
+      const decoded = consumeResetCreditResult.safeParse(await this.#rpcOrSocket('provider.consumeResetCredit', input, 'reset credit'))
+      if (!decoded.success) throw new Error('The engine returned an unreadable reset-credit result. Refresh usage before trying again.')
+      const result = decoded.data
+      await this.#refreshConfig()
+      this.#publish()
+      return result
+    })
+  }
+
   async refreshAccounts(): Promise<void> {
     return this.#operations.run(() => this.#refreshAccounts())
   }
@@ -775,7 +795,7 @@ export class T3EngineClient implements EngineReadClient {
       }
       await this.#selectIdentity(identity)
       this.#compactions.clear(); this.#shell = null; this.#threads.clear(); this.#watched.clear(); this.#messageCache.clear()
-      this.#shellSequence = 0; this.#lastThreads = []; this.#providers = []; this.#models = []
+      this.#shellSequence = 0; this.#lastThreads = []; this.#providers = []; this.#usageSources = []; this.#models = []
       this.#configFetchedAt = 0; this.#configProblem = null
       this.#reading = { formatVersion: 1, activeThreadId: null, lastVisited: {}, attention: {} }
       this.#reading = await this.#readReading()
@@ -1917,6 +1937,15 @@ export class T3EngineClient implements EngineReadClient {
     await socket.open()
     this.#shellStream = await socket.stream(T3_RPC.subscribeShell, { afterSequence: this.#shellSequence, requestCompletionMarker: true }, (item) => this.#onShellItem(item), (error) => { if (error && this.#socket === socket) this.#onSocketClosed(socket, error.message) })
     await this.#subscribeThreads()
+    void socket.stream(T3_RPC.subscribeServerConfig, { usageLimitSources: true }, raw => {
+      if (this.#socket !== socket || !isSettingsRecord(raw) || raw.version !== 1) return
+      if (raw.type === 'usageLimitSourcesUpdated' && isSettingsRecord(raw.payload)) {
+        const parsed = usageLimitSources.safeParse(raw.payload.sources)
+        if (parsed.success) { this.#usageSources = mergeUsageSources(this.#usageSources, parsed.data); this.#publish() }
+      } else if (raw.type === 'providerStatuses' || raw.type === 'snapshot') {
+        void this.#operations.run(() => this.#refreshConfig()).then(() => this.#publish()).catch(() => undefined)
+      }
+    }, () => undefined).catch(() => undefined)
     this.#scheduleConfigRefresh()
     // Registration repeats on every reconnect; it never blocks the conversation coming up.
     void this.#registerPreviewHost(socket).catch((error: unknown) => logError('engine', 'Strata could not register as the browser host', error))
@@ -2204,7 +2233,13 @@ export class T3EngineClient implements EngineReadClient {
     try {
       const config = serverConfigSlice.parse(await this.#rpcOrSocket(T3_RPC.getServerConfig, {}, 'provider report'))
       if (identity !== this.#identity) return
-      this.#providers = providerInstancesOf(config).map(provider => ({ ...provider, usageLocal: this.#localUsageAvailable() }))
+      this.#providers = providerInstancesOf(config).map(provider => ({ ...provider, usageLocal: !!provider.usageLimits || this.#localUsageAvailable() }))
+      for (const provider of this.#providers) if (provider.usageReporting) {
+        this.#usageJobs.get(provider.instanceId)?.abort.abort()
+        this.#usageProblems.delete(provider.instanceId)
+      }
+      this.#accounts = recordMeasurements(this.#accounts, this.#providers, new Date(this.#now()).toISOString())
+      if (config.usageLimitSources) this.#usageSources = mergeUsageSources(this.#usageSources, config.usageLimitSources)
       this.#models = config.providers.flatMap((provider) => (provider.models ?? []).map((model) => ({ instanceId: provider.instanceId, accountName: provider.displayName ?? provider.instanceId, driver: provider.driver, slug: model.slug, name: model.name, ...(model.isDefault !== undefined ? { isDefault: model.isDefault } : {}), options: model.capabilities?.optionDescriptors ?? [] })))
       const settings = engineSettingsResult.parse(config.settings ?? {})
       this.#askSettings = { ...settings, providerInstances: effectiveProviderInstances(settings) }
@@ -2216,6 +2251,7 @@ export class T3EngineClient implements EngineReadClient {
       for (const id of this.#threads.keys()) this.#asks.observe(id, false)
       this.#probeUsage({ ...settings, providerInstances: effectiveProviderInstances(settings) }, forceUsage)
       this.#configProblem = null
+      await this.#persistAccounts()
       await this.#syncShims()
     } catch (error) {
       this.#configProblem = error instanceof Error ? error.message : 'The engine did not report its providers'
@@ -2241,7 +2277,7 @@ export class T3EngineClient implements EngineReadClient {
     if (!force && interval <= 0) return
     const identity = this.#identity
     for (const provider of this.#providers) {
-      if (!provider.installed || !provider.enabled || provider.auth.status !== 'authenticated' || !['codex', 'claudeAgent'].includes(provider.driver)) continue
+      if (provider.usageReporting || provider.usageLimits || !provider.installed || !provider.enabled || provider.auth.status !== 'authenticated' || !['codex', 'claudeAgent'].includes(provider.driver)) continue
       if (this.#usageJobs.has(provider.instanceId) || !force && this.#now() - (this.#usageAttempt.get(provider.instanceId) ?? -Infinity) < interval) continue
       if (provider.driver === 'codex' && this.view().projects.some(project => project.threads.some(thread => thread.providerInstanceId === provider.instanceId && ['running', 'starting'].includes(thread.status)))) continue
       this.#usageAttempt.set(provider.instanceId, this.#now())

@@ -1,3 +1,4 @@
+import { usageLimits, usageLimitSources } from '../../shared/usage-limits'
 import { z } from 'zod'
 
 export const T3_HTTP = {
@@ -221,6 +222,7 @@ export const serverProvider = z.object({
   ...commandSnapshot,
   workspaceSnapshots: z.array(z.object({ cwd: id, checkedAt: isoDate, ...commandSnapshot })).optional(),
   usage: providerUsage.optional(),
+  usageLimits: usageLimits.optional(),
   models: z.array(z.unknown()).transform((items) => items.flatMap((item) => { const parsed = providerModel.safeParse(item); return parsed.success ? [parsed.data] : [] })).optional(),
 }).passthrough()
 /**
@@ -229,6 +231,7 @@ export const serverProvider = z.object({
  * whole config, the same forward-compatible rule T3's own clients follow.
  */
 export const serverConfigSlice = z.object({
+  usageLimitSources: usageLimitSources.optional(),
   providers: z.array(z.unknown()).transform((items) => items.flatMap((item) => { const parsed = serverProvider.safeParse(item); return parsed.success ? [parsed.data] : [] })),
   settings: z.object({
     providerInstances: z.record(z.string(), z.object({ config: z.object({ homePath: z.string().optional() }).passthrough().optional() }).passthrough()).optional(),

@@ -524,6 +524,11 @@ export type VisualCommentAction = 'accept' | 'reopen' | 'discard' | 'retry' | 'c
 
 /** A usage window the provider reports or Strata last measured (§5.13). */
 export interface UsageWindowView {
+  modelScope?: string
+  id?: string
+  label?: string
+  kind?: string
+  windowDurationMins?: number | undefined
   usedPercent: number
   resetsAt: string | null
   measuredAt: string
@@ -533,6 +538,9 @@ export type AccountStateView = 'ready' | 'stale' | 'limited' | 'no-subscription'
 
 /** One provider instance as Accounts and the picker show it (§5.13). */
 export interface AccountView {
+  windows?: UsageWindowView[] | undefined
+  usageUnsupported?: boolean
+  resetCredits?: import('./usage-limits').UsageLimits['resetCredits']
   /** Provider readiness independent of Strata parking. */
   providerReady?: boolean
   installed?: boolean
@@ -583,6 +591,7 @@ export interface EngineView {
   activeThreadId: string | null
   /** Provider accounts on the engine, with Strata's persisted measurements and parking (§5.13). */
   accounts: AccountView[]
+  usageLimitSources?: import('./usage-limits').UsageLimitSources
   /** Per driver: `auto`, an instance id, or null for the system default (§5.13 terminal defaults). */
   terminalDefaults: Record<string, string | null>
   /** Per driver: the instance Auto would start a thread on right now, or null when none can take one (§5.13). */
@@ -1154,6 +1163,7 @@ export interface StrataApi {
   /** Sets which account a driver's terminal launcher uses: `auto`, an instance id, or null for none (§5.13). */
   setTerminalDefault(driver: string, selection: string | null): Promise<void>
   /** Probes the engine for provider usage now (§5.13 "a probe on open"). */
+  consumeResetCredit(input: import('./usage-limits').ConsumeResetCreditInput): Promise<import('./usage-limits').ConsumeResetCreditResult>
   refreshAccounts(): Promise<void>
   openDocument(path?: string): Promise<void>
   /** Renderer-only bridge: preload resolves Electron File objects with webUtils. */

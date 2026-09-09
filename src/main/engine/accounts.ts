@@ -1,3 +1,4 @@
+import { type UsageLimits } from '../../shared/usage-limits'
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { atomicWriteFile, isRecord, PRIVATE_FILE_MODE } from '../storage'
@@ -22,6 +23,8 @@ export interface AccountsStore {
 }
 
 export interface AccountMeasurement {
+  windows?: UsageWindow[] | undefined
+  checkedAt?: string | undefined
   accountKey?: string
   session: UsageWindow | null
   weekly: UsageWindow | null
@@ -40,6 +43,7 @@ export interface EngineProviderInstance {
   enabled: boolean
   installed: boolean
   commands?: import("../../shared/provider-commands").ProviderCommandCatalog
+  usageReporting?: boolean
   usageLocal?: boolean
   accentColor?: string
   status: string
@@ -47,6 +51,7 @@ export interface EngineProviderInstance {
   unavailableReason?: string
   message?: string
   auth: { status: string; type?: string; label?: string; email?: string }
+  usageLimits?: UsageLimits | undefined
   usage?: AccountUsage | undefined
 }
 
@@ -55,6 +60,9 @@ export function providerInstancesOf(config: T3ServerConfigSlice): EngineProvider
   return config.providers.map((provider) => {
     const home = config.settings?.providerInstances?.[provider.instanceId]?.config?.homePath?.trim()
     return {
+      usageReporting: config.usageLimitSources !== undefined || config.providers.some(item => item.usageLimits !== undefined),
+      usageLimits: provider.usageLimits,
+      ...(provider.usageLimits ? { usage: usageOf(provider.usageLimits, provider.driver) } : {}),
       instanceId: provider.instanceId,
       driver: provider.driver,
       displayName: provider.displayName ?? provider.instanceId,
@@ -79,7 +87,7 @@ export function emptyAccountsStore(): AccountsStore {
 function window(value: unknown): UsageWindow | null {
   if (!isRecord(value)) return null
   if (typeof value.usedPercent !== 'number' || !Number.isFinite(value.usedPercent) || typeof value.measuredAt !== 'string') return null
-  return { usedPercent: value.usedPercent, resetsAt: typeof value.resetsAt === 'string' ? value.resetsAt : null, measuredAt: value.measuredAt }
+  return { ...value, usedPercent: value.usedPercent, resetsAt: typeof value.resetsAt === 'string' ? value.resetsAt : null, measuredAt: value.measuredAt }
 }
 
 export function normalizeAccountsStore(value: unknown): AccountsStore {
@@ -92,6 +100,8 @@ export function normalizeAccountsStore(value: unknown): AccountsStore {
       store.measurements[instanceId] = {
         ...(typeof raw.accountKey === 'string' ? { accountKey: raw.accountKey } : {}),
         modelWindows: Array.isArray(raw.modelWindows) ? raw.modelWindows.flatMap(value => { const reading = window(value); return reading && isRecord(value) && typeof value.model === 'string' && value.model.trim() ? [{ ...reading, model: value.model }] : [] }) : [],
+        windows: Array.isArray(raw.windows) ? raw.windows.map(window).filter((item): item is UsageWindow => !!item) : undefined,
+        checkedAt: typeof raw.checkedAt === 'string' ? raw.checkedAt : undefined,
         session: window(raw.session), weekly: window(raw.weekly), applicable: raw.applicable !== false, measuredAt: raw.measuredAt,
         ...(typeof raw.planLabel === 'string' ? { planLabel: raw.planLabel } : {}),
       }
@@ -131,11 +141,13 @@ export function recordMeasurements(store: AccountsStore, providers: readonly Eng
   let changed = false
   const measurements = { ...store.measurements }
   for (const provider of providers) {
-    if (!provider.usage) continue
+    if (!provider.usage || provider.usageLimits?.unavailable?.reason === 'probeFailed') continue
     const next: AccountMeasurement = {
+      windows: mergeWindows(measurements[provider.instanceId]?.accountKey === measurementAccountKey(provider) ? measurements[provider.instanceId]?.windows : undefined, provider.usage),
+      checkedAt: provider.usage.checkedAt,
       accountKey: measurementAccountKey(provider),
       modelWindows: provider.usage.modelWindows ?? [],
-      session: provider.usage.session, weekly: provider.usage.weekly, applicable: provider.usage.applicable, measuredAt: nowIso,
+      session: provider.usage.session, weekly: provider.usage.weekly, applicable: provider.usage.applicable, measuredAt: provider.usage.checkedAt ?? nowIso,
       ...(provider.usage.planLabel ? { planLabel: provider.usage.planLabel } : {}),
     }
     const previous = measurements[provider.instanceId]
@@ -149,12 +161,12 @@ export function recordMeasurements(store: AccountsStore, providers: readonly Eng
 function measurementAccountKey(instance: EngineProviderInstance): string { return createHash('sha256').update(JSON.stringify([instance.driver, instance.auth.email?.trim().toLowerCase() ?? '', instance.homePath ?? ''])).digest('hex') }
 function measurementFor(instance: EngineProviderInstance, store: AccountsStore): AccountMeasurement | undefined {
   const stored = store.measurements[instance.instanceId]
-  return instance.usageLocal === false || stored?.accountKey && stored.accountKey !== measurementAccountKey(instance) ? undefined : stored
+  return instance.usageLocal === false && !instance.usageLimits || stored?.accountKey && stored.accountKey !== measurementAccountKey(instance) ? undefined : stored
 }
 
 function providerFor(instance: EngineProviderInstance, store: AccountsStore): AccountProvider {
   const measurement = measurementFor(instance, store)
-  const usage = instance.usage ?? (measurement ? { modelWindows: measurement.modelWindows ?? [], session: measurement.session, weekly: measurement.weekly, applicable: measurement.applicable, ...(measurement.planLabel ? { planLabel: measurement.planLabel } : {}) } : undefined)
+  const usage = instance.usageLimits?.unavailable?.reason === 'probeFailed' && measurement ? { ...measurement } : instance.usage && instance.usageLimits ? { ...instance.usage, windows: mergeWindows(measurement?.windows, instance.usage) } : instance.usage ?? (measurement ? { windows: measurement.windows, checkedAt: measurement.checkedAt, modelWindows: measurement.modelWindows ?? [], session: measurement.session, weekly: measurement.weekly, applicable: measurement.applicable, ...(measurement.planLabel ? { planLabel: measurement.planLabel } : {}) } : undefined)
   return {
     instanceId: instance.instanceId, driver: instance.driver, enabled: instance.enabled, status: instance.status,
     ...(instance.availability ? { availability: instance.availability } : {}),
@@ -177,7 +189,11 @@ export function accountViews(store: AccountsStore, providers: readonly EnginePro
       installed: instance.installed, enabled: instance.enabled,
       providerReady: instance.installed && deriveAccountState({ provider, parked: false, nowMs }).usable,
       ...(instance.accentColor ? { accentColor: instance.accentColor } : {}),
-      usageAvailable: instance.usageLocal !== false,
+      usageAvailable: !!instance.usageLimits || instance.usageLocal !== false,
+      usageUnsupported: instance.usageLimits?.unavailable?.reason === 'unsupported',
+      usageProblem: instance.usageLimits?.unavailable?.reason === 'probeFailed' ? instance.usageLimits.unavailable.message ?? 'Usage refresh failed' : null,
+      resetCredits: instance.usageLimits?.resetCredits,
+      windows: provider.usage?.windows,
       driver: instance.driver,
       name: instance.displayName,
       homePath: instance.homePath,
@@ -191,8 +207,8 @@ export function accountViews(store: AccountsStore, providers: readonly EnginePro
       parked,
       session: provider.usage?.session ?? null,
       weekly: provider.usage?.weekly ?? null,
-      modelWindows: provider.usage?.modelWindows ?? [],
-      measuredAt: instance.usage ? nowIso(nowMs) : measurement?.measuredAt ?? null,
+      modelWindows: [...(provider.usage?.modelWindows ?? []), ...(provider.usage?.windows ?? []).flatMap(window => window.modelScope ? [{ ...window, model: window.modelScope }] : [])],
+      measuredAt: provider.usage?.checkedAt ?? measurement?.measuredAt ?? (instance.usage ? nowIso(nowMs) : null),
       live: instance.usage !== undefined,
     }
   })
@@ -238,4 +254,15 @@ export function terminalShimTargets(store: AccountsStore, accounts: readonly Acc
     targets.push({ name: shim.command, command: shim.command, homeVariable: shim.homeVariable, home: account.homePath })
   }
   return targets
+}
+
+function usageOf(limits: UsageLimits, driver: string): AccountUsage {
+  return { session: null, weekly: null, applicable: limits.unavailable?.reason !== 'unsupported', checkedAt: limits.checkedAt, windows: limits.windows.map(window => ({ ...window, ...(driver === 'claudeAgent' && window.id.startsWith('seven_day_') && window.label.startsWith('Weekly · ') ? { modelScope: window.label.slice('Weekly · '.length) } : {}), resetsAt: window.resetsAt ?? null, measuredAt: limits.checkedAt })) }
+}
+function mergeWindows(previous: UsageWindow[] | undefined, next: AccountUsage): UsageWindow[] | undefined {
+  if (!next.applicable) return []
+  if (!next.windows) return undefined
+  const windows = new Map(previous?.map(window => [window.id, window]))
+  for (const window of next.windows) { const old = windows.get(window.id); windows.set(window.id, { ...old, ...window, resetsAt: window.resetsAt ?? old?.resetsAt ?? null, ...(window.windowDurationMins === undefined && old?.windowDurationMins !== undefined ? { windowDurationMins: old.windowDurationMins } : {}) }) }
+  return [...windows.values()]
 }

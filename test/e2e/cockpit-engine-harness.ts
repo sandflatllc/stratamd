@@ -12,6 +12,7 @@ const at = '2026-09-03T12:00:00.000Z'
 export interface FakeEngineOptions {
   historyRpc?: (tag: string, payload: unknown) => Promise<unknown>
 
+  consumeResetCredit?: () => unknown
   settings?: Record<string, unknown>
   /** The one-time codes the fake accepts at the token endpoint; each returns a session token derived from it. */
   pairingCodes?: string[]
@@ -307,6 +308,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     }
     if (tag === 'sourceControl.lookupRepository') return { provider: 'github', nameWithOwner: payload.repository, url: `https://github.com/${payload.repository}`, sshUrl: `git@github.com:${payload.repository}.git` }
     if (tag === 'sourceControl.cloneRepository') return { cwd: payload.destinationPath, remoteUrl: payload.remoteUrl ?? `https://github.com/${payload.repository}`, repository: null }
+    if (tag === 'provider.consumeResetCredit' && options.consumeResetCredit) return options.consumeResetCredit()
     if (tag === 'server.getConfig') return { providers, settings }
     if (tag === 'server.discoverSourceControl') return { versionControlSystems: [{ label: 'Git', status: 'available' }], sourceControlProviders: [{ label: 'GitHub', status: 'missing', installHint: { _tag: 'Some', value: 'Install and sign in with gh.' } }] }
     if (tag === 'server.refreshProviders') return { providers }

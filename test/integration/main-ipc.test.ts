@@ -87,6 +87,7 @@ function fakeApi(): StrataApi {
     adjustPreview: vi.fn(async () => { throw new Error('no preview') }),
     clearPreviewOverrides: vi.fn(async () => undefined),
     setTerminalDefault: vi.fn(async () => undefined),
+    consumeResetCredit: vi.fn(async () => ({ outcome: 'noCredit' as const })),
     refreshAccounts: vi.fn(async () => undefined),
     startThreadFromDocument: vi.fn(async () => 'thread-new'),
     actOnEngineThread: vi.fn(async () => undefined),
@@ -386,6 +387,8 @@ describe('engine setup IPC boundary', () => {
       for (const [channel, args] of invalid) await expect(handlers.get(channel)!(event, ...args), channel).rejects.toThrow()
       expect(api.readEngineUsage).not.toHaveBeenCalled()
       expect(api.attachEngineTerminal).not.toHaveBeenCalled()
+      await handlers.get(IPC.consumeResetCredit)!(event, { instanceId: 'codex' })
+      expect(api.consumeResetCredit).toHaveBeenCalledWith({ instanceId: 'codex' })
       await handlers.get(IPC.readEngineUsage)!(event, '24h')
       expect(api.readEngineUsage).toHaveBeenCalledWith('24h')
       await handlers.get(IPC.resizeEngineTerminal)!(event, { threadId: 'thread', terminalId: 'term-1', cols: 80, rows: 24 })

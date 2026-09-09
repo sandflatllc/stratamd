@@ -1,9 +1,9 @@
 import type { AccountView } from '../shared/contracts'
 
 export type AccountState = 'ready' | 'stale' | 'limited' | 'no-subscription' | 'signed-out' | 'parked' | 'disabled' | 'unknown'
-export interface UsageWindow { usedPercent: number; resetsAt: string | null; measuredAt: string }
+export interface UsageWindow { modelScope?: string; id?: string; label?: string; kind?: string; windowDurationMins?: number | undefined; usedPercent: number; resetsAt: string | null; measuredAt: string }
 export interface ModelUsageWindow extends UsageWindow { model: string }
-export interface AccountUsage { session: UsageWindow | null; weekly: UsageWindow | null; modelWindows?: ModelUsageWindow[]; planLabel?: string; applicable: boolean }
+export interface AccountUsage { windows?: UsageWindow[] | undefined; checkedAt?: string | undefined; problem?: string; session: UsageWindow | null; weekly: UsageWindow | null; modelWindows?: ModelUsageWindow[]; planLabel?: string; applicable: boolean }
 export interface AccountProvider { instanceId: string; driver: string; enabled: boolean; status: string; availability?: string; unavailableReason?: string; message?: string; auth: { status: string; type?: string; label?: string }; usage?: AccountUsage }
 export interface DerivedAccountState { state: AccountState; usable: boolean; tier: 0 | 1 | 2; limitedUntil: string | null; pressure: number | null; reason: string | null }
 const capable = new Set(['claudeAgent', 'codex'])
@@ -23,7 +23,7 @@ export function modelUsageWindows(windows: readonly ModelUsageWindow[] | undefin
 
 /** Shared limits always apply; a named model adds its own weekly limits. */
 export function deriveAccountState({ provider, parked, nowMs, model = '' }: { provider: AccountProvider; parked: boolean; nowMs: number; model?: string }): DerivedAccountState {
-  const windows = [provider.usage?.session, provider.usage?.weekly, ...modelUsageWindows(provider.usage?.modelWindows, model)].filter((value): value is UsageWindow => !!value)
+  const windows = [...(provider.usage?.windows?.filter(window => !window.modelScope || modelUsageWindows([{ ...window, model: window.modelScope }], model).length > 0) ?? [provider.usage?.session, provider.usage?.weekly]), ...modelUsageWindows(provider.usage?.modelWindows, model)].filter((value): value is UsageWindow => !!value)
   const pressure = windows.length ? Math.max(...windows.map((value) => value.usedPercent)) : null
   if (parked) return unusable('parked', 'Parked', pressure)
   if (provider.availability === 'unavailable') return unusable('unknown', provider.unavailableReason ?? 'Provider unavailable', pressure)
@@ -58,11 +58,11 @@ export function deriveAccountState({ provider, parked, nowMs, model = '' }: { pr
 export function accountForModel(account: AccountView, model: string, nowMs = Date.now()): AccountView {
   if (!['ready', 'stale', 'limited'].includes(account.state)) return account
   const windows = modelUsageWindows(account.modelWindows, model)
-  if (!account.session && !account.weekly && !windows.length) return account
+  if (!account.windows?.length && !account.session && !account.weekly && !windows.length) return account
   const provider: AccountProvider = {
     instanceId: account.instanceId, driver: account.driver, enabled: true, status: 'ready',
     auth: { status: 'authenticated' },
-    usage: { session: account.session, weekly: account.weekly, modelWindows: windows, applicable: true },
+    usage: { windows: account.windows, session: account.session, weekly: account.weekly, modelWindows: windows, applicable: true },
   }
   const derived = deriveAccountState({ provider, parked: false, nowMs, model })
   // A known shared total cannot establish how much Fable allowance remains.

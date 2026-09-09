@@ -38,6 +38,7 @@ export const IPC = {
   resizeEngineTerminal: 'strata:resizeEngineTerminal',
   closeEngineTerminal: 'strata:closeEngineTerminal',
   terminalEvent: 'strata:terminal-event',
+  consumeResetCredit: 'strata:consume-reset-credit',
   refreshAccounts: 'strata:refresh-accounts',
   holdMessageComment: 'strata:hold-message-comment',
   actMessageComment: 'strata:act-message-comment',

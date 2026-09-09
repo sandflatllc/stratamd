@@ -43,9 +43,9 @@ it('shows Fable separately, keeps other models selectable, and labels expired re
   const engine = { ...EMPTY_VIEW.engine, state: 'connected' as const, accounts }
   const html = renderToStaticMarkup(createElement(AccountsDialog, { engine, onPark() {}, onTerminalDefault() {}, onClose() {} }))
   expect(html).toContain('Fable limit reached')
-  expect(html).toContain('aria-label="Fable usage"')
-  expect(html).toContain('aria-label="All models usage"')
-  expect(html.indexOf('data-window="fable"')).toBeLessThan(html.indexOf('data-window="session"'))
+  expect(html).toContain('aria-label="Fable remaining"')
+  expect(html).toContain('aria-label="Weekly remaining"')
+  expect(html).toContain('data-window="Fable"')
   expect(html).toContain('>Refresh</button>')
   const models = ['fable', 'sonnet'].map(model => ({ instanceId: 'claude', driver: 'claudeAgent', accountName: 'Claude Work', slug: `claude-${model}-5`, name: model, options: [] }))
   const picker = renderToStaticMarkup(createElement(ModelPicker, { models, accounts, selection: { instanceId: 'claude', model: 'claude-fable-5', effort: null, access: 'full-access' }, onSelect() {} }))
@@ -54,6 +54,6 @@ it('shows Fable separately, keeps other models selectable, and labels expired re
   const old = { ...accounts[0]!, state: 'stale' as const, session: { usedPercent: 6, measuredAt: new Date(now - 3600000).toISOString(), resetsAt: new Date(now - 1800000).toISOString() }, modelWindows: [] }
   const stale = renderToStaticMarkup(createElement(AccountsDialog, { engine: { ...engine, accounts: [old] }, onPark() {}, onTerminalDefault() {}, onClose() {} }))
   expect(stale).toContain('Reset passed')
-  expect(stale).toContain('Fable usage not reported')
+  expect(stale).toContain('Weekly')
   expect(stale).toContain('Usage out of date')
 })
