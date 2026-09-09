@@ -100,3 +100,5 @@ The import confirmation describes bounded recent history: up to 100 conversation
 ## Skill insertion contract correction
 
 The menu keeps its approved `/name` labels. Selecting a skill inserts T3’s canonical `$name` mention into the draft; the provider adapter resolves that mention to the native invocation when sent. The inserted-state fixture now shows `$agent-browser`, matching the actual contract. Selection still sends nothing.
+
+The actual bundled-engine import smoke confirmed that `importedCount` includes already-present conversations. Completion now says “imported or already present.” Skipped history can be unreadable or unsupported; it is not an unchanged count. Retry preserves conversation identity.

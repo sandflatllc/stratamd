@@ -215,7 +215,8 @@
       "partial",
       "done"
     ],
-    "retention": "Up to 100 conversations per project and 200 messages per conversation, subject to engine byte limits; discovery count is an estimate"
+    "retention": "Up to 100 conversations per project and 200 messages per conversation, subject to engine byte limits; discovery count is an estimate",
+    "countSemantics": "Real bundled-engine smoke confirmed importedCount includes already-present conversations; skippedCount is not an unchanged count. Corrected completion and retry wording."
   },
   "defaultsContractCorrection": {
     "status": "Fixture corrected to grouped native persistence; historical approval retained",
