@@ -1,12 +1,12 @@
 .chat-context-control { position: relative; display: inline-flex; }
 .chat-context-meter[role="button"] { cursor: pointer; }
 .chat-context-control .chat-context-meter[aria-expanded="true"] .chat-context-tooltip { display: none; }
-.chat-menu.context-compaction-menu { width: min(320px, 75vw); padding: 8px; font-size: 13px; line-height: 1.5; }
-.context-compaction-menu h3 { margin: 4px 6px; font-size: 14px; font-weight: 700; }
-.context-compaction-menu p { margin: 6px; color: var(--interface-muted); font-size: 12px; }
-.chat-send-actions .context-compaction-menu button { width: 100%; height: auto; padding: 9px; border-radius: 6px; text-align: left; font-size: 12px; font-weight: 800; color: var(--text); }
+.chat-menu.context-compaction-menu { width: min(320px, 75vw); padding: 8px; font-size: calc(13px * var(--zoom, 1)); line-height: 1.5; }
+.context-compaction-menu h3 { margin: 4px 6px; font-size: calc(14px * var(--zoom, 1)); font-weight: 700; }
+.context-compaction-menu p { margin: 6px; color: var(--interface-muted); font-size: calc(12px * var(--zoom, 1)); }
+.chat-send-actions .context-compaction-menu button { width: 100%; height: auto; padding: 9px; border-radius: 6px; text-align: left; font-size: calc(12px * var(--zoom, 1)); font-weight: 800; color: var(--text); }
 .context-compaction-menu button:disabled { opacity: .45; }
-.context-compaction-notice { margin: 8px; padding: 11px 10px; border: 1px solid var(--surfaces-border); border-radius: 8px; background: var(--surfaces-inset); color: var(--text); font-size: 13px; line-height: 1.5; }
+.context-compaction-notice { margin: 8px; padding: 11px 10px; border: 1px solid var(--surfaces-border); border-radius: 8px; background: var(--surfaces-inset); color: var(--text); font-size: calc(13px * var(--zoom, 1)); line-height: 1.5; }
 .context-compaction-notice[data-state="done"] { border-color: var(--controls-primary); }
 .context-compaction-notice[data-state="failed"] { border-color: var(--controls-danger); }
 .context-compaction-notice p { margin: 4px 0; }

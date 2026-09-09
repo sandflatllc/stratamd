@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from './test'
+import { primaryKey } from './harness'
 import { openThread } from './cockpit-agent'
 import { DEFAULT_PROVIDERS, seededScenario, startEngine, type FakeEngine } from './cockpit-engine-harness'
 
@@ -59,6 +60,27 @@ test('compact command preserves draft, held work and transcript through working 
       return { comments: thread.comments, documents: thread.documents, text: thread.messages.find(message => message.id === 'm1')!.text, document: view.activeDocument }
     })
     expect(after).toEqual(before)
+
+    // The native top-layer popup must retain the conversation pane's text zoom.
+    await page.getByRole('button', { name: /Context window: 24%/ }).click()
+    const popup = page.getByRole('dialog', { name: 'Context actions' })
+    const heading = popup.locator('h3')
+    const description = popup.locator('p').first()
+    const action = popup.getByRole('button', { name: 'Compact context', exact: true })
+    const notice = page.locator('.context-compaction-notice')
+    await expect(heading).toHaveCSS('font-size', '14px')
+    await expect(notice).toHaveCSS('font-size', '13px')
+    await heading.hover()
+    await page.keyboard.press(primaryKey('Equal'))
+    await expect(popup).toHaveCSS('font-size', '14.3px')
+    await expect(heading).toHaveCSS('font-size', '15.4px')
+    await expect(description).toHaveCSS('font-size', '13.2px')
+    await expect(action).toHaveCSS('font-size', '13.2px')
+    await expect(notice).toHaveCSS('font-size', '14.3px')
+    await capture(page, testInfo, 'zoomed')
+    await page.keyboard.press(primaryKey('Minus'))
+    await expect(heading).toHaveCSS('font-size', '14px')
+    await expect(notice).toHaveCSS('font-size', '13px')
   } finally { await scenario.dispose(); await engine.close() }
 })
 
