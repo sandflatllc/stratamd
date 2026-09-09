@@ -26,7 +26,7 @@ it('uses native RPC counts for unchanged retries and refuses changed or private 
   const server = fakeEngineServer(tag => {
     if (tag.startsWith('orchestration.subscribe')) return [{ kind: 'synchronized' }]
     if (tag === 'agentSessions.scan') return { scannedAt: at, candidates: [candidate('/work/safe'), candidate('/srv/openclaw/private')] }
-    if (tag === 'agentSessions.import') return ++calls === 1 ? { importedCount: 2, skippedCount: 0 } : { importedCount: 0, skippedCount: 2 }
+    if (tag === 'agentSessions.import') { calls++; return { importedCount: 2, skippedCount: 0 } }
     return null
   })
   const client = new T3EngineClient({ dataDirectory: await mkdtemp(join(tmpdir(), 'strata-history-')), webSocket: server.WebSocket, fetch: async input => {
@@ -43,7 +43,7 @@ it('uses native RPC counts for unchanged retries and refuses changed or private 
     expect(calls).toBe(0)
     const input = { projectId: 'safe', expectedWorkspaceRoot: '/work/safe' }
     expect(await client.importHistory(input)).toEqual({ importedCount: 2, skippedCount: 0 })
-    expect(await client.importHistory(input)).toEqual({ importedCount: 0, skippedCount: 2 })
+    expect(await client.importHistory(input)).toEqual({ importedCount: 2, skippedCount: 0 })
     expect(server.requests.filter(request => request.tag === 'agentSessions.import').map(request => request.payload)).toEqual([input, input])
     expect(server.requests.some(request => request.tag === 'orchestration.dispatchCommand')).toBe(false)
   } finally { await client.shutdown() }

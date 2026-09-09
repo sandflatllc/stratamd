@@ -1,7 +1,6 @@
 import { hasDraftContent, onDraftPresence } from '../conversationDrafts'
 import { engineStorage } from '../engineStorage'
 import { useCallback, useSyncExternalStore, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
-import { ImportDialog } from './ImportDialog'
 import { AddProjectDialog } from './AddProjectDialog'
 import { GlobeIcon, PlusIcon } from '../icons/lucide'
 import { buildProjectsRail, moveProject, orderProjects, projectThreadState, resolveShelfThreads, type ProjectFolderState, type ProjectShelfEntry, type ProjectThreadSort, type ProjectThreadState } from '../../core/projects-rail'
@@ -171,7 +170,6 @@ export function ProjectsPanel({ engine, query, onOpenThread, onBeginRename, onRe
   const [shelfCounts, setShelfCounts] = useState({ snoozed: 5, settled: 5 })
   const [menu, setMenu] = useState<{ thread: EngineThreadView; x: number; y: number } | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
-  const [importingHistory, setImportingHistory] = useState(false)
   const [addingProject, setAddingProject] = useState(false)
 
   useEffect(() => { try { engineStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences)) } catch { /* Disposable view preference. */ } }, [preferences])
@@ -258,8 +256,7 @@ export function ProjectsPanel({ engine, query, onOpenThread, onBeginRename, onRe
   if (engine.state === 'disconnected' || engine.state === 'connecting') return <div className="engine-empty" data-testid="engine-disconnected">{engine.server ?? 'Engine'} is {engine.state === 'connecting' ? 'connecting' : 'disconnected'}.<button type="button" onClick={onReconnect}>Reconnect</button></div>
 
   return <div className="projects-panel">
-    <header className="projects-header"><h2>Projects</h2><button type="button" title="Import existing work" aria-label="Import existing work" onClick={() => setImportingHistory(true)}>Import</button><label title="Sort threads"><span className="sr-only">Sort projects</span><select aria-label="Sort projects" value={sort} onChange={(event) => setSort(event.target.value as ProjectThreadSort)}><option value="recent">Recent</option><option value="oldest">Oldest</option><option value="title">Name</option></select></label><button type="button" aria-label="Add project" title="Add project" onClick={() => setAddingProject((value) => !value)}><PlusIcon /></button></header>
-    {importingHistory && <ImportDialog engine={engine} onClose={() => setImportingHistory(false)} />}
+    <header className="projects-header"><h2>Projects</h2><label title="Sort threads"><span className="sr-only">Sort projects</span><select aria-label="Sort projects" value={sort} onChange={(event) => setSort(event.target.value as ProjectThreadSort)}><option value="recent">Recent</option><option value="oldest">Oldest</option><option value="title">Name</option></select></label><button type="button" aria-label="Add project" title="Add project" onClick={() => setAddingProject((value) => !value)}><PlusIcon /></button></header>
     {addingProject && <AddProjectDialog engine={engine} onClose={() => setAddingProject(false)} />}
     <div className="project-folders" ref={folderList} data-reordering={drag !== null || undefined}>
       {filtered.folders.map((folder) => {
