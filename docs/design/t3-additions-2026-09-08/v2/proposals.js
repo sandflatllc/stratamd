@@ -111,7 +111,7 @@ window.Proposals = (() => {
     else workNotice('Could not compact context. Your conversation and draft are unchanged.','error',button('Retry compaction','working'));
   }
   function skills(state){
-    composerDraft(state==='inserted'?'/agent-browser Review the inspection page.':state==='filtered'?'/browser':state==='empty'?'/roof-estimate':'/');
+    composerDraft(state==='inserted'?'$agent-browser Review the inspection page.':state==='filtered'?'/browser':state==='empty'?'/roof-estimate':'/');
     if(state==='inserted')return;
     const item=(title,desc,go,selected=false)=>`<button class="proposal-menu-item" data-go="${go}" ${selected?'data-selected':''}><span><strong>${title}</strong><small>${desc}</small></span><kbd>↵</kbd></button>`;
     anchoredMenu(state==='empty'?'<h3>No matching command or skill</h3>'+note('No results for “roof-estimate”. Try another name.')+button('Clear search','menu'):(state==='menu'?'<h3>Commands</h3>'+item('/compact','Compacts context immediately','compact/ready'):'')+'<h3>Skills</h3>'+item('/agent-browser','Open pages, inspect UI, and capture evidence','inserted',true)+(state==='menu'?item('/design','Create and review UI proposals','inserted'):'')+note('Skills are inserted into your draft. Nothing is sent yet.'),'Searchable commands and skills in the composer');

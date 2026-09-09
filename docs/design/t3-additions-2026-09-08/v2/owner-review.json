@@ -225,5 +225,12 @@
   "evidenceTransferContractCorrection": {
     "status": "Fixture corrected to actual transfer direction and progress contract",
     "scope": "Retained local copy transfers to agent environment; indeterminate progress; failed transfer retains local viewing and explicit retry destination"
+  },
+  "skillInsertionContractCorrection": {
+    "status": "Canonical token corrected; historical approval retained",
+    "reason": "T3 ChatComposer inserts $name for skills; provider dispatch resolves enabled mentions",
+    "states": [
+      "inserted"
+    ]
   }
 }

@@ -96,3 +96,7 @@ The engine saves the account/model and thinking options together. Defaults retai
 Browser evidence transfers from Strata's retained local copy to the agent environment. The transfer and failure fixtures now name that direction and use indeterminate progress because the transfer contract reports completion, not a byte percentage. The original local copy remains viewable.
 
 The import confirmation describes bounded recent history: up to 100 conversations per selected project and 200 messages per conversation, subject to the engine's byte limit. Discovered conversation counts are upper estimates, not a promise to import every historical message.
+
+## Skill insertion contract correction
+
+The menu keeps its approved `/name` labels. Selecting a skill inserts T3’s canonical `$name` mention into the draft; the provider adapter resolves that mention to the native invocation when sent. The inserted-state fixture now shows `$agent-browser`, matching the actual contract. Selection still sends nothing.
