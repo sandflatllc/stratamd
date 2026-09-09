@@ -10,7 +10,7 @@
       "y": 14
     },
     {
-      "height": 73.5,
+      "height": 43.5,
       "label": "Work status for this feature",
       "number": 2,
       "selector": "[data-change-id=\"2\"]",
@@ -36,6 +36,7 @@
     5
   ],
   "approval": "approved",
+  "ownerReviewNotes": "",
   "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
   "sourceComponents": [
     "src/renderer/components/EngineDialog.tsx",
@@ -133,7 +134,5 @@
     "bodyOverflow": false,
     "brokenImages": [],
     "offscreenChanges": []
-  },
-  "ownerReviewNotes": "",
-  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+  }
 }

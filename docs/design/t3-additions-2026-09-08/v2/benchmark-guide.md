@@ -102,3 +102,7 @@ The import confirmation describes bounded recent history: up to 100 conversation
 The menu keeps its approved `/name` labels. Selecting a skill inserts T3’s canonical `$name` mention into the draft; the provider adapter resolves that mention to the native invocation when sent. The inserted-state fixture now shows `$agent-browser`, matching the actual contract. Selection still sends nothing.
 
 The actual bundled-engine import smoke confirmed that `importedCount` includes already-present conversations. Completion now says “imported or already present.” Skipped history can be unreadable or unsupported; it is not an unchanged count. Retry preserves conversation identity.
+
+## Restart recovery contract correction
+
+The engine owns automatic continuation after restart. Public events confirm an original running turn or a new turn, but do not reveal whether the provider used a native resume or a fallback prompt. Notices now state only the confirmed result. “Check recovery” refreshes the connection; “Continue with a message” explicitly sends a new message. Strata does not automatically send a duplicate continuation or claim an unavailable retry API.

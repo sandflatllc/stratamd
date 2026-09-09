@@ -182,14 +182,14 @@ window.Proposals = (() => {
   }
   function recovery(state){
     if(state==='setting'){
-      add(q('.setup-dialog-body'),`<fieldset class="setup-fields"><label class="proposal-import-row"><input type="checkbox"><span>Continue interrupted work after restart<small>Off. When enabled, Strata asks the engine to resume interrupted conversations after reconnecting.</small></span></label>${note('If native resume is unavailable, Strata can send a continuation message. It will show which action succeeded.')}</fieldset>`,'Continuation preference in the existing Engine dialog');return;
+      add(q('.setup-dialog-body'),`<fieldset class="setup-fields"><label class="proposal-import-row"><input type="checkbox"><span>Continue interrupted work after restart<small>Off. When enabled, the engine continues interrupted conversations after restarting.</small></span></label>${note('Recovery notices show what the engine confirms. You can explicitly continue with a new message if recovery fails.')}</fieldset>`,'Continuation preference in the existing Engine dialog');return;
     }
     if(state==='reconnecting'){
       const engine=q('[aria-label="Engine"]') || all('button').find(e=>e.textContent.trim()==='Connected');if(engine){engine.innerHTML=engine.innerHTML.replace('Connected','Reconnecting');mark(engine,'Engine reconnect status');}
-      workNotice('Reconnecting to the engine… Conversation history and your draft are available.','',button('View successful resume','resumed'));
-    }else if(state==='resumed')workNotice('Reconnected. The engine resumed this session.','good');
-    else if(state==='continued')workNotice('Reconnected. Native resume was unavailable, so Strata sent a continuation message.','good');
-    else workNotice('The engine reconnected, but could not resume Live engine thread. Your history and draft are still here.','error',button('Retry resume','resumed')+' '+button('Continue with a message','continued'));
+      workNotice('Reconnecting to the engine… Conversation history and your draft are available.','');
+    }else if(state==='resumed')workNotice('Reconnected. The engine confirmed that the original turn is running.','good');
+    else if(state==='continued')workNotice('Strata sent a new continuation message. Your held answers and draft were kept.','good');
+    else workNotice('The engine reconnected, but could not resume Live engine thread. Your history and draft are still here.','error',button('Check recovery','resumed')+' '+button('Continue with a message','continued'));
   }
   function models(state){
     const fieldset=q('.setup-fields');

@@ -233,5 +233,9 @@
     "states": [
       "inserted"
     ]
+  },
+  "recoveryContractCorrection": {
+    "status": "Fixture labels corrected to observable native behavior; historical approval retained",
+    "scope": "Engine owns automatic continuation; original/new turn attribution only when confirmed; Check recovery refreshes; explicit Continue with a message labels its own send"
   }
 }
