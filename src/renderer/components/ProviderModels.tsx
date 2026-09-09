@@ -43,7 +43,7 @@ export function ProviderModels({ engine, instanceId, settings, onSaved }: { engi
     setBusy(true); setError('')
     try {
       const base = settings.providerInstances[instanceId]!
-      if (previous.some(value => customModelId(value) === custom.trim())) throw new Error(`Custom model ${custom.trim()} already exists. Use Edit to change it.`)
+      if (models.some(value => value.slug === custom.trim())) throw new Error(`Custom model ${custom.trim()} already exists. Use Edit to change it.`)
       await window.strata.editEngineProvider({ identity: settings.identity ?? null, instanceId, base, patch: { config: { customModels: [...previous, name.trim() ? { slug: custom.trim(), name: name.trim() } : custom.trim()] } } })
       onSaved(await window.strata.readEngineSettings()); setCustom(''); setName('')
     } catch (error) { setError(String(error)) } finally { setBusy(false) }
@@ -58,7 +58,7 @@ export function ProviderModels({ engine, instanceId, settings, onSaved }: { engi
       <button type="button" className="quiet-button" aria-label={`Move ${model.name} down`} disabled={index === models.length - 1} onClick={() => move(index, 1)}>↓</button>
       <button type="button" className="quiet-button" aria-label={`Favorite ${model.name}`} aria-pressed={model.favorite ?? false} onClick={() => void preference(model.slug, { favorite: !model.favorite })}><StarIcon fill={model.favorite ? 'currentColor' : 'none'} /></button>
       <button type="button" className="quiet-button" aria-label={`${model.hidden ? 'Show' : 'Hide'} ${model.name}`} onClick={() => void preference(model.slug, { hidden: !model.hidden })}>{model.hidden ? 'Show' : 'Hide'}</button>
-      <button type="button" className="quiet-button" aria-label={`Edit ${model.name}`} onClick={() => { setEditing(model.slug); setError('') }}>Edit</button>
+      {previous.some(value => customModelId(value) === model.slug) && <button type="button" className="quiet-button" aria-label={`Edit ${model.name}`} onClick={() => { setEditing(model.slug); setError('') }}>Edit</button>}
     </div>)}
     <label className="setup-field">Custom model ID<input aria-label="Custom model ID" value={custom} onChange={event => setCustom(event.target.value)} /></label>
     <label className="setup-field">Display name<input aria-label="Custom model display name" maxLength={512} value={name} onChange={event => setName(event.target.value)} /><small>Shown in Strata. The provider still receives {custom.trim() || 'the model ID'}.</small></label>

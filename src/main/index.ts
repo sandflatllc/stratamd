@@ -29,7 +29,7 @@ export interface MainApplication extends StrataApi {
   /** Open documents whose buffer differs from the file; the close prompt asks about these. */
   dirtyDocumentPaths?(): string[]
   /** Bytes for a visual evidence id or a staged composer image, for the strata-visual protocol. */
-  readVisualImage?(kind: 'evidence' | 'staged', id: string): Promise<{ bytes: Uint8Array; mimeType: string } | null>
+  readVisualImage?(kind: 'evidence' | 'staged' | 'browser', id: string): Promise<{ bytes: Uint8Array; mimeType: string } | null>
   /** The preview host draws pages into this window (docs/plans/open/visual-review, phase 2). */
   attachPreviewWindow?(window: BrowserWindow): void
   /** Test probe: a real input into a preview tab, the path an owner's click takes. */
@@ -342,10 +342,11 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
   // Restore documents before the renderer's first view, so restoration cannot
   // look like a new file-open intent and replace its saved center placement.
   await options.api.restoreOpenDocuments?.()
+  // Command-line documents also belong in the renderer's first view. Opening
+  // them after window creation exposed an empty session during initialization.
+  await openLaunchDocuments(options.argv ?? process.argv.slice(1))
   mainWindow = await ensureWindow()
   if (keepRunning && !tray) tray = engineTray(() => { void showAndFocus() })
-  // Anything named on the command line opens after restored tabs and takes focus.
-  await openLaunchDocuments(options.argv ?? process.argv.slice(1))
   adoptOpenFileHandler((path) => {
     void options.api.openDocument(path).then(showAndFocus)
   })

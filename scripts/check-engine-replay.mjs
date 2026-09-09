@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { performance } from 'node:perf_hooks'
 import { queryObjects } from 'node:v8'
+import { createRequire } from 'node:module'
 
 // Exercise the actual staged functions with the artifact's bundled Effect helpers.
 // Fake SQL pages isolate retention from database caches and provider processes.
@@ -20,7 +21,7 @@ async function helper(name) {
     for (const spec of match[1].split(', ')) {
       const [exported, local = exported] = spec.split(' as ')
       if (local !== name) continue
-      const url = match[2].startsWith('.') ? new URL(match[2], pathToFileURL(bin)) : pathToFileURL(join(bundle, 'node_modules/effect/dist/Stream.js'))
+      const url = match[2].startsWith('.') ? new URL(match[2], pathToFileURL(bin)) : pathToFileURL(createRequire(bin).resolve(match[2]))
       return (await import(url.href))[exported]
     }
   }
@@ -40,7 +41,7 @@ const fixtures = {
 function rows(cursor, limit, maximum) {
   return helpers.succeed$1(Array.from({ length: Math.max(0, Math.min(limit, maximum - cursor)) }, (_, index) => ({ sequence: cursor + index + 1 })))
 }
-helpers.runPromise = (await import(pathToFileURL(join(bundle, 'node_modules/effect/dist/Effect.js')).href)).runPromise
+helpers.runPromise = (await import(pathToFileURL(createRequire(bin).resolve('effect/Effect')).href)).runPromise
 const checks = []
 for (const [name, end] of [['readFromSequence', 'findEventAfter'], ['readAggregateRange', 'getAggregateReplayStats']]) {
   const start = source.indexOf(`\tconst ${name} =`)
@@ -65,6 +66,10 @@ for (const [name, end] of [['readFromSequence', 'findEventAfter'], ['readAggrega
   assert.equal((await helpers.runPromise(helpers.runCollect(replay))).length, 1501, 'Replay state must reset for each consumer')
   const empty = name === 'readFromSequence' ? fn(0, -1) : fn({ fromSequenceExclusive: 0, toSequenceInclusive: 1501, limit: -1 })
   assert.equal((await helpers.runPromise(helpers.runCollect(empty))).length, 0)
+  for (const limit of [1, 499, 500, 501, 1001]) {
+    const limited = name === 'readFromSequence' ? fn(0, limit) : fn({ fromSequenceExclusive: 0, toSequenceInclusive: 1501, limit })
+    assert.equal((await helpers.runPromise(helpers.runCollect(limited))).length, limit, `Positive limit ${limit}`)
+  }
   checks.push({ reader: name, events: count, pageSize: 500, maximumRetainedPageMarkers, repeated: true, replayMsIncludingForcedGC })
 }
 console.log(JSON.stringify({ checks }))

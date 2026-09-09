@@ -23,5 +23,5 @@ export function useHeldUserInputs(threadId: string | undefined, kind = 'held-use
     window.dispatchEvent(new Event(changed))
   }
   const drafts = snapshot.key === key ? snapshot.drafts : readUserInputDrafts(key)
-  return { drafts, answers: Object.fromEntries(Object.entries(drafts).map(([id, draft]) => [id, draft.answers])), hold: (id: string, answers: Record<string, string>, attachmentsByQuestionId: Record<string, ConversationAttachment[]> = {}) => write(id, { answers, attachmentsByQuestionId }), remove: (id: string) => write(id, null) }
+  return { drafts, answers: Object.fromEntries(Object.entries(drafts).map(([id, draft]) => [id, draft.answers])), hold: (id: string, answers: import('../shared/contracts').UserInputAnswers, attachmentsByQuestionId: Record<string, ConversationAttachment[]> = {}) => write(id, { answers, attachmentsByQuestionId }), remove: (id: string) => write(id, null) }
 }

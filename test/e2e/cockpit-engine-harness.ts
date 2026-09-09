@@ -35,7 +35,7 @@ export interface FakeEngineOptions {
   /** Whether `t1` starts with an open approval and an open user-input request; defaults to true. False leaves it plainly running. */
   pendingRequests?: boolean
   userInputResponseMode?: 'message'
-  userInputQuestions?: Array<{ id: string; question: string; options?: Array<{ label: string }>; allowCustomAnswer?: boolean }>
+  userInputQuestions?: Array<{ id: string; question: string; options?: Array<{ label: string; value?: string }>; allowCustomAnswer?: boolean; multiSelect?: boolean }>
   rejectFirstUserInput?: 'respond' | 'dismiss'
   /** T3 background liveness per seeded thread (§6.9 thread states): `monitoring` draws the robot, `working` the pulse after the turn settles. */
   liveness?: Partial<Record<'t1' | 't2', 'working' | 'monitoring'>>

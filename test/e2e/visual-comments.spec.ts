@@ -123,6 +123,8 @@ for (const nativeAnswer of [false, true]) test(`2: eight files including a visua
   const engine = await startEngine(nativeAnswer ? { userInputResponseMode: 'message' } : { pendingRequests: false })
   const fileCount = nativeAnswer ? 6 : 7
   const scenario = await seededScenario(testInfo, engine.origin)
+  const progress: Array<{ stage: string; elapsedMs: number }> = []
+  let sentAt = 0
   try {
     const page = await scenario.launchEmpty()
     const conversation = await openLiveThread(page)
@@ -136,27 +138,13 @@ for (const nativeAnswer of [false, true]) test(`2: eight files including a visua
     }
     await conversation.locator('.conversation-attachment-input').setInputFiles(Array.from({ length: fileCount }, (_, index) => index + 1).map((index) => ({ name: `notes-${index}.md`, mimeType: 'text/markdown', buffer: Buffer.from(`# Notes ${index}\n`) })))
     await expect(conversation.locator('.conversation-attachment-preview')).toHaveCount(fileCount)
-    await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${fileCount} files · ${fileCount} of 8`)
-    await pasteScreenshot(page)
-    const dialog = await markUp(page, 'Marked beside ordinary files.')
-    await dialog.getByRole('button', { name: 'Hold' }).click()
-    await expect(dialog).toBeHidden()
-    await expect(conversation.locator('.conversation-attachment-preview')).toHaveCount(fileCount)
-    await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${fileCount} files and 1 marked screenshot · ${fileCount + 1} of 8`)
-    // Setting the comment aside for this send keeps it held and drops it from the count.
-    await conversation.getByRole('checkbox', { name: 'Include', exact: true }).uncheck()
-    await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${fileCount} files · ${fileCount} of 8`)
-    await expect(conversation.locator('.conversation-visual-card .visual-status')).toHaveText('held')
-    await conversation.getByRole('checkbox', { name: 'Include', exact: true }).check()
-    await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${fileCount} files and 1 marked screenshot · ${fileCount + 1} of 8`)
-    // The composer sends one image per visual comment, with exact matching details in the message.
-    await conversation.getByRole('textbox', { name: 'Message conversation' }).fill('Both at once')
-    const stop = conversation.getByRole('button', { name: 'Stop' })
-    if (await stop.isVisible()) await stop.click()
+    const initialFiles = fileCount + (nativeAnswer ? 2 : 0)
+    await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${initialFiles} files · ${initialFiles} of 8`)
     if (nativeAnswer) {
-      // Nine files fail before any native response or upload. Removing one answer file makes exactly eight.
-      await conversation.getByRole('button', { name: 'Send', exact: true }).click()
-      await expect(conversation.getByRole('alert')).toContainText('at most 8 files')
+      // The ninth file is now refused at staging, before any response or upload.
+      await pasteScreenshot(page)
+      await expect(conversation.getByRole('alert')).toContainText('at most 8 attachments')
+      await expect(page.getByRole('dialog', { name: 'Mark up the image' })).toHaveCount(0)
       expect(engine.uploadRequests).toEqual([])
       expect(engine.commands.filter(command => command.type === 'thread.user-input.respond' || command.type === 'thread.turn.start')).toEqual([])
       await conversation.getByLabel('Held answers for input-1', { exact: true }).getByRole('button', { name: 'Review', exact: true }).click()
@@ -164,8 +152,34 @@ for (const nativeAnswer of [false, true]) test(`2: eight files including a visua
       await answer.getByRole('button', { name: 'Remove answer-2.txt', exact: true }).click()
       await answer.getByRole('button', { name: 'Hold answer', exact: true }).click()
     }
+    const combinedFiles = fileCount + (nativeAnswer ? 1 : 0)
+    await pasteScreenshot(page)
+    const dialog = await markUp(page, 'Marked beside ordinary files.')
+    await dialog.getByRole('button', { name: 'Hold' }).click()
+    await expect(dialog).toBeHidden()
+    await expect(conversation.locator('.conversation-attachment-preview')).toHaveCount(fileCount)
+    await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${combinedFiles} files and 1 marked screenshot · ${combinedFiles + 1} of 8`)
+    // Setting the comment aside for this send keeps it held and drops it from the count.
+    await conversation.getByRole('checkbox', { name: 'Include', exact: true }).uncheck()
+    await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${combinedFiles} files · ${combinedFiles} of 8`)
+    await expect(conversation.locator('.conversation-visual-card .visual-status')).toHaveText('held')
+    await conversation.getByRole('checkbox', { name: 'Include', exact: true }).check()
+    await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${combinedFiles} files and 1 marked screenshot · ${combinedFiles + 1} of 8`)
+    // The composer sends one image per visual comment, with exact matching details in the message.
+    await conversation.getByRole('textbox', { name: 'Message conversation' }).fill('Both at once')
+    const stop = conversation.getByRole('button', { name: 'Stop' })
+    if (await stop.isVisible()) await stop.click()
+    sentAt = Date.now()
     await conversation.getByRole('button', { name: 'Send', exact: true }).click()
+    if (nativeAnswer) await expect.poll(() => engine.commands.filter(command => command.type === 'thread.user-input.respond').length).toBe(1)
+    // Eight durable uploads precede dispatch. Observe each completed upload so
+    // the dispatch assertion does not also time the entire preparation sequence.
+    for (let count = 1; count <= 8; count += 1) {
+      await expect.poll(() => engine.uploadRequests.length, { message: `Original file upload ${count} of 8 completes` }).toBeGreaterThanOrEqual(count)
+      progress.push({ stage: `upload ${count}`, elapsedMs: Date.now() - sentAt })
+    }
     await expect.poll(() => engine.commands.filter((command) => command.type === 'thread.turn.start').length).toBe(1)
+    progress.push({ stage: 'dispatch', elapsedMs: Date.now() - sentAt })
     const turn = engine.commands.find((command) => command.type === 'thread.turn.start')!.message as { text: string; attachments: Array<{ type: string; name: string }> }
     expect(turn.text).toContain('Both at once')
     expect(turn.text).toContain('Marked beside ordinary files.')
@@ -188,6 +202,7 @@ for (const nativeAnswer of [false, true]) test(`2: eight files including a visua
 
     await expect(conversation.locator('.conversation-visual-card')).toHaveCount(0)
   } finally {
+    await testInfo.attach('combined-delivery-progress', { body: Buffer.from(JSON.stringify({ progress, elapsedMs: sentAt ? Date.now() - sentAt : 0, uploads: engine.uploadRequests, commands: engine.commands.map(command => command.type), rpc: engine.rpcRequests.map(request => request.tag) })), contentType: 'application/json' })
     await scenario.dispose()
     await engine.close()
   }

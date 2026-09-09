@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { toastLifetime, type ToastState } from '../toasts'
 import { isEscapeClaimed } from '../escape'
 
-interface ToastProps { toast: ToastState | null; onDone(): void }
+interface ToastProps { toast: ToastState | null; onDone(id: number): void }
 
 /**
  * One toast slot. A passing note clears itself; an error stays until the ×,
@@ -14,7 +14,7 @@ export function Toast({ toast, onDone }: ToastProps) {
     if (!toast) return
     const lifetime = toastLifetime(toast)
     if (lifetime === null) return
-    const timer = window.setTimeout(onDone, lifetime)
+    const timer = window.setTimeout(() => onDone(toast.id), lifetime)
     return () => window.clearTimeout(timer)
   }, [toast, onDone])
   useEffect(() => {
@@ -22,7 +22,7 @@ export function Toast({ toast, onDone }: ToastProps) {
     const key = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       // Surfaces above the toast claim Escape synchronously; check after they ran.
-      window.setTimeout(() => { if (!isEscapeClaimed(event)) onDone() }, 0)
+      window.setTimeout(() => { if (!isEscapeClaimed(event)) onDone(toast.id) }, 0)
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
@@ -32,14 +32,14 @@ export function Toast({ toast, onDone }: ToastProps) {
     return (
       <div className="toast toast-error" role="alert" key={toast.id}>
         <i />{toast.message}
-        <button type="button" aria-label="Dismiss" onClick={onDone}>×</button>
+        <button type="button" aria-label="Dismiss" onClick={() => onDone(toast.id)}>×</button>
       </div>
     )
   }
   return (
     <div className="toast" role="status" key={toast.id}>
       <i />{toast.message}
-      {toast.action && <button type="button" className="toast-action" onClick={() => { toast.action?.run(); onDone() }}>{toast.action.label}</button>}
+      {toast.action && <button type="button" className="toast-action" onClick={() => { toast.action?.run(); onDone(toast.id) }}>{toast.action.label}</button>}
     </div>
   )
 }

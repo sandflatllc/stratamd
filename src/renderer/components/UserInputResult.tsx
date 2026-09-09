@@ -9,8 +9,8 @@ export function UserInputResult({ activity, threadId, onOpenFile }: {
   activity: EngineActivityView; threadId: string; onOpenFile?: (source: QuestionFileSource) => void
 }) {
   const payload = inputPayload(activity)
-  const dismissed = activity.summary === 'User input dismissed'
-  const answers = Object.values(record(payload.answers)).filter(value => typeof value === 'string' && value).join(' · ')
+  const dismissed = !('answers' in payload)
+  const answers = Object.values(record(payload.answers)).flat().filter(value => typeof value === 'string' && value).join(' · ')
   const groups = Object.entries(record(payload.attachmentsByQuestionId)).flatMap(([questionId, files]) => Array.isArray(files) && files.length ? [{ questionId, files: files.map(record) }] : [])
   return <section className="conversation-request conversation-input-result" data-kind="user-input-result">
     <strong>{dismissed ? 'Question dismissed' : `Answer sent${answers ? ` · ${answers}` : ''}`}</strong>

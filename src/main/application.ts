@@ -1,4 +1,4 @@
-import { DocumentPreviewHost, readLocalDocument } from './document-preview'
+import { DocumentPreviewHost } from './document-preview'
 import type { DocumentSource, DocumentPreviewData, DocumentBounds } from '../shared/documents'
 import { resolveLocalLink } from './local-link'
 import { classifyLocalLink } from '../shared/local-link'
@@ -553,31 +553,44 @@ export class StrataApplication implements StrataApi {
   }
 
   async #themesChangedOnDisk(activeTouched: boolean): Promise<void> {
-    if (activeTouched && this.#theme.path) {
+    // A watcher may observe an earlier queued write. Read only after those
+    // writes finish, and never apply a reload over a newer local edit or selection.
+    const writes = this.#themeWriteQueue
+    await writes
+    const current = this.#theme
+    const unchanged = () => this.#theme === current && this.#themeWriteQueue === writes && this.#themeWriteTimer === null
+    if (activeTouched && current.path && unchanged()) {
       let text: string | null = null
       try {
-        text = await readFile(this.#theme.path, 'utf8')
+        text = await readFile(current.path, 'utf8')
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       }
-      if (text === null) {
-        this.#themeMissing = true
-      } else if (text !== this.#themeLastWritten) {
-        // Someone else wrote the active theme (an agent, an editor). Adopt it.
-        try {
-          this.#theme = await this.#themeStore.load(this.#theme.id)
-          this.#themeMissing = false
-          this.#themeLastWritten = text
-          this.#themeExternalRevision += 1
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === 'ENOENT') this.#themeMissing = true
-          else {
-            if (!(error instanceof ThemeBrokenError)) throw error
-            this.#theme = { ...this.#theme, problems: [{ key: 'file', reason: error.detail }] }
+      if (unchanged()) {
+        if (text === null) {
+          this.#themeMissing = true
+        } else if (text !== this.#themeLastWritten) {
+          // Someone else wrote the active theme (an agent, an editor). Adopt it.
+          try {
+            const loaded = await this.#themeStore.load(current.id)
+            if (unchanged()) {
+              this.#theme = loaded
+              this.#themeMissing = false
+              this.#themeLastWritten = text
+              this.#themeExternalRevision += 1
+            }
+          } catch (error) {
+            if (unchanged()) {
+              if ((error as NodeJS.ErrnoException).code === 'ENOENT') this.#themeMissing = true
+              else {
+                if (!(error instanceof ThemeBrokenError)) throw error
+                this.#theme = { ...this.#theme, problems: [{ key: 'file', reason: error.detail }] }
+              }
+            }
           }
+        } else {
+          this.#themeMissing = false
         }
-      } else {
-        this.#themeMissing = false
       }
     }
     await this.#relistThemes()
@@ -645,9 +658,11 @@ export class StrataApplication implements StrataApi {
     this.#themeWriteTimer = null
     const { id, sparse } = this.#theme
     const text = `${JSON.stringify(sparse, null, 2)}\n`
-    this.#themeLastWritten = text
     this.#themeWriteQueue = this.#themeWriteQueue
-      .then(() => this.#themeStore.write(id, sparse))
+      .then(async () => {
+        await this.#themeStore.write(id, sparse)
+        if (this.#theme.id === id) this.#themeLastWritten = text
+      })
       .then(() => this.#relistThemes())
       .then(
         () => {
@@ -923,7 +938,7 @@ export class StrataApplication implements StrataApi {
       } else if (request.action === 'revoke-link') await connection('revoke-link', { id: request.id })
       else if (request.action === 'revoke-device') await connection('revoke-device', { sessionId: request.id })
       else if (request.action === 'network') {
-        await this.#engine.prepareLocalSetup?.()
+        await this.#engine.prepareLocalSetup?.(true)
         const previous = this.#settings.engine
         try {
           this.#settings = await this.#settingsStore.update({ engine: { ...previous, lan: request.lan, tailscale: request.tailscale, tailscalePort: request.port } })
@@ -1215,7 +1230,7 @@ export class StrataApplication implements StrataApi {
 
   async readDocument(source: DocumentSource, identity: string | null): Promise<DocumentPreviewData> {
     if ((this.#engine.view().identity ?? null) !== identity) throw new Error(`The engine changed. Open ${source.name} again.`)
-    const result = source.kind === 'local' ? await readLocalDocument(source.path) : await this.#engine.readDocumentAttachment?.(source)
+    const result = await this.#engine.readDocumentAttachment?.(source)
     if (!result) throw new Error(`${source.name} cannot be previewed by this engine.`)
     if ((this.#engine.view().identity ?? null) !== identity) throw new Error(`The engine changed. Open ${source.name} again.`)
     return this.#documents.add(source, result.bytes, result.name, 'path' in result && typeof result.path === 'string' ? result.path : undefined)
@@ -1236,7 +1251,7 @@ export class StrataApplication implements StrataApi {
 
   async retainConversationAttachments(ids: string[]): Promise<void> {
     if (!this.#engine.retainAttachments) return
-    await this.#engine.retainAttachments(ids)
+    await this.#engine.retainAttachments([...ids, ...this.#documents.stagedIds()])
   }
 
   async holdMessageComment(threadId: string, input: Parameters<import('../shared/contracts').StrataApi['holdMessageComment']>[1]): Promise<string> {
@@ -1294,7 +1309,7 @@ export class StrataApplication implements StrataApi {
     if (!valid()) throw new Error('The capture conversation changed. Choose a window again.')
     const result = await native.captureWindow(input.token)
     if (!valid()) throw new Error('The capture conversation changed. Choose a window again.')
-    const name = result.context.app ? `${result.context.title} · ${result.context.app}` : result.context.title
+    const name = (result.context.app ? `${result.context.title} · ${result.context.app}` : result.context.title).slice(0, 240)
     const staged = await this.stageConversationAttachment({ name: `${name}.png`, mimeType: 'image/png', bytes: result.bytes })
     if (!valid()) { await this.discardConversationAttachment(staged.id); throw new Error('The capture conversation changed. Choose a window again.') }
     return { capture: { id: staged.id, name, width: result.width, height: result.height, context: result.context } }
@@ -1311,7 +1326,8 @@ export class StrataApplication implements StrataApi {
   }
 
   /** Bytes behind a strata-visual URL: a piece of evidence or a staged composer image. */
-  async readVisualImage(kind: 'evidence' | 'staged', id: string): Promise<{ bytes: Uint8Array; mimeType: string } | null> {
+  async readVisualImage(kind: 'evidence' | 'staged' | 'browser', id: string): Promise<{ bytes: Uint8Array; mimeType: string } | null> {
+    if (kind === 'browser') { const { record, bytes } = await this.#preview.readEvidence(id); return { bytes, mimeType: record.mimeType } }
     if (!this.#engine.readVisualImage) return null
     return this.#engine.readVisualImage(kind, id)
   }
@@ -1344,7 +1360,12 @@ export class StrataApplication implements StrataApi {
     this.#preview.resize(tabId, viewport)
   }
 
-  async previewEvidenceAction(id: string, action: 'open' | 'retry'): Promise<string | null> {
+  async previewEvidenceAction(id: string, action: 'open' | 'retry' | 'stage'): Promise<string | null> {
+    if (action === 'stage') {
+      const { record, bytes } = await this.#preview.readEvidence(id)
+      if (record.mimeType !== 'image/png') throw new Error(`Evidence ${id} is not a screenshot.`)
+      return (await this.stageConversationAttachment({ name: record.name, mimeType: record.mimeType, bytes })).id
+    }
     return this.#preview.evidenceAction(id, action)
   }
 
@@ -1496,6 +1517,14 @@ export class StrataApplication implements StrataApi {
 
   async answerEngineApproval(threadId: string, requestId: string, decision: Parameters<EngineReadClient['respondApproval']>[2]): Promise<void> {
     await this.#engine.respondApproval(threadId, requestId, decision)
+  }
+
+  async discardEngineSend(threadId: string, messageId: string): Promise<void> {
+    await this.#engine.discardSend?.(threadId, messageId)
+  }
+
+  async discardEngineUserInput(threadId: string, requestId: string): Promise<void> {
+    await this.#engine.discardUserInputResponse?.(threadId, requestId)
   }
 
   async dismissEngineUserInput(threadId: string, requestId: string): Promise<void> {
@@ -3049,10 +3078,13 @@ export class StrataApplication implements StrataApi {
     await session.watcher?.stop()
     session.mirror?.cancel()
     session.meta = await this.#store.moveDocument(previous, target, session.lock)
+    target = session.meta.realpath
+    // The store resolved this path. Move both in-memory indexes synchronously
+    // so a state read never sees a tab whose session has already moved.
     this.#sessions.delete(previous)
     session.path = target
     this.#sessions.set(target, session)
-    await this.#tabs.rename(previous, target)
+    this.#tabs.renameCanonical(previous, target)
     await this.#replaceDocumentHandle(session, target)
     this.#installMirrorAndWatcher(session)
     await session.reconciler?.initialize('open')

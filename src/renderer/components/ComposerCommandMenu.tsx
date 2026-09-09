@@ -31,7 +31,7 @@ export function ComposerCommandMenu({ listId, items, selectedId, query, compact,
             const immediate = item.kind === 'command' && item.name === compact.name
             const disabled = immediate ? compact.disabledReason : null
             return <button type="button" role="option" id={commandOptionId(listId, item.id)} key={item.id} aria-selected={item.id === selectedId} aria-disabled={Boolean(disabled)} title={disabled ?? undefined} onMouseDown={event => event.preventDefault()} onClick={() => onSelect(item)}>
-              <span><strong>/{item.name}</strong><small>{disabled ?? (immediate ? compact.description : item.description)}</small></span><kbd aria-hidden="true">↵</kbd>
+              <span><strong>{item.kind === 'skill' ? '$' : '/'}{item.name}</strong><small>{disabled ?? (immediate ? compact.description : item.description)}</small></span><kbd aria-hidden="true">↵</kbd>
             </button>
           })}
         </div>

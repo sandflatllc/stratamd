@@ -10,6 +10,7 @@ export interface BrowserEvidenceView {
   status: 'saved' | 'transferring' | 'failed'
   destination: string | null
   error: string | null
+  truncated?: boolean
   uploadedAttachmentId?: string
 }
 

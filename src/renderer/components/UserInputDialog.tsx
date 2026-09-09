@@ -14,18 +14,18 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 /** Native question drafts stay on this computer. Only the conversation's Send delivers held answers. */
-export function UserInputDialog({ activity, draft, files = {}, held, projectId, threadId, reservedFiles = 0, onOpenFile, onDraft, onClose, onRemoveHeld, onHold, onDismiss }: {
-  activity: EngineActivityView; draft: Record<string, string> | undefined; held: boolean
+export function UserInputDialog({ activity, draft, files = {}, held, frozen = false, projectId, threadId, reservedFiles = 0, onOpenFile, onDraft, onClose, onRemoveHeld, onHold, onDismiss }: {
+  activity: EngineActivityView; draft: import('../../shared/contracts').UserInputAnswers | undefined; held: boolean; frozen?: boolean
   files?: Record<string, ConversationAttachment[]>; projectId: string; threadId: string; reservedFiles?: number
   onOpenFile?(file: ConversationAttachment): void
-  onDraft(answers: Record<string, string>, files: Record<string, ConversationAttachment[]>): void; onClose(): void; onRemoveHeld(): void
-  onHold(answers: Record<string, string>, files: Record<string, ConversationAttachment[]>): Promise<void>; onDismiss(): Promise<void>
+  onDraft(answers: import('../../shared/contracts').UserInputAnswers, files: Record<string, ConversationAttachment[]>): void; onClose(): void; onRemoveHeld(): Promise<void>
+  onHold(answers: import('../../shared/contracts').UserInputAnswers, files: Record<string, ConversationAttachment[]>): Promise<void>; onDismiss(): Promise<void>
 }) {
   const formId = useId()
   const payload = inputPayload(activity)
   const questions = Array.isArray(payload.questions) ? payload.questions.map(record) : []
   const rows = questions.length ? questions : [{ id: 'answer', question: activity.summary }]
-  const [answers, setAnswers] = useState<Record<string, string>>(draft ?? {})
+  const [answers, setAnswers] = useState<import('../../shared/contracts').UserInputAnswers>(draft ?? {})
   const [answerFiles, setAnswerFiles] = useState(files)
   const [markup, setMarkup] = useState<{ questionId: string; file: ConversationAttachment; capture: VisualCaptureView } | null>(null)
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({})
@@ -33,7 +33,7 @@ export function UserInputDialog({ activity, draft, files = {}, held, projectId, 
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const idFor = (question: Record<string, unknown>, index: number) => String(question.id ?? question.header ?? `answer-${index}`)
-  const update = (id: string, answer: string) => {
+  const update = (id: string, answer: string | string[]) => {
     const next = { ...answers, [id]: answer }
     setAnswers(next)
     try { onDraft(next, answerFiles); setError('') } catch (failure) { setError(`Answer could not be saved: ${String(failure)}`) }
@@ -47,7 +47,7 @@ export function UserInputDialog({ activity, draft, files = {}, held, projectId, 
     onDraft(nextAnswers, files); setAnswerFiles(files); setAnswers(nextAnswers)
   }
   const stage = async (questionId: string, picked: File[], pasted = false) => {
-    if (busy) return
+    if (busy || frozen) return
     setBusy(true); setError(''); setFailedFile(null)
     try {
       const accepted = acceptFiles(Object.values(answerFiles).flat().length + reservedFiles, picked, 0, { pasted })
@@ -66,7 +66,7 @@ export function UserInputDialog({ activity, draft, files = {}, held, projectId, 
     } catch (failure) { setError(String(failure)) }
     finally { setBusy(false) }
   }
-  const ready = rows.every((question, index) => answers[idFor(question, index)]?.trim() || answerFiles[idFor(question, index)]?.length)
+  const ready = rows.every((question, index) => (Array.isArray(answers[idFor(question, index)]) ? answers[idFor(question, index)]!.length > 0 : String(answers[idFor(question, index)] ?? '').trim()) || answerFiles[idFor(question, index)]?.length)
   const heldAnswers = () => Object.fromEntries(rows.map((question, index) => { const id = idFor(question, index); return [id, answers[id] ?? ''] }))
   const markUp = async (questionId: string, file: ConversationAttachment) => {
     if (file.kind !== 'image') return
@@ -83,27 +83,29 @@ export function UserInputDialog({ activity, draft, files = {}, held, projectId, 
     return staged.id
   }} />, document.querySelector('.app-shell') ?? document.body)
   const dismissible = payload.responseMode === 'message'
-  return <SetupDialog title="Answer question" subtitle={held ? 'Answer held. Nothing has been sent.' : dismissible ? 'The agent can keep working while you answer.' : 'The agent is waiting for your answer.'} className="user-input-dialog" onClose={() => { if (!busy) onClose() }} footer={<>
+  return <SetupDialog title="Answer question" subtitle={frozen ? 'Retry sends this original answer and its files. Remove it from Send to edit again.' : held ? 'Answer held. Nothing has been sent.' : dismissible ? 'The agent can keep working while you answer.' : 'The agent is waiting for your answer.'} className="user-input-dialog" onClose={() => { if (!busy) onClose() }} footer={<>
     <p className="user-input-private">Hold keeps this answer private until you press Send.</p>
     {dismissible && <button type="button" className="quiet-button" disabled={busy} onClick={() => void act(onDismiss)}>Dismiss</button>}
-    <button type="submit" form={formId} className="primary-button" disabled={busy || !ready || !!failedFile}>Hold answer</button>
+    <button type="submit" form={formId} className="primary-button" disabled={busy || frozen || !ready || !!failedFile}>Hold answer</button>
   </>}>
-    <form id={formId} className="user-input-fields" onSubmit={event => { event.preventDefault(); if (!busy && ready && !failedFile) void act(() => onHold(heldAnswers(), answerFiles)) }}>{rows.map((question, index) => {
+    <form id={formId} className="user-input-fields" onSubmit={event => { event.preventDefault(); if (!busy && !frozen && ready && !failedFile) void act(() => onHold(heldAnswers(), answerFiles)) }}>{rows.map((question, index) => {
       const id = idFor(question, index)
       const options = Array.isArray(question.options) ? question.options.map(record) : []
-      return <fieldset key={id} disabled={busy} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (question.allowCustomAnswer !== false) void stage(id, Array.from(event.dataTransfer.files)) }} onPaste={event => { if (event.clipboardData.files.length && question.allowCustomAnswer !== false) { event.preventDefault(); void stage(id, Array.from(event.clipboardData.files), true) } }}><legend>{String(question.question ?? question.prompt ?? activity.summary)}</legend>
+      return <fieldset key={id} disabled={busy || frozen} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (question.allowCustomAnswer !== false) void stage(id, Array.from(event.dataTransfer.files)) }} onPaste={event => { if (event.clipboardData.files.length && question.allowCustomAnswer !== false) { event.preventDefault(); void stage(id, Array.from(event.clipboardData.files), true) } }}><legend>{String(question.question ?? question.prompt ?? activity.summary)}</legend>
         {options.length > 0 && <div className="user-input-options">{options.map((option, index) => {
           const label = String(option.label ?? option.value ?? `Option ${index + 1}`)
-          return <button type="button" aria-pressed={answers[id] === label} key={label} onClick={() => update(id, label)}>{label}</button>
+          const value = String(option.value ?? label)
+          const selected = Array.isArray(answers[id]) ? answers[id].includes(value) : answers[id] === value
+          return <button type="button" aria-pressed={selected} key={value} onClick={() => { const current = Array.isArray(answers[id]) ? answers[id] : []; update(id, question.multiSelect ? selected ? current.filter(item => item !== value) : [...current, value] : value) }}>{label}</button>
         })}</div>}
-        {question.allowCustomAnswer !== false && <><label className="setup-field"><span>{options.length ? 'Or write an answer' : 'Your answer'}</span><input aria-label={`Answer ${id}`} placeholder="Other answer" value={options.some(option => String(option.label ?? option.value) === answers[id]) ? '' : answers[id] ?? ''} onChange={event => update(id, event.target.value)} /></label>
+        {question.allowCustomAnswer !== false && <><label className="setup-field"><span>{options.length ? 'Or write an answer' : 'Your answer'}</span><input aria-label={`Answer ${id}`} placeholder="Other answer" value={Array.isArray(answers[id]) ? answers[id].filter(value => !options.some(option => String(option.value ?? option.label) === value)).join(', ') : options.some(option => String(option.value ?? option.label) === answers[id]) ? '' : answers[id] ?? ''} onChange={event => update(id, question.multiSelect ? [...(Array.isArray(answers[id]) ? answers[id].filter(value => options.some(option => String(option.value ?? option.label) === value)) : []), ...(event.target.value.trim() ? [event.target.value] : [])] : event.target.value)} /></label>
         <div className="question-files" aria-label={`Files for ${id}`}>{failedFile?.id === id && <div className="conversation-attachment-preview" data-kind="binary"><span>FILE</span><strong>{failedFile.name}</strong><small>Could not stage this file</small></div>}<QuestionFiles files={answerFiles[id] ?? []} onRemove={index => { try { saveFiles(id, (answerFiles[id] ?? []).filter((_, position) => position !== index)); setError('') } catch (failure) { setError(String(failure)) } }} onMarkUp={file => void markUp(id, file)} {...(onOpenFile ? { onOpen: onOpenFile } : {})} />
           <input ref={element => { fileInputs.current[id] = element }} type="file" multiple hidden aria-label={`Attach to answer ${id}`} onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void stage(id, files) }} />
           <button type="button" className="question-attach" onClick={() => fileInputs.current[id]?.click()}>Attach to answer</button>
         </div></>}
       </fieldset>
     })}</form>
-    {held && <button type="button" className="quiet-button" disabled={busy} onClick={() => { try { onDraft(answers, answerFiles); onRemoveHeld() } catch (failure) { setError(String(failure)) } }}>Remove held answer</button>}
+    {held && <button type="button" className="quiet-button" disabled={busy} onClick={() => void act(async () => { onDraft(answers, answerFiles); await onRemoveHeld() })}>Remove held answer</button>}
     {error && <div className="question-file-error" role="alert"><p>{error}</p>{failedFile && <><button type="button" className="question-attach" onClick={() => fileInputs.current[failedFile.id]?.click()}>Choose file again</button><button type="button" className="quiet-button" onClick={() => { setFailedFile(null); setError('') }}>Remove failed file</button></>}</div>}
   </SetupDialog>
 }

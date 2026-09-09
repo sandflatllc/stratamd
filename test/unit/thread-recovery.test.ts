@@ -13,3 +13,8 @@ it('reports failures and completed work without starting or inventing a continua
   expect(reconcileThreadRecovery(pending, thread('error', null, 'Provider restart failed'), true)).toMatchObject({ state: 'failed', failure: 'Provider restart failed' })
   expect(reconcileThreadRecovery(pending, { ...thread('ready', null), latestTurn: { turnId: 'old-turn', state: 'completed' } }, true).state).toBe('completed')
 })
+it('finishes the recovery notice when observed work completes or a later turn starts', () => {
+  const resumed = reconcileThreadRecovery(pending, thread('running', 'old-turn'), true)
+  expect(reconcileThreadRecovery(resumed, { ...thread('ready', null), latestTurn: { turnId: 'old-turn', state: 'completed' } }, true).state).toBe('completed')
+  expect(reconcileThreadRecovery(resumed, thread('running', 'later-owner-turn'), true).state).toBe('completed')
+})

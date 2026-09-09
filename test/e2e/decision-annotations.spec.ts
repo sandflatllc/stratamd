@@ -128,8 +128,8 @@ test('keyboard passage and rail document decisions expose explicit anchors', asy
     await annotations.getByRole('textbox', { name: 'Decision choice 2' }).fill('No')
     await annotations.getByRole('button', { name: 'Add decision' }).click()
 
-    const decisions = (await scenario.inspectDocument()).annotations?.filter((item) => item.kind === 'decision') ?? []
-    expect(decisions).toEqual(expect.arrayContaining([
+    // Add schedules IPC work; a click does not acknowledge the persisted decision.
+    await expect.poll(async () => (await scenario.inspectDocument()).annotations?.filter((item) => item.kind === 'decision') ?? []).toEqual(expect.arrayContaining([
       expect.objectContaining({ anchor: 'quote', quote: 'Choose the release gate.' }),
       expect.objectContaining({ anchor: 'document', quote: '' }),
       expect.objectContaining({ anchor: 'heading', quote: '## Delivery', text: 'Does the shifted heading still anchor?' }),

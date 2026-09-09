@@ -49,11 +49,18 @@ test(`native project import ${refusal} reports partial failure and retries witho
     await dialog.getByRole('button', { name: 'Import conversations' }).click()
     await expect.poll(() => engine.rpcRequests.filter(request => request.tag === 'agentSessions.import').length).toBe(1)
     await capture('progress'); release()
-    await expect(dialog.getByText('1 imported or already present · 1 project needs attention')).toBeVisible(); await capture('partial')
-    await dialog.getByRole('button', { name: 'Retry failed import' }).click()
-    await expect(dialog.getByRole('heading', { name: '2 conversations imported or already present' })).toBeVisible(); await capture('done')
+    if (refusal === 'rpc') {
+      await expect(dialog.getByText('1 imported or already present · 1 project needs attention')).toBeVisible(); await capture('partial')
+      await dialog.getByRole('button', { name: 'Retry failed import' }).click()
+      await expect(dialog.getByRole('heading', { name: '2 conversations imported or already present' })).toBeVisible()
+    } else {
+      await expect(dialog.getByRole('heading', { name: '1 conversation imported or already present' })).toBeVisible()
+      await expect(dialog.getByRole('button', { name: 'Retry failed import' })).toHaveCount(0)
+      await expect(dialog.getByText(/skipped/)).toBeVisible()
+    }
+    await capture('done')
     const imports = engine.rpcRequests.filter(request => request.tag === 'agentSessions.import')
-    expect(imports.map(request => (request.payload as { expectedWorkspaceRoot: string }).expectedWorkspaceRoot)).toEqual(['/tmp/cockpit', '/tmp/import-example', '/tmp/import-example'])
+    expect(imports.map(request => (request.payload as { expectedWorkspaceRoot: string }).expectedWorkspaceRoot)).toEqual(refusal === 'rpc' ? ['/tmp/cockpit', '/tmp/import-example', '/tmp/import-example'] : ['/tmp/cockpit', '/tmp/import-example'])
     expect(engine.rpcRequests.find(request => request.tag === 'agentSessions.scan')?.payload).toEqual({})
     expect(engine.commands.filter(command => command.type === 'project.create')).toHaveLength(1)
     expect(engine.commands.some(command => command.type === 'thread.turn.start')).toBe(false)

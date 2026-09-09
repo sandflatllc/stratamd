@@ -16,9 +16,10 @@ export function BrowserEvidence({ evidence, onOpen }: { evidence: BrowserEvidenc
     catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
   }
   return <section className="browser-evidence" aria-label={image ? 'Screenshot evidence' : 'Recording evidence'} data-evidence-state={evidence.status}>
-    {image && url && <img className="browser-evidence-thumbnail" src={url} alt="Saved browser screenshot" />}
+    {image && url && <img className="browser-evidence-thumbnail" loading="lazy" src={url} alt="Saved browser screenshot" />}
     <div className="browser-evidence-copy"><strong>{evidence.name}</strong>
       <small>{evidence.status === 'transferring' ? 'Copying to the agent environment' : evidence.status === 'failed' ? 'Could not copy to the agent environment' : evidence.uploadedAttachmentId ? 'Saved locally and copied to the agent environment' : 'Saved locally'} · {(evidence.sizeBytes / 1024).toFixed(1)} KB</small>
+      {evidence.truncated && <small>Recording stopped at the size limit. The captured portion was saved.</small>}
       {evidence.status === 'transferring' && <progress aria-label="Evidence transfer" />}
       {evidence.destination && evidence.status !== 'saved' && <small>Destination: {evidence.destination}</small>}
       {evidence.status === 'failed' && <small>{evidence.error} The saved copy is still on this computer.</small>}

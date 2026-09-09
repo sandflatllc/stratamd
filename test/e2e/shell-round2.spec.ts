@@ -99,6 +99,19 @@ test('the tab menu closes other, saved, or all tabs and keeps the ones with unsa
   await scenario.writeSettings({ explorerFolders: [folder] })
   try {
     const page = await scenario.launch()
+    // Hold toast expiry callbacks so an old timer can fire after a new notice.
+    await page.evaluate(() => {
+      const original = window.setTimeout.bind(window)
+      const expirations: Array<() => void> = []
+      Object.assign(window, { expireFirstCloseNotice: () => expirations[0]?.() })
+      window.setTimeout = ((handler: TimerHandler, delay?: number, ...args: unknown[]) => {
+        if (delay === 2800 && typeof handler === 'function') {
+          expirations.push(() => handler(...args))
+          return original(() => {}, 0)
+        }
+        return original(handler, delay, ...args)
+      }) as typeof window.setTimeout
+    })
     const openCount = page.getByRole('button', { name: 'Docs menu' }).locator('.tab-menu-count')
     await page.evaluate((path) => window.strata.openDocument(path), join(folder, 'two.md'))
     await page.evaluate((path) => window.strata.openDocument(path), join(folder, 'three.md'))
@@ -124,6 +137,8 @@ test('the tab menu closes other, saved, or all tabs and keeps the ones with unsa
     await page.getByRole('menuitem', { name: 'Close all tabs' }).click()
     await expect(openCount).toHaveText('1')
     await expectDocumentListed(page, /two\.md/i)
+    await expect(page.getByRole('status')).toContainText(/1 tab closed\. 1 with unsaved edits stayed open\./)
+    await page.evaluate(() => (window as unknown as { expireFirstCloseNotice(): void }).expireFirstCloseNotice())
     await expect(page.getByRole('status')).toContainText(/1 tab closed\. 1 with unsaved edits stayed open\./)
   } finally {
     await scenario.dispose()

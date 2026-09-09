@@ -1,23 +1,9 @@
 import { BrowserWindow, WebContentsView, session, shell, type Session } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { open, realpath, mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { documentKind, MAX_DOCUMENT_BYTES, type DocumentPreviewData, type DocumentBounds, type DocumentSource } from '../shared/documents'
-
-export async function readLocalDocument(path: string): Promise<{ bytes: Uint8Array; name: string; path: string }> {
-  const canonical = await realpath(path)
-  if (!documentKind(canonical)) throw new Error(`${path} is not a PDF or HTML document.`)
-  const file = await open(canonical, 'r')
-  try {
-    const stat = await file.stat()
-    if (!stat.isFile() || stat.size < 1 || stat.size > MAX_DOCUMENT_BYTES) throw new Error(`${path} must be a file between 1 byte and 50 MB.`)
-    const bytes = Buffer.alloc(stat.size)
-    let offset = 0
-    while (offset < bytes.length) { const read = await file.read(bytes, offset, bytes.length - offset, offset); if (!read.bytesRead) throw new Error(`${path} changed while being read.`); offset += read.bytesRead }
-    return { bytes, name: basename(canonical), path: canonical }
-  } finally { await file.close() }
-}
 
 /** Untrusted HTML gets its own disposable guest, with no preload, cookies or app protocols. */
 export class DocumentPreviewHost {
@@ -28,6 +14,7 @@ export class DocumentPreviewHost {
   #overlay = false
   setOverlay(open: boolean): void { this.#overlay = open; this.#shown?.setVisible(!open) }
   #exports: string[] = []
+  stagedIds(): string[] { return [...this.#records.values()].flatMap(record => record.source.kind === 'staged' ? [record.source.id] : []) }
   attach(window: BrowserWindow): void { this.#window = window }
   add(source: DocumentSource, bytes: Uint8Array, name: string, localPath?: string): DocumentPreviewData {
     const kind = documentKind(name)
@@ -38,8 +25,11 @@ export class DocumentPreviewHost {
   }
   async show(report: DocumentBounds): Promise<void> {
     const epoch = ++this.#epoch
-    if (this.#shown && this.#window && !this.#window.isDestroyed()) this.#window.contentView.removeChildView(this.#shown)
-    this.#shown = null
+    const requested = report.id ? this.#records.get(report.id)?.view : undefined
+    if (this.#shown && this.#shown !== requested) {
+      if (this.#window && !this.#window.isDestroyed()) this.#window.contentView.removeChildView(this.#shown)
+      this.#shown = null
+    }
     if (!report.id || !report.bounds || !this.#window || this.#window.isDestroyed()) return
     const record = this.#records.get(report.id)
     if (!record || record.data.kind !== 'html') throw new Error('The HTML document is no longer open.')
@@ -65,8 +55,8 @@ export class DocumentPreviewHost {
       catch (error) { this.close(report.id); throw error }
     }
     if (epoch !== this.#epoch || this.#records.get(report.id) !== record || !this.#window || this.#window.isDestroyed()) return
+    if (this.#shown !== record.view) this.#window.contentView.addChildView(record.view!)
     this.#shown = record.view!
-    this.#window.contentView.addChildView(record.view!)
     record.view!.setVisible(!this.#overlay)
     record.view!.setBounds({ x: Math.round(report.bounds.x), y: Math.round(report.bounds.y), width: Math.max(1, Math.round(report.bounds.width)), height: Math.max(1, Math.round(report.bounds.height)) })
   }
@@ -84,7 +74,7 @@ export class DocumentPreviewHost {
     const record = this.#records.get(id)
     if (!record) throw new Error('The document is no longer open.')
     let path = record.localPath
-    if (!path) { const directory = await mkdtemp(join(tmpdir(), 'stratamd-document-')); this.#exports.push(directory); path = join(directory, basename(record.data.name)); await writeFile(path, record.data.bytes, { mode: 0o600 }) }
+    if (!path) { const directory = await mkdtemp(join(tmpdir(), 'stratamd-document-')); this.#exports.push(directory); path = join(directory, basename(record.data.name)); await writeFile(path, record.data.bytes, { mode: 0o600 }); record.localPath = path }
     const error = await shell.openPath(path)
     if (error) throw new Error(`Could not open ${record.data.name}: ${error}`)
   }

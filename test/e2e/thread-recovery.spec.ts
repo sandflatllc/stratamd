@@ -43,7 +43,7 @@ test('reconnect retains transcript, draft and held native answer without sending
     await expect(page.locator('.conversation-messages')).toContainText('Read-side conversation from T3.')
     await capture(page, testInfo, 'reconnecting')
     engine.setOnline(true)
-    await page.getByTestId('conversation-disconnected').getByRole('button', { name: 'Reconnect' }).click()
+    // Automatic reconnect may already have removed the offline controls.
     await expect(page.locator('.thread-recovery-notice')).toContainText('confirmed the original turn')
     await capture(page, testInfo, 'resumed')
     await page.getByRole('button', { name: 'Edit answer', exact: true }).click()
@@ -61,7 +61,7 @@ test('failed recovery offers an explicit new message without consuming the draft
     engine.setOnline(false)
     await expect(page.getByTestId('conversation-disconnected')).toBeVisible()
     engine.finish(); engine.setOnline(true)
-    await page.getByTestId('conversation-disconnected').getByRole('button', { name: 'Reconnect' }).click()
+    // Automatic reconnect may already have removed the offline controls.
     await expect(page.locator('.thread-recovery-notice')).toHaveAttribute('data-state', 'failed')
     await capture(page, testInfo, 'failed')
     await page.getByRole('button', { name: 'Continue with a message', exact: true }).click()

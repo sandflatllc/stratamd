@@ -129,7 +129,7 @@ export const orchestrationThreadShell = orchestrationThreadBase.extend({
   hasPendingApprovals: z.boolean(), hasPendingUserInput: z.boolean(), hasActionableProposedPlan: z.boolean(),
   pinnedAt: isoDate.nullable().optional(), snoozedUntil: isoDate.nullable().optional(),
   archivedAt: isoDate.nullable().optional(), settledAt: isoDate.nullable().optional(),
-  settledOverride: z.enum(['settled', 'unsettled']).nullable().optional(),
+  settledOverride: z.enum(['settled', 'active']).nullable().optional(),
   backgroundLiveness: z.enum(['working', 'monitoring']).nullable().optional(),
 })
 export const orchestrationThread = orchestrationThreadBase.extend({
@@ -194,7 +194,10 @@ export const projectCreateCommand = z.object({
   type: z.literal('project.create'), commandId: id, projectId: id, title: id, workspaceRoot: id,
   createWorkspaceRootIfMissing: z.boolean().optional(), defaultModelSelection: modelSelection.nullable().optional(), createdAt: isoDate,
 }).passthrough()
-export const threadActionCommand = z.object({ type: z.enum(['thread.delete', 'thread.archive', 'thread.settle', 'thread.unsettle']), commandId: id, threadId: id }).passthrough()
+export const threadActionCommand = z.union([
+  z.object({ type: z.enum(['thread.delete', 'thread.archive', 'thread.settle']), commandId: id, threadId: id }),
+  z.object({ type: z.literal('thread.unsettle'), commandId: id, threadId: id, reason: z.literal('user') }),
+])
 export const threadPinCommand = z.object({ type: z.literal('thread.pin'), commandId: id, threadId: id, orderKey: id.optional() }).strict()
 export const threadUnpinCommand = z.object({ type: z.literal('thread.unpin'), commandId: id, threadId: id }).strict()
 export const threadSnoozeCommand = z.object({ type: z.literal('thread.snooze'), commandId: id, threadId: id, snoozedUntil: isoDate }).strict()

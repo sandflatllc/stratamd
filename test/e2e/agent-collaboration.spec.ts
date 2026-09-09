@@ -93,14 +93,27 @@ test('2. the full mode-3 round: brief, claim, denial, Lead accept and save, user
     await expect(page.locator('.changes-panel .empty-state')).toContainText('All caught up.')
     expect((await value.inspectDocument()).document).toContain('agreed wording')
 
-    // Agent B learns on its next delivery that its claim was denied, naming the holder.
-    await send(page, { note: 'Round closed.', recipientNames: ['Agent B'] })
-    await expect.poll(() => uploadsFor(engine, 't2').length).toBe(3)
-    expect(uploadsFor(engine, 't2')[2]).toContain('1. failed: LEAD_TAKEN: Agent A (t1) already holds the Lead')
-    expect(uploadsFor(engine, 't2')[2]).toContain('2. applied as a_')
   } finally {
     await dispose(fixture)
   }
+})
+
+test('2b. a denied Lead claim and accepted suggestion report their results on the next delivery', async ({}, testInfo) => {
+  const fixture = await scenario(testInfo, '# Round\n\nUse the old wording here.\n', 'claim-results.md')
+  const { value, engine } = fixture
+  try {
+    agentActs(engine, 't1', [{ verb: 'lead', document: value.file, action: 'claim' }])
+    await expect.poll(async () => (await value.inspectDocument()).attachments?.find(item => item.agent === 't1')?.lead).toBe(true)
+    agentActs(engine, 't2', [
+      { verb: 'lead', document: value.file, action: 'claim' },
+      { verb: 'suggest', anchor: { document: value.file, quote: 'old wording' }, replacement: 'agreed wording' },
+    ])
+    await annotationByText(value, 'agreed wording')
+    await send(value.page!, { note: 'Report the collaboration results.', recipientNames: ['Agent B'] })
+    await expect.poll(() => uploadsFor(engine, 't2').length).toBe(2)
+    expect(uploadsFor(engine, 't2')[1]).toContain('1. failed: LEAD_TAKEN: Agent A (t1) already holds the Lead')
+    expect(uploadsFor(engine, 't2')[1]).toContain('2. applied as a_')
+  } finally { await dispose(fixture) }
 })
 
 test('3. the review board is a map: centered spans, rich rows, capped change rows, and the crown', async ({}, testInfo) => {
@@ -154,7 +167,7 @@ test('3. the review board is a map: centered spans, rich rows, capped change row
   }
 })
 
-test('3b. detach confirms only when queued sends would be discarded, and ends the attachment', async ({}, testInfo) => {
+test('3b. cancelling detach preserves the queued delivery and sends it after reconnect', async ({}, testInfo) => {
   const original = '# Detach\n\nOriginal sentence.\n'
   const fixture = await scenario(testInfo, original, 'detach.md')
   const { value, engine } = fixture
@@ -180,6 +193,16 @@ test('3b. detach confirms only when queued sends would be discarded, and ends th
     await expect.poll(() => uploadsFor(engine, 't2').length, { timeout: 10_000 }).toBe(2)
     expect(uploadsFor(engine, 't2')[1]).toContain('edited')
 
+  } finally {
+    await dispose(fixture)
+  }
+})
+
+test('3c. detach without queued work needs no prompt and ignores later thread edits', async ({}, testInfo) => {
+  const fixture = await scenario(testInfo, '# Detach\n\nOriginal sentence.\n', 'detached.md', [['t1', 'Agent A']])
+  const { value, engine } = fixture
+  try {
+    const page = value.page!
     // An attachment with nothing queued detaches without a prompt, and its thread's blocks are ignored from then on.
     await page.getByRole('button', { name: 'Detach Agent A' }).click()
     await expect(page.getByRole('dialog', { name: /Detach Agent A/i })).toHaveCount(0)
@@ -188,9 +211,7 @@ test('3b. detach confirms only when queued sends would be discarded, and ends th
     await openThread(page, 'Agent A')
     await expect(page.locator('.conversation-panel:visible')).toContainText('Detached reply received.')
     expect((await value.inspectDocument()).annotations?.some((item) => item.text === 'Still here?')).toBe(false)
-  } finally {
-    await dispose(fixture)
-  }
+  } finally { await dispose(fixture) }
 })
 
 test('4. an item pages below the fold opens in Conversation with the span centered, works, and shares the left window width', async ({}, testInfo) => {

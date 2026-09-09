@@ -118,8 +118,7 @@ test('dragging the end handle moves the stored quote to the new span', async ({}
     const highlight = page.locator('.strata-annotation[data-annotation-author="user"]').first()
     await highlight.click({ force: true })
     const endHandle = page.locator('.strata-annotation-handle--end .strata-annotation-handle__grip')
-    await endHandle.waitFor({ state: 'visible', timeout: 5_000 })
-    const grip = (await endHandle.boundingBox())!
+    const grip = await settledBox(page, endHandle)
     const target = await page.evaluate(() => {
       const paragraph = [...document.querySelectorAll('.strata-prosemirror > p')].find((el) => el.textContent?.startsWith('StrataMD is an early-stage'))!
       const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT)

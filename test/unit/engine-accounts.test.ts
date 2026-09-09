@@ -234,7 +234,7 @@ it('explicit Refresh bypasses disabled polling and exposes failed readings witho
   } finally { await client.shutdown() }
 })
 
-it('maps remote engine windows, sparse updates, failed probes and unsupported reports without local probes', async () => {
+it('replaces reported windows while other providers retain local probes', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'strata-reported-usage-'))
   const weekly = { id: 'primary', kind: 'weekly', label: 'Week', usedPercent: 26, resetsAt: '2026-09-05T12:00:00.000Z', windowDurationMins: 10080 }
   let report: Record<string, unknown> = { checkedAt: at, windows: [weekly, { ...weekly, id: 'monthly', kind: 'monthly', label: 'Monthly', usedPercent: 100 }] }
@@ -245,14 +245,15 @@ it('maps remote engine windows, sparse updates, failed probes and unsupported re
   try {
     await client.pair('http://engine.test', 'code')
     expect(client.view().accounts[0]).toMatchObject({ state: 'limited', pressure: 100, session: null, weekly: null, measuredAt: at, windows: [{ id: 'primary' }, { id: 'monthly' }] })
-    expect(measureUsage).not.toHaveBeenCalled()
+    expect(measureUsage).toHaveBeenCalled()
+    expect(measureUsage.mock.calls.every(args => (args as unknown as [{ driver: string }])[0].driver === 'claudeAgent')).toBe(true)
     report = { checkedAt: at, windows: [{ ...weekly, usedPercent: 42 }] }
     server.push('subscribeServerConfig', [{ version: 1, type: 'providerStatuses', payload: config() }])
     await vi.waitFor(() => expect(client.view().accounts[0]?.windows?.[0]?.usedPercent).toBe(42))
-    expect(client.view().accounts[0]?.windows).toHaveLength(2)
+    expect(client.view().accounts[0]?.windows).toHaveLength(1)
     report = { checkedAt: '2026-09-03T12:01:00.000Z', windows: [], unavailable: { reason: 'probeFailed', message: 'Provider is offline' } }
     await client.refreshAccounts()
-    expect(client.view().accounts[0]).toMatchObject({ measuredAt: at, usageProblem: 'Provider is offline', windows: [{ usedPercent: 42 }, { usedPercent: 100 }] })
+    expect(client.view().accounts[0]).toMatchObject({ measuredAt: at, usageProblem: 'Provider is offline', windows: [{ usedPercent: 42 }] })
     report = { checkedAt: at, windows: [], unavailable: { reason: 'unsupported' } }
     await client.refreshAccounts()
     expect(client.view().accounts[0]).toMatchObject({ windows: [], usageUnsupported: true, pressure: 0, state: 'ready' })
@@ -282,7 +283,7 @@ it('guards reset credits and returns the actual provider outcome for instances a
   } finally { await client.shutdown() }
 })
 
-it('keeps native model-scoped limits selective and retains reset metadata across sparse updates', async () => {
+it('removes expired model-scoped limits and reset metadata absent from a new snapshot', async () => {
   const { providerInstancesOf, accountViews, emptyAccountsStore, recordMeasurements } = await import('../../src/main/engine/accounts')
   const { serverConfigSlice } = await import('../../src/main/engine/t3-contract')
   const { accountForModel } = await import('../../src/core/accountState')
@@ -293,7 +294,8 @@ it('keeps native model-scoped limits selective and retains reset metadata across
   const sparse = parse([{ id: 'seven_day', kind: 'weekly', label: 'Weekly', usedPercent: 15 }])
   store = recordMeasurements(store, sparse, at)
   const account = accountViews(store, sparse, nowMs)[0]!
-  expect(account.windows).toMatchObject([{ id: 'seven_day_fable', usedPercent: 100 }, { id: 'seven_day', usedPercent: 15, resetsAt, windowDurationMins: 10080 }])
-  expect(accountForModel(account, 'claude-fable-5-1', nowMs)).toMatchObject({ usable: false, reason: 'Fable limit reached' })
-  expect(accountForModel(account, 'claude-sonnet-5', nowMs)).toMatchObject({ usable: true, pressure: 15 })
+  expect(account.windows).toMatchObject([{ id: 'seven_day', usedPercent: 15, resetsAt: null }])
+  expect(account.windows).toHaveLength(1)
+  expect(accountForModel(account, 'claude-fable-5-1', nowMs)).toMatchObject({ usable: true })
+  expect(accountForModel(account, 'claude-sonnet-5', nowMs)).toMatchObject({ usable: true })
 })

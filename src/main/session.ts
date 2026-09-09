@@ -108,9 +108,14 @@ export class SessionRegistry {
   }
 
   async rename(from: string, to: string): Promise<SessionRecord | undefined> {
+    if (!this.#sessions.has(from)) return undefined
+    return this.renameCanonical(from, await this.#canonicalize(to))
+  }
+
+  /** Move an already-resolved path without yielding between related state updates. */
+  renameCanonical(from: string, canonicalTarget: string): SessionRecord | undefined {
     const session = this.#sessions.get(from)
     if (!session) return undefined
-    const canonicalTarget = await this.#canonicalize(to)
     const collision = this.#sessions.get(canonicalTarget)
     if (collision && collision !== session) {
       this.#sessions.delete(from)

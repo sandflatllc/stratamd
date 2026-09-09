@@ -59,3 +59,16 @@ it('restores the verified local copy and failed destination after restart', asyn
   expect(restored.view()[0]).toMatchObject({ id: artifact.id, status: 'failed', destination: 'remote A' })
   expect((await restored.read(artifact.id)).bytes).toEqual(Buffer.from(bytes))
 })
+
+it('bounds automatic screenshots while retaining completed recordings and the newest screenshot', async () => {
+  const { store, artifact, directory, bytes } = await setup()
+  const screenshots = []
+  for (let index = 0; index < 22; index++) screenshots.push(await store.save({ tabId: 'tab-1', threadId: 'thread-1', bytes, mimeType: 'image/png' }))
+  expect(store.view().filter(record => record.mimeType === 'image/png')).toHaveLength(20)
+  expect(store.view().some(record => record.id === artifact.id)).toBe(true)
+  await expect(readFile(screenshots[0]!.path)).rejects.toMatchObject({ code: 'ENOENT' })
+  expect((await store.read(screenshots.at(-1)!.id)).bytes).toEqual(Buffer.from(bytes))
+  const restored = new BrowserEvidenceStore(directory, () => {})
+  await restored.restore()
+  expect(restored.view()).toHaveLength(21)
+})

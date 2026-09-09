@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { readFile, readdir, realpath, stat } from 'node:fs/promises'
+import { readFile, readdir, realpath, stat, rm } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { atomicWriteFile, ensurePrivateDirectory, PRIVATE_FILE_MODE } from '../storage'
 import type { BrowserEvidenceTransfer, BrowserEvidenceView } from '../../shared/browser-evidence'
@@ -31,14 +31,30 @@ export class BrowserEvidenceStore {
         this.#records.set(record.id, record)
       } catch { /* An incomplete sidecar cannot authorize an evidence action. */ }
     }
+    await this.#pruneSnapshots()
     this.#changed()
+  }
+
+  // Snapshots are automatic browsing history; completed recordings remain explicit saved files.
+  async #pruneSnapshots(): Promise<void> {
+    const counts = new Map<string, number>()
+    let count = 0, bytes = 0
+    const snapshots = [...this.#records.values()].reverse().filter(record => record.mimeType === 'image/png').sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    for (const record of snapshots) {
+      const perThread = (counts.get(record.threadId) ?? 0) + 1
+      counts.set(record.threadId, perThread); count++; bytes += record.sizeBytes
+      if (perThread <= 20 && count <= 100 && bytes <= 200 * 1024 * 1024) continue
+      if (this.#transfers.has(record.id) || record.status === 'failed') continue
+      this.#records.delete(record.id)
+      await Promise.all([rm(record.path, { force: true }), rm(join(this.#directory, `${record.id}.json`), { force: true })])
+    }
   }
 
   async #persist(record: BrowserEvidenceView): Promise<void> {
     await atomicWriteFile(join(this.#directory, `${record.id}.json`), JSON.stringify(record), { mode: PRIVATE_FILE_MODE })
   }
 
-  async save(input: { tabId: string; threadId: string; bytes: Uint8Array; mimeType: 'image/png' | 'video/webm'; name?: string; destination?: string | null }): Promise<BrowserEvidenceView> {
+  async save(input: { tabId: string; threadId: string; bytes: Uint8Array; mimeType: 'image/png' | 'video/webm'; name?: string; destination?: string | null; truncated?: boolean }): Promise<BrowserEvidenceView> {
     if (!input.bytes.byteLength) throw new Error('The browser evidence is empty')
     await ensurePrivateDirectory(this.#directory)
     const id = `browser-${randomUUID()}`
@@ -48,9 +64,10 @@ export class BrowserEvidenceStore {
     const saved = await stat(path)
     if (!saved.isFile() || saved.size !== input.bytes.byteLength) throw new Error(`Browser evidence was not saved completely at ${path}`)
     const displayName = input.name?.replace(/[^a-z0-9 ._-]/gi, '').trim().slice(0, 80)
-    const record: BrowserEvidenceView = { id, tabId: input.tabId, threadId: input.threadId, name: displayName ? `${displayName}.${input.mimeType === 'image/png' ? 'png' : 'webm'}` : name, path, mimeType: input.mimeType, sizeBytes: saved.size, createdAt: new Date().toISOString(), status: 'saved', destination: input.destination ?? this.#destination?.destination ?? null, error: null }
+    const record: BrowserEvidenceView = { ...(input.truncated ? { truncated: true } : {}), id, tabId: input.tabId, threadId: input.threadId, name: displayName ? `${displayName}.${input.mimeType === 'image/png' ? 'png' : 'webm'}` : name, path, mimeType: input.mimeType, sizeBytes: saved.size, createdAt: new Date().toISOString(), status: 'saved', destination: input.destination ?? this.#destination?.destination ?? null, error: null }
     await this.#persist(record)
     this.#records.set(id, record)
+    await this.#pruneSnapshots()
     this.#changed()
     return { ...record }
   }

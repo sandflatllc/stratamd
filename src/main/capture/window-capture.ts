@@ -1,5 +1,5 @@
 import { windowCapturePlatform } from '../../platform/window-capture'
-import { globalShortcut, desktopCapturer, nativeImage, systemPreferences, shell } from 'electron'
+import { globalShortcut, desktopCapturer, nativeImage, systemPreferences, shell, type NativeImage } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { execFile, fork } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -9,11 +9,11 @@ import { join } from 'node:path'
 import type { CaptureSource, CaptureStatus, WindowCaptureContext } from '../../shared/window-capture'
 const exec = promisify(execFile)
 const capturePlatform = windowCapturePlatform()
-const pending = new Map<string, { id: string; name: string; png: Buffer; expires: number }>()
+const pending = new Map<string, { id: string; name: string; image: NativeImage; expires: number }>()
 let shortcutStatus: CaptureStatus['shortcut'] = 'disabled'
 const accelerator = 'CommandOrControl+Shift+5'
 export function configureCaptureShortcut(enabled: boolean, callback: () => void): void {
-  if (enabled && shortcutStatus !== 'disabled') return
+  if (enabled && shortcutStatus === 'registered') return
   if (!enabled) { if (shortcutStatus === 'registered') globalShortcut.unregister(accelerator); shortcutStatus = 'disabled'; return }
   shortcutStatus = globalShortcut.register(accelerator, callback) ? 'registered' : 'conflict'
 }
@@ -41,14 +41,10 @@ export async function chooseWindows(): Promise<CaptureSource[]> {
   if (['denied', 'restricted'].includes(status.screenPermission)) throw new Error('Allow Strata in Screen Recording, then restart Strata.')
   // PipeWire opens the native picker and returns its selected source. On X11 and
   // macOS Electron enumerates window thumbnails for Strata's explicit chooser.
-  const sources = await desktopCapturer.getSources({ types: status.picker === 'system' ? ['window', 'screen'] : ['window'], thumbnailSize: { width: 2560, height: 1600 }, fetchWindowIcons: false })
-  let retainedBytes = 0
+  const sources = await desktopCapturer.getSources({ types: status.picker === 'system' ? ['window', 'screen'] : ['window'], thumbnailSize: status.picker === 'system' ? { width: 2560, height: 1600 } : { width: 320, height: 200 }, fetchWindowIcons: false })
   return sources.filter(source => !source.thumbnail.isEmpty()).slice(0, 100).map(source => {
     const token = randomUUID()
-    const png = source.thumbnail.toPNG()
-    retainedBytes += png.byteLength
-    if (retainedBytes > 64 * 1024 * 1024) return null
-    pending.set(token, { id: source.id, name: source.name.slice(0, 1024), png, expires: Date.now() + 120_000 })
+    pending.set(token, { id: source.id, name: source.name.slice(0, 1024), image: source.thumbnail, expires: Date.now() + 120_000 })
     return { token, name: source.name || 'Selected window', thumbnail: source.thumbnail.resize({ width: 320 }).toDataURL() }
   }).filter(source => source !== null)
 }
@@ -73,7 +69,7 @@ export async function captureWindow(token: string): Promise<{ bytes: Uint8Array;
   if (!source || source.expires < Date.now()) throw new Error('This window selection expired. Choose a window again.')
   const numericId = /^window:(\d+):/.exec(source.id)?.[1]
   let bounds: { x: number; y: number; width: number; height: number } | null = null
-  let bytes = source.png, pid: number | null = null, appName: string | null = null
+  let bytes = source.image.toPNG(), pid: number | null = null, appName: string | null = null
   if (capturePlatform.windowIdentity === 'core-graphics' && numericId) {
     // Selected CGWindowNumber, not whichever app acquired focus after the picker.
     // Adapted from T3 Code ActiveWindow.ts and MacSnapShot.ts (MIT; see LICENSE).
@@ -90,6 +86,10 @@ export async function captureWindow(token: string): Promise<{ bytes: Uint8Array;
       bytes = await readFile(path)
     } finally { await rm(dir, { recursive: true, force: true }) }
   } else if (capturePlatform.windowIdentity === 'x11' && numericId) {
+    const current = (await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 2560, height: 1600 }, fetchWindowIcons: false })).find(entry => entry.id === source.id)
+    if (!current || current.thumbnail.isEmpty()) throw new Error('The selected window closed. Choose a window again.')
+    bytes = current.thumbnail.toPNG()
+    source.name = current.name.slice(0, 1024)
     try {
       const result = await exec(join(__dirname, 'capture-x11'), [numericId], { timeout: 2_000, maxBuffer: 64 * 1024 })
       const identity = JSON.parse(result.stdout) as { pid: number; app: string; bounds: { x: number; y: number; width: number; height: number } }

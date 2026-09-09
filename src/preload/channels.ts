@@ -82,6 +82,8 @@ export const IPC = {
   compactContext: 'strata:compact-context',
   stopConversationTurn: 'strata:stop-conversation-turn',
   answerEngineApproval: 'strata:answer-engine-approval',
+  discardEngineSend: 'strata:discard-engine-send',
+  discardEngineUserInput: 'strata:discard-engine-user-input',
   dismissEngineUserInput: 'strata:dismiss-engine-user-input',
   answerEngineUserInput: 'strata:answer-engine-user-input',
   spelling: 'strata:spelling',

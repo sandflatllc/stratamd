@@ -3,9 +3,9 @@ import { checkedInEnvironment, mergeProjectDefaults, type ProjectDefaults, type 
 import { MAX_DOCUMENT_BYTES, type DocumentSource } from '../../shared/documents'
 
 import { threadRecoverySchema, reconcileThreadRecovery, type ThreadRecovery } from '../../shared/thread-recovery'
-import { validatedModelOptions } from '../../shared/custom-models'
+import { supportedModelOptions, validatedModelOptions } from '../../shared/custom-models'
 import type { BrowserEvidenceTransfer } from '../../shared/browser-evidence'
-import { inputPayload, pendingUserInputs } from '../../core/user-input'
+import { inputPayload, pendingUserInputs, retainQuestionActivities, userInputRetired } from '../../core/user-input'
 import { historyScanSchema, historyImportResultSchema, isPrivateHistoryPath } from '../../shared/history-import'
 import { contextCompactionResult, type ContextCompactionRequest, type CompactContextInput } from "../../shared/context-compaction"
 import { selectedProviderCommands, supportsManualCompaction } from "../../shared/provider-commands"
@@ -190,6 +190,8 @@ export interface EngineReadClient {
   compactContext?(threadId: string, input: CompactContextInput): Promise<void>
   interrupt(threadId: string): Promise<void>
   respondApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
+  discardSend?(threadId: string, messageId: string): Promise<void>
+  discardUserInputResponse?(threadId: string, requestId: string): Promise<void>
   dismissUserInput(threadId: string, requestId: string): Promise<void>
   respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>, attachmentsByQuestionId?: Record<string, import('../../shared/contracts').ConversationAttachment[]>): Promise<void>
   createThread?(input: StartThreadInput): Promise<string>
@@ -618,6 +620,8 @@ export class T3EngineClient implements EngineReadClient {
         })) : []
         return {
           id: thread.id,
+          pendingSendIds: this.#conversations.threads[thread.id]?.prepared?.map(entry => entry.messageId) ?? [],
+          pendingUserInputResponses: Object.fromEntries(Object.entries(this.#conversations.threads[thread.id]?.userInputResponses ?? {}).filter(([, response]) => !response.sent).map(([id, response]) => [id, { answers: Object.fromEntries(Object.entries(response.answers).filter(([, value]) => typeof value === 'string' || Array.isArray(value) && value.every(item => typeof item === 'string'))) as import('../../shared/contracts').UserInputAnswers, attachmentsByQuestionId: Object.fromEntries(Object.entries(response.attachmentsByQuestionId).map(([id, files]) => [id, files.filter(file => file.kind !== 'evidence').map(({ uploaded: _, ...file }) => file)])) }])),
           ...(this.#reading.recovery?.[thread.id] ? { recovery: this.#reading.recovery[thread.id] } : {}),
           engineIdentity: this.#identity,
           projectId: thread.projectId,
@@ -999,6 +1003,7 @@ export class T3EngineClient implements EngineReadClient {
         else this.#sendingThreads.delete(threadId)
         try { await this.#subscribeThreads() }
         catch (error) { logError('engine', `Thread subscriptions could not be updated after Send in ${threadId}`, error) }
+        this.#publish()
       }
     })
   }
@@ -1025,7 +1030,7 @@ export class T3EngineClient implements EngineReadClient {
     // Validate routing before uploading files or consuming queued replies.
     await this.#resolveInstance(thread.projectId, instanceId, input.model)
     const selectedModel = catalog.find(model => model.slug === input.model)
-    const options = validatedModelOptions(selectedModel, input.options ?? turnOptions(input, thread, selectedModel))
+    const options = input.options ? validatedModelOptions(selectedModel, input.options) : supportedModelOptions(selectedModel, turnOptions(input, thread, selectedModel))
     // A conversation Send carries the queued item replies as its attachment (§5.4), keyed by item id; the text stays the owner's note.
     const state = this.#conversations.threads[threadId]
     if (input.context && (input.context.threadId !== threadId || input.context.deliveryId !== input.messageId)) throw new Error('Conversation context belongs to another delivery')
@@ -1274,6 +1279,7 @@ export class T3EngineClient implements EngineReadClient {
       // A marked version a sent revision carried stays; only an unsent one is replaced.
       if (previous && !comment.revisions.some((revision) => revision.evidence.includes(previous))) await this.#evidence.discard(previous)
     }
+    if (input.omitWindowText && comment.anchor.kind === 'image' && comment.anchor.windowCapture) comment.anchor.windowCapture = { ...comment.anchor.windowCapture, accessibilityText: null, textStatus: 'unavailable' }
     const previous = comment.draft
     const latest = comment.revisions.at(-1)
     const identityOf = (id: string, given: VisualMarkView['identity']) => previous?.marks.find((mark) => mark.id === id)?.identity ?? latest?.marks.find((mark) => mark.id === id)?.identity ?? given
@@ -1381,7 +1387,7 @@ export class T3EngineClient implements EngineReadClient {
     const asset = assetUrlResult.parse(await this.#rpcOrSocket(T3_RPC.createAssetUrl, { resource: { _tag: 'attachment', attachmentId: attachment.id, fileName: attachment.name, mimeType: attachment.mimeType } }, 'document attachment'))
     const url = new URL(asset.relativeUrl, server)
     if (url.origin !== new URL(server).origin || !url.pathname.startsWith('/api/assets/')) throw new Error(`The engine returned an invalid document address for ${attachment.name}.`)
-    const response = await this.#fetch(url, { signal: AbortSignal.timeout(15000), redirect: 'error' })
+    const response = await this.#fetch(url, { signal: AbortSignal.timeout(120_000), redirect: 'error' })
     if (!response.ok || !response.body) throw new Error(`${attachment.name} could not be read (${response.status}).`)
     const reader = response.body.getReader(), chunks: Uint8Array[] = []
     let size = 0
@@ -1720,9 +1726,9 @@ export class T3EngineClient implements EngineReadClient {
       const shell = shellSnapshot.parse(await response.json())
       if (shell.threads.some(thread => thread.session?.status === 'running' || thread.session?.status === 'starting')) {
         const enabled = allowContinuation && (await this.readSettings()).continueThreadsAfterServerUpdate === true
-        if (!enabled) throw new Error('Wait for active conversations before changing this computer, or enable continuation after restart.')
+        if (!enabled) throw new Error(allowContinuation ? 'Wait for active conversations before changing this computer, or enable continuation after restart.' : 'Wait for active conversations to finish before changing this computer.')
         this.assertNoPendingSends()
-        await this.#rememberInterruptedWork()
+        await this.#rememberInterruptedWork(shell)
       }
       this.#reserveLocalSetup()
       this.#asks.policy(true, true)
@@ -1760,9 +1766,10 @@ export class T3EngineClient implements EngineReadClient {
     }))
   }
 
-  async #rememberInterruptedWork(): Promise<void> {
+  async #rememberInterruptedWork(shell = this.#shell): Promise<void> {
     let changed = false
-    for (const thread of this.#shell?.threads ?? []) {
+    for (const thread of shell?.threads ?? []) {
+      if (this.#compactions.has(thread.id)) continue
       if (!['running', 'starting'].includes(thread.session?.status ?? '')) continue
       const prior = this.#reading.recovery?.[thread.id]
       if (prior?.state === 'reconnecting' || prior?.state === 'waiting') continue
@@ -1780,7 +1787,7 @@ export class T3EngineClient implements EngineReadClient {
       const thread = this.#threads.get(threadId)?.detail?.thread
       const recovery = this.#reading.recovery?.[threadId]
       if (thread && recovery?.messageId && thread.messages.some(message => message.id === recovery.messageId)) { recovery.state = 'continued'; recovery.source = 'message'; await this.#writeReading(); this.#publish(); return }
-      if (!thread || !recovery || recovery.state !== 'failed') throw new Error('The engine has not reported a failed recovery for this thread. Check its status before continuing.')
+      if (!thread || !recovery || !['failed', 'waiting'].includes(recovery.state)) throw new Error('This conversation is not waiting for recovery. Check its status before continuing.')
       if (['running', 'starting'].includes(thread.session?.status ?? '')) throw new Error('This conversation already has active work. No continuation was sent.')
       const latest = thread.latestTurn as { turnId?: string; state?: string } | null
       if (latest?.state === 'completed' && latest.turnId === recovery.priorTurnId) throw new Error('This work already completed. No continuation was sent.')
@@ -1934,7 +1941,7 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async #actOnThread(threadId: string, action: 'archive' | 'settle' | 'unsettle' | 'delete'): Promise<void> {
-    await this.#dispatch(threadActionCommand.parse({ type: `thread.${action}`, commandId: randomUUID(), threadId }))
+    await this.#dispatch(threadActionCommand.parse({ type: `thread.${action}`, commandId: randomUUID(), threadId, ...(action === 'unsettle' ? { reason: 'user' } : {}) }))
   }
 
   /** Pin, snooze, and rename are T3's own commands (§5.2); the shell stream reflects them. */
@@ -1994,7 +2001,28 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>, attachmentsByQuestionId?: Record<string, import('../../shared/contracts').ConversationAttachment[]>): Promise<void> {
-    return this.#operations.run(() => this.#respondUserInput(threadId, requestId, answers, attachmentsByQuestionId))
+    return this.#operations.run(() => this.#serializeVisual(() => this.#respondUserInput(threadId, requestId, answers, attachmentsByQuestionId)))
+  }
+
+  async discardSend(threadId: string, messageId: string): Promise<void> {
+    return this.#operations.run(() => this.#serializeVisual(async () => {
+      const state = this.#conversations.threads[threadId]
+      if (!state?.prepared?.some(entry => entry.messageId === messageId)) return
+      this.#pendingCommands = this.#pendingCommands.filter(entry => entry.messageId !== messageId)
+      await this.#writeCommands()
+      await this.#abandonPrepared(threadId, messageId)
+      await this.#subscribeThreads(); this.#publish()
+    }))
+  }
+
+  async discardUserInputResponse(threadId: string, requestId: string): Promise<void> {
+    return this.#operations.run(() => this.#serializeVisual(async () => {
+      const responses = this.#conversations.threads[threadId]?.userInputResponses
+      if (!responses?.[requestId] || responses[requestId].sent) return
+      delete responses[requestId]
+      await writeConversationsStore(this.#conversationsPath, this.#conversations)
+      await this.#subscribeThreads(); this.#publish()
+    }))
   }
 
   async dismissUserInput(threadId: string, requestId: string): Promise<void> {
@@ -2041,12 +2069,13 @@ export class T3EngineClient implements EngineReadClient {
         catch (error) { throw new Error(`Could not send ${attachment.name}. ${error instanceof Error ? error.message : String(error)}`) }
         await writeConversationsStore(this.#conversationsPath, this.#conversations)
       }
-      const uploaded = Object.fromEntries(Object.entries(response.attachmentsByQuestionId).map(([id, files]) => [id, files.map(file => file.uploaded!)]))
+      const uploaded = Object.fromEntries(Object.entries(response.attachmentsByQuestionId).filter(([, files]) => files.length).map(([id, files]) => [id, files.map(file => file.uploaded!)]))
       await this.#dispatch(userInputRespondCommand.parse({ type: 'thread.user-input.respond', commandId: response.commandId, createdAt: response.createdAt, threadId, requestId, answers: response.answers, ...(Object.values(uploaded).some(files => files.length) ? { attachmentsByQuestionId: uploaded } : {}) }))
       response.sent = true
       await writeConversationsStore(this.#conversationsPath, this.#conversations)
       for (const attachment of Object.values(response.attachmentsByQuestionId).flat()) if (attachment.kind === 'image' || attachment.kind === 'binary') await this.#staged.discard(attachment.id)
     } catch (error) { throw new Error(`${error instanceof Error ? error.message : String(error)} Retry sends the original held answer and files.`) }
+    finally { this.#publish() }
   }
 
   /** HTTP snapshots: the initial picture and the one taken on every reconnect (§5.1). */
@@ -2168,7 +2197,9 @@ export class T3EngineClient implements EngineReadClient {
       const entry = this.#threads.get(threadId) ?? { detail: null, sequence: 0, stream: null }
       this.#threads.set(threadId, entry)
       if (entry.stream) continue
-      entry.stream = await socket.stream(T3_RPC.subscribeThread, { threadId, afterSequence: entry.sequence, requestCompletionMarker: true }, (item) => this.#onThreadItem(threadId, item), (error) => { if (error && this.#socket === socket) this.#onSocketClosed(socket, error.message) })
+      const stream = await socket.stream(T3_RPC.subscribeThread, { threadId, afterSequence: entry.sequence, requestCompletionMarker: true }, (item) => this.#onThreadItem(threadId, item), (error) => { if (error && this.#socket === socket) this.#onSocketClosed(socket, error.message) })
+      if (this.#socket !== socket || this.#threads.get(threadId) !== entry || entry.stream || !this.#followedThreadIds().includes(threadId)) stream.interrupt()
+      else entry.stream = stream
     }
   }
 
@@ -2294,9 +2325,8 @@ export class T3EngineClient implements EngineReadClient {
       case 'thread.activity-appended': {
         const activity = threadActivity.safeParse((event.payload as { activity?: unknown } | null)?.activity)
         if (!activity.success) return thread
-        const activities = [...thread.activities.filter((entry) => entry.id !== activity.data.id), activity.data]
-          .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0) || a.createdAt.localeCompare(b.createdAt))
-          .slice(-500)
+        const activities = retainQuestionActivities([...thread.activities.filter((entry) => entry.id !== activity.data.id), activity.data]
+          .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0) || a.createdAt.localeCompare(b.createdAt)))
         return { ...thread, activities, updatedAt: event.occurredAt }
       }
       case 'thread.turn-diff-completed': {
@@ -2335,6 +2365,10 @@ export class T3EngineClient implements EngineReadClient {
     if (!this.#running) return
     this.#state = 'disconnected'
     this.#problem = reason
+    for (const [id, request] of this.#compactions) {
+      const activities = this.#threads.get(id)?.detail?.thread.activities ?? []
+      if (contextCompactionResult(request, activities).state === 'working') request.error = `The connection to conversation ${id} was lost during compaction. Check the conversation, then retry if needed.`
+    }
     this.#publish()
     this.#scheduleReconnect()
   }
@@ -2657,7 +2691,7 @@ export class T3EngineClient implements EngineReadClient {
     if (destination.origin !== new URL(credential.server).origin) throw new Error(`The upload destination is outside ${credential.server}`)
     const response = await this.#fetch(destination, {
       method: 'POST', headers: { 'content-type': input.mimeType, 'content-length': String(input.bytes.byteLength) }, body: new Uint8Array(input.bytes),
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(120_000),
     })
     if (!response.ok) throw new Error(`The engine refused the attachment bytes (${response.status})`)
     return { type: input.type, id: upload.attachmentId, name: input.name, mimeType: input.mimeType, sizeBytes: input.bytes.byteLength }
@@ -2670,6 +2704,16 @@ export class T3EngineClient implements EngineReadClient {
     const pending = state.pending.find((entry) => entry.deliveryId === messageId)
     for (const [id, reply] of Object.entries(pending?.replies ?? {})) state.replies[id] ??= reply
     for (const comment of state.comments ?? []) if (pending?.commentIds?.includes(comment.id) && comment.state === 'pending') comment.state = 'held'
+    let visualChanged = false
+    for (const reference of pending?.visual ?? []) {
+      const comment = this.#visual.comments[reference.id]
+      const revision = comment?.revisions.find(candidate => candidate.number === reference.revision)
+      if (!comment || !revision || revision.state === 'sent') continue
+      revision.state = 'failed'; revision.error = 'This delivery was removed. Review the held comment before sending again.'
+      comment.draft ??= { text: revision.text, marks: structuredClone(revision.marks), strokes: structuredClone(revision.strokes), adjustments: structuredClone(revision.adjustments), destination: { ...revision.destination }, updatedAt: this.#now() }
+      visualChanged = true
+    }
+    if (visualChanged) await writeVisualCommentsStore(this.#visualPath, this.#visual)
     state.pending = state.pending.filter((entry) => entry.deliveryId !== messageId)
     state.prepared = (state.prepared ?? []).filter((entry) => entry.messageId !== messageId)
     await writeConversationsStore(this.#conversationsPath, this.#conversations)
@@ -2690,6 +2734,10 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async #discardAttachment(id: string): Promise<void> {
+    for (const state of Object.values(this.#conversations.threads)) {
+      const files = [...(state.prepared ?? []).flatMap(entry => entry.attachments), ...Object.values(state.userInputResponses ?? {}).filter(response => !response.sent).flatMap(response => Object.values(response.attachmentsByQuestionId).flat())]
+      if (files.some(file => file.kind !== 'text' && file.id === id)) return
+    }
     await this.#staged.discard(id)
   }
 
@@ -2761,6 +2809,10 @@ export class T3EngineClient implements EngineReadClient {
             && (Object.keys(uploaded).length === 0 || isDeepStrictEqual(payload.attachmentsByQuestionId, uploaded))
         })
         if (confirmed) { response.sent = true; repliesChanged = true }
+        else if (entry.detail?.thread.activities.some(activity => inputPayload(activity).requestId === requestId && userInputRetired(activity))) {
+          // Retirement releases maintenance without claiming our answer was delivered.
+          delete state!.userInputResponses![requestId]; repliesChanged = true
+        }
       }
       if (!state || (!state.pending.some((pending) => listed.has(pending.deliveryId)) && !state.prepared?.some((prepared) => listed.has(prepared.messageId)))) continue
       const acknowledged = state.pending.filter((pending) => listed.has(pending.deliveryId))
@@ -2914,6 +2966,7 @@ export class T3EngineClient implements EngineReadClient {
       const previous = this.#reading.recovery?.[thread.id]
       if (!previous) continue
       const next = reconcileThreadRecovery(previous, { ...thread, messages: this.#threads.get(thread.id)?.detail?.thread.messages }, this.#reachable())
+      if (next.state === 'completed') { delete this.#reading.recovery![thread.id]; recoveryChanged = true; continue }
       if (JSON.stringify(previous) !== JSON.stringify(next)) { this.#reading.recovery![thread.id] = next; recoveryChanged = true }
     }
     if (recoveryChanged) void this.#writeReading().catch(error => logError('engine', 'Recovery status could not be saved', error))

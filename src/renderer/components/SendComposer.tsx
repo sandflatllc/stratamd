@@ -385,7 +385,7 @@ export function SendComposer({ threads = EMPTY_THREADS, recipients, drafts, lead
     replies: Object.fromEntries((thread.items ?? []).filter(item => item.draftReply !== undefined && contextIds.includes(item.id)).map(item => [item.id, item.draftReply!])),
   }])), [threads, selected, contextIds, contextDeliveryIds])
   const previewExternalKeys = checkedExternal.size > 0 ? externalKeys : EMPTY_KEYS
-  const request = useMemo<SendPreviewRequest>(() => ({ ...buildPreviewRequest({
+  const requested = useMemo<SendPreviewRequest>(() => ({ ...buildPreviewRequest({
       recipients: selected,
       note,
       checkedExternal,
@@ -394,6 +394,10 @@ export function SendComposer({ threads = EMPTY_THREADS, recipients, drafts, lead
       externalKeys: previewExternalKeys,
       draftIds: drafts.filter((item) => selectedDrafts.has(item.id)).map((item) => item.id),
     }), conversation }), [conversation, checkedExternal, drafts, note, previewExternalKeys, selected, selectedDrafts, uncheckedEvents, uncheckedUser])
+  // Engine broadcasts recreate thread arrays even when the selected send content is unchanged.
+  // Keep the debounce bound to the request's values so those broadcasts cannot starve it.
+  const requestKey = JSON.stringify(requested)
+  const request = useMemo<SendPreviewRequest>(() => JSON.parse(requestKey), [requestKey])
   const requestNeedsStart = startedRequest.current !== request || startedRefresh.current !== refresh
   const pending = requestNeedsStart || previewState.pending
   const submit = useCallback(() => setSend((state) => nextSendState(state, { type: 'submit', request })), [request])

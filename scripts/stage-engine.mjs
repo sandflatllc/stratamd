@@ -50,6 +50,7 @@ if (process.platform === 'linux') {
 
 run(executable, [join(destination, 'node/lib/node_modules/npm/bin/npm-cli.js'), 'ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', '--cache', join(cache, 'npm')], destination, env)
 const backport = await applyEngineBackport(root, destination, source)
+run(executable, ['--input-type=module', '-e', "import {createRequire} from 'node:module';import {pathToFileURL} from 'node:url';const r=createRequire(process.cwd()+'/node_modules/t3/dist/bin.mjs');const stream=await import(pathToFileURL(r.resolve('effect/Stream')).href);if(typeof stream.paginate!=='function')throw Error('The replay backport cannot load effect/Stream.paginate');"], destination, env)
 // Build the PTY with the node-gyp version bundled in the authenticated Node archive.
 // Other native dependencies carry lockfile-authenticated platform packages.
 await rm(join(destination, 'node_modules/node-pty/prebuilds'), { recursive: true, force: true })

@@ -49,6 +49,7 @@ export function useComposerCommands({ text, snapshot, compact, input, active, on
       return true
     }
     if (event.key === 'Tab' && (event.shiftKey || !selected || selected.kind === 'command' && selected.name === compact.name && compact.disabledReason)) { close(); return false }
+    if (event.key === 'Enter' && !selected) { close(); return false }
     if ((event.key === 'Enter' && !event.shiftKey) || (event.key === 'Tab' && selected)) {
       event.preventDefault(); event.stopPropagation()
       if (selected) select(selected)

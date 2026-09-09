@@ -810,6 +810,30 @@ describe('StrataApplication: file identity and annotation relocation', () => {
     expect(await trackedDescriptors(moved)).toEqual([])
   })
 
+  it('keeps state reads coherent while a renamed document changes its session and tab paths', async () => {
+    const value = await fixture('# Rename\n\nKeep this session readable.\n')
+    await value.app.openDocument(value.path)
+    const moved = join(value.root, 'renamed.md')
+    const originalMove = value.store.moveDocument.bind(value.store)
+    let observe!: (result: { view?: Awaited<ReturnType<StrataApplication['getState']>>; error?: unknown }) => void
+    const observed = new Promise<Parameters<typeof observe>[0]>(resolve => { observe = resolve })
+    value.store.moveDocument = async (...args) => {
+      const meta = await originalMove(...args)
+      // Let the caller resume, then read before its next asynchronous operation.
+      // The old rename removed the session before awaiting tab canonicalization.
+      queueMicrotask(() => queueMicrotask(() => {
+        void value.app.getState().then(view => observe({ view }), error => observe({ error }))
+      }))
+      return meta
+    }
+    await rename(value.path, moved)
+    await value.app.recheckFocused()
+    const result = await observed
+    expect(result.error).toBeUndefined()
+    expect(result.view?.tabs).toEqual([expect.objectContaining({ path: moved, active: true })])
+    expect(result.view?.activeDocument?.path).toBe(moved)
+  })
+
   it('reopens the tracked descriptor after atomic Save and follows the saved inode when it moves', async () => {
     const value = await fixture('# Save then move\n\nOriginal.\n')
     const outside = await mkdtemp(join(tmpdir(), 'stratamd-fd-saved-outside-'))

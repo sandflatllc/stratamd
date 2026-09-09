@@ -107,3 +107,21 @@ for (const action of ['respond', 'dismiss'] as const) test(`failed native ${acti
     await expect.poll(() => engine.commands).toEqual([expect.objectContaining({ type: `thread.user-input.${action}`, requestId: 'input-1', ...(action === 'respond' ? { answers: { release: 'Private retry' } } : {}) })])
   } finally { await scenario.dispose(); await engine.close() }
 })
+
+test('multi-select preserves provider values across Hold and sends an array', async ({}, testInfo) => {
+  const engine = await startEngine({ userInputResponseMode: 'message', userInputQuestions: [{ id: 'choice', question: 'Choose checks', multiSelect: true, allowCustomAnswer: false, options: [{ label: 'First check', value: 'first' }, { label: 'Second check', value: 'second' }] }] })
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    const page = await scenario.launch()
+    await page.getByRole('tab', { name: 'Projects', exact: true }).click()
+    await page.getByRole('button', { name: 'Open Live engine thread', exact: true }).click()
+    await page.getByRole('button', { name: 'Answer question', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Answer question' })
+    await dialog.getByRole('button', { name: 'First check', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Second check', exact: true }).click()
+    await expect(dialog.getByRole('button', { name: 'First check', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await dialog.getByRole('button', { name: 'Hold answer' }).click()
+    await page.getByRole('button', { name: 'Send', exact: true }).click()
+    await expect.poll(() => engine.commands.filter(command => command.type === 'thread.user-input.respond')).toEqual([expect.objectContaining({ answers: { choice: ['first', 'second'] } })])
+  } finally { await scenario.dispose(); await engine.close() }
+})

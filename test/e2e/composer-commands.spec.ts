@@ -41,7 +41,7 @@ test('provider workspace skills filter, select by keyboard, restore and send onl
   try {
     await input.fill('/')
     await expect(menu.getByRole('option')).toHaveCount(3)
-    await expect(menu.getByRole('option', { name: /^\/agent-browser / })).toHaveAttribute('aria-selected', 'true')
+    await expect(menu.getByRole('option', { name: /^\$agent-browser / })).toHaveAttribute('aria-selected', 'true')
     await capture(page, testInfo, 'menu')
     await input.press('ArrowUp')
     await expect(menu.getByRole('option', { name: /^\/compact / })).toHaveAttribute('aria-disabled', 'true')
@@ -49,9 +49,9 @@ test('provider workspace skills filter, select by keyboard, restore and send onl
     expect(engine.commands.filter(command => command.type === 'thread.turn.start')).toEqual([])
     await input.press('ArrowDown')
     await input.press('ArrowDown')
-    await expect(menu.getByRole('option', { name: /^\/design / })).toHaveAttribute('aria-selected', 'true')
+    await expect(menu.getByRole('option', { name: /^\$design / })).toHaveAttribute('aria-selected', 'true')
     await input.press('ArrowUp')
-    await expect(menu.getByRole('option', { name: /^\/agent-browser / })).toHaveAttribute('aria-selected', 'true')
+    await expect(menu.getByRole('option', { name: /^\$agent-browser / })).toHaveAttribute('aria-selected', 'true')
     await input.fill('/evidence')
     await expect(menu.getByRole('option')).toHaveCount(1)
     await input.fill('/browser')
@@ -59,8 +59,6 @@ test('provider workspace skills filter, select by keyboard, restore and send onl
     await capture(page, testInfo, 'filtered')
     await input.fill('/roof-estimate')
     await expect(menu.getByText('No matching command or skill')).toBeVisible()
-    await input.press('Enter')
-    expect(engine.commands.filter(command => command.type === 'thread.turn.start')).toEqual([])
     await capture(page, testInfo, 'empty')
     await menu.getByRole('button', { name: 'Clear search' }).click()
     await expect(input).toHaveValue('/')
@@ -119,5 +117,17 @@ test('Compact uses the existing action and an empty workspace catalog overrides 
     await label.hover()
     await page.keyboard.press(primaryKey('Equal'))
     await expect.poll(() => label.evaluate(element => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThan(beforeZoom)
+  } finally { await scenario.dispose(); await engine.close() }
+})
+
+test('unmatched paths and dollar amounts fall through to ordinary Send on Enter', async ({}, testInfo) => {
+  const { engine, scenario, input, menu } = await setup(testInfo)
+  try {
+    for (const text of ['/tmp', '$500']) {
+      await input.fill(text)
+      await expect(menu.getByText('No matching command or skill')).toBeVisible()
+      await input.press('Enter')
+      await expect.poll(() => engine.commands.some(command => command.type === 'thread.turn.start' && (command.message as { text: string }).text === text)).toBe(true)
+    }
   } finally { await scenario.dispose(); await engine.close() }
 })

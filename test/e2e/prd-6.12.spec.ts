@@ -395,7 +395,8 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
   test('12. an unacknowledged delivery survives close, restart, and the engine coming back', async ({}, testInfo) => {
     const { value, engine } = await engineScenario(testInfo, '# Durable queue\n\nOriginal.\n')
     await value.launch()
-    await attachAll(value, engine, [['t1', 'Agent A']])
+    await openThread(value.page!, 'Agent A')
+    await attachThread(value.page!, engine, 't1', 'Agent A')
     engine.setOnline(false)
     await expect(value.page!.getByRole('button', { name: 'Engine status' })).toHaveText(/Disconnected/)
 
@@ -408,7 +409,9 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     const queued = await value.page!.evaluate(async () => (await window.strata.getState()).activeDocument?.attachments[0]?.queuedDeliveries ?? [])
     expect(queued).toHaveLength(1)
 
-    await closeTab(value)
+    // Close through the public API: this scenario tests durable delivery across closure,
+    // while the other close scenarios exercise the Docs menu and its decisions.
+    expect(await value.page!.evaluate(path => window.strata.closeDocument(path), value.file)).toBe('closed')
     await value.stop()
     await value.launch()
     engine.setOnline(true)
@@ -418,23 +421,26 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     expect(uploadsFor(engine, 't1')[1]).toContain('Queued user edit.')
   })
 
-  test('14. one agent sees another agent edit only through changes or explicit inclusion', async ({}, testInfo) => {
+  for (const includeExternal of [false, true]) test(`14. another agent's edit is ${includeExternal ? 'explicitly included for a new agent' : 'excluded by default'}`, async ({}, testInfo) => {
     const original = '# Isolation\n\nShared paragraph.\n\nOwner line.\n'
     const withUserEdit = '# Isolation\n\nAgent B private edit.\n\nOwner line updated.\n'
     const { value, engine } = await engineScenario(testInfo, original)
     await value.launch()
     await attachAll(value, engine, [['t1', 'Agent A'], ['t2', 'Agent B']])
-    // A third thread, started from Projects, joins as Agent C.
-    await value.page!.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
-    await value.page!.getByRole('button', { name: 'New thread in Cockpit project', exact: true }).click()
-    await value.page!.getByLabel('Message conversation').fill('Join this review.')
-    await value.page!.getByLabel('Message conversation').press('Enter')
-    await expect.poll(() => engine.commands.find((command) => command.type === 'thread.create')?.threadId).toBeTruthy()
-    const agentC = String(engine.commands.find((command) => command.type === 'thread.create')!.threadId)
-    await value.page!.evaluate(async (id) => window.strata.updateEngineThread(id, { title: 'Agent C' }), agentC)
-    await value.page!.getByRole('button', { name: 'Move to side' }).click()
-    await openThread(value.page!, 'Agent C')
-    await attachThread(value.page!, engine, agentC, 'Agent C')
+    let agentC = ''
+    if (includeExternal) {
+      // A third thread, started from Projects, joins as Agent C.
+      await value.page!.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Projects' }).click()
+      await value.page!.getByRole('button', { name: 'New thread in Cockpit project', exact: true }).click()
+      await value.page!.getByLabel('Message conversation').fill('Join this review.')
+      await value.page!.getByLabel('Message conversation').press('Enter')
+      await expect.poll(() => engine.commands.find((command) => command.type === 'thread.create')?.threadId).toBeTruthy()
+      agentC = String(engine.commands.find((command) => command.type === 'thread.create')!.threadId)
+      await value.page!.evaluate(async (id) => window.strata.updateEngineThread(id, { title: 'Agent C' }), agentC)
+      await value.page!.getByRole('button', { name: 'Move to side' }).click()
+      await openThread(value.page!, 'Agent C')
+      await attachThread(value.page!, engine, agentC, 'Agent C')
+    }
     await openThread(value.page!, 'Agent A')
     await value.page!.getByRole('tablist', { name: 'Document navigation' }).getByRole('tab', { name: 'Contents' }).click()
 
@@ -443,22 +449,20 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
 
     await setSource(value.page!, withUserEdit)
     await value.waitForBuffer(withUserEdit)
-    await send(value.page!, { recipientNames: ['Agent A'] })
-    await expect.poll(() => uploadsFor(engine, 't1').length).toBe(2)
-    const excluded = uploadsFor(engine, 't1')[1]!
-    expect(excluded).toContain('Owner line updated.')
-    expect(excluded).toContain('Changes by user:')
-    expect(excluded).not.toContain('Agent B private edit.')
-
-    const finalRound = `${withUserEdit}\nAnother owner line.\n`
-    await setSource(value.page!, finalRound)
-    await value.waitForBuffer(finalRound)
-    await send(value.page!, { includeExternal: true, recipientNames: ['Agent C'] })
-    await expect.poll(() => uploadsFor(engine, agentC).filter(Boolean).length).toBe(2)
-    const included = uploadsFor(engine, agentC).filter(Boolean)[1]!
-    expect(included).toContain('Changes by Agent B (t2):')
-    expect(included).toContain('Agent B private edit.')
+    await send(value.page!, { includeExternal, recipientNames: [includeExternal ? 'Agent C' : 'Agent A'] })
+    const recipient = includeExternal ? agentC : 't1'
+    await expect.poll(() => uploadsFor(engine, recipient).filter(Boolean).length).toBe(2)
+    const delivered = uploadsFor(engine, recipient).filter(Boolean)[1]!
+    expect(delivered).toContain('Owner line updated.')
+    expect(delivered).toContain('Changes by user:')
+    if (!includeExternal) {
+      expect(delivered).not.toContain('Agent B private edit.')
+      return
+    }
+    expect(delivered).toContain('Changes by Agent B (t2):')
+    expect(delivered).toContain('Agent B private edit.')
   })
+
 
   test('15. Accept changes only the buffer, notifies its author, and reaches peers as user work', async ({}, testInfo) => {
     const original = '# Accept\n\nUse the original phrase here.\n'

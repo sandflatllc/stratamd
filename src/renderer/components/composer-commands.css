@@ -1,8 +1,8 @@
 .chat-command-menu h3 { margin: 4px 6px; font-size: calc(14px * var(--zoom, 1)); font-weight: 500; }
 .chat-command-menu p { margin: 6px; font-size: calc(12px * var(--zoom, 1)); line-height: 1.45; }
 .chat-composer .chat-command-menu button[role="option"] { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; font: inherit; text-align: left; }
-.chat-command-menu button[aria-selected="true"] { background: var(--controls-selected); }
-.chat-command-menu button[aria-disabled="true"] { cursor: default; }
+.chat-composer .chat-command-menu button[aria-selected="true"] { background: var(--controls-selected); }
+.chat-composer .chat-command-menu button[aria-disabled="true"] { cursor: default; background: transparent; }
 .chat-command-menu strong { display: block; font-size: calc(13px * var(--zoom, 1)); }
 .chat-command-menu small { display: block; color: var(--muted); font-size: calc(12px * var(--zoom, 1)); }
 .chat-command-menu kbd { margin-left: auto; font-size: calc(11px * var(--zoom, 1)); }

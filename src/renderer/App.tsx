@@ -220,7 +220,7 @@ export function App({ createEditor }: AppProps) {
 
   const report = useCallback((message: string, action?: ToastAction) => setToast((current) => nextToast(current, { message, tone: 'info', ...(action ? { action } : {}) })), [])
   const reportError = useCallback((message: string) => setToast((current) => nextToast(current, { message, tone: 'error' })), [])
-  const dismissToast = useCallback(() => setToast(null), [])
+  const dismissToast = useCallback((id: number) => setToast(current => current?.id === id ? null : current), [])
   const perform = useCallback(async (job: () => Promise<unknown>, message?: string) => {
     try { await job(); if (message) report(message) }
     catch (error) { reportError(error instanceof Error ? error.message : 'The action failed') }
@@ -624,9 +624,9 @@ export function App({ createEditor }: AppProps) {
     const source = await window.strata.previewEvidenceAction(savedEvidence.evidence.id, 'open')
     if (!source) throw new Error('The saved screenshot is no longer available.')
     const image = await loadImage(source)
-    const bytes = Uint8Array.from(atob(source.slice(source.indexOf(',') + 1)), character => character.charCodeAt(0))
-    const staged = await window.strata.stageConversationAttachment({ name: savedEvidence.evidence.name, mimeType: 'image/png', bytes })
-    setVisualSession({ kind: 'staged', id: staged.id, name: savedEvidence.evidence.name, width: image.naturalWidth, height: image.naturalHeight, projectId: project!.id, destination: { threadId: thread.id, threadTitle: thread.title } })
+    const staged = await window.strata.previewEvidenceAction(savedEvidence.evidence.id, 'stage')
+    if (!staged) throw new Error('The saved screenshot is no longer available.')
+    setVisualSession({ kind: 'staged', id: staged, name: savedEvidence.evidence.name, width: image.naturalWidth, height: image.naturalHeight, projectId: project!.id, destination: { threadId: thread.id, threadTitle: thread.title } })
   })
   const openPreview = (projectId: string) => {
     showPreview(projectId)
@@ -749,7 +749,7 @@ export function App({ createEditor }: AppProps) {
     const activeTabId = (tabs.find((tab) => tab.id === activePreviewTabs[previewShown]) ?? tabs.find((tab) => tab.kind === 'owner') ?? tabs[0])?.id ?? null
     const annotate = { active: annotating !== null && annotating.projectId === previewShown, disabled: annotateDestination(previewShown) === null, onToggle: () => { if (annotating) void annotationClose.current?.(); else if (activeTabId) startAnnotate(activeTabId, previewShown) }, overlay: annotateOverlay }
     return <main className="island editor-island preview-island" data-pane="editor" style={{ '--zoom': zoom.editor } as CSSProperties}><AmbientDecor variant="editor" /><PreviewWindow projectId={previewShown} projectTitle={project?.title ?? 'Project'} tabs={tabs} activeTabId={activeTabId} engine={view.engine} annotate={annotate}
-      documentMedia={savedDocument?.projectId === previewShown ? { id: savedDocument.source.kind === 'local' ? savedDocument.source.path : savedDocument.source.id, name: savedDocument.source.name, url: '', mimeType: 'application/pdf', active: savedDocument.active, onSelect: () => { setSavedDocument(current => current && { ...current, active: true }); setSavedEvidence(current => current && { ...current, active: false }) }, onClose: () => setSavedDocument(null), onAnnotate: () => {}, document: <DocumentPreview key={JSON.stringify(savedDocument.source)} source={savedDocument.source} identity={view.engine.identity ?? null} onClose={() => setSavedDocument(null)} /> } : undefined}
+      documentMedia={savedDocument?.projectId === previewShown ? { id: savedDocument.source.id, name: savedDocument.source.name, url: '', mimeType: 'application/pdf', active: savedDocument.active, onSelect: () => { setSavedDocument(current => current && { ...current, active: true }); setSavedEvidence(current => current && { ...current, active: false }) }, onClose: () => setSavedDocument(null), onAnnotate: () => {}, document: <DocumentPreview key={JSON.stringify(savedDocument.source)} source={savedDocument.source} identity={view.engine.identity ?? null} onClose={() => setSavedDocument(null)} /> } : undefined}
       savedMedia={savedEvidence?.projectId === previewShown ? { id: savedEvidence.evidence.id, name: savedEvidence.evidence.name, url: savedEvidence.url, mimeType: savedEvidence.evidence.mimeType, active: savedEvidence.active, onSelect: () => { setSavedDocument(current => current && { ...current, active: false }); setSavedEvidence(current => current && { ...current, active: true }) }, onClose: () => setSavedEvidence(null), onAnnotate: annotateSavedEvidence } : undefined}
       onSelectTab={(id) => { setSavedDocument(current => current && { ...current, active: false }); setSavedEvidence(current => current && { ...current, active: false }); setActivePreviewTabs((current) => ({ ...current, [previewShown]: id })) }}
       onNewTab={() => void perform(async () => { setSavedDocument(current => current && { ...current, active: false }); setSavedEvidence(current => current && { ...current, active: false }); const id = await window.strata.openPreviewTab({ projectId: previewShown }); setActivePreviewTabs((current) => ({ ...current, [previewShown]: id })) })}
@@ -831,11 +831,13 @@ export function App({ createEditor }: AppProps) {
   })
 
   const previewPath = document?.path
+  // Refresh exact text for document changes, without treating unrelated engine status as a new preview.
+  const previewDocumentState = composer && document ? JSON.stringify([document.historyStep, document.annotations, document.drafts, document.pendingHunks, document.attachments.map(attachment => [attachment.agent.id, attachment.cursor, attachment.queuedDeliveries])]) : ''
   const preview = useCallback(async (request: SendPreviewRequest) => {
     if (previewPath === undefined) return []
     await flushBuffer()
     return window.strata.previewSend(previewPath, request)
-  }, [flushBuffer, previewPath])
+  }, [flushBuffer, previewPath, document?.content, previewDocumentState])
 
   const bufferChanged = useCallback((content: string, origin: BufferOrigin, prepareBlockRanges?: PrepareBufferBlockRanges) => {
     if (!document) return

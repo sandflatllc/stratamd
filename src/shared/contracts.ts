@@ -276,8 +276,9 @@ export type ConversationAttachment =
   | { kind: 'binary'; id: string; name: string; mimeType: string; sizeBytes: number }
 
 /** Private native answer draft, keyed by native question id. */
+export type UserInputAnswers = Record<string, string | string[]>
 export interface UserInputDraft {
-  answers: Record<string, string>
+  answers: UserInputAnswers
   attachmentsByQuestionId: Record<string, ConversationAttachment[]>
 }
 
@@ -292,6 +293,8 @@ export interface EngineTurnView {
 export interface EngineThreadView {
   recovery?: import("./thread-recovery").ThreadRecovery
 
+  pendingSendIds?: string[]
+  pendingUserInputResponses?: Record<string, UserInputDraft>
   compaction?: import("./context-compaction").ContextCompactionView
   engineIdentity?: string | undefined
   askScan?: AskScanView | undefined
@@ -515,6 +518,7 @@ export interface VisualCommentView {
 
 /** What the session hands the main process on Hold: the draft and the marked captures it rendered. */
 export interface HoldVisualCommentInput {
+  omitWindowText?: boolean
   id?: string
   projectId: string
   threadId: string
@@ -869,6 +873,7 @@ export interface PreviewTabView {
   canGoBack: boolean
   canGoForward: boolean
   viewport: PreviewViewportView
+  recording?: 'recording' | 'paused'
   /** The owner took control of an agent tab; new agent actions wait for Resume. */
   paused: boolean
   /** An agent action is running or waiting in this tab. */
@@ -1151,7 +1156,7 @@ export interface StrataApi {
   resizePreview(tabId: string, viewport: PreviewViewportRequest): Promise<void>
   /** Hands an agent tab back after the owner took control; nothing is replayed. */
   resumePreviewTab(tabId: string): Promise<void>
-  previewEvidenceAction(id: string, action: 'open' | 'retry'): Promise<string | null>
+  previewEvidenceAction(id: string, action: 'open' | 'retry' | 'stage'): Promise<string | null>
   /** Where the shown page sits in the window, whenever layout changes; null hides it. */
   reportPreviewBounds(report: PreviewBoundsReport): Promise<void>
   /** One boolean from the overlay layer: an overlay is open, so the page hides beneath it. */
@@ -1168,6 +1173,8 @@ export interface StrataApi {
   compactContext(threadId: string, input: import("./context-compaction").CompactContextInput): Promise<void>
   stopConversationTurn(threadId: string): Promise<void>
   answerEngineApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
+  discardEngineSend(threadId: string, messageId: string): Promise<void>
+  discardEngineUserInput(threadId: string, requestId: string): Promise<void>
   dismissEngineUserInput(threadId: string, requestId: string): Promise<void>
   answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>, attachmentsByQuestionId?: Record<string, ConversationAttachment[]>): Promise<void>
   createEngineThread(input: StartThreadInput): Promise<string>

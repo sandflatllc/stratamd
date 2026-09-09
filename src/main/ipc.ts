@@ -42,6 +42,7 @@ const visualMarkSchema = z.object({ id: idSchema, kind: z.enum(['element', 'regi
 const visualStrokeSchema = z.object({ id: idSchema, tool: z.enum(['draw', 'arrow']), captureId: idSchema, points: z.array(visualPointSchema).max(20_000) }).strict()
 const visualAdjustmentSchema = z.object({ markId: idSchema, property: z.string().max(128), value: z.string().max(512), label: z.string().max(512) }).strict()
 const holdVisualCommentSchema = z.object({
+  omitWindowText: z.boolean().optional(),
   id: visualCommentIdSchema.optional(),
   projectId: idSchema,
   threadId: idSchema,
@@ -253,7 +254,7 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.closePreviewTab]: z.tuple([previewTabIdSchema]),
   [IPC.navigatePreview]: z.tuple([previewTabIdSchema, z.union([z.object({ url: z.string().max(2_048) }).strict(), z.object({ action: z.enum(['back', 'forward', 'reload', 'stop']) }).strict()])]),
   [IPC.resizePreview]: z.tuple([previewTabIdSchema, z.discriminatedUnion('mode', [z.object({ mode: z.literal('fill') }).strict(), z.object({ mode: z.literal('preset'), preset: z.string().max(64) }).strict(), z.object({ mode: z.literal('freeform'), width: z.number().int().positive().max(8_192), height: z.number().int().positive().max(8_192) }).strict()])]),
-  [IPC.previewEvidenceAction]: z.tuple([z.string().regex(/^browser-[0-9a-f-]{36}$/), z.enum(['open', 'retry'])]),
+  [IPC.previewEvidenceAction]: z.tuple([z.string().regex(/^browser-[0-9a-f-]{36}$/), z.enum(['open', 'retry', 'stage'])]),
   [IPC.resumePreviewTab]: z.tuple([previewTabIdSchema]),
   [IPC.reportPreviewBounds]: z.tuple([z.object({ tabId: previewTabIdSchema.nullable(), bounds: z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite().nonnegative(), height: z.number().finite().nonnegative() }).strict().nullable() }).strict()]),
   [IPC.reportOverlay]: z.tuple([z.boolean()]),
@@ -276,6 +277,8 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.compactContext]: z.tuple([idSchema, conversationTurnSchema.pick({ model: true, instanceId: true, effort: true, options: true, access: true }).strict()]),
   [IPC.stopConversationTurn]: z.tuple([idSchema]),
   [IPC.answerEngineApproval]: z.tuple([idSchema, idSchema, z.enum(['accept', 'acceptForSession', 'acceptAlways', 'decline', 'cancel'])]),
+  [IPC.discardEngineSend]: z.tuple([idSchema, idSchema]),
+  [IPC.discardEngineUserInput]: z.tuple([idSchema, idSchema]),
   [IPC.dismissEngineUserInput]: z.tuple([idSchema, idSchema]),
   [IPC.answerEngineUserInput]: z.tuple([idSchema, idSchema, z.record(z.string(), z.unknown()), z.record(z.string(), z.array(conversationAttachmentSchema).max(MAX_ATTACHMENTS)).optional()]),
   [IPC.openDocument]: z.tuple([pathSchema.optional()]),
@@ -517,7 +520,7 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.closePreviewTab]: (tabId: string) => options.api.closePreviewTab(tabId),
     [IPC.navigatePreview]: (tabId: string, navigation: Parameters<StrataApi['navigatePreview']>[1]) => options.api.navigatePreview(tabId, navigation),
     [IPC.resizePreview]: (tabId: string, viewport: Parameters<StrataApi['resizePreview']>[1]) => options.api.resizePreview(tabId, viewport),
-    [IPC.previewEvidenceAction]: (id: string, action: 'open' | 'retry') => options.api.previewEvidenceAction(id, action),
+    [IPC.previewEvidenceAction]: (id: string, action: 'open' | 'retry' | 'stage') => options.api.previewEvidenceAction(id, action),
     [IPC.resumePreviewTab]: (tabId: string) => options.api.resumePreviewTab(tabId),
     [IPC.reportPreviewBounds]: (report: Parameters<StrataApi['reportPreviewBounds']>[0]) => options.api.reportPreviewBounds(report),
     [IPC.reportOverlay]: (open: boolean) => options.api.reportOverlay(open),
@@ -541,6 +544,8 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.compactContext]: (threadId: string, input: import("../shared/context-compaction").CompactContextInput) => options.api.compactContext(threadId, input),
     [IPC.stopConversationTurn]: (threadId: string) => options.api.stopConversationTurn(threadId),
     [IPC.answerEngineApproval]: (threadId: string, requestId: string, decision: Parameters<StrataApi['answerEngineApproval']>[2]) => options.api.answerEngineApproval(threadId, requestId, decision),
+    [IPC.discardEngineSend]: (threadId: string, messageId: string) => options.api.discardEngineSend(threadId, messageId),
+    [IPC.discardEngineUserInput]: (threadId: string, requestId: string) => options.api.discardEngineUserInput(threadId, requestId),
     [IPC.dismissEngineUserInput]: (threadId: string, requestId: string) => options.api.dismissEngineUserInput(threadId, requestId),
     [IPC.answerEngineUserInput]: (threadId: string, requestId: string, answers: Record<string, unknown>, files?: Record<string, import('../shared/contracts').ConversationAttachment[]>) => options.api.answerEngineUserInput(threadId, requestId, answers, files),
     [IPC.openDocument]: (path?: string) => options.api.openDocument(path),

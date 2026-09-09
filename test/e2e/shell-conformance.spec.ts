@@ -9,9 +9,9 @@ import { agentActs, annotationByText, attachThread, openThread } from './cockpit
 
 async function tabTo(page: Page, target: Locator, limit = 120): Promise<void> {
   await expect(target).toBeVisible()
-  await page.evaluate(() => {
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
-  })
+  // Keep the current keyboard position instead of restarting the shell's Tab
+  // traversal before every control. An already-focused target needs no key.
+  if (await target.evaluate((element) => document.activeElement === element)) return
   for (let index = 0; index < limit; index += 1) {
     await page.keyboard.press('Tab')
     if (await target.evaluate((element) => document.activeElement === element)) return

@@ -44,6 +44,11 @@ export function editCustomModel(entry: unknown, slug: string, name: string, desc
   return next
 }
 
+export function supportedModelOptions(model: EngineModelView | undefined, options: ModelOption[]): ModelOption[] {
+  if (!model?.options.length) return options
+  return options.filter(option => model.options.some(descriptor => descriptor.id === option.id && supportsOption(descriptor, option.value)))
+}
+
 /** Legacy engines without option metadata retain their existing effort behavior. */
 export function validatedModelOptions(model: EngineModelView | undefined, options: ModelOption[]): ModelOption[] {
   if (!model?.options.length) return options

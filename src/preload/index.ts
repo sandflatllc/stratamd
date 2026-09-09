@@ -189,6 +189,8 @@ const api: StrataApi & {
   compactContext: (threadId, input) => invoke<void>(IPC.compactContext, threadId, input),
   stopConversationTurn: (threadId) => invoke<void>(IPC.stopConversationTurn, threadId),
   answerEngineApproval: (threadId, requestId, decision) => invoke<void>(IPC.answerEngineApproval, threadId, requestId, decision),
+  discardEngineSend: (threadId, messageId) => invoke<void>(IPC.discardEngineSend, threadId, messageId),
+  discardEngineUserInput: (threadId, requestId) => invoke<void>(IPC.discardEngineUserInput, threadId, requestId),
   dismissEngineUserInput: (threadId, requestId) => invoke<void>(IPC.dismissEngineUserInput, threadId, requestId),
   answerEngineUserInput: (threadId, requestId, answers, attachmentsByQuestionId) => invoke<void>(IPC.answerEngineUserInput, threadId, requestId, answers, attachmentsByQuestionId),
   onTerminalEvent(listener) {

@@ -112,3 +112,24 @@ test('a refused recording upload keeps the local copy and retries the known dest
     expect(engine.uploadRequests).toHaveLength(1)
   } finally { release(); await scenario.stop(); await engine.close(); await site.close() }
 })
+
+test('owner takeover pauses recording and still permits saving the completed copy', async ({}, testInfo) => {
+  const engine = await startEngine({ previewAutomation: true, pendingRequests: false })
+  const site = await startPreviewPage()
+  const scenario = await seededScenario(testInfo, engine.origin)
+  scenario.env.STRATAMD_PREVIEW_PROBE = '1'
+  try {
+    const page = await scenario.launchEmpty()
+    await expect.poll(() => engine.hosts().length).toBe(1)
+    expect((await engine.automation('t1', 'open', { url: site.origin })).ok).toBe(true)
+    expect((await engine.automation('t1', 'recordingStart', {})).ok).toBe(true)
+    const tab = await page.evaluate(async () => (await window.strata.getState()).preview.tabs[0]!)
+    expect(tab.recording).toBe('recording')
+    await page.evaluate(id => (window as unknown as { strataPreviewProbe: { humanInput(id: string, point: { x: number; y: number }): Promise<void> } }).strataPreviewProbe.humanInput(id, { x: 40, y: 40 }), tab.id)
+    await expect.poll(() => page.evaluate(async () => (await window.strata.getState()).preview.tabs[0]?.recording)).toBe('paused')
+    const stopped = await engine.automation('t1', 'recordingStop', {}, { timeoutMs: 30_000 })
+    expect(stopped.ok, JSON.stringify(stopped)).toBe(true)
+    const record = stopped.result as BrowserEvidenceView
+    expect(await page.evaluate(id => window.strata.previewEvidenceAction(id, 'open'), record.id)).toBe(`strata-visual://browser/${record.id}`)
+  } finally { await scenario.dispose(); await engine.close(); await site.close() }
+})

@@ -17,13 +17,11 @@ export type UsageLimitSources = z.infer<typeof usageLimitSources>
 export type ConsumeResetCreditInput = z.infer<typeof consumeResetCreditInput>
 export type ConsumeResetCreditResult = z.infer<typeof consumeResetCreditResult>
 
-/** Sparse reports retain each omitted window's original measurement time. */
+/** Server snapshots are complete. Only failed probes carry prior measurements forward. */
 export function mergeUsageLimits(previous: UsageLimits | undefined, next: UsageLimits): UsageLimits {
   if (next.unavailable?.reason === 'unsupported') return { ...next, windows: [] }
   if (next.unavailable?.reason === 'probeFailed' && previous) return { ...previous, unavailable: next.unavailable }
-  const windows = new Map(previous?.windows.map(window => [window.id, window]))
-  for (const window of next.windows) { const old = windows.get(window.id); windows.set(window.id, { ...old, ...window }) }
-  return { ...next, windows: [...windows.values()] }
+  return next
 }
 
 /** A failed source probe keeps the displayed accounts and their measurement ages. */

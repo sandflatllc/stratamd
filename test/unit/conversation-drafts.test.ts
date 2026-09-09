@@ -171,3 +171,17 @@ it('notifies only the affected thread when composer content appears or disappear
   expect(unrelated).not.toHaveBeenCalled()
   off(); offOther(); clearDraft(key)
 })
+
+it('consumes only the original retry payload, preserving later text and files', async () => {
+  const { completeDraftSend } = await import('../../src/renderer/conversationDrafts')
+  const file = { kind: 'binary' as const, id: 'a_original', name: 'report.pdf', mimeType: 'application/pdf', sizeBytes: 5 }
+  const later = { kind: 'text' as const, name: 'later.md', text: 'New file' }
+  const sent = { text: 'Original', model: 'codex', effort: null, access: 'full-access' as const, attachments: [file] }
+  expect(completeDraftSend({ text: 'Later edit', messageId: 'original', retry: sent, attachments: [file, later] }, sent)).toEqual({ text: 'Later edit', attachments: [later] })
+  expect(completeDraftSend({ text: 'Original', retry: sent, threadId: 'created', attachments: [file] }, sent)).toEqual({ text: '', attachments: [] })
+})
+it('drops obsolete options from project defaults', () => {
+  const view = engine()
+  view.projects[1]!.defaultModelSelection!.options = [{ id: 'effort', value: 'removed' }, { id: 'contextWindow', value: '1m' }]
+  expect(initialSelection(view, 'b', true).options).toEqual([{ id: 'contextWindow', value: '1m' }])
+})

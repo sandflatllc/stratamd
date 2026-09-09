@@ -18,7 +18,9 @@ async function capture(page: Page, path: string) {
 }
 const pdf = async () => ({ name: 'inspection-report.pdf', mimeType: 'application/pdf', buffer: await readFile('test/fixtures/attachments/inspection-report.pdf') })
 
-test('two attachment-only answers preserve associations and uploaded bytes across close, app restart, Hold and partial-upload retry', async ({}, testInfo) => {
+for (const previews of [false, true]) test(previews
+  ? 'staged and submitted answer files preview their original PDF and HTML bytes'
+  : 'two attachment-only answers preserve associations and bytes across close, restart, Hold and partial-upload retry', async ({}, testInfo) => {
   const engine = await startEngine({ userInputResponseMode: 'message', userInputQuestions: [{ id: 'report', question: 'Which report?' }, { id: 'export', question: 'Which export?' }] })
   const scenario = await seededScenario(testInfo, engine.origin)
   try {
@@ -30,6 +32,9 @@ test('two attachment-only answers preserve associations and uploaded bytes acros
     let dialog = page.getByRole('dialog', { name: 'Answer question' })
     const report = await pdf(), archive = { name: 'inspection-page.html', mimeType: 'text/html', buffer: Buffer.from('<!doctype html><html><body><h1>Inspection page</h1><p>Original answer bytes.</p></body></html>') }
     await dialog.getByLabel('Attach to answer report', { exact: true }).setInputFiles(report)
+    // setInputFiles bypasses native picker actionability; wait for staging to re-enable the next field.
+    await expect(dialog.getByLabel('Files for report', { exact: true })).toContainText(report.name)
+    await expect(dialog.getByLabel('Attach to answer export', { exact: true })).toBeEnabled()
     await dialog.getByLabel('Attach to answer export', { exact: true }).setInputFiles(archive)
     await expect(dialog.getByLabel('Files for report', { exact: true })).toContainText(report.name)
     await expect(dialog.getByLabel('Files for export', { exact: true })).toContainText(archive.name)
@@ -57,7 +62,7 @@ test('two attachment-only answers preserve associations and uploaded bytes acros
       await page.getByRole('button', { name: `Close saved ${file.name}`, exact: true }).click()
       await open(page)
     }
-    for (const [id, file] of [['report', report], ['export', archive]] as const) {
+    if (previews) for (const [id, file] of [['report', report], ['export', archive]] as const) {
       await dialog.getByLabel(`Files for ${id}`, { exact: true }).getByRole('button', { name: file.name, exact: true }).click()
       await previewFile(file, 'staged')
       await page.getByRole('button', { name: 'Answer question', exact: true }).click()
@@ -65,30 +70,35 @@ test('two attachment-only answers preserve associations and uploaded bytes acros
       await expect(dialog.getByLabel('Files for report', { exact: true })).toContainText(report.name)
       await expect(dialog.getByLabel('Files for export', { exact: true })).toContainText(archive.name)
     }
-    await dialog.getByRole('button', { name: 'Close dialog' }).click()
-    expect(engine.uploadRequests).toEqual([])
-    expect(engine.commands).toEqual([])
-    await page.reload()
-    await open(page)
-    await page.getByRole('button', { name: 'Answer question', exact: true }).click()
-    dialog = page.getByRole('dialog', { name: 'Answer question' })
-    await expect(dialog.getByLabel('Files for report', { exact: true })).toContainText(report.name)
-    await expect(dialog.getByLabel('Files for export', { exact: true })).toContainText(archive.name)
+    if (!previews) {
+      await dialog.getByRole('button', { name: 'Close dialog' }).click()
+      expect(engine.uploadRequests).toEqual([])
+      expect(engine.commands).toEqual([])
+      await page.reload()
+      await open(page)
+      await page.getByRole('button', { name: 'Answer question', exact: true }).click()
+      dialog = page.getByRole('dialog', { name: 'Answer question' })
+      await expect(dialog.getByLabel('Files for report', { exact: true })).toContainText(report.name)
+      await expect(dialog.getByLabel('Files for export', { exact: true })).toContainText(archive.name)
+    }
     await dialog.getByRole('button', { name: 'Hold answer', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible()
     expect(engine.uploadRequests).toEqual([])
-    engine.failNextUpload(1)
-    await page.getByRole('button', { name: 'Send', exact: true }).click()
-    await expect(page.getByRole('alert')).toContainText('Could not send inspection-page.html')
-    expect(engine.commands).toEqual([])
-    expect(engine.uploadRequests).toHaveLength(1)
-    await scenario.stop()
-    page = await scenario.launch()
-    await open(page)
-    await page.getByRole('button', { name: 'Edit answer', exact: true }).click()
-    dialog = page.getByRole('dialog', { name: 'Answer question' })
-    await dialog.getByRole('textbox', { name: 'Answer report', exact: true }).fill('An edit after the failed Send')
-    await dialog.getByRole('button', { name: 'Hold answer', exact: true }).click()
+    if (!previews) {
+      engine.failNextUpload(1)
+      await page.getByRole('button', { name: 'Send', exact: true }).click()
+      await expect(page.getByRole('alert')).toContainText('Could not send inspection-page.html')
+      expect(engine.commands).toEqual([])
+      expect(engine.uploadRequests).toHaveLength(1)
+      await scenario.stop()
+      page = await scenario.launch()
+      await open(page)
+      await page.getByRole('button', { name: 'Edit answer', exact: true }).click()
+      dialog = page.getByRole('dialog', { name: 'Answer question' })
+      await expect(dialog.getByRole('textbox', { name: 'Answer report', exact: true })).toBeDisabled()
+      await expect(dialog.getByText(/Retry sends this original/)).toBeVisible()
+      await page.keyboard.press('Escape')
+    }
     await page.getByRole('button', { name: 'Send', exact: true }).click()
     await expect.poll(() => engine.commands.filter(command => command.type === 'thread.user-input.respond')).toHaveLength(1)
     const response = engine.commands[0] as { answers: Record<string, string>; attachmentsByQuestionId: Record<string, Array<{ id: string; name: string; mimeType: string; sizeBytes: number }>> }
@@ -101,7 +111,7 @@ test('two attachment-only answers preserve associations and uploaded bytes acros
       expect(engine.uploadBytesById.get(attachment.id)).toEqual(file.buffer)
       await expect(page.getByLabel(`Submitted files for ${id}`, { exact: true })).toContainText(file.name)
     }
-    for (const [id, file] of [['report', report], ['export', archive]] as const) {
+    if (previews) for (const [id, file] of [['report', report], ['export', archive]] as const) {
       await page.getByLabel(`Submitted files for ${id}`, { exact: true }).getByRole('button', { name: file.name, exact: true }).click()
       await previewFile(file, 'submitted')
     }

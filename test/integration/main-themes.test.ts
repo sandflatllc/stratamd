@@ -139,6 +139,40 @@ describe('themes in the application', () => {
     expect(states.at(-1)!.settings.theme.active.problems).toEqual([])
   })
 
+  it('does not replace a newer local edit with a theme reload that was already in flight', async () => {
+    const { app, themeStore, states } = await fixture(true)
+    const id = await app.createTheme('Concurrent', 'strata-vivid')
+    await app.flushThemeWrites()
+    const revision = (await app.getState()).settings.theme.externalRevision
+    const originalLoad = themeStore.load.bind(themeStore)
+    let release!: () => void
+    let entered!: () => void
+    const held = new Promise<void>(resolve => { release = resolve })
+    const loading = new Promise<void>(resolve => { entered = resolve })
+    let holdNext = true
+    themeStore.load = async (name) => {
+      const loaded = await originalLoad(name)
+      if (name === id && holdNext) {
+        holdNext = false
+        entered()
+        await held
+      }
+      return loaded
+    }
+    try {
+      await writeFile(themeStore.pathFor(id), JSON.stringify({ name: 'Concurrent', surfaces: { transcript: '#203040' } }))
+      await loading
+      await app.setThemeValue('surfaces.transcript-border', '#607080')
+      await app.flushThemeWrites()
+      const beforeRelease = states.length
+      release()
+      await until(() => states.length, count => count > beforeRelease)
+      const theme = (await app.getState()).settings.theme
+      expect(theme.active.values['surfaces.transcript-border']).toBe('#607080')
+      expect(theme.externalRevision).toBe(revision)
+    } finally { release(); themeStore.load = originalLoad }
+  })
+
   it('reports a failed theme write beside the theme and clears it when a write lands', async () => {
     const { app, themeStore } = await fixture()
     await app.createTheme('Fragile', 'strata-night')

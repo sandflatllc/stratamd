@@ -60,11 +60,11 @@ export function DocumentPreview({ source: requestedSource, identity, onClose }: 
   useLayoutEffect(() => {
     if (!data || data.kind !== 'html' || sourceMode || error || !hole.current) return
     const element = hole.current
-    let frame = 0, closed = false
-    const report = () => { frame = 0; if (closed) return; const r = element.getBoundingClientRect(); void window.strata.reportDocumentBounds({ id: data.id, bounds: { x: r.x, y: r.y, width: r.width, height: r.height } }).catch(failure => { if (!closed) setError(String(failure)) }) }
+    let frame = 0, closed = false, last = ''
+    const report = () => { frame = 0; if (closed) return; const r = element.getBoundingClientRect(); const report = { id: data.id, bounds: { x: r.x, y: r.y, width: r.width, height: r.height } }; const key = JSON.stringify(report); if (key === last) return; last = key; void window.strata.reportDocumentBounds(report).catch(failure => { if (!closed) setError(String(failure)) }) }
     const schedule = () => { if (!frame) frame = requestAnimationFrame(report) }
-    const observer = new ResizeObserver(schedule); observer.observe(element); window.addEventListener('resize', schedule); report()
-    return () => { closed = true; cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('resize', schedule); void window.strata.reportDocumentBounds({ id: null, bounds: null }).catch(() => undefined) }
+    const observer = new ResizeObserver(schedule); observer.observe(element); observer.observe(document.body); window.addEventListener('resize', schedule); window.addEventListener('scroll', schedule, true); report()
+    return () => { closed = true; cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('resize', schedule); window.removeEventListener('scroll', schedule, true); void window.strata.reportDocumentBounds({ id: null, bounds: null }).catch(() => undefined) }
   }, [data, sourceMode, error])
   const locate = async (file: File) => {
     try {

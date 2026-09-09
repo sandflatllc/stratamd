@@ -11,8 +11,8 @@
 .browser-evidence-copy progress::-webkit-progress-bar { background: var(--card-2); }
 .browser-evidence-copy progress:indeterminate { background: linear-gradient(90deg, var(--card-2) 0 15%, var(--controls-primary-highlight) 15% 65%, var(--card-2) 65%); }
 .preview-saved-chrome { min-height: 52px; margin: 10px 14px; padding: 10px 12px; background: var(--bg); }
-.preview-saved-chrome strong { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.preview-saved-chrome > span { font-size: 12px; }
+.preview-saved-chrome strong { flex: 1; font-size: calc(13px * var(--zoom, 1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-saved-chrome > span { font-size: calc(12px * var(--zoom, 1)); }
 .preview-saved-media { position: absolute; inset: 0; overflow: auto; background: white; }
 .preview-saved-media > img { display: block; width: 100%; height: auto; }
 .preview-saved-media > video { width: 100%; height: 100%; object-fit: contain; background: var(--bg); }

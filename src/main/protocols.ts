@@ -20,7 +20,7 @@ const CONTENT_SECURITY_POLICY = [
   "form-action 'none'",
   "frame-ancestors 'none'",
   "img-src 'self' app: strata-image: strata-visual: data:",
-  "media-src data:",
+  "media-src strata-visual:",
   "object-src 'none'",
   "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'"
@@ -120,16 +120,16 @@ export function installLocalImageProtocol(): void {
 
 export interface VisualImageProtocolOptions {
   /** Bytes for a piece of visual evidence or a staged composer image, or null when it is gone. */
-  read(kind: 'evidence' | 'staged', id: string): Promise<{ bytes: Uint8Array; mimeType: string } | null>
+  read(kind: 'evidence' | 'staged' | 'browser', id: string): Promise<{ bytes: Uint8Array; mimeType: string } | null>
 }
 
 /** Visual evidence and staged composer images (docs/plans/open/visual-review): served by id from the data directory, never by path. */
 export function installVisualImageProtocol(options: VisualImageProtocolOptions): void {
   protocol.handle(VISUAL_IMAGE_SCHEME, async (request) => {
     const url = new URL(request.url)
-    if (request.method !== 'GET' || (url.host !== 'evidence' && url.host !== 'staged')) return forbidden()
+    if (request.method !== 'GET' || (url.host !== 'evidence' && url.host !== 'staged' && url.host !== 'browser')) return forbidden()
     const id = decodeURIComponent(url.pathname.slice(1))
-    if (!/^[ae]_[0-9a-f-]{36}$/u.test(id)) return forbidden()
+    if (!(url.host === 'browser' ? /^browser-[0-9a-f-]{36}$/u : /^[ae]_[0-9a-f-]{36}$/u).test(id)) return forbidden()
     try {
       const image = await options.read(url.host, id)
       if (!image) return notFound()

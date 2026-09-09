@@ -17,7 +17,7 @@ import { useContextCompaction } from '../useContextCompaction'
 import { ContextWindowMeter } from './ContextWindowMeter'
 import { FolderIcon, FolderGit2Icon, GitBranchIcon } from '../icons/lucide'
 import { ModelPicker } from './ModelPicker'
-import { availableModels, clearDraftContent, draftSelection, flushDrafts, onDraftStorage, readDraft, rememberedSelection, rememberSelection, selectionForModel, writeDraft, type ComposerSelection, type DraftAttachment } from '../conversationDrafts'
+import { availableModels, clearDraftContent, completeDraftSend, draftSelection, flushDrafts, onDraftStorage, readDraft, rememberedSelection, rememberSelection, selectionForModel, writeDraft, type ComposerSelection, type DraftAttachment } from '../conversationDrafts'
 import { acceptFiles, binaryFileLabel, classifyFile } from '../../core/composer-attachments'
 
 
@@ -61,6 +61,7 @@ export interface ConversationComposerProps {
   queuedCount?: number
   showQueuedCount?: boolean
   /** 1 when the send will add Strata's context file, which counts toward T3's attachment limit (§6.0). */
+  reservedAnswerFiles?: number
   reservedAttachments?: 0 | 1
   context?: ReactNode
   canSendContext?: boolean
@@ -83,7 +84,7 @@ export interface ConversationComposerProps {
   consumedAttachmentIds?: readonly string[]
 }
 
-export function ConversationComposer({ deliveryId, engine, thread, projectId, draftKey, initial, centered = false, queuedCount = 0, showQueuedCount = true, reservedAttachments = 0, context, canSendContext = false, workspaceControls, workspace, branch, running = false, sendWhileRunning = false, onStop, onSend, onSendFailureChange, visualComments = [], onOpenVisual, onMarkUpImage, consumedAttachmentIds = [] }: ConversationComposerProps) {
+export function ConversationComposer({ deliveryId, engine, thread, projectId, draftKey, initial, centered = false, queuedCount = 0, showQueuedCount = true, reservedAnswerFiles = 0, reservedAttachments = 0, context, canSendContext = false, workspaceControls, workspace, branch, running = false, sendWhileRunning = false, onStop, onSend, onSendFailureChange, visualComments = [], onOpenVisual, onMarkUpImage, consumedAttachmentIds = [] }: ConversationComposerProps) {
   const [draft] = useState(() => readDraft(draftKey))
   const [text, setText] = useState(draft.text)
   const [attachments, setAttachmentsState] = useState<DraftAttachment[]>(draft.attachments ?? [])
@@ -98,13 +99,14 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
   const includedVisual = visualComments.filter((comment) => !excludedVisual.includes(comment.id))
   const visualImages = includedVisual.reduce((count, comment) => count + visualCaptureIds(comment).length, 0)
   const contextFile = reservedAttachments === 1
-  const capacity = sendCapacity({ files: attachments.length, visualImages, visualComments: includedVisual.length, contextFile })
+  const capacity = sendCapacity({ files: attachments.length + reservedAnswerFiles, visualImages, visualComments: includedVisual.length, contextFile })
   const [menu, setMenu] = useState<'models' | 'options' | 'access' | 'discard' | 'commands' | null>(null)
   const [busy, setBusy] = useState(false)
   const sending = useRef(false)
   const attachmentGeneration = useRef(0)
   const [error, setError] = useState('')
-  const [sendFailed, setSendFailed] = useState(false)
+  const [sendFailed, setSendFailed] = useState(Boolean(draft.retry))
+  const [retryInput, setRetryInput] = useState(draft.retry)
   const retrySend = useRef<() => Promise<void>>(async () => {})
   const root = useRef<HTMLFormElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
@@ -115,8 +117,9 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
   const driverFor = (instanceId: string | null | undefined) => engine.accounts.find(account => account.instanceId === instanceId)?.driver ?? allModels.find(model => model.instanceId === instanceId)?.driver
   const scope = boundThread ? continuationScope({ instanceId: boundThread.providerInstanceId, model: boundThread.model, driver: driverFor(boundThread.providerInstanceId) }) : undefined
   const models = allModels.filter(model => permitsSelection(scope, { instanceId: model.instanceId, model: model.slug, driver: model.driver }))
-  const selection = permitsSelection(scope, { instanceId: storedSelection.instanceId ?? '', model: storedSelection.model, driver: driverFor(storedSelection.instanceId) }) ? storedSelection : boundThread ? { model: boundThread.model, instanceId: boundThread.providerInstanceId, effort: boundThread.effort, options: boundThread.options ?? [], access: storedSelection.access } : initial
-  const model = models.find((model) => model.slug === selection.model && model.instanceId === selection.instanceId)
+  const selectionCandidate = permitsSelection(scope, { instanceId: storedSelection.instanceId ?? '', model: storedSelection.model, driver: driverFor(storedSelection.instanceId) }) ? storedSelection : boundThread ? { model: boundThread.model, instanceId: boundThread.providerInstanceId, effort: boundThread.effort, options: boundThread.options ?? [], access: storedSelection.access } : initial
+  const model = models.find((model) => model.slug === selectionCandidate.model && model.instanceId === selectionCandidate.instanceId)
+  const selection = model ? selectionForModel(model, selectionCandidate.access, selectionCandidate) : selectionCandidate
   const compact = useContextCompaction(engine, boundThread, selection, workspace)
   const selectedAccount = engine.accounts.find((account) => account.instanceId === selection.instanceId)
   const account = selectedAccount ? accountForModel(selectedAccount, selection.model) : undefined
@@ -153,7 +156,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
   /** Pasted and picked files share one path: accept, stage images with the main process, keep text inline, then save the draft. */
   const stageFiles = async (files: File[], pasted: boolean) => {
     if (canSendContext) { setError('The first turn from a document carries the document; attach files on the next turn.'); return }
-    const { accepted, refusal } = acceptFiles(latestAttachments.current.length + visualImages, files, contextFile ? 1 : 0, { pasted })
+    const { accepted, refusal } = acceptFiles(latestAttachments.current.length + visualImages + reservedAnswerFiles, files, contextFile ? 1 : 0, { pasted })
     if (refusal) setError(refusal)
     const generation = attachmentGeneration.current
     let opened = false
@@ -172,7 +175,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
           continue
         }
         const list = [...latestAttachments.current, next]
-        setAttachments(list); persist(text, selection, list)
+        setAttachments(list); const current = readDraft(draftKey); persist(current.text, current.selection ?? selection, list)
         // A pasted screenshot opens the annotation session at once (docs/plans/open/visual-review); a picked file stays an attachment until Mark up.
         if (pasted && next.kind === 'image' && onMarkUpImage && !opened) { opened = true; onMarkUpImage(next) }
       } catch (failure) { setError(`Could not attach ${entry.name}: ${failure instanceof Error ? failure.message : String(failure)}`) }
@@ -238,31 +241,52 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     window.addEventListener('scroll', place, true)
     return () => { observer.disconnect(); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); if (element.matches(':popover-open')) element.hidePopover() }
   }, [menu])
-  const discardMessage = () => {
+  const discardMessage = async () => {
     if (busy || sending.current) return
+    if (retryInput?.messageId && boundThread) {
+      setBusy(true)
+      try { await window.strata.discardEngineSend(boundThread.id, retryInput.messageId) }
+      catch (failure) { setError(String(failure)); return }
+      finally { setBusy(false) }
+    }
     attachmentGeneration.current += 1
     const removed = latestAttachments.current
-    const { messageId: _messageId, attachments: _attachments, ...saved } = readDraft(draftKey)
+    const { messageId: _messageId, retry: _retry, attachments: _attachments, ...saved } = readDraft(draftKey)
     setUnsaved(!writeDraft(draftKey, { ...saved, text: '' }, { immediate: true }))
-    setText(''); setAttachments([]); setError(''); setSendFailed(false); setMenu(null)
+    setText(''); setAttachments([]); setError(''); setSendFailed(false); setRetryInput(undefined); setMenu(null)
     for (const attachment of removed) if (attachment.kind !== 'text') window.strata.discardConversationAttachment(attachment.id).catch(() => { /* Startup sweep removes unreferenced files. */ })
     input.current?.focus()
   }
-  const canSend = Boolean(text.trim() || attachments.length || queuedCount || canSendContext || includedVisual.length) && !capacity.refusal
+  const canSend = Boolean(retryInput) || Boolean(text.trim() || attachments.length || queuedCount || canSendContext || includedVisual.length) && !capacity.refusal
   const send = async () => {
     if (sending.current || busy || !valid || !canSend) return
     sending.current = true; setBusy(true); setError(''); setSendFailed(false); setMenu(null)
     try {
-      const messageId = readDraft(draftKey).messageId ?? deliveryId ?? crypto.randomUUID()
-      writeDraft(draftKey, { ...readDraft(draftKey), messageId }, { immediate: true })
+      const messageId = retryInput?.messageId ?? readDraft(draftKey).messageId ?? deliveryId ?? crypto.randomUUID()
       // The thumbnail stays behind; the main process holds the bytes under the id.
       const outgoing = attachments.map(({ thumbnail: _thumbnail, ...attachment }) => attachment)
-      await onSend({ ...selection, messageId, commandId: `strata-${messageId}`, text: text.trim(), ...(outgoing.length ? { attachments: outgoing } : {}), ...(includedVisual.length ? { visual: includedVisual.map((comment) => comment.id) } : {}) })
-      // The preparation owns the staged images now; clearing the list must not discard them.
-      setUnsaved(!clearDraftContent(draftKey, selection, thread ? initial : undefined)); setText(''); setAttachments([])
-    } catch (failure) { setError(failure instanceof Error ? failure.message : 'The message could not be sent. Try again.'); setSendFailed(true) }
+      const submitted = retryInput ?? { ...selection, messageId, commandId: `strata-${messageId}`, text: text.trim(), ...(outgoing.length ? { attachments: outgoing } : {}), ...(includedVisual.length ? { visual: includedVisual.map((comment) => comment.id) } : {}) }
+      writeDraft(draftKey, { ...readDraft(draftKey), messageId, retry: submitted }, { immediate: true })
+      await onSend(submitted)
+      const remaining = completeDraftSend(readDraft(draftKey), submitted)
+      setUnsaved(!writeDraft(draftKey, remaining, { immediate: true })); setText(remaining.text); setAttachments(remaining.attachments ?? []); setRetryInput(undefined)
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'The message could not be sent. Try again.'); setSendFailed(true)
+      const saved = readDraft(draftKey)
+      const current = await window.strata.getState().catch(() => null)
+      const pending = current?.engine.projects.flatMap(project => project.threads).some(thread => thread.pendingSendIds?.includes(saved.messageId ?? ''))
+      if (pending || !current) setRetryInput(saved.retry)
+      else { const { retry: _, ...editable } = saved; writeDraft(draftKey, editable, { immediate: true }); setRetryInput(undefined) }
+    }
     finally { sending.current = false; setBusy(false) }
   }
+  // A reconnect can deliver the original while this composer is closed or idle.
+  useEffect(() => {
+    if (busy || !retryInput?.messageId || !boundThread?.messages.some(message => message.id === retryInput.messageId)) return
+    const remaining = completeDraftSend(readDraft(draftKey), retryInput)
+    setUnsaved(!writeDraft(draftKey, remaining, { immediate: true })); setText(remaining.text); setAttachments(remaining.attachments ?? [])
+    setRetryInput(undefined); setSendFailed(false); setError('')
+  }, [busy, retryInput, boundThread?.messages, draftKey])
   // The composer owns submission and its frozen message id. The conversation owns
   // the transcript notice; a current ref keeps Retry aligned with this composer.
   const reportFailure = Boolean(onSendFailureChange && sendFailed && attachments.some(attachment => attachment.kind === 'binary'))
@@ -286,6 +310,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
           <div className="conversation-visual-card-actions"><label><input type="checkbox" checked={included} disabled={busy} onChange={() => setExcludedVisual((current) => included ? [...current, comment.id] : current.filter((id) => id !== comment.id))} />Include</label><button type="button" aria-label={`Remove held visual comment: ${comment.title}`} title="Remove held comment" disabled={busy} onClick={() => void removeVisual(comment)}>×</button></div>
         </div>
       })}</div>}
+      {retryInput && <details className="conversation-retry-original"><summary>Retry sends the original message. Current edits stay for your next Send.</summary><p>{retryInput.text}</p>{retryInput.attachments?.map((file, index) => <small key={index}>{file.name}</small>)}</details>}
       {attachments.length > 0 && <div className="conversation-attachments">{attachments.map((attachment, index) => <div key={attachment.kind !== 'text' ? attachment.id : `${attachment.name}:${index}`} className="conversation-attachment-preview" data-kind={attachment.kind}>{attachment.kind === 'image' && (onMarkUpImage ? <button type="button" className="conversation-attachment-markup" aria-label={`Mark up ${attachment.name}`} title="Mark up this image" disabled={busy} onClick={() => onMarkUpImage(attachment)}><img src={attachment.thumbnail ?? ''} alt="" /></button> : <img src={attachment.thumbnail ?? ''} alt="" />)}{attachment.kind === 'binary' && <span aria-hidden="true">{binaryFileLabel(attachment.name)}</span>}{attachment.kind === 'binary' && documentKind(attachment.name) ? <strong title={attachment.name}><button type="button" className="conversation-file-open" onClick={() => openDocumentPreview({ kind: 'staged', id: attachment.id, name: attachment.name }, projectId)}>{attachment.name}</button></strong> : <strong title={attachment.name}>{attachment.name}</strong>}{attachment.kind === 'binary' && <small title={attachment.mimeType}>{binaryFileLabel(attachment.name)} · {attachment.sizeBytes < 1024 * 1024 ? `${Math.ceil(attachment.sizeBytes / 1024)} KB` : `${(attachment.sizeBytes / (1024 * 1024)).toFixed(1)} MB`}</small>}<button type="button" aria-label={`Remove ${attachment.name}`} disabled={busy} onClick={() => removeAttachment(index)}>×</button></div>)}</div>}
       <textarea ref={input} aria-label="Message conversation" placeholder="Ask for changes, send follow-ups, or attach a file" value={text} disabled={busy} aria-autocomplete="list" aria-haspopup="listbox" aria-controls={menu === 'commands' && commands.items.length ? commands.listId : undefined} aria-activedescendant={menu === 'commands' && commands.selectedId ? commandOptionId(commands.listId, commands.selectedId) : undefined} onSelect={commands.updateSelection} onChange={(event) => { setText(event.target.value); persist(event.target.value, selection, latestAttachments.current); commands.updateSelection(event) }} onKeyDown={(event) => {
         if (commands.handleKeyDown(event)) return
@@ -320,9 +345,9 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
         <div className="chat-send-actions"><input ref={fileInput} className="conversation-attachment-input" type="file" multiple hidden onChange={(event) => {
           const files = Array.from(event.target.files ?? []); event.target.value = ''
           if (files.length) void stageFiles(files, false)
-        }} /><button type="button" aria-label="Attach file" disabled={busy || canSendContext} onClick={() => fileInput.current?.click()}>＋</button><ContextWindowMeter activities={boundThread?.activities ?? []} compact={compact} />{running && !busy && onStop && !sendWhileRunning
+        }} /><button type="button" aria-label="Attach file" disabled={busy || canSendContext} onClick={() => fileInput.current?.click()}>＋</button><ContextWindowMeter activities={boundThread?.activities ?? []} compact={compact} />{running && !busy && onStop && sendWhileRunning && <button className="chat-stop" type="button" aria-label="Stop" onClick={onStop}>Stop</button>}{running && !busy && onStop && !sendWhileRunning
           ? <button className="chat-send chat-stop" type="button" aria-label="Stop" title="Stop the agent" onClick={onStop}><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="2" /></svg></button>
-          : <button className="chat-send" type="submit" aria-label="Send" disabled={busy || !valid || !canSend}>{busy ? '…' : '↑'}</button>}</div>
+          : <button className="chat-send" type="submit" aria-label="Send" disabled={busy || !valid || !canSend}>{busy ? '…' : retryInput ? 'Retry' : '↑'}</button>}</div>
       </div>
       {Boolean(text.trim() || attachments.length) && menu !== 'discard' && <div className="conversation-draft-status"><span>{unsaved ? 'Message draft in memory' : 'Message draft saved'}</span><button type="button" className="chat-pill" disabled={busy} onClick={() => setMenu('discard')}>Discard message…</button></div>}
       {menu === 'discard' && <div ref={popup} popover="manual" className="chat-menu conversation-draft-confirm" role="dialog" aria-label="Discard this message draft?">

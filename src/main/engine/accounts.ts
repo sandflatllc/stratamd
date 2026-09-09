@@ -60,7 +60,7 @@ export function providerInstancesOf(config: T3ServerConfigSlice): EngineProvider
   return config.providers.map((provider) => {
     const home = config.settings?.providerInstances?.[provider.instanceId]?.config?.homePath?.trim()
     return {
-      usageReporting: config.usageLimitSources !== undefined || config.providers.some(item => item.usageLimits !== undefined),
+      usageReporting: provider.usageLimits !== undefined,
       usageLimits: provider.usageLimits,
       ...(provider.usageLimits ? { usage: usageOf(provider.usageLimits, provider.driver) } : {}),
       instanceId: provider.instanceId,
@@ -143,7 +143,7 @@ export function recordMeasurements(store: AccountsStore, providers: readonly Eng
   for (const provider of providers) {
     if (!provider.usage || provider.usageLimits?.unavailable?.reason === 'probeFailed') continue
     const next: AccountMeasurement = {
-      windows: mergeWindows(measurements[provider.instanceId]?.accountKey === measurementAccountKey(provider) ? measurements[provider.instanceId]?.windows : undefined, provider.usage),
+      windows: provider.usage.windows,
       checkedAt: provider.usage.checkedAt,
       accountKey: measurementAccountKey(provider),
       modelWindows: provider.usage.modelWindows ?? [],
@@ -166,7 +166,7 @@ function measurementFor(instance: EngineProviderInstance, store: AccountsStore):
 
 function providerFor(instance: EngineProviderInstance, store: AccountsStore): AccountProvider {
   const measurement = measurementFor(instance, store)
-  const usage = instance.usageLimits?.unavailable?.reason === 'probeFailed' && measurement ? { ...measurement } : instance.usage && instance.usageLimits ? { ...instance.usage, windows: mergeWindows(measurement?.windows, instance.usage) } : instance.usage ?? (measurement ? { windows: measurement.windows, checkedAt: measurement.checkedAt, modelWindows: measurement.modelWindows ?? [], session: measurement.session, weekly: measurement.weekly, applicable: measurement.applicable, ...(measurement.planLabel ? { planLabel: measurement.planLabel } : {}) } : undefined)
+  const usage = instance.usageLimits?.unavailable?.reason === 'probeFailed' && measurement ? { ...measurement } : instance.usage && instance.usageLimits ? instance.usage : instance.usage ?? (measurement ? { windows: measurement.windows, checkedAt: measurement.checkedAt, modelWindows: measurement.modelWindows ?? [], session: measurement.session, weekly: measurement.weekly, applicable: measurement.applicable, ...(measurement.planLabel ? { planLabel: measurement.planLabel } : {}) } : undefined)
   return {
     instanceId: instance.instanceId, driver: instance.driver, enabled: instance.enabled, status: instance.status,
     ...(instance.availability ? { availability: instance.availability } : {}),
@@ -258,11 +258,4 @@ export function terminalShimTargets(store: AccountsStore, accounts: readonly Acc
 
 function usageOf(limits: UsageLimits, driver: string): AccountUsage {
   return { session: null, weekly: null, applicable: limits.unavailable?.reason !== 'unsupported', checkedAt: limits.checkedAt, windows: limits.windows.map(window => ({ ...window, ...(driver === 'claudeAgent' && window.id.startsWith('seven_day_') && window.label.startsWith('Weekly · ') ? { modelScope: window.label.slice('Weekly · '.length) } : {}), resetsAt: window.resetsAt ?? null, measuredAt: limits.checkedAt })) }
-}
-function mergeWindows(previous: UsageWindow[] | undefined, next: AccountUsage): UsageWindow[] | undefined {
-  if (!next.applicable) return []
-  if (!next.windows) return undefined
-  const windows = new Map(previous?.map(window => [window.id, window]))
-  for (const window of next.windows) { const old = windows.get(window.id); windows.set(window.id, { ...old, ...window, resetsAt: window.resetsAt ?? old?.resetsAt ?? null, ...(window.windowDurationMins === undefined && old?.windowDurationMins !== undefined ? { windowDurationMins: old.windowDurationMins } : {}) }) }
-  return [...windows.values()]
 }

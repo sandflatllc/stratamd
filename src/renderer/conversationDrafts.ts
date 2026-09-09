@@ -1,4 +1,4 @@
-import { supportsOption, validatedModelOptions } from '../shared/custom-models'
+import { supportsOption, supportedModelOptions } from '../shared/custom-models'
 
 import { userInputAttachmentIds } from './userInputDrafts'
 import { accountForModel } from '../core/accountState'
@@ -12,6 +12,7 @@ export type DraftAttachment = ConversationAttachment & { thumbnail?: string }
 export interface ConversationDraft {
   workspace?: import('./components/WorkspaceControls').WorkspaceChoice
   messageId?: string
+  retry?: ConversationInput
   text: string
   attachments?: DraftAttachment[] | undefined
   selection?: ComposerSelection
@@ -57,7 +58,9 @@ function parseDraft(raw: string | null): ConversationDraft | null {
 export function readDraft(key: string): ConversationDraft {
   if (memory.has(engineStorageKey(key))) return memory.get(engineStorageKey(key))!
   // A corrupt disposable draft cannot block conversation entry.
-  return parseDraft(engineStorage.getItem(prefix + key)) ?? { text: '' }
+  const draft = parseDraft(engineStorage.getItem(prefix + key)) ?? { text: '' }
+  memory.set(engineStorageKey(key), draft)
+  return draft
 }
 function writeDurable(key: string, draft: ConversationDraft): boolean {
   const scoped = engineStorageKey(key)
@@ -130,6 +133,7 @@ export function clearDraft(key: string): void {
   refused.delete(scoped)
   try { engineStorage.removeItem(prefix + key) } catch { /* Storage may be unavailable. */ }
   notifyPresence(key, previous)
+  memory.delete(scoped)
 }
 /** Sending consumes content and delivery IDs, but model settings outlive the message. */
 export function clearDraftContent(key: string, selection: ComposerSelection, selectionBase?: ComposerSelection): boolean {
@@ -202,7 +206,7 @@ export function initialSelection(engine: EngineView, projectId: string, useConfi
   if (!model) return { model: '', instanceId: null, options: [], effort: null, access: 'approval-required' }
   const result = selectionForModel(model, previous?.access ?? 'approval-required')
   if (model.instanceId === instanceId && model.slug === slug) {
-    result.options = selected ? validatedModelOptions(model, selected.options ?? result.options ?? []) : previous?.options ?? (previous?.effort ? [{ id: 'effort', value: previous.effort }] : result.options ?? [])
+    result.options = selected ? supportedModelOptions(model, selected.options ?? result.options ?? []) : previous?.options ?? (previous?.effort ? [{ id: 'effort', value: previous.effort }] : result.options ?? [])
     result.effort = String(result.options?.find((option) => option.id === 'effort' || option.id === 'reasoningEffort')?.value ?? '') || null
   }
   return result
@@ -220,4 +224,11 @@ export function readNewConversationTarget(): NewConversationTarget | null {
 }
 export function writeNewConversationTarget(value: NewConversationTarget | null): void {
   try { engineStorage.setItem('stratamd.new-conversation.v1', JSON.stringify(value)) } catch { /* Draft text still persists independently. */ }
+}
+
+export function completeDraftSend(draft: ConversationDraft, sent: ConversationInput): ConversationDraft {
+  const { retry: _, messageId: _id, threadId: _thread, ...remaining } = draft
+  const key = (file: ConversationAttachment) => file.kind === 'text' ? JSON.stringify(file) : file.id
+  const consumed = new Set(sent.attachments?.map(key))
+  return { ...remaining, text: draft.text.trim() === sent.text.trim() ? '' : draft.text, attachments: (draft.attachments ?? []).filter(file => !consumed.has(key(file))) }
 }

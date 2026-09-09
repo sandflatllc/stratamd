@@ -67,6 +67,7 @@ test('PDF and ZIP retain original bytes after draft reload and failed upload ret
     }
     await expect(conversation.locator('.conversation-attachment-preview')).toHaveCount(0)
     await expect(conversation.locator('.conversation-send-failure')).toHaveCount(0)
+    await expect(conversation.getByRole('textbox', { name: 'Message conversation' })).toHaveValue('This edit must not replace the frozen delivery.')
   } finally { await scenario.dispose(); await engine.close() }
 })
 

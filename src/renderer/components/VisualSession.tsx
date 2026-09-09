@@ -98,6 +98,8 @@ export function VisualSession({ sessionId, session: controlled, setSession: setC
   const [requested, setRequested] = field('requested')
   const [selectedMark, setSelectedMark] = field('selectedMark')
   const [adjusting, setAdjusting] = useState(false)
+  const captureContext = source?.windowCapture ?? windowCapture
+  const [includeWindowText, setIncludeWindowText] = useState(true)
   const ending = useRef(false)
   const owner = useRef(sessionId ?? `visual-session-${crypto.randomUUID()}`)
   const adjustmentJob = useRef<Promise<void> | null>(null)
@@ -201,6 +203,7 @@ export function VisualSession({ sessionId, session: controlled, setSession: setC
         marked.push({ captureId: frame.id, bytes: await renderMarkedCapture(loaded, frame.width, frame.height, marksHere, strokesHere) })
       }
       const id = await onHold({
+        ...(!includeWindowText ? { omitWindowText: true } : {}),
         ...((data.commentId ?? commentId) ? { id: (data.commentId ?? commentId)! } : {}),
         projectId,
         threadId: data.destination.threadId,
@@ -218,7 +221,7 @@ export function VisualSession({ sessionId, session: controlled, setSession: setC
       onError(error instanceof Error ? error.message : 'The comment could not be held')
       return null
     } finally { holding.current = false; setBusy(false) }
-  }, [adjusted, capture, captures, commentId, destination.threadId, onError, onHold, page, projectId, requested, source])
+  }, [adjusted, capture, captures, commentId, destination.threadId, includeWindowText, onError, onHold, page, projectId, requested, source])
 
   // Each adjustment step goes to the live page and comes back as a fresh frame; Undo and Reset walk the same path.
   const applyAdjustments = async (next: VisualAdjustmentView[], remember = true) => {
@@ -401,6 +404,7 @@ export function VisualSession({ sessionId, session: controlled, setSession: setC
       </div>
       <form className="visual-card" data-pane="composer" onSubmit={(event) => { event.preventDefault(); void holdAndClose() }}>
         {(source?.windowCapture ?? windowCapture) && <header><h3>{source?.name ?? (windowCapture?.app ? `${windowCapture.title} · ${windowCapture.app}` : windowCapture?.title)}</h3><p>{place}</p></header>}
+        {captureContext?.accessibilityText && <details className="capture-text-review"><summary>Text captured from this window</summary><pre>{captureContext.accessibilityText}</pre><label><input type="checkbox" checked={includeWindowText} disabled={busy} onChange={event => setIncludeWindowText(event.target.checked)} />Include this text when sending</label></details>}
         {notice && <p className="visual-notice" role="status">{notice}</p>}
         <textarea ref={textarea} aria-label="Visual comment" placeholder="What should change here?" value={text} disabled={busy} onChange={(event) => setText(event.target.value)} />
         {summary.length > 0 && <div className="visual-chips" aria-label="Marked things">

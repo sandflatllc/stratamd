@@ -1,3 +1,4 @@
+import { visualImageUrl } from '../../shared/visual-urls'
 import { boundSnapshot } from './snapshot'
 import { BrowserRecording } from './recording'
 import { BrowserEvidenceStore } from './evidence'
@@ -133,7 +134,7 @@ export class PreviewHost {
 
   view(): PreviewStateView {
     return {
-      tabs: this.#model.list().map(({ workingFolder: _folder, partition: _partition, ...tab }): PreviewTabView => ({ ...tab })),
+      tabs: this.#model.list().map(({ workingFolder: _folder, partition: _partition, ...tab }): PreviewTabView => ({ ...tab, ...(this.#recordings.has(tab.id) ? { recording: this.#recordings.get(tab.id)!.paused ? 'paused' as const : 'recording' as const } : {}) })),
       evidence: this.#evidence.view(),
       registered: this.#registered,
       serving: [...this.#serving.keys()],
@@ -143,10 +144,12 @@ export class PreviewHost {
 
   setEvidenceTransfer(transfer: BrowserEvidenceTransfer): void { this.#evidence.setTransfer(transfer) }
 
+  readEvidence(id: string) { return this.#evidence.read(id) }
+
   async evidenceAction(id: string, action: 'open' | 'retry'): Promise<string | null> {
     if (action === 'retry') { await this.#evidence.transfer(id); return null }
-    const { record, bytes } = await this.#evidence.read(id)
-    return `data:${record.mimeType};base64,${Buffer.from(bytes).toString('base64')}`
+    if (!this.#evidence.view().some(record => record.id === id)) throw new Error(`Browser evidence ${id} is no longer available.`)
+    return visualImageUrl('browser', id)
   }
 
   setRegistered(registered: boolean): void {
@@ -441,6 +444,7 @@ export class PreviewHost {
     const runtime = this.#runtimes.get(id)
     if (!tab || !runtime || tab.paused || tab.kind !== 'agent') return
     runtime.epoch += 1
+    this.#recordings.get(id)?.pause()
     this.#model.update(id, { paused: true, working: false, activity: 'Paused: you took control' })
     this.#publish()
   }
@@ -722,7 +726,7 @@ export class PreviewHost {
         }
         case 'recordingStart': {
           let recording = this.#recordings.get(tab.id)
-          if (!recording) { const destination = this.#evidence.destination; recording = await BrowserRecording.start(contents); this.#recordings.set(tab.id, recording); this.#recordingDestinations.set(tab.id, destination); this.#finishedRecordings.delete(tab.id) }
+          if (!recording) { const destination = this.#evidence.destination; recording = await BrowserRecording.start(contents); if (runtime.epoch !== epoch) { recording.dispose(); check() } this.#recordings.set(tab.id, recording); this.#recordingDestinations.set(tab.id, destination); this.#finishedRecordings.delete(tab.id) }
           return { tabId: tab.id, recording: true, startedAt: recording.startedAt }
         }
         case 'recordingStop': {
@@ -731,7 +735,7 @@ export class PreviewHost {
           if (recording) {
             try {
               const bytes = await recording.stop()
-              const artifact = await this.#evidence.save({ tabId: tab.id, threadId: request.threadId, bytes, mimeType: 'video/webm', name: `${pageName(tab.url, tab.title)} recording`, destination: this.#recordingDestinations.get(tab.id) ?? null })
+              const artifact = await this.#evidence.save({ tabId: tab.id, threadId: request.threadId, bytes, mimeType: 'video/webm', truncated: recording.truncated, name: `${pageName(tab.url, tab.title)} recording`, destination: this.#recordingDestinations.get(tab.id) ?? null })
               id = artifact.id; this.#finishedRecordings.set(tab.id, id)
             } finally { this.#recordings.delete(tab.id); this.#recordingDestinations.delete(tab.id) }
           }
@@ -743,10 +747,11 @@ export class PreviewHost {
           const page = await contents.executeJavaScript(snapshotScript(SNAPSHOT_LIMITS), true) as Record<string, unknown>
           const image = await this.#captureImage(tab.id)
           const size = image.getSize()
-          await this.#evidence.save({ tabId: tab.id, threadId: request.threadId, bytes: image.toPNG(), mimeType: 'image/png', name: pageName(tab.url, tab.title) })
+          const png = image.toPNG()
+          await this.#evidence.save({ tabId: tab.id, threadId: request.threadId, bytes: png, mimeType: 'image/png', name: pageName(tab.url, tab.title) })
           return {
             ...boundSnapshot({ ...page, loading: contents.isLoading(), consoleEntries: runtime.console.slice(-50), networkEntries: [], actionTimeline: runtime.actions.slice(-50) }),
-            screenshot: { mimeType: 'image/png', data: image.toPNG().toString('base64'), width: size.width, height: size.height },
+            screenshot: { mimeType: 'image/png', data: png.toString('base64'), width: size.width, height: size.height },
           }
         }, () => runtime.epoch === epoch)
         case 'click': {
@@ -891,13 +896,13 @@ export class PreviewHost {
     const runtime = this.#runtimes.get(tabId)
     if (!runtime) throw new PreviewFailure('PreviewAutomationTabNotFoundError', `Preview tab ${tabId} is closed`)
     const tab = this.#model.get(tabId)
-    if (tab?.paused) throw new PreviewFailure('PreviewAutomationControlInterruptedError', 'The owner took control of this tab. Resume it to continue.')
+    if (tab?.paused && action !== 'recordingStop') throw new PreviewFailure('PreviewAutomationControlInterruptedError', 'The owner took control of this tab. Resume it to continue.')
     const previous = runtime.queue
     let release!: () => void
     runtime.queue = new Promise<void>((resolve) => { release = resolve })
     await previous
     try {
-      if (this.#model.get(tabId)?.paused) throw new PreviewFailure('PreviewAutomationControlInterruptedError', 'The owner took control of this tab. Resume it to continue.')
+      if (this.#model.get(tabId)?.paused && action !== 'recordingStop') throw new PreviewFailure('PreviewAutomationControlInterruptedError', 'The owner took control of this tab. Resume it to continue.')
       const epoch = runtime.epoch
       const entry = { id: `action-${this.#now().toString(36)}-${runtime.actions.length}`, action, status: 'running' as const, startedAt: new Date(this.#now()).toISOString() }
       runtime.actions.push(entry)

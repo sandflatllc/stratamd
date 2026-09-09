@@ -137,6 +137,7 @@ export function PreviewWindow({ savedMedia: evidenceMedia, documentMedia, projec
           <div key={tab.id} role="tab" tabIndex={0} aria-selected={!savedMedia?.active && tab.id === active?.id} className="preview-tab" data-kind={tab.kind} data-paused={tab.paused || undefined} data-working={tab.working || undefined} title={tab.url || undefined} onClick={() => onSelectTab(tab.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectTab(tab.id) } }}>
             {tab.kind === 'agent' ? <RobotGlyph /> : <span className="preview-tab-fav" aria-hidden="true" />}
             <span className="preview-tab-name">{tabLabel(tab, engine)}</span>
+            {tab.recording && <small role="status">{tab.recording === 'paused' ? 'Recording paused' : 'Recording'}</small>}
             {tab.kind === 'agent' && tab.working && <i className="preview-live" aria-label="working" />}
             <span role="button" tabIndex={0} className="preview-tab-close" aria-label={`Close tab ${tabLabel(tab, engine)}`} onClick={(event) => { event.stopPropagation(); onCloseTab(tab.id) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onCloseTab(tab.id) } }}>×</span>
           </div>

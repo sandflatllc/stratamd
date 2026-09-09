@@ -291,9 +291,10 @@ describe('T3 engine read client', () => {
     await client.respondUserInput('t1', 'input-1', { choice: 'Ship it' })
     await client.interrupt('t1')
     await client.actOnThread('t1', 'settle')
+    await client.actOnThread('t1', 'unsettle')
 
     expect(commands.map((command) => command.type)).toEqual([
-      'thread.meta.update', 'thread.turn.start', 'thread.approval.respond', 'thread.user-input.respond', 'thread.turn.interrupt', 'thread.settle',
+      'thread.meta.update', 'thread.turn.start', 'thread.approval.respond', 'thread.user-input.respond', 'thread.turn.interrupt', 'thread.settle', 'thread.unsettle',
     ])
     expect(commands[0]).toMatchObject({ type: 'thread.meta.update', threadId: 't1', modelSelection: { options: [{ id: 'effort', value: 'high' }] } })
     expect(commands[1]).toMatchObject({
@@ -305,6 +306,7 @@ describe('T3 engine read client', () => {
     expect(commands[3]).toMatchObject({ requestId: 'input-1', answers: { choice: 'Ship it' } })
     expect(commands[4]).toMatchObject({ turnId: 'turn-1' })
     expect(commands[5]).toMatchObject({ threadId: 't1' })
+    expect(commands[6]).toMatchObject({ threadId: 't1', reason: 'user' })
     for (const command of commands) expect(command).toMatchObject({ commandId: expect.any(String) })
     for (const command of commands.slice(1, 5)) expect(command).toMatchObject({ createdAt: at })
     await client.shutdown()
@@ -796,10 +798,12 @@ it('compacts with the exact attachment-free command and preserves queued work an
     expect(after.compaction).toEqual({ state: 'working' })
     await expect(client.compactContext('t1', input)).rejects.toThrow('Wait for thread')
     await expect(client.startTurn('t1', { ...input, text: 'Do not consume held work' })).rejects.toThrow('Wait for context compaction')
+    server.dropAll()
+    expect(client.view().projects[0]!.threads[0]!.compaction).toMatchObject({ state: 'failed', error: expect.stringContaining('lost during compaction') })
   } finally { await client.shutdown() }
 })
 
-for (const proof of ['resolved', 'answer-submitted'] as const) it(`reconciles a lost native receipt from matching ${proof} history without another send`, async () => {
+for (const proof of ['resolved', 'answer-submitted', 'retired', 'discarded'] as const) it(`reconciles a lost native receipt from matching ${proof} history without another send`, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'strata-question-reconcile-'))
   const server = liveServer()
   const commands: Array<Record<string, any>> = []
@@ -821,7 +825,7 @@ for (const proof of ['resolved', 'answer-submitted'] as const) it(`reconciles a 
     await client.pair('http://engine.test', 'fixture'); await client.openThread('t1')
     await client.holdMessageComment('t1', { messageId: 'm1', from: 0, to: 6, kind: 'comment', text: 'Keep private' })
     const held = structuredClone(client.view().projects[0]!.threads[0]!.comments)
-    await expect(client.respondUserInput('t1', 'input-receipt', { choice: 'Original answer' }, { choice: [{ kind: 'text', name: 'answer.md', text: 'Exact file bytes' }] })).rejects.toThrow('Response connection lost')
+    await expect(client.respondUserInput('t1', 'input-receipt', { choice: 'Original answer' }, { choice: [{ kind: 'text', name: 'answer.md', text: 'Exact file bytes' }], empty: [] })).rejects.toThrow('Response connection lost')
     const command = commands[0]!
     const storePath = join(await connectionDirectory(directory, client.view().identity!), 'engine-conversations.json')
     const frozen = JSON.parse(await readFile(storePath, 'utf8')).threads.t1.userInputResponses['input-receipt']
@@ -830,16 +834,23 @@ for (const proof of ['resolved', 'answer-submitted'] as const) it(`reconciles a 
     const reading = JSON.parse(await readFile(readingPath, 'utf8'))
     await writeFile(readingPath, JSON.stringify({ ...reading, activeThreadId: null }))
     client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
-    // Absence and a different request/answer must never release the maintenance guard.
+    // Missing history or an unrelated request does not establish retirement.
     activities = []
     await client.initialize()
     expect(() => client.assertNoPendingSends()).toThrow('queued conversation sends')
     activities = [request, { ...request, id: 'unrelated', kind: 'user-input.resolved', payload: { requestId: 'another-request', answers: command.answers } }]
     await client.reconnect()
     expect(() => client.assertNoPendingSends()).toThrow('queued conversation sends')
-    activities = [request, { ...request, id: 'different-answer', kind: 'user-input.resolved', payload: { requestId: 'input-receipt', answers: { choice: 'Someone else answered' } } }]
-    await client.reconnect()
-    expect(() => client.assertNoPendingSends()).toThrow('queued conversation sends')
+    if (proof === 'retired' || proof === 'discarded') {
+      if (proof === 'retired') {
+        activities = [request, { ...request, id: 'different-answer', kind: 'user-input.resolved', payload: { requestId: 'input-receipt', answers: { choice: 'Someone else answered' } } }]
+        await client.reconnect()
+      } else await client.discardUserInputResponse('t1', 'input-receipt')
+      expect(() => client.assertNoPendingSends()).not.toThrow()
+      expect(commands).toHaveLength(1)
+      expect(client.view().projects[0]!.threads[0]!.comments).toEqual(held)
+      return
+    }
     activities = [request, { ...request, id: proof === 'resolved' ? 'async-answer:input-receipt' : `question-answer:${command.commandId}`, kind: `user-input.${proof}`, payload: { requestId: 'input-receipt', answers: command.answers, attachmentsByQuestionId: command.attachmentsByQuestionId } }]
     if (proof === 'answer-submitted') activities.push({ ...request, id: 'provider-resolution', kind: 'user-input.resolved', payload: { requestId: 'input-receipt', answers: command.answers } })
     await client.reconnect()
@@ -853,4 +864,11 @@ for (const proof of ['resolved', 'answer-submitted'] as const) it(`reconciles a 
     const saved = JSON.parse(await readFile(storePath, 'utf8')).threads.t1.userInputResponses['input-receipt']
     expect(saved).toEqual({ ...frozen, sent: true })
   } finally { await client.shutdown(); await rm(directory, { recursive: true, force: true }) }
+})
+
+it('accepts the upstream active settled override in shell and thread snapshots', async () => {
+  const { shellSnapshot, threadDetailSnapshot } = await import('../../src/main/engine/t3-contract')
+  expect(shellSnapshot.parse(shell('Live', 'idle', { settledOverride: 'active' })).threads[0]?.settledOverride).toBe('active')
+  const snapshot = detail(); Object.assign(snapshot.thread, { settledOverride: 'active' })
+  expect(threadDetailSnapshot.parse(snapshot).thread.settledOverride).toBe('active')
 })
