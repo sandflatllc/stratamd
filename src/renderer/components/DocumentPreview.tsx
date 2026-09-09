@@ -77,13 +77,13 @@ export function DocumentPreview({ source: requestedSource, identity, onClose }: 
   }
   return <>
     <input ref={picker} type="file" hidden accept=".pdf,.html,.htm" aria-label="Locate document file" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void locate(file) }} />
-    <div className="preview-chrome document-toolbar"><strong>{data?.name ?? source.name}</strong><span>Read only</span>
-      {data?.kind === 'html' ? <button type="button" onClick={() => setSourceMode(value => !value)}>{sourceMode ? 'Preview' : 'View source'}</button> : <>
-        <button type="button" aria-label="Zoom out" disabled={!pdf || zoom <= 25} onClick={() => setZoom(value => Math.max(25, value - 25))}>−</button><span>{zoom}%</span>
-        <button type="button" aria-label="Zoom in" disabled={!pdf || zoom >= 200} onClick={() => setZoom(value => Math.min(200, value + 25))}>+</button>
-        <span aria-label="PDF page">{page} of {pdf?.numPages ?? '…'}</span><button type="button" disabled={!pdf || page <= 1} onClick={() => setPage(value => value - 1)}>Previous page</button><button type="button" disabled={!pdf || page >= pdf.numPages} onClick={() => setPage(value => value + 1)}>Next page</button>
+    <div className="preview-chrome preview-saved-chrome document-toolbar"><strong>{data?.name ?? source.name}</strong><span>Read only</span>
+      {data?.kind === 'html' ? <button type="button" className="quiet-button" onClick={() => setSourceMode(value => !value)}>{sourceMode ? 'Preview' : 'View source'}</button> : <>
+        <button type="button" className="quiet-button" aria-label="Zoom out" disabled={!pdf || zoom <= 25} onClick={() => setZoom(value => Math.max(25, value - 25))}>−</button><span>{zoom}%</span>
+        <button type="button" className="quiet-button" aria-label="Zoom in" disabled={!pdf || zoom >= 200} onClick={() => setZoom(value => Math.min(200, value + 25))}>+</button>
+        <span aria-label="PDF page">{page} of {pdf?.numPages ?? '…'}</span><button type="button" className="quiet-button" disabled={!pdf || page <= 1} onClick={() => setPage(value => value - 1)}>Previous page</button><button type="button" className="quiet-button" disabled={!pdf || page >= pdf.numPages} onClick={() => setPage(value => value + 1)}>Next page</button>
       </>}
-      <button type="button" disabled={!data} onClick={() => data && void window.strata.openDocumentExternally(data.id).catch(failure => setError(String(failure)))}>Open externally</button>
+      <button type="button" className="quiet-button" disabled={!data} onClick={() => data && void window.strata.openDocumentExternally(data.id).catch(failure => setError(String(failure)))}>Open externally</button>
     </div>
     <div className="preview-stage document-stage">
       {replacement && !error && <p className="document-replacement" role="status">Previewing a replacement. The original attachment has not changed.</p>}

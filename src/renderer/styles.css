@@ -2524,16 +2524,16 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .defaults-model-change { font-size: 12px; }
 .defaults-model-change[open] { display: grid; gap: 8px; }
 
-.document-toolbar { gap: 12px; flex-wrap: wrap; }
+.document-toolbar { gap: 8px; flex-wrap: wrap; }
 .document-toolbar strong { margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.document-toolbar button { white-space: nowrap; }
+.document-toolbar button { white-space: nowrap; font-size: calc(12px * var(--zoom, 1)); }
 .document-stage { display: flex; min-height: 0; overflow: auto; align-items: flex-start; justify-content: center; padding: 24px; }
 .document-paper { background: white; color: #171717; box-shadow: 0 6px 24px #0005; flex: none; }
 .document-paper canvas { display: block; }
 .document-source { margin: 0; padding: 16px; width: 100%; overflow: auto; white-space: pre; font: 13px/1.6 var(--font-mono, monospace); }
 .document-html-hole { width: 100%; height: 100%; min-height: 300px; align-self: stretch; background: white; }
 .document-stage:has(.document-html-hole) { padding: 0; }
-.document-error { width: 100%; padding: 24px; }
+.document-error { width: 100%; padding: 8px; }
 .document-error button { margin-right: 12px; }
 .conversation-file-open { font-weight: 600; text-align: left; text-decoration: underline; text-underline-offset: 3px; }
 
