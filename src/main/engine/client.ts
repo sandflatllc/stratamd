@@ -2,6 +2,8 @@ import { validatedModelOptions } from '../../shared/custom-models'
 import type { BrowserEvidenceTransfer } from '../../shared/browser-evidence'
 import { inputPayload, pendingUserInputs } from '../../core/user-input'
 import { historyScanSchema, historyImportResultSchema, isPrivateHistoryPath } from '../../shared/history-import'
+import { contextCompactionResult, type ContextCompactionRequest, type CompactContextInput } from "../../shared/context-compaction"
+import { selectedProviderCommands, supportsManualCompaction } from "../../shared/provider-commands"
 import { legacyCommentNote, sentCommentsFromDelivery } from '../../core/sent-comments'
 import { installRelayClient } from './relay-install'
 import { accountForModel } from '../../core/accountState'
@@ -176,6 +178,7 @@ export interface EngineReadClient {
   /** Threads whose transcripts Strata must follow besides the active one: every thread attached to an open document (§5.9). */
   watchThreads?(threadIds: readonly string[]): Promise<void>
   startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string; context?: import("../../core/conversation-delivery").ConversationDelivery }): Promise<void>
+  compactContext?(threadId: string, input: CompactContextInput): Promise<void>
   interrupt(threadId: string): Promise<void>
   respondApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
   dismissUserInput(threadId: string, requestId: string): Promise<void>
@@ -393,6 +396,7 @@ export class T3EngineClient implements EngineReadClient {
   #credential: EngineCredential | null = null
   #reading: EngineReadingState = { formatVersion: 1, activeThreadId: null, lastVisited: {}, attention: {} }
   #lastThreads: EngineThreadView[] = []
+  #compactions = new Map<string, ContextCompactionRequest>()
   readonly #isFocused: () => boolean
   readonly #notify: (notification: EngineNotification) => void
   #shell: T3ShellSnapshot | null = null
@@ -627,6 +631,7 @@ export class T3EngineClient implements EngineReadClient {
           messages,
           askScan: this.#asks.view({ id: thread.id, messages, status: statusOf(thread), latestTurn: turnView(latestTurn) }),
           activities,
+          ...(this.#compactions.has(thread.id) ? { compaction: contextCompactionResult(this.#compactions.get(thread.id)!, activities) } : {}),
           comments: this.#conversations.threads[thread.id]?.comments ?? [],
           outcomes: this.#conversations.threads[thread.id]?.outcomes ?? [],
           deliveries: (this.#conversations.threads[thread.id]?.prepared ?? []).map(entry => ({ messageId: entry.messageId, text: entry.attachments.map(a => a.kind === 'text' ? a.text : `[${a.kind === 'binary' ? 'File' : 'Image'} ${a.name}]`).join('\n'), phase: entry.attachments.every(a => a.uploaded) ? 'prepared' as const : 'uploading' as const })),
@@ -645,6 +650,7 @@ export class T3EngineClient implements EngineReadClient {
       askScanProblem: this.#askProblem(),
       credential: this.#credential ? { expiresAt: new Date(this.#credential.expiresAt).toISOString(), renews: this.#credential.scopes.includes(RENEWAL_SCOPE) } : null,
       projects,
+      providerCommands: this.#providers.flatMap(provider => provider.commands ? [provider.commands] : []),
       activeThreadId: this.#reading.activeThreadId,
       accounts,
       models: this.#models.map(model => ({ order: this.#accounts.modelPreferences?.[model.instanceId]?.order?.indexOf(model.slug) ?? -1, ...model, favorite: this.#accounts.modelPreferences?.[model.instanceId]?.favorites.includes(model.slug) ?? false, hidden: this.#accounts.modelPreferences?.[model.instanceId]?.hidden.includes(model.slug) ?? false })).sort((left, right) => left.instanceId === right.instanceId ? (left.order < 0 ? 1e6 : left.order) - (right.order < 0 ? 1e6 : right.order) : 0),
@@ -768,7 +774,7 @@ export class T3EngineClient implements EngineReadClient {
         if (this.#credential) await atomicWriteFile(join(this.#dataDirectory, 'engine-connections', this.#identity, 'engine-credential.json'), JSON.stringify({ ...this.#credential, identity: this.#identity }), { mode: PRIVATE_FILE_MODE })
       }
       await this.#selectIdentity(identity)
-      this.#shell = null; this.#threads.clear(); this.#watched.clear(); this.#messageCache.clear()
+      this.#compactions.clear(); this.#shell = null; this.#threads.clear(); this.#watched.clear(); this.#messageCache.clear()
       this.#shellSequence = 0; this.#lastThreads = []; this.#providers = []; this.#models = []
       this.#configFetchedAt = 0; this.#configProblem = null
       this.#reading = { formatVersion: 1, activeThreadId: null, lastVisited: {}, attention: {} }
@@ -908,7 +914,45 @@ export class T3EngineClient implements EngineReadClient {
     })
   }
 
+  /** T3 recognizes only an attachment-free /compact turn. Never prepare a document delivery here. */
+  async compactContext(threadId: string, input: CompactContextInput): Promise<void> {
+    return this.#operations.run(async () => {
+      await this.#configReady
+      if (!this.#reachable()) throw new Error('Reconnect to the engine before compacting context.')
+      const thread = this.#shell?.threads.find(candidate => candidate.id === threadId)
+      if (!thread) throw new Error(`Thread was not found: ${threadId}`)
+      const projected = this.view().projects.flatMap(project => project.threads).find(candidate => candidate.id === threadId)!
+      if (!thread.latestUserMessageAt) throw new Error(`Send a message in thread ${threadId} before compacting context.`)
+      if (thread.session?.status === 'running' || thread.session?.status === 'starting' || projected.compaction?.state === 'working' || this.#sendingThreads.has(threadId)) throw new Error(`Wait for thread ${threadId} to finish before compacting context.`)
+      const instanceId = input.instanceId ?? thread.modelSelection.instanceId
+      const driverFor = (id: string) => this.#providers.find(provider => provider.instanceId === id)?.driver
+      const scope = continuationScope({ instanceId: thread.modelSelection.instanceId, model: thread.modelSelection.model, driver: driverFor(thread.modelSelection.instanceId) })
+      if (!permitsSelection(scope, { instanceId, model: input.model, driver: driverFor(instanceId) })) throw new Error(`Choose a compatible model for thread ${threadId} before compacting context.`)
+      const models = this.#models.filter(model => model.instanceId === instanceId)
+      if (models.length && !models.some(model => model.slug === input.model)) throw new Error(`Model ${input.model} is not available on provider ${instanceId}. Choose an available model.`)
+      const cwd = thread.worktreePath ?? this.#shell!.projects.find(project => project.id === thread.projectId)?.workspaceRoot
+      const catalog = this.#providers.flatMap(provider => provider.commands ? [provider.commands] : [])
+      if (!supportsManualCompaction(selectedProviderCommands(catalog, instanceId, cwd))) throw new Error(`Provider ${instanceId} does not report manual compaction for ${cwd ?? threadId}. Choose a supported provider.`)
+      const messageId = randomUUID()
+      const request: ContextCompactionRequest = { messageId, previousActivityIds: projected.activities.map(activity => activity.id) }
+      this.#compactions.set(threadId, request)
+      this.#publish()
+      try {
+        await this.#dispatch(turnStartCommand.parse({
+          type: 'thread.turn.start', commandId: `strata-compact-${messageId}`, threadId, createdAt: new Date(this.#now()).toISOString(),
+          message: { messageId, role: 'user', text: '/compact', attachments: [] },
+          modelSelection: { instanceId, model: input.model, options: input.options ?? turnOptions(input, thread, this.#models.find(model => model.instanceId === instanceId && model.slug === input.model)) },
+          runtimeMode: input.access, interactionMode: thread.interactionMode,
+        }))
+      } catch (error) {
+        request.error = error instanceof Error ? error.message : String(error)
+        throw error
+      } finally { this.#publish() }
+    })
+  }
+
   async startTurn(threadId: string, input: ConversationInput & { messageId?: string; commandId?: string; context?: import("../../core/conversation-delivery").ConversationDelivery }): Promise<void> {
+    if (this.view().projects.flatMap(project => project.threads).find(thread => thread.id === threadId)?.compaction?.state === 'working') throw new Error(`Wait for context compaction in thread ${threadId} to finish before sending.`)
     this.#asks.cancel(threadId)
     return this.#operations.run(async () => {
       this.#sendingThreads.set(threadId, (this.#sendingThreads.get(threadId) ?? 0) + 1)
@@ -1594,7 +1638,7 @@ export class T3EngineClient implements EngineReadClient {
   }
   async reloadStoredState(): Promise<void> {
     await this.shutdown()
-    this.#shell = null; this.#threads.clear(); this.#watched.clear(); this.#messageCache.clear(); this.#lastThreads = []
+    this.#compactions.clear(); this.#shell = null; this.#threads.clear(); this.#watched.clear(); this.#messageCache.clear(); this.#lastThreads = []
     this.#shellSequence = 0; this.#configFetchedAt = 0
     this.#reading = { formatVersion: 1, activeThreadId: null, lastVisited: {}, attention: {} }
     await this.initialize(false)
@@ -2802,7 +2846,7 @@ function publicOptions(options: Array<{ id: string; value?: unknown }> | undefin
 }
 
 /** Document deliveries carry effort separately; keep context and other saved model options. */
-function turnOptions(input: ConversationInput, thread: T3ShellSnapshot['threads'][number], model?: EngineModelView): ModelOption[] {
+function turnOptions(input: Pick<ConversationInput, 'model' | 'effort'>, thread: T3ShellSnapshot['threads'][number], model?: EngineModelView): ModelOption[] {
   const previous = input.model === thread.modelSelection.model ? publicOptions(thread.modelSelection.options) : []
   const isEffort = (option: { id: string }) => option.id === 'effort' || option.id === 'reasoningEffort'
   const effortId = model?.options.find(isEffort)?.id ?? thread.modelSelection.options?.find(isEffort)?.id ?? 'effort'

@@ -39,6 +39,7 @@ export interface EngineProviderInstance {
   homePath: string | null
   enabled: boolean
   installed: boolean
+  commands?: import("../../shared/provider-commands").ProviderCommandCatalog
   usageLocal?: boolean
   accentColor?: string
   status: string
@@ -57,6 +58,7 @@ export function providerInstancesOf(config: T3ServerConfigSlice): EngineProvider
       instanceId: provider.instanceId,
       driver: provider.driver,
       displayName: provider.displayName ?? provider.instanceId,
+      commands: { instanceId: provider.instanceId, slashCommands: provider.slashCommands, skills: provider.skills, workspaceSnapshots: provider.workspaceSnapshots },
       homePath: home || null,
       enabled: provider.enabled,
       installed: provider.installed,

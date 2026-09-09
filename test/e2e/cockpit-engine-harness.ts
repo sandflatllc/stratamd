@@ -132,7 +132,8 @@ export interface FakeEngine {
   setProviders(value: unknown[]): void
   finish(): void
   /** The live turn in `t1` completes normally: T3 reports the session idle and the turn completed with both stamps. */
-  complete(): void
+  appendActivity(activity: import("../../src/shared/contracts").EngineActivityView): void
+  complete(completedAt?: string): void
   /**
    * The agent replies in a thread with a completed assistant message and the
    * transcript streams to the app (§5.9). A strata block in `text` is what
@@ -160,12 +161,13 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   let online = true
   const pairingCodes = new Set(options.pairingCodes ?? ['pair-code-1'])
   const tokenRequests: string[] = []
+  const extraActivities: import('../../src/shared/contracts').EngineActivityView[] = []
   let message = 'Read-side conversation from T3.'
   let status: 'running' | 'stopped' = 'running'
   /** How the live turn ended and when; T3 stamps `completedAt` as the session leaves `running`. */
   let outcome: 'interrupted' | 'completed' = 'interrupted'
   let stoppedAt: string | null = null
-  const stop = (how: 'interrupted' | 'completed' = 'interrupted') => { status = 'stopped'; outcome = how; stoppedAt = new Date().toISOString() }
+  const stop = (how: 'interrupted' | 'completed' = 'interrupted', completedAt = new Date().toISOString()) => { status = 'stopped'; outcome = how; stoppedAt = completedAt }
   let approvalOpen = options.pendingRequests ?? true
   let rejectUserInput = options.rejectFirstUserInput
   let inputResolution: Record<string, unknown> | undefined
@@ -270,7 +272,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       ...sentMessages(threadId, 'turn-1', false),
       ...postedMessages(threadId),
     ] : null
-    return { snapshotSequence: sequence, thread: { id: threadId, projectId: threadId === 't4' ? 'p2' : 'p1', title: threadTitle, modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: threadId === 't1' ? { turnId: 'turn-1', state: status === 'running' ? 'running' : outcome, requestedAt: options.conversationParity ? liveAt : at, startedAt: options.conversationParity ? liveAt : at, completedAt: status === 'running' ? null : stoppedAt, assistantMessageId: messageId } : null, createdAt: at, updatedAt: at, session: { threadId, status: threadId === 't1' ? (status === 'stopped' && outcome === 'completed' ? 'idle' : status) : 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: threadId === 't1' && status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, deletedAt: null, messages: parityMessages ?? (threadId === 't1' ? [...longMessages, ...sentMessages('t1', 'turn-1', false), { id: messageId, role: 'assistant', text: message, attachments: [], turnId: 'turn-1', streaming: status === 'running', createdAt: at, updatedAt: at }, ...postedMessages('t1')] : [...sentMessages(threadId, 'turn-1', false), ...postedMessages(threadId)]), activities: threadId === 't1' ? activities : [], checkpoints: threadId === 't1' ? [{ turnId: 'turn-1', checkpointTurnCount: 1, checkpointRef: 'ref', status: 'ready', files: [{ path: 'notes/one.md', kind: 'created', additions: 4, deletions: 0 }, { path: 'src/two.ts', kind: 'created', additions: 8, deletions: 0 }], assistantMessageId: messageId, completedAt: at }] : [] }, page }
+    return { snapshotSequence: sequence, thread: { id: threadId, projectId: threadId === 't4' ? 'p2' : 'p1', title: threadTitle, modelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: { effort: 'medium' } }, runtimeMode: 'full-access', interactionMode: 'default', branch: 'master', worktreePath: null, latestTurn: threadId === 't1' ? { turnId: 'turn-1', state: status === 'running' ? 'running' : outcome, requestedAt: options.conversationParity ? liveAt : at, startedAt: options.conversationParity ? liveAt : at, completedAt: status === 'running' ? null : stoppedAt, assistantMessageId: messageId } : null, createdAt: at, updatedAt: at, session: { threadId, status: threadId === 't1' ? (status === 'stopped' && outcome === 'completed' ? 'idle' : status) : 'idle', providerName: 'codex', providerInstanceId: 'codex', runtimeMode: 'full-access', activeTurnId: threadId === 't1' && status === 'running' ? 'turn-1' : null, lastError: null, updatedAt: at }, deletedAt: null, messages: parityMessages ?? (threadId === 't1' ? [...longMessages, ...sentMessages('t1', 'turn-1', false), { id: messageId, role: 'assistant', text: message, attachments: [], turnId: 'turn-1', streaming: status === 'running', createdAt: at, updatedAt: at }, ...postedMessages('t1')] : [...sentMessages(threadId, 'turn-1', false), ...postedMessages(threadId)]), activities: threadId === 't1' ? [...activities, ...extraActivities] : [], checkpoints: threadId === 't1' ? [{ turnId: 'turn-1', checkpointTurnCount: 1, checkpointRef: 'ref', status: 'ready', files: [{ path: 'notes/one.md', kind: 'created', additions: 4, deletions: 0 }, { path: 'src/two.ts', kind: 'created', additions: 8, deletions: 0 }], assistantMessageId: messageId, completedAt: at }] : [] }, page }
   }
 
   const send = (socket: Socket, frame: unknown) => { if (!socket.destroyed) socket.write(textFrame(JSON.stringify(frame))) }
@@ -501,7 +503,8 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     setSettings: (patch) => { settings = { ...settings, ...patch }; providerInstances = settings.providerInstances as typeof providerInstances },
     setProviders: (value) => { providers = value; broadcast() },
     finish: () => { stop(); broadcast() },
-    complete: () => { stop('completed'); broadcast() },
+    appendActivity: activity => { extraActivities.push(activity); broadcast() },
+    complete: completedAt => { stop('completed', completedAt); broadcast() },
     postAssistant: (threadId, text) => {
       postedCount += 1
       const id = `posted-${postedCount}`

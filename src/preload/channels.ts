@@ -69,6 +69,7 @@ export const IPC = {
   stageConversationAttachment: 'strata:stage-conversation-attachment',
   discardConversationAttachment: 'strata:discard-conversation-attachment',
   retainConversationAttachments: 'strata:retain-conversation-attachments',
+  compactContext: 'strata:compact-context',
   stopConversationTurn: 'strata:stop-conversation-turn',
   answerEngineApproval: 'strata:answer-engine-approval',
   dismissEngineUserInput: 'strata:dismiss-engine-user-input',

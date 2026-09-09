@@ -212,9 +212,14 @@ const optionDescriptor = z.object({
   options: z.array(z.object({ id, label: id, description: z.string().optional(), isDefault: z.boolean().optional() })).optional(),
 })
 const providerModel = z.object({ slug: id, name: id, isDefault: z.boolean().optional(), capabilities: z.object({ optionDescriptors: z.array(z.unknown()).transform((items) => items.flatMap((item) => { const parsed = optionDescriptor.safeParse(item); return parsed.success ? [parsed.data] : [] })).optional() }).nullable().optional() })
+const providerSlashCommand = z.object({ name: id, description: z.string().optional(), input: z.object({ hint: z.string() }).optional() })
+const providerSkill = z.object({ name: id, description: z.string().optional(), path: id, scope: z.string().optional(), enabled: z.boolean(), displayName: z.string().optional(), shortDescription: z.string().optional(), userInvocationOnly: z.boolean().optional(), userInvocable: z.boolean().optional() })
+const commandSnapshot = { slashCommands: z.array(providerSlashCommand).default([]), skills: z.array(providerSkill).default([]) }
 export const serverProvider = z.object({
   instanceId: id, driver: id, displayName: id.optional(), enabled: z.boolean(), installed: z.boolean(), version: id.nullable().optional(),
   status: z.string(), auth: serverProviderAuth, message: id.optional(), availability: z.string().optional(), unavailableReason: id.optional(),
+  ...commandSnapshot,
+  workspaceSnapshots: z.array(z.object({ cwd: id, checkedAt: isoDate, ...commandSnapshot })).optional(),
   usage: providerUsage.optional(),
   models: z.array(z.unknown()).transform((items) => items.flatMap((item) => { const parsed = providerModel.safeParse(item); return parsed.success ? [parsed.data] : [] })).optional(),
 }).passthrough()

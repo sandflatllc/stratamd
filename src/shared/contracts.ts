@@ -283,6 +283,7 @@ export interface EngineTurnView {
 }
 
 export interface EngineThreadView {
+  compaction?: import("./context-compaction").ContextCompactionView
   engineIdentity?: string | undefined
   askScan?: AskScanView | undefined
   worktreePath?: string | null
@@ -567,6 +568,7 @@ export interface AccountView {
 export interface ManagedEngineView { state: 'starting' | 'recovering' | 'running' | 'failed' | 'stopped'; failure?: { at: number; exitCode: number | null; signal: string | null; attempt: number }; version: string | null; nodeVersion: string | null; directory: string; problem: string | null }
 
 export interface EngineView {
+  providerCommands?: import("./provider-commands").ProviderCommandCatalog[]
   askScanProblem?: string | null | undefined
   identity?: string
   managed?: ManagedEngineView
@@ -1132,6 +1134,7 @@ export interface StrataApi {
   /** Adjustments (phase 4): apply the whole set of Strata's overrides to the live page and capture the result; remove only those overrides. */
   adjustPreview(tabId: string, targets: Array<{ markId: string; identity: VisualMarkIdentityView; declarations: Record<string, string> }>): Promise<VisualPageCapture & { applied: string[] }>
   clearPreviewOverrides(tabId: string): Promise<void>
+  compactContext(threadId: string, input: import("./context-compaction").CompactContextInput): Promise<void>
   stopConversationTurn(threadId: string): Promise<void>
   answerEngineApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
   dismissEngineUserInput(threadId: string, requestId: string): Promise<void>

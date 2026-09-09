@@ -686,3 +686,39 @@ it('preserves native question identity and mode after reconnect, dismisses async
     expect(commands).toHaveLength(1)
   } finally { await client.shutdown() }
 })
+
+it('compacts with the exact attachment-free command and preserves queued work and visible history', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'strata-compact-'))
+  const snapshot = shell()
+  const provider = { instanceId: 'codex-main', driver: 'codex', enabled: true, installed: true, status: 'ready', auth: { status: 'authenticated' }, slashCommands: [], workspaceSnapshots: [{ cwd: '/work/strata', checkedAt: at, slashCommands: [{ name: 'compact' }], skills: [] }] }
+  const server = fakeEngineServer(tag => tag.startsWith('orchestration.subscribe') ? [{ kind: 'synchronized' }] : tag === 'server.getConfig' ? { providers: [provider] } : tag === 'orchestration.dispatchCommand' ? { sequence: 6 } : null)
+  const commands: Array<Record<string, unknown>> = []
+  const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input)
+    if (url.endsWith('/api/orchestration/dispatch')) { commands.push(JSON.parse(String(init?.body))); return Response.json({ sequence: 6 }) }
+    if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+    if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
+    if (url.endsWith('/api/orchestration/shell')) return Response.json(snapshot)
+    return Response.json(detail())
+  }) as typeof globalThis.fetch
+  const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
+  try {
+    await client.pair('http://engine.test', 'code')
+    await client.openThread('t1')
+    await client.holdMessageComment('t1', { messageId: 'm1', from: 0, to: 6, kind: 'comment', text: 'Keep this held.' })
+    const before = client.view().projects[0]!.threads[0]!
+    const input = { instanceId: 'codex-main', model: 'gpt-5.6', effort: 'medium', access: 'full-access' as const }
+    await client.compactContext('t1', input)
+    const turn = commands.find(command => command.type === 'thread.turn.start')!
+    expect(turn).toMatchObject({ type: 'thread.turn.start', threadId: 't1', message: { text: '/compact', attachments: [] }, runtimeMode: 'full-access', interactionMode: 'default', modelSelection: { instanceId: 'codex-main', model: 'gpt-5.6' } })
+    expect(Object.keys(turn.message as object).sort()).toEqual(['attachments', 'messageId', 'role', 'text'])
+    expect(server.requests.some(r => r.tag.startsWith('attachments.'))).toBe(false)
+    const after = client.view().projects[0]!.threads[0]!
+    expect(after.comments).toEqual(before.comments)
+    expect(after.messages).toEqual(before.messages)
+    expect(after.deliveries).toEqual(before.deliveries)
+    expect(after.compaction).toEqual({ state: 'working' })
+    await expect(client.compactContext('t1', input)).rejects.toThrow('Wait for thread')
+    await expect(client.startTurn('t1', { ...input, text: 'Do not consume held work' })).rejects.toThrow('Wait for context compaction')
+  } finally { await client.shutdown() }
+})

@@ -92,6 +92,7 @@ function fakeApi(): StrataApi {
     actOnEngineThread: vi.fn(async () => undefined),
     openConversation: vi.fn(async () => undefined),
     startConversationTurn: vi.fn(async () => undefined),
+    compactContext: vi.fn(async () => undefined),
     stopConversationTurn: vi.fn(async () => undefined),
     answerEngineApproval: vi.fn(async () => undefined),
     dismissEngineUserInput: vi.fn(async () => undefined),

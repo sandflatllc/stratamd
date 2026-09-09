@@ -1432,6 +1432,11 @@ export class StrataApplication implements StrataApi {
     return { refusal: visualSendRefusal({ pageReplaced: false, missing }), found }
   }
 
+  async compactContext(threadId: string, input: import('../shared/context-compaction').CompactContextInput): Promise<void> {
+    if (!this.#engine.compactContext) throw new Error('This engine does not support manual compaction. Update the engine and try again.')
+    await this.#engine.compactContext(threadId, input)
+  }
+
   async stopConversationTurn(threadId: string): Promise<void> {
     await this.#engine.interrupt(threadId)
   }

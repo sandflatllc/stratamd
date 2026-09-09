@@ -2,6 +2,7 @@ import { BrowserEvidence } from './BrowserEvidence'
 import type { BrowserEvidenceView } from '../../shared/browser-evidence'
 import { UserInputDialog } from './UserInputDialog'
 import { pendingUserInputs, inputPayload } from '../../core/user-input'
+import { ContextCompactionNotice } from './ContextCompactionNotice'
 import { SentComments } from './SentComments'
 import { useHeldUserInputs } from '../useHeldUserInputs'
 import { holdConversationContext } from '../focusConversationComposer'
@@ -469,6 +470,7 @@ export function Conversation({ browserEvidence = [], onOpenBrowserEvidence, visi
         </section>
       })}
       <TranscriptStaging />
+      <ContextCompactionNotice engine={engine} thread={thread} />
       </div>
     </ConversationHistory>
     {visible && workspace.discussionView}

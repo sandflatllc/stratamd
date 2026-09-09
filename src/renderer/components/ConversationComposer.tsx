@@ -6,6 +6,7 @@ import { sendCapacity, visualCaptureIds } from '../../core/visual-comments'
 import { VisualCommentCard } from './VisualCommentCard'
 import { continuationScope, modelDesignation, permitsSelection } from '../../shared/modelSelection'
 import { ProviderGlyph } from './ProviderGlyph'
+import { useContextCompaction } from '../useContextCompaction'
 import { ContextWindowMeter } from './ContextWindowMeter'
 import { FolderIcon, FolderGit2Icon, GitBranchIcon } from '../icons/lucide'
 import { ModelPicker } from './ModelPicker'
@@ -99,6 +100,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
   const models = allModels.filter(model => permitsSelection(scope, { instanceId: model.instanceId, model: model.slug, driver: model.driver }))
   const selection = permitsSelection(scope, { instanceId: storedSelection.instanceId ?? '', model: storedSelection.model, driver: driverFor(storedSelection.instanceId) }) ? storedSelection : boundThread ? { model: boundThread.model, instanceId: boundThread.providerInstanceId, effort: boundThread.effort, options: boundThread.options ?? [], access: storedSelection.access } : initial
   const model = models.find((model) => model.slug === selection.model && model.instanceId === selection.instanceId)
+  const compact = useContextCompaction(engine, boundThread, selection, workspace)
   const selectedAccount = engine.accounts.find((account) => account.instanceId === selection.instanceId)
   const account = selectedAccount ? accountForModel(selectedAccount, selection.model) : undefined
   const access = accessModes.find(([id]) => id === selection.access) ?? accessModes[0]
@@ -114,7 +116,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     const label = descriptor.options?.find((option) => option.id === value)?.label
     return label ? [label] : typeof value === 'boolean' && value ? [descriptor.label] : []
   }).join(' · ') || selection.effort || 'Model defaults'
-  const valid = engine.state === 'connected' && !!projectId && !!model && account?.usable !== false
+  const valid = !compact.working && engine.state === 'connected' && !!projectId && !!model && account?.usable !== false
   const persist = (nextText: string, nextSelection: ComposerSelection, nextAttachments: DraftAttachment[]) => setUnsaved(!writeDraft(draftKey, { ...readDraft(draftKey), text: nextText, selection: nextSelection, ...(thread ? { selectionBase: initial } : {}), ...(nextAttachments.length ? { attachments: nextAttachments } : { attachments: undefined }) }))
   const choose = (next: ComposerSelection) => { setSelection(next); rememberSelection(projectId, next); persist(text, next, latestAttachments.current) }
   const chooseOption = (id: string, value: string | boolean) => {
@@ -282,7 +284,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
         <div className="chat-send-actions"><input ref={fileInput} className="conversation-attachment-input" type="file" multiple hidden onChange={(event) => {
           const files = Array.from(event.target.files ?? []); event.target.value = ''
           if (files.length) void stageFiles(files, false)
-        }} /><button type="button" aria-label="Attach file" disabled={busy || canSendContext} onClick={() => fileInput.current?.click()}>＋</button><ContextWindowMeter activities={boundThread?.activities ?? []} />{running && !busy && onStop && !sendWhileRunning
+        }} /><button type="button" aria-label="Attach file" disabled={busy || canSendContext} onClick={() => fileInput.current?.click()}>＋</button><ContextWindowMeter activities={boundThread?.activities ?? []} compact={compact} />{running && !busy && onStop && !sendWhileRunning
           ? <button className="chat-send chat-stop" type="button" aria-label="Stop" title="Stop the agent" onClick={onStop}><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="2" /></svg></button>
           : <button className="chat-send" type="submit" aria-label="Send" disabled={busy || !valid || !canSend}>{busy ? '…' : '↑'}</button>}</div>
       </div>
