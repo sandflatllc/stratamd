@@ -214,6 +214,16 @@
       "progress",
       "partial",
       "done"
-    ]
+    ],
+    "retention": "Up to 100 conversations per project and 200 messages per conversation, subject to engine byte limits; discovery count is an estimate"
+  },
+  "defaultsContractCorrection": {
+    "status": "Fixture corrected to grouped native persistence; historical approval retained",
+    "reason": "defaultModelSelection saves account/model/options as one group",
+    "scope": "Model and thinking override/reset together; working-copy inheritance stays independent"
+  },
+  "evidenceTransferContractCorrection": {
+    "status": "Fixture corrected to actual transfer direction and progress contract",
+    "scope": "Retained local copy transfers to agent environment; indeterminate progress; failed transfer retains local viewing and explicit retry destination"
   }
 }

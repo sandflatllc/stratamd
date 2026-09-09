@@ -10,7 +10,7 @@
       "y": 235.5
     },
     {
-      "height": 280.890625,
+      "height": 266.1875,
       "label": "Effective settings, inheritance, and explicit project overrides",
       "number": 2,
       "selector": "[data-change-id=\"2\"]",
@@ -44,6 +44,7 @@
     10
   ],
   "approval": "approved",
+  "ownerReviewNotes": "",
   "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
   "sourceComponents": [
     "src/renderer/components/SettingsDialog.tsx",
@@ -94,7 +95,5 @@
     "bodyOverflow": false,
     "brokenImages": [],
     "offscreenChanges": []
-  },
-  "ownerReviewNotes": "",
-  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+  }
 }

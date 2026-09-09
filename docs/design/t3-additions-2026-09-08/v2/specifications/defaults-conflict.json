@@ -10,13 +10,13 @@
       "y": 215.5
     },
     {
-      "height": 364.390625,
+      "height": 349.6875,
       "label": "Effective settings, inheritance, and explicit project overrides",
       "number": 2,
       "selector": "[data-change-id=\"2\"]",
       "width": 902,
       "x": 269,
-      "y": 412
+      "y": 427
     },
     {
       "height": 31.5,
@@ -34,7 +34,7 @@
   "scrollPositions": [
     {
       "className": "setup-dialog-body",
-      "scrollTop": 68
+      "scrollTop": 53
     }
   ],
   "source": "settings",
@@ -49,6 +49,7 @@
     10
   ],
   "approval": "approved",
+  "ownerReviewNotes": "",
   "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
   "sourceComponents": [
     "src/renderer/components/SettingsDialog.tsx",
@@ -99,7 +100,5 @@
     "bodyOverflow": false,
     "brokenImages": [],
     "offscreenChanges": []
-  },
-  "ownerReviewNotes": "",
-  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+  }
 }

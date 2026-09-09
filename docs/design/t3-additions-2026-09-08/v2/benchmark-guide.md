@@ -88,3 +88,11 @@ The numeric maximum-output example was replaced with T3-supported select and boo
 ## Import contract correction
 
 T3 discovers and imports by project folder. The import fixtures now select repository-grouped projects and show explicit destinations. They do not offer unsupported individual-conversation or provider-home filters. Progress counts completed projects and stays indeterminate within a project. The approved Strata dialog and row styling remain the benchmark.
+
+## Defaults and transfer contract corrections
+
+The engine saves the account/model and thinking options together. Defaults retain the approved rows, but the model action now explicitly overrides or resets both; working-copy inheritance remains independent. This avoids presenting a reasoning-only save that the engine does not support.
+
+Browser evidence transfers from Strata's retained local copy to the agent environment. The transfer and failure fixtures now name that direction and use indeterminate progress because the transfer contract reports completion, not a byte percentage. The original local copy remains viewable.
+
+The import confirmation describes bounded recent history: up to 100 conversations per selected project and 200 messages per conversation, subject to the engine's byte limit. Discovered conversation counts are upper estimates, not a promise to import every historical message.
