@@ -258,3 +258,5 @@ The [source audit](reviews/t3-additions-upstream-contracts-2026-09-08.md) and [v
 | Native history grouping, root verification, partial results and retry without new turns | `test/unit/history-import.test.ts`, `test/e2e/history-import.spec.ts`; actual Codex/Claude native-source import evidence in the feature 12 report |
 | PDF pages/zoom, HTML original source, denied privileges/storage/popups, Locate file and guest cleanup | `test/unit/document-preview.test.ts`, `test/e2e/document-preview.spec.ts`; answer-file entry points in `test/e2e/question-files.spec.ts` |
 | Structured model edits retain unknown fields; descriptor validation and exact turn choices | `test/unit/custom-models.test.ts`, `test/e2e/custom-models.spec.ts` |
+
+`test/e2e/question-held-review.spec.ts` proves the native held count and Review action, review of every answer/file in a multi-question request, and removal followed by reholding and sending the original files. Native-only held content does not add a redundant queued-count footer.

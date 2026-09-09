@@ -2557,3 +2557,8 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .question-held-files { grid-column: 1 / -1; color: var(--muted); }
 
 .user-input-fields fieldset:last-child { margin-bottom: 6px; }
+
+.question-held-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 34px; color: var(--muted); font-size: 12px; }
+.question-held-summary .quiet-button { padding: 6px 8px; font-size: 12px; }
+
+.question-held-summary > span { border: 0; border-radius: 0; padding: 0; font-size: 12px; }

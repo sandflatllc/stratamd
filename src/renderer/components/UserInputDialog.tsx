@@ -14,11 +14,11 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 /** Native question drafts stay on this computer. Only the conversation's Send delivers held answers. */
-export function UserInputDialog({ activity, draft, files = {}, held, projectId, threadId, reservedFiles = 0, onOpenFile, onDraft, onClose, onHold, onDismiss }: {
+export function UserInputDialog({ activity, draft, files = {}, held, projectId, threadId, reservedFiles = 0, onOpenFile, onDraft, onClose, onRemoveHeld, onHold, onDismiss }: {
   activity: EngineActivityView; draft: Record<string, string> | undefined; held: boolean
   files?: Record<string, ConversationAttachment[]>; projectId: string; threadId: string; reservedFiles?: number
   onOpenFile?(file: ConversationAttachment): void
-  onDraft(answers: Record<string, string>, files: Record<string, ConversationAttachment[]>): void; onClose(): void
+  onDraft(answers: Record<string, string>, files: Record<string, ConversationAttachment[]>): void; onClose(): void; onRemoveHeld(): void
   onHold(answers: Record<string, string>, files: Record<string, ConversationAttachment[]>): Promise<void>; onDismiss(): Promise<void>
 }) {
   const formId = useId()
@@ -103,6 +103,7 @@ export function UserInputDialog({ activity, draft, files = {}, held, projectId, 
         </div></>}
       </fieldset>
     })}</form>
+    {held && <button type="button" className="quiet-button" disabled={busy} onClick={() => { try { onDraft(answers, answerFiles); onRemoveHeld() } catch (failure) { setError(String(failure)) } }}>Remove held answer</button>}
     {error && <div className="question-file-error" role="alert"><p>{error}</p>{failedFile && <><button type="button" className="question-attach" onClick={() => fileInputs.current[failedFile.id]?.click()}>Choose file again</button><button type="button" className="quiet-button" onClick={() => { setFailedFile(null); setError('') }}>Remove failed file</button></>}</div>}
   </SetupDialog>
 }

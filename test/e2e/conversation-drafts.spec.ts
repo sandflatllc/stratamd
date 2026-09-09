@@ -51,7 +51,7 @@ test('draft markers restore text and files and discard preserves a held answer',
     const answerDialog = page.getByRole('dialog', { name: 'Answer question', exact: true })
     await answerDialog.getByRole('button', { name: 'Version one', exact: true }).click()
     await answerDialog.getByRole('button', { name: 'Hold answer', exact: true }).click()
-    await expect(conversation.getByText('Held answer: Version one', { exact: true })).toBeVisible()
+    await expect(conversation.getByText('Answer held · Version one', { exact: true })).toBeVisible()
     const heldComment = await page.evaluate(async () => {
       const path = (await window.strata.getState()).activeDocument!.path
       return window.strata.holdDraft(path, { kind: 'comment', quote: 'Inspection', from: 2, to: 12, text: 'Keep this document comment.' })
@@ -74,7 +74,7 @@ test('draft markers restore text and files and discard preserves a held answer',
     await expect(conversation.locator('.conversation-attachment-preview')).toHaveCount(0)
     await expect(row.getByRole('img', { name: 'Unsent message draft' })).toHaveCount(0)
     await expect(secondRow.getByRole('img', { name: 'Unsent message draft' })).toBeVisible()
-    await expect(conversation.getByText('Held answer: Version one', { exact: true })).toBeVisible()
+    await expect(conversation.getByText('Answer held · Version one', { exact: true })).toBeVisible()
     expect(await page.evaluate(async id => (await window.strata.getState()).activeDocument?.drafts.some(draft => draft.id === id), heldComment)).toBe(true)
     expect(await page.evaluate(async id => (await window.strata.getState()).engine.projects.flatMap(project => project.visualComments ?? []).find(comment => comment.id === id)?.draft?.text, visualId)).toBe('Keep this visual comment.')
     expect(engine.commands.filter(command => ['thread.turn.start', 'thread.user-input.respond'].includes(String(command.type)))).toEqual([])

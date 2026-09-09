@@ -328,7 +328,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     </div>
     {workspaceControls}
     {!workspaceControls && (workspace || branch) && <div className="chat-workspace"><span title={workspace}>{thread?.worktreePath ? <FolderGit2Icon /> : <FolderIcon />}{thread?.worktreePath ? 'Worktree' : 'Current checkout'}{workspace && <small>{thread?.worktreePath ?? workspace}</small>}</span>{branch && <span><GitBranchIcon />{branch}</span>}</div>}
-    {queuedCount > 0 && <small>{queuedCount} answers queued</small>}
+    {queuedCount > 0 && <small>{queuedCount} {queuedCount === 1 ? 'answer' : 'answers'} queued</small>}
     {(attachments.length > 0 || includedVisual.length > 0) && <small className="conversation-capacity" role="status" data-over={capacity.refusal ? '' : undefined}>{capacity.refusal ?? capacity.line}</small>}
     {account?.usable === false && <p role="alert">{account.name} cannot take a turn: {account.reason ?? account.state}. Choose another model or account.</p>}
     {unsaved && <p className="conversation-draft-unsaved" role="status">This draft could not be saved and will not survive reload.</p>}
