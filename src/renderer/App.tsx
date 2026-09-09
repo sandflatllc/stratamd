@@ -1,3 +1,6 @@
+import { DocumentPreview } from './components/DocumentPreview'
+import { DOCUMENT_PREVIEW_EVENT } from './documentPreview'
+import type { DocumentSource } from '../shared/documents'
 import type { BrowserEvidenceView } from '../shared/browser-evidence'
 import { SettingsDialog } from './components/SettingsDialog'
 import { UsageDialog } from './components/UsageDialog'
@@ -77,6 +80,8 @@ export function App({ createEditor }: AppProps) {
   useEffect(consumeDocumentLaunch, [])
   const [conversationCentered, setConversationCentered] = useState(savedWorkspace.conversationCentered)
   /** Preview windows (docs/plans/open/visual-review, phase 2): one per project, a third kind of center content. */
+  const [savedDocument, setSavedDocument] = useState<{ source: DocumentSource; projectId: string; active: boolean } | null>(null)
+  useEffect(() => setSavedDocument(null), [view.engine.identity])
   const [savedEvidence, setSavedEvidence] = useState<{ projectId: string; evidence: BrowserEvidenceView; url: string; active: boolean } | null>(null)
   useEffect(() => setSavedEvidence(null), [view.engine.server])
   const [previews, setPreviews] = useState<string[]>(savedWorkspace.previews)
@@ -602,6 +607,7 @@ export function App({ createEditor }: AppProps) {
   const openBrowserEvidence = (evidence: BrowserEvidenceView, url: string) => {
     const project = view.engine.projects.find(project => project.threads.some(thread => thread.id === evidence.threadId))
     if (!project) { report('The conversation for this evidence is no longer available.'); return }
+    setSavedDocument(current => current && { ...current, active: false })
     setSavedEvidence({ projectId: project.id, evidence, url, active: true })
     showPreview(project.id)
   }
@@ -720,15 +726,28 @@ export function App({ createEditor }: AppProps) {
       onAdjust={changed ? undefined : adjustOn(annotating.tabId)} adjustStatus={changed ? 'not shown: the page changed' : 'shown live'}
       onHold={holdVisual} onClose={() => { const tabId = annotating.tabId; if (annotating.identity) localStorage.removeItem(`stratamd.annotation.${annotating.identity}`); setAnnotating(null); void window.strata.clearPreviewOverrides(tabId).catch(() => undefined) }} onError={reportError} />
   })()
+  const documentContext = useRef(view.engine)
+  useLayoutEffect(() => { documentContext.current = view.engine }, [view.engine])
+  useEffect(() => {
+    const open = (event: Event) => {
+      const { source, projectId } = (event as CustomEvent<{ source: DocumentSource; projectId?: string }>).detail
+      const project = documentContext.current.projects.find(project => project.id === projectId || (source.kind === 'attachment' && project.threads.some(thread => thread.id === source.threadId)))
+      if (!project) return
+      setSavedDocument({ source, projectId: project.id, active: true }); setSavedEvidence(current => current && { ...current, active: false }); showPreview(project.id)
+    }
+    window.addEventListener(DOCUMENT_PREVIEW_EVENT, open)
+    return () => window.removeEventListener(DOCUMENT_PREVIEW_EVENT, open)
+  }, [])
   const previewNode = previewShown ? (() => {
     const project = view.engine.projects.find((candidate) => candidate.id === previewShown)
     const tabs = previewTabs.filter((tab) => tab.projectId === previewShown)
     const activeTabId = (tabs.find((tab) => tab.id === activePreviewTabs[previewShown]) ?? tabs.find((tab) => tab.kind === 'owner') ?? tabs[0])?.id ?? null
     const annotate = { active: annotating !== null && annotating.projectId === previewShown, disabled: annotateDestination(previewShown) === null, onToggle: () => { if (annotating) void annotationClose.current?.(); else if (activeTabId) startAnnotate(activeTabId, previewShown) }, overlay: annotateOverlay }
     return <main className="island editor-island preview-island" data-pane="editor" style={{ '--zoom': zoom.editor } as CSSProperties}><AmbientDecor variant="editor" /><PreviewWindow projectId={previewShown} projectTitle={project?.title ?? 'Project'} tabs={tabs} activeTabId={activeTabId} engine={view.engine} annotate={annotate}
-      savedMedia={savedEvidence?.projectId === previewShown ? { id: savedEvidence.evidence.id, name: savedEvidence.evidence.name, url: savedEvidence.url, mimeType: savedEvidence.evidence.mimeType, active: savedEvidence.active, onSelect: () => setSavedEvidence(current => current && { ...current, active: true }), onClose: () => setSavedEvidence(null), onAnnotate: annotateSavedEvidence } : undefined}
-      onSelectTab={(id) => { setSavedEvidence(current => current && { ...current, active: false }); setActivePreviewTabs((current) => ({ ...current, [previewShown]: id })) }}
-      onNewTab={() => void perform(async () => { setSavedEvidence(current => current && { ...current, active: false }); const id = await window.strata.openPreviewTab({ projectId: previewShown }); setActivePreviewTabs((current) => ({ ...current, [previewShown]: id })) })}
+      documentMedia={savedDocument?.projectId === previewShown ? { id: savedDocument.source.kind === 'local' ? savedDocument.source.path : savedDocument.source.id, name: savedDocument.source.name, url: '', mimeType: 'application/pdf', active: savedDocument.active, onSelect: () => { setSavedDocument(current => current && { ...current, active: true }); setSavedEvidence(current => current && { ...current, active: false }) }, onClose: () => setSavedDocument(null), onAnnotate: () => {}, document: <DocumentPreview key={JSON.stringify(savedDocument.source)} source={savedDocument.source} identity={view.engine.identity ?? null} onClose={() => setSavedDocument(null)} /> } : undefined}
+      savedMedia={savedEvidence?.projectId === previewShown ? { id: savedEvidence.evidence.id, name: savedEvidence.evidence.name, url: savedEvidence.url, mimeType: savedEvidence.evidence.mimeType, active: savedEvidence.active, onSelect: () => { setSavedDocument(current => current && { ...current, active: false }); setSavedEvidence(current => current && { ...current, active: true }) }, onClose: () => setSavedEvidence(null), onAnnotate: annotateSavedEvidence } : undefined}
+      onSelectTab={(id) => { setSavedDocument(current => current && { ...current, active: false }); setSavedEvidence(current => current && { ...current, active: false }); setActivePreviewTabs((current) => ({ ...current, [previewShown]: id })) }}
+      onNewTab={() => void perform(async () => { setSavedDocument(current => current && { ...current, active: false }); setSavedEvidence(current => current && { ...current, active: false }); const id = await window.strata.openPreviewTab({ projectId: previewShown }); setActivePreviewTabs((current) => ({ ...current, [previewShown]: id })) })}
       onCloseTab={(id) => void perform(() => window.strata.closePreviewTab(id))}
       onNavigate={(id, navigation: PreviewNavigation) => void perform(() => window.strata.navigatePreview(id, navigation))}
       onResize={(id, viewport: PreviewViewportRequest) => void perform(() => window.strata.resizePreview(id, viewport))}

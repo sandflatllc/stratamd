@@ -1,0 +1,23 @@
+# Document preview implementation
+
+Feature 13 uses the existing central PreviewWindow and saved-media tab extension. Composer staged attachments and uploaded transcript attachments open the same document component. HTML remains an original binary attachment, including its source bytes. Renderer requests carry an attachment id and the current engine identity. Main resolves uploaded metadata against the selected conversation, obtains the signed asset URL, validates the engine origin, refuses redirects and streams at most 50 MB. URLs and authentication stay in main. Explicit local file reads canonicalize the target and use a bounded descriptor read. External open requires the user's button action and uses the original local path or a private temporary copy, removed at shutdown.
+
+## Upstream comparison and licenses
+
+Pinned T3 source is `08463e2c401ce87858aaaebcb70ed86fb002fb5f`. `apps/web/src/components/files/FilePreviewPanel.tsx` from PRs 9143/9292 uses a native PDF iframe. Strata implements real page controls with PDF.js because the native viewer has no public page-control API. HTML follows upstream's opaque sandbox policy, including inline scripting without same-origin privilege, in its own Electron guest instead of the application renderer.
+
+`pdfjs-dist` is pinned exactly to `6.3.289`, Apache-2.0, official npm metadata at https://registry.npmjs.org/pdfjs-dist/6.3.289. The lockfile records npm integrity. Its worker is bundled by Vite. CMaps, standard fonts, image decoder WASM, ICC resources and their original license files are emitted under `out/renderer/pdf/`; the package LICENSE is included there. No CDN or global eval relaxation is added. PDF scripting/XFA is not enabled. Existing shell WASM policy is unchanged. PDF.js's optional Node canvas package is not used by the browser renderer.
+
+The HTML guest has a separate nonpersistent partition, no preload or Node integration, sandbox and context isolation. Response CSP creates an opaque origin, denies network connections, external resources, forms and base URLs. Electron separately denies permissions, downloads, popups and navigation. Source mode is escaped React text. App overlays hide the guest. Closing the guest unregisters its HTTPS handler and request callback, including failed loads, so sessions cannot retain document bytes. Switching tabs closes document resources; returning reloads the stable attachment. An engine identity change closes the document tab.
+
+## Verification scope
+
+Focused tests cover real three-page PDF rendering with differing canvas output, actual dimensions at zoom, page and zoom boundaries, close cleanup, corrupt/missing/password-protected documents, local canonical reads and size bounds, exact uploaded bytes and same-engine signed URL validation, HTML source bytes, guest bridge/Node/storage/cookie denial and denied popup. Existing composer, staged attachment, engine attachment, engine client, IPC and preview-window checks are included. The encrypted PDF is a generated synthetic fixture, not an owner's document.
+
+The v2 PDF/HTML/source/error captures were viewed before implementation. Evidence uses real Strata night-theme components at 1440 × 1000. PDF contains an actual white page rather than the benchmark's layout-only fixture. HTML and source use the same inspection-page content. Error recovery includes a real Locate file picker, Retry and Close preview. A selected replacement is staged privately for this preview and discarded when it closes; the original draft or sent attachment is unchanged. External open remains available for a loaded corrupt/password-protected file.
+
+Linux Electron is verified through isolated test profiles/displays. macOS and Windows are supported by Electron/PDF.js but have not been run here. External OS PDF application behavior is not exercised. PDF text selection/search, interactive PDF forms and password entry are outside this initial preview; Open externally supports those workflows.
+
+## Dependency integration
+
+The private worktree had a full node_modules copy. pnpm 11.24 rejected the initial command because its existing public hoist patterns were absent from workspace configuration. Temporarily adding `publicHoistPattern: ['*eslint*', '*prettier*']` and `verifyDepsBeforeRun: false` to pnpm-workspace.yaml allowed `pnpm add --save-exact pdfjs-dist@6.3.289 --ignore-scripts`. Workspace configuration was restored exactly after install. Main dependencies and sandbox ownership were untouched. No existing dependency version changed. Root integration should use the same matching temporary hoist configuration with the merged frozen lockfile in an isolated dependency copy, then restore the configuration. Do not invoke pnpm scripts or purge shared dependencies.

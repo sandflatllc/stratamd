@@ -42,6 +42,37 @@ function detail(message = 'Engine transcript', checkpoints: unknown[] = []) {
 }
 
 describe('T3 engine read client', () => {
+  it('resolves document bytes only for the current thread attachment and rejects outside signed URLs', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'strata-engine-document-'))
+    let relativeUrl = '/api/assets/document?signature=capability'
+    const server = fakeEngineServer(tag => tag.startsWith('orchestration.subscribe') ? [{ kind: 'synchronized' }] : tag === 'assets.createUrl' ? { relativeUrl, expiresAt: 1 } : null)
+    const original = Buffer.from([37, 80, 68, 70, 0, 128, 255])
+    const page = detail()
+    page.thread.messages[0]!.attachments = [{ type: 'file', id: 'document-1', name: 'original.pdf', mimeType: 'application/pdf', sizeBytes: original.length }] as never[]
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+      if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(shell())
+      if (url.includes('/api/assets/')) return new Response(original)
+      return Response.json(page)
+    }) as typeof globalThis.fetch
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
+    try {
+      await client.pair('http://engine.test', 'code')
+      await client.openThread('t1')
+      const source = { kind: 'attachment' as const, id: 'document-1', threadId: 't1', name: 'untrusted-label.pdf' }
+      expect(await client.readDocumentAttachment(source)).toEqual({ bytes: original, name: 'original.pdf' })
+      const request = vi.mocked(fetch).mock.calls.find(call => String(call[0]).includes('/api/assets/'))!
+      expect(request[1]?.redirect).toBe('error')
+      expect(request[1]?.headers).toBeUndefined()
+      await expect(client.readDocumentAttachment({ ...source, threadId: 'unknown' })).rejects.toThrow('not attached')
+      relativeUrl = 'https://outside.test/api/assets/document'
+      await expect(client.readDocumentAttachment(source)).rejects.toThrow('invalid document address')
+      expect(vi.mocked(fetch).mock.calls.some(call => String(call[0]).includes('outside.test'))).toBe(false)
+    } finally { await client.shutdown() }
+  })
+
   it('carries T3 background liveness and reads never-visited threads as read', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'strata-engine-liveness-'))
     const server = liveServer()

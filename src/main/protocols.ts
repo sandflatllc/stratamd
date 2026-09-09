@@ -245,6 +245,7 @@ function mimeType(path: string): string {
     '.svg': 'image/svg+xml',
     '.webp': 'image/webp',
     '.wasm': 'application/wasm',
+    '.mjs': 'text/javascript',
     '.woff': 'font/woff',
     '.woff2': 'font/woff2'
   } as Record<string, string>)[extname(path).toLowerCase()] ?? 'application/octet-stream'

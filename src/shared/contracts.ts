@@ -204,6 +204,7 @@ export interface EngineMessageView {
   createdAt: string
   /** T3's last write to the message; the end of a turn's final answer when timing a fold. */
   updatedAt?: string
+  documentAttachments?: Array<{ id: string; name: string; threadId: string }>
   attachmentCount: number
   /** Exact passage feedback from this message's frozen delivery. */
   sentComments?: import("../core/sent-comments").SentComments
@@ -1107,6 +1108,10 @@ export interface StrataApi {
   /** Sends the owner's note plus every queued item reply as one delivery (§5.4); either may be empty, not both. */
   startConversationTurn(threadId: string, input: ConversationInput): Promise<void>
   /** Keeps a pasted or picked image in the data directory until it is sent or removed (§6.0). */
+  readDocument(source: import('./documents').DocumentSource, identity: string | null): Promise<import('./documents').DocumentPreviewData>
+  reportDocumentBounds(report: import('./documents').DocumentBounds): Promise<void>
+  closeDocumentPreview(id: string): Promise<void>
+  openDocumentExternally(id: string): Promise<void>
   stageConversationAttachment(input: { name: string; mimeType: string; bytes: Uint8Array }): Promise<{ id: string; sizeBytes: number }>
   discardConversationAttachment(id: string): Promise<void>
   /** The ids every draft still references; staged files nothing references are deleted. */

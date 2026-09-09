@@ -1,3 +1,5 @@
+import { DocumentPreviewHost, readLocalDocument } from './document-preview'
+import type { DocumentSource, DocumentPreviewData, DocumentBounds } from '../shared/documents'
 import { resolveLocalLink } from './local-link'
 import { classifyLocalLink } from '../shared/local-link'
 import { captureStrataEngine, restoreStrataEngine, documentBinding } from './engine/strata-backup'
@@ -359,6 +361,7 @@ export class StrataApplication implements StrataApi {
   #providerSetupPreparing = false
   #providerSetup = new ProviderSetupJobs()
   #manager: LocalEngineManager | null = null
+  readonly #documents = new DocumentPreviewHost()
   readonly #preview: PreviewHost
   #previewRestored = false
   #followedThreadsKey = ''
@@ -754,6 +757,7 @@ export class StrataApplication implements StrataApi {
     await this.#providerSetup.cancel()
     this.#providerSetupPreparing = true
     await this.#manager?.stop()
+    await this.#documents.shutdown()
     await this.#preview.shutdown()
     await this.#engine.shutdown()
     const sessions = [...this.#sessions.values()]
@@ -1210,6 +1214,17 @@ export class StrataApplication implements StrataApi {
     await this.#engine.startTurn(threadId, input)
   }
 
+  async readDocument(source: DocumentSource, identity: string | null): Promise<DocumentPreviewData> {
+    if ((this.#engine.view().identity ?? null) !== identity) throw new Error(`The engine changed. Open ${source.name} again.`)
+    const result = source.kind === 'local' ? await readLocalDocument(source.path) : await this.#engine.readDocumentAttachment?.(source)
+    if (!result) throw new Error(`${source.name} cannot be previewed by this engine.`)
+    if ((this.#engine.view().identity ?? null) !== identity) throw new Error(`The engine changed. Open ${source.name} again.`)
+    return this.#documents.add(source, result.bytes, result.name, 'path' in result && typeof result.path === 'string' ? result.path : undefined)
+  }
+  async reportDocumentBounds(report: DocumentBounds): Promise<void> { await this.#documents.show(report) }
+  async closeDocumentPreview(id: string): Promise<void> { this.#documents.close(id) }
+  async openDocumentExternally(id: string): Promise<void> { await this.#documents.external(id) }
+
   async stageConversationAttachment(input: { name: string; mimeType: string; bytes: Uint8Array }): Promise<{ id: string; sizeBytes: number }> {
     if (!this.#engine.stageAttachment) throw new Error('This engine cannot keep attachments')
     return this.#engine.stageAttachment(input)
@@ -1292,6 +1307,7 @@ export class StrataApplication implements StrataApi {
   /** The window the preview host draws pages into; the pages themselves outlive it. */
   attachPreviewWindow(window: import('electron').BrowserWindow): void {
     this.#preview.attachWindow(window)
+    this.#documents.attach(window)
   }
 
   async openPreviewTab(input: { projectId: string; url?: string }): Promise<string> {
@@ -1324,6 +1340,7 @@ export class StrataApplication implements StrataApi {
 
   async reportOverlay(open: boolean): Promise<void> {
     this.#preview.setOverlay(open)
+    this.#documents.setOverlay(open)
   }
 
   /** Test probe: a real input landing in a tab, the path an owner's click takes. */

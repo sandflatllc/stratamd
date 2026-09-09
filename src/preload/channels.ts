@@ -1,4 +1,8 @@
 export const IPC = {
+  readDocument: 'document:read',
+  reportDocumentBounds: 'document:bounds',
+  closeDocumentPreview: 'document:close',
+  openDocumentExternally: 'document:external',
   windowState: 'strata:window-state',
   windowStateChanged: 'strata:window-state-changed',
   minimizeWindow: 'strata:minimize-window',

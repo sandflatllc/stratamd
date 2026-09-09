@@ -1,5 +1,6 @@
 import { consumeResetCreditInput } from '../shared/usage-limits'
 import { projectDefaultsEdit } from '../shared/project-defaults'
+import { documentSourceSchema } from '../shared/documents'
 import { isLocalPage } from './local-link'
 import { recoveryRequest } from '../shared/engine-recovery'
 import { computerRequest } from '../shared/computer'
@@ -260,6 +261,10 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.adjustPreview]: z.tuple([previewTabIdSchema, z.array(z.object({ markId: idSchema, identity: visualIdentitySchema, declarations: z.record(z.string().regex(/^[a-z-]{1,64}$/u), z.string().max(256)) }).strict()).max(64)]),
   [IPC.clearPreviewOverrides]: z.tuple([previewTabIdSchema]),
   [IPC.startConversationTurn]: z.tuple([idSchema, conversationTurnSchema]),
+  [IPC.readDocument]: z.tuple([documentSourceSchema, idSchema.nullable()]),
+  [IPC.reportDocumentBounds]: z.tuple([z.object({ id: z.string().uuid().nullable(), bounds: z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite().nonnegative(), height: z.number().finite().nonnegative() }).strict().nullable() }).strict()]),
+  [IPC.closeDocumentPreview]: z.tuple([z.string().uuid()]),
+  [IPC.openDocumentExternally]: z.tuple([z.string().uuid()]),
   [IPC.stageConversationAttachment]: z.tuple([stageAttachmentSchema]),
   [IPC.discardConversationAttachment]: z.tuple([stagedAttachmentIdSchema]),
   [IPC.retainConversationAttachments]: z.tuple([z.array(stagedAttachmentIdSchema).max(4_096)]),
@@ -519,6 +524,10 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.adjustPreview]: (tabId: string, targets: Parameters<StrataApi['adjustPreview']>[1]) => options.api.adjustPreview(tabId, targets),
     [IPC.clearPreviewOverrides]: (tabId: string) => options.api.clearPreviewOverrides(tabId),
     [IPC.startConversationTurn]: (threadId: string, input: Parameters<StrataApi['startConversationTurn']>[1]) => options.api.startConversationTurn(threadId, input),
+    [IPC.readDocument]: (source: Parameters<StrataApi['readDocument']>[0], identity: string | null) => options.api.readDocument(source, identity),
+    [IPC.reportDocumentBounds]: (report: Parameters<StrataApi['reportDocumentBounds']>[0]) => options.api.reportDocumentBounds(report),
+    [IPC.closeDocumentPreview]: (id: string) => options.api.closeDocumentPreview(id),
+    [IPC.openDocumentExternally]: (id: string) => options.api.openDocumentExternally(id),
     [IPC.stageConversationAttachment]: (input: Parameters<StrataApi['stageConversationAttachment']>[0]) => options.api.stageConversationAttachment(input),
     [IPC.discardConversationAttachment]: (id: string) => options.api.discardConversationAttachment(id),
     [IPC.retainConversationAttachments]: (ids: string[]) => options.api.retainConversationAttachments(ids),

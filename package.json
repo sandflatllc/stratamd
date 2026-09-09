@@ -120,6 +120,7 @@
     "mermaid": "^11.17.2",
     "micromark-extension-frontmatter": "^2.0.0",
     "micromark-extension-gfm": "^3.0.0",
+    "pdfjs-dist": "6.3.289",
     "prosemirror-commands": "^1.7.2",
     "prosemirror-history": "^1.5.0",
     "prosemirror-inputrules": "^1.5.1",

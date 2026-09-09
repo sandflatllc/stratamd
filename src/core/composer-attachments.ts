@@ -38,6 +38,8 @@ export type FileClass =
  */
 export function classifyFile(file: { name: string; type: string }): FileClass {
   const declared = file.type.toLowerCase()
+  // HTML is a previewable document; keep original bytes just like PDF.
+  if (/\.html?$/i.test(file.name) && !declared.startsWith('image/')) return { kind: 'binary', mimeType: declared && declared !== 'application/octet-stream' ? declared : 'text/html' }
   if (declared === '' || declared === 'application/octet-stream') {
     const dot = file.name.lastIndexOf('.')
     const inferred = dot > 0 ? EXTENSION_TYPES[file.name.slice(dot + 1).toLowerCase()] : undefined

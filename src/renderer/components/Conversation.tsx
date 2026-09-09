@@ -1,3 +1,4 @@
+import { openDocumentPreview } from '../documentPreview'
 import { BrowserEvidence } from './BrowserEvidence'
 import type { BrowserEvidenceView } from '../../shared/browser-evidence'
 import { UserInputDialog } from './UserInputDialog'
@@ -447,6 +448,7 @@ export function Conversation({ browserEvidence = [], onOpenBrowserEvidence, visi
               <div className={longUserMessage && !messageExpanded ? 'conversation-user-collapsed' : undefined} data-annotatable={message.role === 'assistant' && !message.streaming || undefined} data-block-ids={blocks.map((block) => block.id).join(' ')}>{message.role === 'assistant' && !message.streaming ? <ConversationMessage message={message} asks={asksByMessage.get(message.id) ?? NO_ASKS} comments={commentsByMessage.get(message.id) ?? NO_COMMENTS} pinned={workspace.selection?.message === message.id || workspace.discussion?.anchor.message === message.id || workspace.answerMessage === message.id} target={workspace.target} root={selected.root} folds={workspace.folds(message.id)} {...callbacksFor(message.id)} /> : <MessageMarkdown text={prose} />}</div>
               {longUserMessage && <button type="button" className="conversation-message-toggle" aria-expanded={messageExpanded} onClick={() => setExpandedMessages((value) => ({ ...value, [message.id]: !messageExpanded }))}>{messageExpanded ? 'Show less' : 'Show more'}</button>}
               {sentComments && <SentComments comments={sentComments.comments} />}
+              {message.documentAttachments?.map(attachment => <button type="button" className="conversation-file-open" key={attachment.id} onClick={() => openDocumentPreview({ kind: 'attachment', ...attachment })}>{attachment.name}</button>)}
               {message.role === 'user' && threadVisual.flatMap(comment => comment.revisions.filter(revision => revision.deliveryId === message.id).map(revision => <div className="conversation-sent-images" key={`${comment.id}:${revision.number}`}>
                 {(revision.images ?? []).map((url, index) => <button type="button" key={url} aria-label={`Inspect annotated image: ${revision.text || comment.title}`} onClick={() => onOpenVisual?.(comment.id)}><img src={url} alt={`Annotated image ${index + 1}: ${revision.text || comment.title}`} style={{ display: 'block', maxWidth: '100%', height: 'auto' }} /></button>)}
               </div>))}

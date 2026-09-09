@@ -1,4 +1,5 @@
 import { checkedInEnvironment, mergeProjectDefaults, type ProjectDefaults, type ProjectDefaultsEdit } from '../../shared/project-defaults'
+import { MAX_DOCUMENT_BYTES, type DocumentSource } from '../../shared/documents'
 import { validatedModelOptions } from '../../shared/custom-models'
 import type { BrowserEvidenceTransfer } from '../../shared/browser-evidence'
 import { inputPayload, pendingUserInputs } from '../../core/user-input'
@@ -239,6 +240,7 @@ export interface EngineReadClient {
   holdVisualComment?(input: HoldVisualCommentInput): Promise<string>
   actVisualComment?(id: string, action: VisualCommentAction): Promise<void>
   /** Bytes for the strata-visual protocol: a piece of evidence or a staged composer image. */
+  readDocumentAttachment?(source: Exclude<DocumentSource, { kind: 'local' }>): Promise<{ bytes: Uint8Array; name: string }>
   readVisualImage?(kind: 'evidence' | 'staged', id: string): Promise<{ bytes: Uint8Array; mimeType: string } | null>
   /** A frame Annotate captured, kept as evidence until it is held or swept (phase 3). */
   storeVisualCapture?(input: { bytes: Uint8Array; width: number; height: number }): Promise<string>
@@ -584,6 +586,7 @@ export class T3EngineClient implements EngineReadClient {
           createdAt: message.createdAt,
           updatedAt: message.updatedAt,
           attachmentCount: message.attachments?.length ?? 0,
+          documentAttachments: (message.attachments ?? []).filter(item => /\.(pdf|html?)$/i.test(item.name)).map(item => ({ id: item.id, name: item.name, threadId: thread.id })),
           ...(message.role === 'user' && this.#conversations.threads[thread.id]?.sentComments?.[message.id] ? { sentComments: this.#conversations.threads[thread.id]!.sentComments![message.id]! } : {}),
           ...(!message.streaming && message.role === 'assistant' ? (() => { projected.add(message.id); let cached = this.#messageCache.get(message.id); if (!cached || cached.text !== message.text) { const parsed = parseStrataBlock(message.text); const prose = parsed?.prose ?? message.text; cached = { text: message.text, prose, blocks: mapMarkdownBlocks(`message:${message.id}`, prose).blocks, visualReplies: visualRepliesIn(parsed), strata: parsed }; this.#messageCache.set(message.id, cached) } return { prose: cached.prose, blocks: cached.blocks, ...(cached.visualReplies.length ? { visualReplies: cached.visualReplies } : {}) } })() : {}),
         })) : []
@@ -1344,6 +1347,31 @@ export class T3EngineClient implements EngineReadClient {
   async storeVisualCapture(input: { bytes: Uint8Array; width: number; height: number }): Promise<string> {
     const stored = await this.#evidence.put({ bytes: input.bytes, width: input.width, height: input.height, mimeType: 'image/png', protected: true })
     return stored.id
+  }
+
+  async readDocumentAttachment(source: Exclude<DocumentSource, { kind: 'local' }>): Promise<{ bytes: Uint8Array; name: string }> {
+    if (source.kind === 'staged') {
+      const staged = await this.#staged.read(source.id)
+      if (!staged) throw new Error(`${source.name} is unavailable. Attach the file again.`)
+      return { bytes: staged.bytes, name: staged.meta.name }
+    }
+    const identity = this.#identity
+    const server = this.#credential?.server
+    if (!server) throw new Error(`${source.name} cannot be read while disconnected.`)
+    const detail = this.#threads.get(source.threadId)?.detail?.thread
+    const attachment = detail?.messages.flatMap(message => message.attachments ?? []).find(item => item.id === source.id)
+    if (!attachment) throw new Error(`${source.name} is not attached to conversation ${source.threadId}.`)
+    const asset = assetUrlResult.parse(await this.#rpcOrSocket(T3_RPC.createAssetUrl, { resource: { _tag: 'attachment', attachmentId: attachment.id, fileName: attachment.name, mimeType: attachment.mimeType } }, 'document attachment'))
+    const url = new URL(asset.relativeUrl, server)
+    if (url.origin !== new URL(server).origin || !url.pathname.startsWith('/api/assets/')) throw new Error(`The engine returned an invalid document address for ${attachment.name}.`)
+    const response = await this.#fetch(url, { signal: AbortSignal.timeout(15000), redirect: 'error' })
+    if (!response.ok || !response.body) throw new Error(`${attachment.name} could not be read (${response.status}).`)
+    const reader = response.body.getReader(), chunks: Uint8Array[] = []
+    let size = 0
+    try { while (true) { const result = await reader.read(); if (result.done) break; size += result.value.length; if (size > MAX_DOCUMENT_BYTES) throw new Error(`${attachment.name} exceeds 50 MB.`); chunks.push(result.value) } }
+    finally { await reader.cancel().catch(() => undefined) }
+    if (identity !== this.#identity) throw new Error(`The engine changed while reading ${attachment.name}. Open it again.`)
+    return { bytes: Buffer.concat(chunks), name: attachment.name }
   }
 
   async readVisualImage(kind: 'evidence' | 'staged', id: string): Promise<{ bytes: Uint8Array; mimeType: string } | null> {

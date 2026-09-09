@@ -12,6 +12,7 @@ import { claimEscape } from '../escape'
  * leaves a hole for it and reports where the hole is whenever layout changes.
  */
 export interface SavedPreviewMedia {
+  document?: ReactNode
   id: string
   name: string
   url: string
@@ -23,6 +24,7 @@ export interface SavedPreviewMedia {
 }
 
 export interface PreviewWindowProps {
+  documentMedia?: SavedPreviewMedia | undefined
   savedMedia?: SavedPreviewMedia | undefined
   projectId: string
   projectTitle: string
@@ -49,7 +51,8 @@ export function tabLabel(tab: PreviewTabView, engine: EngineView): string {
   return `${threadAgentName(engine, tab.threadId)} · ${page}`
 }
 
-export function PreviewWindow({ savedMedia, projectId, projectTitle, tabs, activeTabId, engine, onSelectTab, onNewTab, onCloseTab, onNavigate, onResize, onResume, annotate }: PreviewWindowProps) {
+export function PreviewWindow({ savedMedia: evidenceMedia, documentMedia, projectId, projectTitle, tabs, activeTabId, engine, onSelectTab, onNewTab, onCloseTab, onNavigate, onResize, onResume, annotate }: PreviewWindowProps) {
+  const savedMedia = documentMedia?.active ? documentMedia : evidenceMedia
   const active = tabs.find((tab) => tab.id === activeTabId) ?? null
   const hole = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
@@ -138,11 +141,12 @@ export function PreviewWindow({ savedMedia, projectId, projectTitle, tabs, activ
             <span role="button" tabIndex={0} className="preview-tab-close" aria-label={`Close tab ${tabLabel(tab, engine)}`} onClick={(event) => { event.stopPropagation(); onCloseTab(tab.id) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onCloseTab(tab.id) } }}>×</span>
           </div>
         ))}
-        {savedMedia && <div role="tab" tabIndex={0} aria-selected={savedMedia.active} className="preview-tab" onClick={savedMedia.onSelect} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); savedMedia.onSelect() } }}>
+        {[evidenceMedia, documentMedia].filter((item): item is SavedPreviewMedia => Boolean(item)).map(savedMedia => <div key={savedMedia.id} role="tab" tabIndex={0} aria-selected={savedMedia.active} className="preview-tab" onClick={savedMedia.onSelect} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); savedMedia.onSelect() } }}>
           <span className="preview-tab-fav" aria-hidden="true" /><span className="preview-tab-name">{savedMedia.name}</span><button type="button" className="preview-tab-close" aria-label={`Close saved ${savedMedia.name}`} onClick={event => { event.stopPropagation(); savedMedia.onClose() }}>×</button>
-        </div>}
+        </div>)}
         <button type="button" className="preview-tab-add" aria-label="New tab" onClick={onNewTab}>+</button>
       </div>
+      {savedMedia?.active && savedMedia.document ? savedMedia.document : <>
       {savedMedia?.active ? <div className="preview-chrome preview-saved-chrome"><strong>{savedMedia.name}</strong><span>{savedMedia.mimeType === 'image/png' ? 'Saved screenshot' : 'Saved recording'}</span>{savedMedia.mimeType === 'image/png' && <button type="button" className="preview-annotate" onClick={savedMedia.onAnnotate}>Annotate</button>}</div> : <div className="preview-chrome">
         <div className="preview-nav">
           <button type="button" aria-label="Back" disabled={!active?.canGoBack} onClick={() => active && onNavigate(active.id, { action: 'back' })}>‹</button>
@@ -174,6 +178,7 @@ export function PreviewWindow({ savedMedia, projectId, projectTitle, tabs, activ
           : <div className="empty-subtle preview-empty">No page open.<small>Open a tab and type an address.</small></div>}
         {annotate?.overlay}
       </div>
+      </>}
     </section>
   )
 }
