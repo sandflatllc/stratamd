@@ -1,0 +1,101 @@
+{
+  "changes": [
+    {
+      "height": 31.5,
+      "label": "Edit custom model details",
+      "number": 1,
+      "selector": "[data-change-id=\"1\"]",
+      "width": 46.984375,
+      "x": 1124.015625,
+      "y": 356.5
+    },
+    {
+      "height": 74,
+      "label": "Provider model ID remains explicit",
+      "number": 2,
+      "selector": "[data-change-id=\"2\"]",
+      "width": 902,
+      "x": 269,
+      "y": 419
+    },
+    {
+      "height": 99.5,
+      "label": "Readable custom model name",
+      "number": 3,
+      "selector": "[data-change-id=\"3\"]",
+      "width": 902,
+      "x": 269,
+      "y": 523
+    }
+  ],
+  "flow": "models",
+  "mode": "proposed",
+  "ready": true,
+  "scrollPositions": [],
+  "source": "models",
+  "state": "list",
+  "theme": "Strata",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "title": "Provider models",
+  "features": [
+    15
+  ],
+  "approval": "approved",
+  "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
+  "sourceComponents": [
+    "src/renderer/components/ProviderModels.tsx",
+    "src/renderer/components/ProviderSetup.tsx"
+  ],
+  "behaviorChecks": [
+    "Display name does not replace the provider model ID.",
+    "Only reported supported options are editable.",
+    "Unknown existing options survive saving.",
+    "Invalid values prevent saving."
+  ],
+  "baseline": "captures/baseline-models.png",
+  "proposed": "captures/models-list-proposed.png",
+  "annotated": "captures/models-list-annotated.png",
+  "layoutImpactSelectors": [
+    ".modal"
+  ],
+  "layoutImpactBounds": [
+    {
+      "bottom": 880,
+      "height": 760,
+      "left": 240,
+      "right": 1200,
+      "selector": ".modal",
+      "top": 120,
+      "width": 960,
+      "x": 240,
+      "y": 120
+    },
+    {
+      "bottom": 880,
+      "height": 760,
+      "left": 240,
+      "right": 1200,
+      "selector": ".modal",
+      "top": 120,
+      "width": 960,
+      "x": 240,
+      "y": 120
+    }
+  ],
+  "invarianceOutsideLayoutImpact": {
+    "comparedPixels": 579511,
+    "differentPixels": 0,
+    "pixelsOverTolerance2": 0,
+    "maxChannelDifference": 0
+  },
+  "renderHealth": {
+    "bodyOverflow": false,
+    "brokenImages": [],
+    "offscreenChanges": []
+  },
+  "ownerReviewNotes": "",
+  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+}

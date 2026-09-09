@@ -1,0 +1,108 @@
+{
+  "changes": [
+    {
+      "height": 61.75,
+      "label": "Account view and freshness",
+      "number": 1,
+      "selector": "[data-change-id=\"1\"]",
+      "width": 902,
+      "x": 269,
+      "y": 293
+    },
+    {
+      "height": 28,
+      "label": "Reported quota windows",
+      "number": 2,
+      "selector": "[data-change-id=\"2\"]",
+      "width": 250,
+      "x": 769.46875,
+      "y": 439.0625
+    },
+    {
+      "height": 68,
+      "label": "Reported quota windows",
+      "number": 3,
+      "selector": "[data-change-id=\"3\"]",
+      "width": 250,
+      "x": 769.46875,
+      "y": 577.75
+    },
+    {
+      "height": 102.265625,
+      "label": "Usage refresh failure",
+      "number": 4,
+      "selector": "[data-change-id=\"4\"]",
+      "width": 902,
+      "x": 269,
+      "y": 690.140625
+    }
+  ],
+  "flow": "usage",
+  "mode": "proposed",
+  "ready": true,
+  "scrollPositions": [],
+  "source": "usage",
+  "state": "stale",
+  "theme": "Strata",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "title": "Refresh failed",
+  "features": [
+    1
+  ],
+  "approval": "approved",
+  "ownerReviewNotes": "2. codex doesnt have 5 hour limits other than that its god",
+  "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
+  "sourceComponents": [
+    "src/renderer/components/AccountsDialog.tsx"
+  ],
+  "behaviorChecks": [
+    "Unknown usage never appears as zero usage.",
+    "Stale reports show their age and retry action.",
+    "Reset confirmation appears only when the provider reports support and a credit."
+  ],
+  "baseline": "captures/baseline-usage.png",
+  "proposed": "captures/usage-stale-proposed.png",
+  "annotated": "captures/usage-stale-annotated.png",
+  "layoutImpactSelectors": [
+    ".modal"
+  ],
+  "layoutImpactBounds": [
+    {
+      "bottom": 880,
+      "height": 760,
+      "left": 240,
+      "right": 1200,
+      "selector": ".modal",
+      "top": 120,
+      "width": 960,
+      "x": 240,
+      "y": 120
+    },
+    {
+      "bottom": 880,
+      "height": 760,
+      "left": 240,
+      "right": 1200,
+      "selector": ".modal",
+      "top": 120,
+      "width": 960,
+      "x": 240,
+      "y": 120
+    }
+  ],
+  "invarianceOutsideLayoutImpact": {
+    "comparedPixels": 579511,
+    "differentPixels": 0,
+    "pixelsOverTolerance2": 0,
+    "maxChannelDifference": 0
+  },
+  "renderHealth": {
+    "bodyOverflow": false,
+    "brokenImages": [],
+    "offscreenChanges": []
+  },
+  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+}

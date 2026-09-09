@@ -1,0 +1,25 @@
+{
+  "features": [
+    4
+  ],
+  "title": "Engine streaming and replay efficiency",
+  "approval": "approved",
+  "visualChange": "none",
+  "baseline": "captures/baseline-questions.png",
+  "proposed": "captures/baseline-questions.png",
+  "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
+  "theme": "Strata",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "behaviorChecks": [
+    "Measure event handling, replay time, and retained memory on the same large conversation before and after.",
+    "Keep ordering, visible message content, scroll behavior, work status, and draft content unchanged.",
+    "Verify reconnect and duplicate-event handling against the repository requirements."
+  ],
+  "relatedVisualFlow": "recovery",
+  "note": "The recovery notices belong to feature 5. Feature 4 does not add a preference, badge, panel, or other UI.",
+  "ownerReviewNotes": "",
+  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+}

@@ -1,0 +1,118 @@
+{
+  "recordedAt": "2026-09-09T05:52:00.268468+00:00",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "deviceScaleFactor": 1,
+  "theme": "Strata",
+  "themeStorageId": "strata-night",
+  "states": 58,
+  "features": 15,
+  "baselineFidelity": {
+    "questions": {
+      "comparedPixels": 1440000,
+      "differentPixels": 136,
+      "pixelsOverTolerance2": 49,
+      "maxChannelDifference": 49
+    },
+    "preview": {
+      "comparedPixels": 648341,
+      "differentPixels": 0,
+      "pixelsOverTolerance2": 0,
+      "maxChannelDifference": 0,
+      "scope": "Strata chrome; CDP parent capture omits native WebContentsView. Content verified separately.",
+      "nativeContentComparison": {
+        "size": [
+          838,
+          815
+        ],
+        "interiorDifferentPixels": 0,
+        "excluded": "Bottom 24px where the Strata preview clips rounded corners."
+      }
+    },
+    "usage": {
+      "comparedPixels": 1440000,
+      "differentPixels": 19,
+      "pixelsOverTolerance2": 17,
+      "maxChannelDifference": 57
+    },
+    "settings": {
+      "comparedPixels": 1440000,
+      "differentPixels": 2,
+      "pixelsOverTolerance2": 0,
+      "maxChannelDifference": 1
+    },
+    "image-annotation": {
+      "comparedPixels": 1440000,
+      "differentPixels": 3633,
+      "pixelsOverTolerance2": 594,
+      "maxChannelDifference": 18
+    },
+    "engine": {
+      "comparedPixels": 1440000,
+      "differentPixels": 2,
+      "pixelsOverTolerance2": 0,
+      "maxChannelDifference": 1
+    },
+    "models": {
+      "comparedPixels": 1440000,
+      "differentPixels": 2,
+      "pixelsOverTolerance2": 0,
+      "maxChannelDifference": 1
+    }
+  },
+  "inputHashes": {
+    "screen.html": "f6aa5db9efd6dee7227d3d7eadd8728e7f372c66d3010b960d3334d865c532c6",
+    "screen.js": "cbc240276703c30ea6f41ae03f42b2a4d575338f723862e21ffb1e4ee0684ff7",
+    "proposals.js": "4ff96bf10d0559ab3b3943457d682c0b1a8b7680516639a60770dda71fe87d11",
+    "proposals.css": "f50cb5414588770242a3d37b709ea3b41e585602d3b48e64c33f3a1ee0a7f0d0",
+    "reference/annotation.json": "b029465e674147b9b5e3a9e04362e6d758b088a6c4692e4899c3e688a4a9fdaf",
+    "reference/engine.json": "2bc6c7f7037eb01e7ca0a6bfce7d4afc8aac36319096b58474f27a1dd266e5bc",
+    "reference/image-annotation.json": "cba09b563c68fd9599d695d7b2dace9a6bb36e1699567fa1d6fd6f9e02ae6164",
+    "reference/models.json": "02ce0e5255c83152ab4d56246d26c8663ee53d51cdf373c4831984439877dacf",
+    "reference/preview.json": "65673e628e0269b5c2e4b4c8e686da45efe272549147f2373f214fe9dade1ba8",
+    "reference/questions.json": "bfa7c887312fb6cccf76a78211980d5cd44237a1031c26d10cd0a99147b314f8",
+    "reference/session.json": "d53d260ca773d27985d0823cb9d122bfcafbe82e96cfff9f6b55bb255d06be55",
+    "reference/settings.json": "92c2c932bfaabe9beca75a73bdee7c92ee3583d5c53abf73882a49824ede3ed0",
+    "reference/usage.json": "fbe1224a3c1059051b26fc5d2d91d443dd119244bd41876f8b60fae9d0debb02",
+    "reference/assets/SymbolsNerdFontMono-Regular-aK5vsLov.woff2": "a8e2fc5ae3c2525812151b95da80c5beab0befa84aca84fc33aaed94317502df",
+    "reference/assets/baloo-2-latin-500-normal-BSdEhq8m.woff": "b1320eb4210b7690cfe61e6cdc67a759d0e0b33746c6cb7ce32311c30a5bc10e",
+    "reference/assets/baloo-2-latin-500-normal-CmLZ27r7.woff2": "b533661a076cc6e6ecd387f4665a02e923f94eec48bfe5bcecaf29213eb29a36",
+    "reference/assets/baloo-2-latin-600-normal-B4tNaogw.woff": "b1cd520fb9d51312a0ee40b12d0b3b61c7f171aa4abc2a2871b2b0504b3a390c",
+    "reference/assets/baloo-2-latin-600-normal-tIfxVoAe.woff2": "ffc22b431dcb01372be1986bc472bd400bbcb56b712a863c3abec7f8302e1bdd",
+    "reference/assets/baloo-2-latin-700-normal-CqTg7A15.woff2": "8e7ffc9b993aa8caa89bcab81e103c9eb2da4e3e042f37b7a5115d0ddbff12c0",
+    "reference/assets/baloo-2-latin-700-normal-Ld3Zm3l2.woff": "f1fcdf0b18ee5099fcc4fcd46e1ea0eaef63bc18ea85d4b1ba946ec29a88fe85",
+    "reference/assets/baloo-2-latin-800-normal-B8BXfZF7.woff": "e0581d15d3d71d1aab1b7fd4e1245583d0d18c30d3b8845e0856cf1e18474ef7",
+    "reference/assets/baloo-2-latin-800-normal-BbF3Etk1.woff2": "3e36c57e37bda5b5f28cf10636d6d3aed4de5250df923f1b203b64ad857c79a7",
+    "reference/assets/index-Dsn7Dxky.css": "f81770e29a3562c5a0030bb22b0cb6880de41c2da8e7fc21d7e4e6d1568245a3",
+    "reference/assets/jetbrains-mono-latin-400-normal-6-qcROiO.woff": "658b9ee07b0249cf910a8d6f3d812d46c962bae81d7379a0355b1db35c61586f",
+    "reference/assets/jetbrains-mono-latin-400-normal-V6pRDFza.woff2": "14425ba9c695763c1547f48a206b7aa60350a33ae23de09f0407877f3fcd89eb",
+    "reference/assets/jetbrains-mono-latin-500-normal-BWZEU5yA.woff2": "cb182feeed4d798ff6961d3c79f7026279448fca0676438aaecb21f3fc39553a",
+    "reference/assets/jetbrains-mono-latin-500-normal-CJOVTJB7.woff": "a270dd0bf13d91053b8999b7c120ffadb59680cfd63fe1a6b388a13bf2809fe1",
+    "reference/assets/nunito-latin-500-italic-e2La9S3U.woff2": "d0eee41f3d867498e3b85f161acb24c6990c2d12ad14fa6c5e16a6c63c41cd14",
+    "reference/assets/nunito-latin-600-italic-DyEvecIf.woff2": "7901a2c0d1693e089af5ec6ba529534f3bc8322a829950a329363be864ec20cf",
+    "reference/assets/nunito-latin-600-normal-Br8yIETf.woff2": "45f437de32ff5973eb5616b43c1308bf9fe897442f3d78a603c4cd0a06d66573",
+    "reference/assets/nunito-latin-600-normal-Cd0eNu1l.woff": "06a9c8b384b332423be9291e180dba15ec49c0c903303e03ea03e2ded06197e4",
+    "reference/assets/nunito-latin-700-italic-BMy3YKdf.woff2": "e666bd4b48ad20e5385e1f1ec1607d68b85380cfe04064fbb5a2bfdc8200deaf",
+    "reference/assets/nunito-latin-800-italic-B1qCGdl6.woff2": "24c88b08dae454cc6f5868daeea323c3ad9a347c0f4a83698f0c13338ab3ceca",
+    "reference/assets/stratamd-logo-BwCBnbu2.svg": "3e85ea046e812b03afee655ccc2ac99b4eccb8fb6a94559964b66e67b8d08407",
+    "../data.js": "dbf0a8498b8fa39e442f70a5606c13e207c32715bb420ada4a612e9bec0e34df"
+  },
+  "outsideImpactFailures": [],
+  "renderFailures": [],
+  "latestCorrection": {
+    "flow": "usage",
+    "scope": "Only Codex quota example and dependent combined/reset fixture details. Approved layout retained.",
+    "statesVerified": 5,
+    "approval": "approved",
+    "source": "Owner browser comment and clarification delivery 5d6ccfbc-edf3-4998-8671-2193b12f8cdf"
+  },
+  "galleryHashes": {
+    "index.html": "e05c32c32719ef4605c840029425f27f94e27b945b2b249bf6fe970f61b008a8",
+    "gallery.js": "cfba40f1dc9fa679d4dccc0bf896dcfeaa858247c48a5359142e82359c6d3158",
+    "gallery.css": "4ec4453d5a8006cf9286a3616575181eae334822bb051bef851d8973a82fa017",
+    "benchmark-guide.md": "1977459f8ef59855aa5ea9d49e07db3a1c42f9cba497c75aac4f0ab90648ed35",
+    "benchmark-guide.html": "c199bcd84edf56f0cc18aca46fe395f12ca7b138ebd75ea977fd2eff0a42e676"
+  }
+}

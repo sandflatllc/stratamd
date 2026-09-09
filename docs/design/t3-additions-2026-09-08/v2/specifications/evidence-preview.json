@@ -1,0 +1,98 @@
+{
+  "changes": [
+    {
+      "height": 35.75,
+      "label": "Saved evidence tab",
+      "number": 1,
+      "selector": "[data-change-id=\"1\"]",
+      "width": 182.609375,
+      "x": 269,
+      "y": 78.25
+    },
+    {
+      "height": 73.5,
+      "label": "Saved evidence identity and annotation action",
+      "number": 2,
+      "selector": "[data-change-id=\"2\"]",
+      "width": 838,
+      "x": 257,
+      "y": 114
+    },
+    {
+      "height": 795.5,
+      "label": "Saved screenshot in the existing preview frame",
+      "number": 3,
+      "selector": "[data-change-id=\"3\"]",
+      "width": 838,
+      "x": 257,
+      "y": 187.5
+    }
+  ],
+  "flow": "evidence",
+  "mode": "proposed",
+  "ready": true,
+  "scrollPositions": [],
+  "source": "preview",
+  "state": "preview",
+  "theme": "Strata",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "title": "Review evidence",
+  "features": [
+    8
+  ],
+  "approval": "pending",
+  "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
+  "sourceComponents": [
+    "src/renderer/components/ConversationMessage.tsx",
+    "src/renderer/components/PreviewWindow.tsx"
+  ],
+  "behaviorChecks": [
+    "Open displays the saved media, not a dead remote path.",
+    "Transfers show progress only while transferring.",
+    "Retry preserves the source evidence and names the failed destination."
+  ],
+  "baseline": "captures/baseline-preview.png",
+  "proposed": "captures/evidence-preview-proposed.png",
+  "annotated": "captures/evidence-preview-annotated.png",
+  "layoutImpactSelectors": [
+    ".preview-window"
+  ],
+  "layoutImpactBounds": [
+    {
+      "bottom": 983,
+      "height": 918,
+      "left": 257,
+      "right": 1095,
+      "selector": ".preview-window",
+      "top": 65,
+      "width": 838,
+      "x": 257,
+      "y": 65
+    },
+    {
+      "bottom": 983,
+      "height": 918,
+      "left": 257,
+      "right": 1095,
+      "selector": ".preview-window",
+      "top": 65,
+      "width": 838,
+      "x": 257,
+      "y": 65
+    }
+  ],
+  "invarianceOutsideLayoutImpact": {
+    "comparedPixels": 555419,
+    "differentPixels": 0,
+    "pixelsOverTolerance2": 0,
+    "maxChannelDifference": 0
+  },
+  "renderHealth": {
+    "bodyOverflow": false,
+    "brokenImages": [],
+    "offscreenChanges": []
+  }
+}

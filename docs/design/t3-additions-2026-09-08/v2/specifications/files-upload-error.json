@@ -1,0 +1,137 @@
+{
+  "changes": [
+    {
+      "height": 73.5,
+      "label": "Work status for this feature",
+      "number": 1,
+      "selector": "[data-change-id=\"1\"]",
+      "width": 844,
+      "x": 413,
+      "y": 626.34375
+    },
+    {
+      "height": 46.5,
+      "label": "Binary attachments in the existing attachment tray",
+      "number": 2,
+      "selector": "[data-change-id=\"2\"]",
+      "width": 543.328125,
+      "x": 563.328125,
+      "y": 751
+    },
+    {
+      "height": 74,
+      "label": "Draft text for this feature",
+      "number": 3,
+      "selector": "[data-change-id=\"3\"]",
+      "width": 543.328125,
+      "x": 563.328125,
+      "y": 817.5
+    },
+    {
+      "height": 34,
+      "label": "Send delivers held content",
+      "number": 4,
+      "selector": "[data-change-id=\"4\"]",
+      "width": 34,
+      "x": 1072.65625,
+      "y": 891.5
+    }
+  ],
+  "flow": "files",
+  "mode": "proposed",
+  "ready": true,
+  "scrollPositions": [
+    {
+      "className": "conversation-messages",
+      "scrollTop": 10
+    }
+  ],
+  "source": "questions",
+  "state": "upload-error",
+  "theme": "Strata",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "title": "Send failed",
+  "features": [
+    3,
+    13
+  ],
+  "approval": "pending",
+  "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
+  "sourceComponents": [
+    "src/renderer/components/Conversation.tsx",
+    "src/renderer/components/ConversationComposer.tsx",
+    "src/renderer/components/PreviewWindow.tsx"
+  ],
+  "behaviorChecks": [
+    "Binary attachments retain their original bytes.",
+    "Preview is read only; HTML source and preview refer to the same file.",
+    "A send failure retains the message and files."
+  ],
+  "baseline": "captures/baseline-questions.png",
+  "proposed": "captures/files-upload-error-proposed.png",
+  "annotated": "captures/files-upload-error-annotated.png",
+  "layoutImpactSelectors": [
+    ".conversation-messages",
+    ".chat-composer"
+  ],
+  "layoutImpactBounds": [
+    {
+      "bottom": 762.5,
+      "height": 642.5,
+      "left": 370,
+      "right": 1300,
+      "selector": ".conversation-messages",
+      "top": 120,
+      "width": 930,
+      "x": 370,
+      "y": 120
+    },
+    {
+      "bottom": 971,
+      "height": 180.5,
+      "left": 548.328125,
+      "right": 1121.65625,
+      "selector": ".chat-composer",
+      "top": 790.5,
+      "width": 573.328125,
+      "x": 548.328125,
+      "y": 790.5
+    },
+    {
+      "bottom": 708,
+      "height": 588,
+      "left": 370,
+      "right": 1300,
+      "selector": ".conversation-messages",
+      "top": 120,
+      "width": 930,
+      "x": 370,
+      "y": 120
+    },
+    {
+      "bottom": 971,
+      "height": 235,
+      "left": 548.328125,
+      "right": 1121.65625,
+      "selector": ".chat-composer",
+      "top": 736,
+      "width": 573.328125,
+      "x": 548.328125,
+      "y": 736
+    }
+  ],
+  "invarianceOutsideLayoutImpact": {
+    "comparedPixels": 593009,
+    "differentPixels": 256,
+    "pixelsOverTolerance2": 0,
+    "maxChannelDifference": 1
+  },
+  "renderHealth": {
+    "bodyOverflow": false,
+    "brokenImages": [],
+    "offscreenChanges": []
+  }
+}

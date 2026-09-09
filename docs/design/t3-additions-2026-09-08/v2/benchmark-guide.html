@@ -1,0 +1,148 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Strata mockup benchmarks</title><link rel="stylesheet" href="gallery.css"></head><body><main class="guide"><a href="index.html">← Interactive gallery</a><h1>Strata mockup benchmarks, revision 2</h1>
+<p>All 15 accepted additions are covered by 12 flows and 58 visual states. The <a href="owner-review.md">saved owner review</a> records nine approved flows, one needing changes, and two without a saved decision. Approved flows with comments require only the named corrections. Implementation starts after the remaining design decisions.</p>
+<p>Open the <a href="http://127.0.0.1:43871/v2/">interactive gallery</a> to compare current Strata, the proposal, and numbered change highlights. The first gallery is superseded and must not be used as an implementation benchmark.</p>
+<h2>What is real</h2>
+<p>The app frame is an export of the running Strata renderer, built from <code>37678211593ce0f43341e591d70b8c67dad093bb</code>. Its DOM, compiled CSS, local fonts, logo, provider icons, theme values, question form, composer, project rows, dialogs, preview toolbar, and image markup controls come from Strata. The sample projects, conversation, account reports, files, and outcomes are fixtures.</p>
+<p>The theme is <strong>Strata</strong>. Its current storage ID is <code>strata-night</code>; that legacy ID does not mean a different theme. <a href="reference/bundled-themes.ts.txt">The bundled theme definitions</a> are the authority. Strata Vivid is not used. The test fixture normally selects Vivid, so the capture setup explicitly overrides it.</p>
+<p>New controls use Strata's existing classes and theme variables. Additional styles are restricted to the proposed controls. There is no replacement app shell or invented brand treatment.</p>
+<h2>How to review</h2>
+<ol>
+<li>Choose a flow and state. Use <strong>Current Strata</strong> to see the existing component that the proposal extends.</li>
+<li>Use <strong>Proposed</strong> to judge the finished appearance. Use <strong>Highlight changes</strong> to identify the numbered elements the feature changes.</li>
+<li>Review the failure and unavailable states as well as the normal state. The gallery's buttons move between sample states; they do not call an engine or provider.</li>
+<li>Write notes or mark the flow approved. These decisions are saved only in this browser. Copy the review notes into chat to communicate them to the implementation agent.</li>
+</ol>
+<p>The surrounding gallery controls and yellow highlights are review aids. They are excluded from the clean app screenshot. Existing exported app controls that are outside the proposed flow are present for fidelity; they do not run the live app.</p>
+<h2>Feature coverage</h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Existing Strata components</th>
+<th>Proposed change</th>
+<th>Review</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Engine usage and quota</td>
+<td>AccountsDialog</td>
+<td>Reported windows, remaining bars, pace, freshness, combined view, supported reset confirmation</td>
+<td><a href="http://127.0.0.1:43871/v2/?flow=usage">Usage limits</a></td>
+</tr>
+<tr>
+<td>2. Async questions and dismissal</td>
+<td>Conversation</td>
+<td>Working/waiting status, optional dismissal, held and sent states</td>
+<td><a href="http://127.0.0.1:43871/v2/?flow=questions">Questions</a></td>
+</tr>
+<tr>
+<td>3. Binary attachments</td>
+<td>ConversationComposer, attachment tray</td>
+<td>Original-file cards, type/size, missing-file and send recovery</td>
+<td><a href="http://127.0.0.1:43871/v2/?flow=files">Files</a></td>
+</tr>
+<tr>
+<td>4. Streaming and replay efficiency</td>
+<td>Existing conversation and engine state</td>
+<td>No new visible control. The current UI is the unchanged benchmark; performance needs runtime verification</td>
+<td><a href="specifications/engine-efficiency.json">Nonvisual specification</a></td>
+</tr>
+<tr>
+<td>5. Restart continuation</td>
+<td>EngineDialog, Conversation</td>
+<td>Opt-in preference, reconnect, confirmed resume, continuation-message notice, retry</td>
+<td><a href="http://127.0.0.1:43871/v2/?flow=recovery">Recovery</a></td>
+</tr>
+<tr>
+<td>6. Manual compaction</td>
+<td>Context meter and Conversation</td>
+<td>Context action, progress, result, failure, unsupported state</td>
+<td><a href="http://127.0.0.1:43871/v2/?flow=compact">Compact context</a></td>
+</tr>
+<tr>
+<td>7. Per-answer files</td>
+<td>Native question form and attachment preview</td>
+<td>Files associated with a specific answer through Hold and Send</td>
+<td><a href="http://127.0.0.1:43871/v2/?flow=questions&amp;state=held">Answer files</a></td>
+</tr>
+<tr>
+<td>8. Browser evidence</td>
+<td>ConversationMessage, PreviewWindow</td>
+<td>Saved media, copying, retry with destination, evidence preview</td>
+<td><a href="http://127.0.0.1:43871/v2/?flow=evidence">Evidence</a></td>
+</tr>
+<tr>
+<td>9. Commands and skills</td>
+<td>ConversationComposer and existing popup styling</td>
+<td>Search, groups, descriptions, insertion into the draft, empty results</td>
+<td><a href="http://127.0.0.1:43871/v2/?flow=skills">Commands and skills</a></td>
+</tr>
+<tr>
+<td>10. Project defaults</td>
+<td>SettingsDialog, SetupDialog</td>
+<td>Scope, effective values, inheritance, overrides, conflicting save</td>
+<td><a href="http://127.0.0.1:43871/v2/?flow=defaults">Defaults</a></td>
+</tr>
+<tr>
+<td>11. Draft markers</td>
+<td>ProjectsPanel, ConversationComposer</td>
+<td>Separate pen marker, restored draft, scoped discard</td>
+<td><a href="http://127.0.0.1:43871/v2/?flow=drafts">Drafts</a></td>
+</tr>
+<tr>
+<td>12. Conversation import</td>
+<td>SetupDialog, project navigation</td>
+<td>Sources, selection, confirmation, progress, partial failure, completion</td>
+<td><a href="http://127.0.0.1:43871/v2/?flow=import">Import</a></td>
+</tr>
+<tr>
+<td>13. PDF and HTML previews</td>
+<td>PreviewWindow</td>
+<td>Read-only document controls, PDF pages/zoom, HTML preview/source, missing file</td>
+<td><a href="http://127.0.0.1:43871/v2/?flow=files&amp;state=pdf">Previews</a></td>
+</tr>
+<tr>
+<td>14. External window capture</td>
+<td>Existing full-window VisualSession, held attachments</td>
+<td>Setup, system-picker handoff, window identity, target conversation, screenshot-only fallback</td>
+<td><a href="http://127.0.0.1:43871/v2/?flow=capture">Window capture</a></td>
+</tr>
+<tr>
+<td>15. Custom models</td>
+<td>ProviderModels, ProviderSetup</td>
+<td>Display name separate from provider ID, supported options, validation</td>
+<td><a href="http://127.0.0.1:43871/v2/?flow=models">Models</a></td>
+</tr>
+</tbody>
+</table>
+<h2>Instructions for implementation agents</h2>
+<p>Use the approved state's <code>captures/&lt;flow&gt;-&lt;state&gt;-proposed.png</code> as the visual target. Its <code>-annotated.png</code> identifies the changed elements. The gallery links both images and the state's JSON specification. That specification lists the actual source components, change selectors and bounds, scroll positions, affected layout areas, and behavior checks.</p>
+<p>Keep the existing app frame, fonts, theme, component spacing, icons, and unrelated controls. Extend the named product components. Do not copy the exported HTML into the product: this folder is a design fixture, not a new component architecture.</p>
+<p>Match the capture conditions before comparing screenshots:</p>
+<ul>
+<li>Content viewport 1440 × 1000, device scale factor 1, app zoom 1.</li>
+<li>Default Strata theme, with the same pane and dialog sizes shown in the reference.</li>
+<li>Fixture conversation and file content from <code>reference/</code>, with clock held at September 3, 2026, 12:02 UTC.</li>
+<li>CSS animation and caret paused. The canvas is paused through Strata's existing typing-pause mechanism. Full background frames are exported where a taller composer exposes more of the background.</li>
+<li>Scroll to the position recorded in the state specification. Some errors require a small conversation scroll; the model option editor uses the existing dialog scroll area.</li>
+</ul>
+<p>Yellow numbers describe edited elements. <code>layoutImpactSelectors</code> describes the larger area that can move when content grows or scrolls. For example, a draft status row makes the composer taller and the conversation shorter. That layout effect is intentional; the sidebar and top bar must remain unchanged. The comparison check allows 36 pixels around these areas for existing shadows and rounded borders.</p>
+<p>Visual agreement does not prove behavior. Run the state's behavior checks and the repository's required product verification after implementation. Usage percentages, provider options, progress, PDF contents, transfer results, and operating-system permission text here are proposed fixtures, not claims that a current engine supports them. Only expose capability-dependent actions when the connected engine reports support.</p>
+<p>The native operating-system picker is represented by a handoff state, not a fabricated OS dialog. The PDF page is a layout fixture; pagination and zoom still need implementation. Gallery controls simulate state transitions and do not demonstrate those backends.</p>
+<h2>Evidence and limits</h2>
+<p><a href="verification.json">verification.json</a> records the capture inputs, hashes, baseline comparisons, 58 state render checks, and differences outside the declared layout areas. <a href="reference/">The original Electron captures</a> preserve the current app for reference. Each source snapshot also stores its full active theme and original DOM.</p>
+<p>Browser preview has a native child view that the parent renderer's CDP screenshot omits. The gallery puts the same fixture page into that exact slot. Its chrome is compared separately from the page content. The page interior matches the real saved browser frame; the bottom rounded clipping is excluded from that content comparison. Image-markup captures have small raster differences between Electron and browser rendering, recorded in the verification file.</p>
+<p>These checks cover the design exports at the fixed benchmark size. They do not claim production feature behavior, a responsive product implementation, or approval. No product source, owner profile, installed app, or active skill was changed. The current product assets were built in an isolated temporary directory; the product test gate was not run for these design files.</p>
+<h2>Files and reproduction</h2>
+<ul>
+<li><code>screen.html</code>, <code>screen.js</code>: load an actual renderer export and restore its local assets.</li>
+<li><code>proposals.js</code>, <code>proposals.css</code>: only the feature-specific DOM changes and review overlays.</li>
+<li><code>reference/</code>: original renderer snapshots, actual app captures, compiled assets, and sample media.</li>
+<li><code>captures/</code>: seven current baselines, 58 clean proposals, and 58 annotated proposals.</li>
+<li><code>specifications/</code>: one review specification per visual state, plus the unchanged-UI specification for feature 4.</li>
+<li><code>tools/start-baseline.ts</code>, <code>tools/snapshot.py</code>: isolated app launch and actual renderer export.</li>
+<li><code>tools/capture-benchmarks.py</code>: repeatable capture and comparison using agent-browser.</li>
+</ul>
+<p>The existing gallery service serves this directory tree at port 43871. Re-running static captures needs that service, agent-browser, Python, Pillow, and NumPy. It does not need the isolated app to remain open. Recreating original renderer exports needs a matching build, the repository's isolated Electron fixture, and the explicit Strata theme override. Never use the owner's running app or profile as a fixture.</p>
+</main></body></html>

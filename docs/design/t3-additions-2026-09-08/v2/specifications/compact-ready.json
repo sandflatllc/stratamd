@@ -1,0 +1,125 @@
+{
+  "changes": [
+    {
+      "height": 28,
+      "label": "Reported context level and compact entry",
+      "number": 1,
+      "selector": "[data-change-id=\"1\"]",
+      "width": 28,
+      "x": 1034.65625,
+      "y": 893.5
+    },
+    {
+      "height": 200.671875,
+      "label": "Compact action beside the existing context meter",
+      "number": 2,
+      "selector": "[data-change-id=\"2\"]",
+      "width": 320,
+      "x": 801.65625,
+      "y": 579.828125
+    }
+  ],
+  "flow": "compact",
+  "mode": "proposed",
+  "ready": true,
+  "scrollPositions": [],
+  "source": "questions",
+  "state": "ready",
+  "theme": "Strata",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "title": "Context is nearly full",
+  "features": [
+    6
+  ],
+  "approval": "approved",
+  "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
+  "sourceComponents": [
+    "src/renderer/components/Conversation.tsx",
+    "src/renderer/components/ConversationComposer.tsx"
+  ],
+  "behaviorChecks": [
+    "Manual compact is disabled when unsupported.",
+    "Visible history and unsent content survive compaction.",
+    "Report token counts only when the engine provides them."
+  ],
+  "baseline": "captures/baseline-questions.png",
+  "proposed": "captures/compact-ready-proposed.png",
+  "annotated": "captures/compact-ready-annotated.png",
+  "layoutImpactSelectors": [
+    ".conversation-messages",
+    ".chat-composer"
+  ],
+  "layoutImpactBounds": [
+    {
+      "bottom": 762.5,
+      "height": 642.5,
+      "left": 370,
+      "right": 1300,
+      "selector": ".conversation-messages",
+      "top": 120,
+      "width": 930,
+      "x": 370,
+      "y": 120
+    },
+    {
+      "bottom": 971,
+      "height": 180.5,
+      "left": 548.328125,
+      "right": 1121.65625,
+      "selector": ".chat-composer",
+      "top": 790.5,
+      "width": 573.328125,
+      "x": 548.328125,
+      "y": 790.5
+    },
+    {
+      "bottom": 762.5,
+      "height": 642.5,
+      "left": 370,
+      "right": 1300,
+      "selector": ".conversation-messages",
+      "top": 120,
+      "width": 930,
+      "x": 370,
+      "y": 120
+    },
+    {
+      "bottom": 971,
+      "height": 180.5,
+      "left": 548.328125,
+      "right": 1121.65625,
+      "selector": ".chat-composer",
+      "top": 790.5,
+      "width": 573.328125,
+      "x": 548.328125,
+      "y": 790.5
+    },
+    {
+      "bottom": 780.5,
+      "height": 200.671875,
+      "left": 801.65625,
+      "right": 1121.65625,
+      "selector": ".proposal-menu",
+      "top": 579.828125,
+      "width": 320,
+      "x": 801.65625,
+      "y": 579.828125
+    }
+  ],
+  "invarianceOutsideLayoutImpact": {
+    "comparedPixels": 593009,
+    "differentPixels": 0,
+    "pixelsOverTolerance2": 0,
+    "maxChannelDifference": 0
+  },
+  "renderHealth": {
+    "bodyOverflow": false,
+    "brokenImages": [],
+    "offscreenChanges": []
+  },
+  "ownerReviewNotes": "",
+  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+}

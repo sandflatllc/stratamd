@@ -1,0 +1,136 @@
+{
+  "changes": [
+    {
+      "height": 13,
+      "label": "Draft marker beside the existing thread status",
+      "number": 1,
+      "selector": "[data-change-id=\"1\"]",
+      "width": 13,
+      "x": 147,
+      "y": 213
+    },
+    {
+      "height": 13,
+      "label": "Draft marker beside the existing thread status",
+      "number": 2,
+      "selector": "[data-change-id=\"2\"]",
+      "width": 13,
+      "x": 147,
+      "y": 246
+    }
+  ],
+  "flow": "drafts",
+  "mode": "proposed",
+  "ready": true,
+  "scrollPositions": [],
+  "source": "questions",
+  "state": "markers",
+  "theme": "Strata",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "title": "Drafts in the sidebar",
+  "features": [
+    11
+  ],
+  "approval": "approved",
+  "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
+  "sourceComponents": [
+    "src/renderer/components/ProjectsPanel.tsx",
+    "src/renderer/components/ConversationComposer.tsx"
+  ],
+  "behaviorChecks": [
+    "Draft marker coexists with Working and Needs input.",
+    "Reopening restores the draft and its files.",
+    "Discard removes only the message draft, not held answers or comments."
+  ],
+  "baseline": "captures/baseline-questions.png",
+  "proposed": "captures/drafts-markers-proposed.png",
+  "annotated": "captures/drafts-markers-annotated.png",
+  "layoutImpactSelectors": [
+    ".project-thread[data-lifecycle=\"active\"]",
+    ".chat-composer"
+  ],
+  "layoutImpactBounds": [
+    {
+      "bottom": 236,
+      "height": 33,
+      "left": 35,
+      "right": 229,
+      "selector": ".project-thread[data-lifecycle=\"active\"]",
+      "top": 203,
+      "width": 194,
+      "x": 35,
+      "y": 203
+    },
+    {
+      "bottom": 269,
+      "height": 33,
+      "left": 35,
+      "right": 229,
+      "selector": ".project-thread[data-lifecycle=\"active\"]",
+      "top": 236,
+      "width": 194,
+      "x": 35,
+      "y": 236
+    },
+    {
+      "bottom": 971,
+      "height": 180.5,
+      "left": 548.328125,
+      "right": 1121.65625,
+      "selector": ".chat-composer",
+      "top": 790.5,
+      "width": 573.328125,
+      "x": 548.328125,
+      "y": 790.5
+    },
+    {
+      "bottom": 236,
+      "height": 33,
+      "left": 35,
+      "right": 229,
+      "selector": ".project-thread[data-lifecycle=\"active\"]",
+      "top": 203,
+      "width": 194,
+      "x": 35,
+      "y": 203
+    },
+    {
+      "bottom": 269,
+      "height": 33,
+      "left": 35,
+      "right": 229,
+      "selector": ".project-thread[data-lifecycle=\"active\"]",
+      "top": 236,
+      "width": 194,
+      "x": 35,
+      "y": 236
+    },
+    {
+      "bottom": 971,
+      "height": 180.5,
+      "left": 548.328125,
+      "right": 1121.65625,
+      "selector": ".chat-composer",
+      "top": 790.5,
+      "width": 573.328125,
+      "x": 548.328125,
+      "y": 790.5
+    }
+  ],
+  "invarianceOutsideLayoutImpact": {
+    "comparedPixels": 1244110,
+    "differentPixels": 0,
+    "pixelsOverTolerance2": 0,
+    "maxChannelDifference": 0
+  },
+  "renderHealth": {
+    "bodyOverflow": false,
+    "brokenImages": [],
+    "offscreenChanges": []
+  },
+  "ownerReviewNotes": "",
+  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+}

@@ -1,0 +1,11 @@
+{
+  "appPid": 2612388,
+  "cdpPort": 43213,
+  "scenario": "/home/dillonc/Projects/_tmp/stratamd-e2e-6xqqN8",
+  "build": "/tmp/strata-t3-design-v2-app/out",
+  "themeId": "strata-night",
+  "viewport": [
+    1440,
+    1000
+  ]
+}

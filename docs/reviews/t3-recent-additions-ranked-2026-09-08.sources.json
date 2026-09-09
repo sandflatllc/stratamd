@@ -1,0 +1,512 @@
+{
+  "report_date": "2026-09-08 America/Phoenix",
+  "generated_at": "2026-09-09T02:54:33.861570+00:00",
+  "method": "Release notes, GitHub PR descriptions, and static source comparison; no product/runtime tests performed.",
+  "strata_head": "f461fe9ff3daf018700df3caa4aefa985cac7de0",
+  "strata_bundled_t3": "0.0.38",
+  "t3_source_sha": "08463e2c401ce87858aaaebcb70ed86fb002fb5f",
+  "t3_stable_tag": "v0.0.40",
+  "t3_stable_sha": "09e8de9c655ae85410bf6b00446f272a01da81c7",
+  "commits_since_stable": 72,
+  "source_archive": "/tmp/strata-t3-recent-20260908/upstream.tar.gz",
+  "releases": [
+    {
+      "tag_name": "v0.0.33",
+      "published_at": "2026-08-10T11:59:22Z",
+      "html_url": "https://github.com/pingdotgg/t3code/releases/tag/v0.0.33",
+      "target_commitish": "3b72d17cbca691f0b64e6d4a10c9e349f42873a5"
+    },
+    {
+      "tag_name": "v0.0.34",
+      "published_at": "2026-08-26T03:13:50Z",
+      "html_url": "https://github.com/pingdotgg/t3code/releases/tag/v0.0.34",
+      "target_commitish": "badae6a5cc8325dcd5a145bea6f7b8ac692818a1"
+    },
+    {
+      "tag_name": "v0.0.35",
+      "published_at": "2026-08-27T05:36:01Z",
+      "html_url": "https://github.com/pingdotgg/t3code/releases/tag/v0.0.35",
+      "target_commitish": "f925d639421844f02b3166d29281905dbba6d529"
+    },
+    {
+      "tag_name": "v0.0.36",
+      "published_at": "2026-08-29T00:22:56Z",
+      "html_url": "https://github.com/pingdotgg/t3code/releases/tag/v0.0.36",
+      "target_commitish": "8fc7f22941969d7a2c06929dc29aa86ae1b02f33"
+    },
+    {
+      "tag_name": "v0.0.37",
+      "published_at": "2026-08-31T03:06:39Z",
+      "html_url": "https://github.com/pingdotgg/t3code/releases/tag/v0.0.37",
+      "target_commitish": "cefec32d6fc5d14f03e110ebdde534bdbcc9b62b"
+    },
+    {
+      "tag_name": "v0.0.38",
+      "published_at": "2026-09-01T22:13:59Z",
+      "html_url": "https://github.com/pingdotgg/t3code/releases/tag/v0.0.38",
+      "target_commitish": "c0995d2eaf8ec787b3318ed1169ae266ed1529f8"
+    },
+    {
+      "tag_name": "v0.0.39",
+      "published_at": "2026-09-07T06:52:57Z",
+      "html_url": "https://github.com/pingdotgg/t3code/releases/tag/v0.0.39",
+      "target_commitish": "6abdf37a50ce6c1c9fabc499f4d0e159a6182d90"
+    },
+    {
+      "tag_name": "v0.0.40",
+      "published_at": "2026-09-08T00:02:00Z",
+      "html_url": "https://github.com/pingdotgg/t3code/releases/tag/v0.0.40",
+      "target_commitish": "09e8de9c655ae85410bf6b00446f272a01da81c7"
+    }
+  ],
+  "detailed_pull_requests": [
+    {
+      "number": 5362,
+      "title": "feat(web): first-run welcome wizard with agent setup and project import",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/5362",
+      "merged_at": "2026-09-05T09:22:31Z",
+      "merge_commit_sha": "09aac71563c66a4f65f6fbe701aa9596cb677767",
+      "changed_files": 122,
+      "additions": 15520,
+      "deletions": 494
+    },
+    {
+      "number": 7254,
+      "title": "feat(desktop): browser profiles for the preview browser",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/7254",
+      "merged_at": "2026-09-02T21:56:46Z",
+      "merge_commit_sha": "134d51096ea0d00a53a499e8f0c87e31fafb0006",
+      "changed_files": 40,
+      "additions": 1535,
+      "deletions": 119
+    },
+    {
+      "number": 7737,
+      "title": "feat(composer): list skills with slash commands",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/7737",
+      "merged_at": "2026-08-21T01:27:36Z",
+      "merge_commit_sha": "e723501227b7d1d0b960eb8fcfd9c8d6099d805e",
+      "changed_files": 11,
+      "additions": 255,
+      "deletions": 21
+    },
+    {
+      "number": 7892,
+      "title": "feat(web): accept file drops into sidebar threads",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/7892",
+      "merged_at": "2026-09-08T12:07:27Z",
+      "merge_commit_sha": "b5d89038ae72142038dfa8cf69d49b7a607fe98e",
+      "changed_files": 7,
+      "additions": 462,
+      "deletions": 8
+    },
+    {
+      "number": 8048,
+      "title": "feat(web): upload image attachments before sending",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/8048",
+      "merged_at": "2026-08-24T08:44:39Z",
+      "merge_commit_sha": "e9f50c3efcb02a199042364ead292e164274e716",
+      "changed_files": 37,
+      "additions": 2475,
+      "deletions": 123
+    },
+    {
+      "number": 8103,
+      "title": "feat(desktop): add cross-platform window capture",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/8103",
+      "merged_at": "2026-09-08T01:21:54Z",
+      "merge_commit_sha": "299404a754f52c02c69634528d8856b3c93b378c",
+      "changed_files": 207,
+      "additions": 31651,
+      "deletions": 362
+    },
+    {
+      "number": 8531,
+      "title": "feat(web): add previous/next turn navigation in minimap",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/8531",
+      "merged_at": "2026-09-08T08:56:43Z",
+      "merge_commit_sha": "134b7194b125dd4881ff6040f66997b23489b72e",
+      "changed_files": 3,
+      "additions": 270,
+      "deletions": 111
+    },
+    {
+      "number": 8808,
+      "title": "feat(providers): add context compaction across harnesses",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/8808",
+      "merged_at": "2026-09-02T22:43:47Z",
+      "merge_commit_sha": "535557b3f785629e6f48cad40c5a4b78b3b3c5d6",
+      "changed_files": 35,
+      "additions": 646,
+      "deletions": 114
+    },
+    {
+      "number": 9132,
+      "title": "feat(server): measure provider turn token usage",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9132",
+      "merged_at": "2026-09-04T14:54:23Z",
+      "merge_commit_sha": "1587f248dd81ed45e214d476451ebf16dbfadb1a",
+      "changed_files": 14,
+      "additions": 3865,
+      "deletions": 20
+    },
+    {
+      "number": 9143,
+      "title": "feat(web): render HTML and PDF files in the file viewer",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9143",
+      "merged_at": "2026-09-02T02:31:58Z",
+      "merge_commit_sha": "d937e30759ceae421bf3cc1b84414de4b67df76c",
+      "changed_files": 2,
+      "additions": 120,
+      "deletions": 20
+    },
+    {
+      "number": 9146,
+      "title": "feat(web): cite assistant responses with inline citations",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9146",
+      "merged_at": "2026-09-02T03:55:36Z",
+      "merge_commit_sha": "e7deb2aaf4d4d089618dc0c8f393fa0b8b6c77e9",
+      "changed_files": 49,
+      "additions": 5986,
+      "deletions": 328
+    },
+    {
+      "number": 9152,
+      "title": "perf: make streaming projection and activity appends incremental",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9152",
+      "merged_at": "2026-09-02T01:07:27Z",
+      "merge_commit_sha": "c2283ce14628127ef1758974ddab4f5b1f89d47a",
+      "changed_files": 4,
+      "additions": 464,
+      "deletions": 31
+    },
+    {
+      "number": 9167,
+      "title": "feat(updates): continue active threads across server restarts",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9167",
+      "merged_at": "2026-09-02T08:28:17Z",
+      "merge_commit_sha": "5b7d72aad14ed37e8e5e4c02a6d49814bfe528ac",
+      "changed_files": 26,
+      "additions": 1292,
+      "deletions": 71
+    },
+    {
+      "number": 9173,
+      "title": "feat(web): recall sent prompts with the up arrow",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9173",
+      "merged_at": "2026-09-05T04:57:50Z",
+      "merge_commit_sha": "fd773172e7f26f2d98de3eb572f3317b0ad8d443",
+      "changed_files": 7,
+      "additions": 641,
+      "deletions": 4
+    },
+    {
+      "number": 9276,
+      "title": "feat(web): add proactive panels",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9276",
+      "merged_at": "2026-09-02T22:51:21Z",
+      "merge_commit_sha": "fb93902ee24d4ba380508df33d25478d3baf7a72",
+      "changed_files": 9,
+      "additions": 244,
+      "deletions": 3
+    },
+    {
+      "number": 9277,
+      "title": "feat(projects): automatically pull clean default branches",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9277",
+      "merged_at": "2026-09-02T22:29:08Z",
+      "merge_commit_sha": "ba3cb0773859334fe9f75016295bb3893c9e6044",
+      "changed_files": 20,
+      "additions": 351,
+      "deletions": 2
+    },
+    {
+      "number": 9292,
+      "title": "feat(web): preview document attachments in the file viewer",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9292",
+      "merged_at": "2026-09-03T00:49:09Z",
+      "merge_commit_sha": "77512998485718eb1b6c336e20f196eb40a6a32f",
+      "changed_files": 16,
+      "additions": 540,
+      "deletions": 101
+    },
+    {
+      "number": 9293,
+      "title": "feat(providers): add context compaction command",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9293",
+      "merged_at": "2026-09-04T01:48:28Z",
+      "merge_commit_sha": "c5ba51d629b3813182cf3e161cc3f23b1e541dc3",
+      "changed_files": 53,
+      "additions": 1999,
+      "deletions": 143
+    },
+    {
+      "number": 9348,
+      "title": "feat(providers): add Google Antigravity via the official ACP agent",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9348",
+      "merged_at": "2026-09-03T09:34:49Z",
+      "merge_commit_sha": "06336460c9988f29c71e839c4c9c840c4552e077",
+      "changed_files": 169,
+      "additions": 21470,
+      "deletions": 1388
+    },
+    {
+      "number": 9507,
+      "title": "feat(usage): show Codex and Claude subscription limits on a Limits tab",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9507",
+      "merged_at": "2026-09-04T00:47:54Z",
+      "merge_commit_sha": "19d8ab2ae9fc562ee7b216a0d72903fbfafa9572",
+      "changed_files": 56,
+      "additions": 3458,
+      "deletions": 86
+    },
+    {
+      "number": 9512,
+      "title": "feat(codex): support async questions",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9512",
+      "merged_at": "2026-09-04T00:36:42Z",
+      "merge_commit_sha": "d76b24dd15a219666941ab1b4967d8f738adcda0",
+      "changed_files": 26,
+      "additions": 962,
+      "deletions": 24
+    },
+    {
+      "number": 9658,
+      "title": "feat(web): show which sidebar threads hold an unsent draft",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9658",
+      "merged_at": "2026-09-04T12:30:52Z",
+      "merge_commit_sha": "f0347322441f3b8e473a8d13ea7006cbcb4fb761",
+      "changed_files": 4,
+      "additions": 106,
+      "deletions": 11
+    },
+    {
+      "number": 9662,
+      "title": "perf(server): stop loading message bodies for thread summaries",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9662",
+      "merged_at": "2026-09-04T13:24:42Z",
+      "merge_commit_sha": "8ac5462920c45cdee63af15b2598909736f2ec84",
+      "changed_files": 7,
+      "additions": 205,
+      "deletions": 20
+    },
+    {
+      "number": 9726,
+      "title": "perf(server): replay only the selected thread",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9726",
+      "merged_at": "2026-09-04T17:35:28Z",
+      "merge_commit_sha": "50bfca43d76ced00f5d67cfbab8bc44c50eb0e53",
+      "changed_files": 12,
+      "additions": 781,
+      "deletions": 94
+    },
+    {
+      "number": 9729,
+      "title": "feat(threads): persist manual active thread order",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9729",
+      "merged_at": "2026-09-06T18:10:15Z",
+      "merge_commit_sha": "2d645df474f0af5e261edb56a79f7a2a9a2d442e",
+      "changed_files": 27,
+      "additions": 824,
+      "deletions": 57
+    },
+    {
+      "number": 9740,
+      "title": "perf(client): stop thread streams when unused",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9740",
+      "merged_at": "2026-09-04T18:56:06Z",
+      "merge_commit_sha": "d7cf8aaa8d4fbcbdd523b4f4bc86fda5c47b4a70",
+      "changed_files": 6,
+      "additions": 911,
+      "deletions": 129
+    },
+    {
+      "number": 9754,
+      "title": "feat(settings): add shared project defaults and scoped overrides",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9754",
+      "merged_at": "2026-09-06T05:32:49Z",
+      "merge_commit_sha": "9f40b2f563c662b43887b11ff99c466fe871c1af",
+      "changed_files": 38,
+      "additions": 2236,
+      "deletions": 646
+    },
+    {
+      "number": 9807,
+      "title": "feat: add custom model names and option descriptors",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9807",
+      "merged_at": "2026-09-04T23:11:20Z",
+      "merge_commit_sha": "5a433244d0b827176df8b76a05959cd1a7a98ce2",
+      "changed_files": 19,
+      "additions": 1423,
+      "deletions": 150
+    },
+    {
+      "number": 9871,
+      "title": "feat(chat): attach files to question answers",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9871",
+      "merged_at": "2026-09-08T06:43:38Z",
+      "merge_commit_sha": "7220dfe2c949476eaa7d21eccbcd3a0ce0eddb49",
+      "changed_files": 40,
+      "additions": 2315,
+      "deletions": 153
+    },
+    {
+      "number": 9895,
+      "title": "feat(connections): balance new threads across connected machines",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/9895",
+      "merged_at": "2026-09-06T05:33:13Z",
+      "merge_commit_sha": "420fd76f60433fe05b8d2c76f4fbde430dc49968",
+      "changed_files": 26,
+      "additions": 865,
+      "deletions": 22
+    },
+    {
+      "number": 10300,
+      "title": "feat(usage): pool subscription limits per provider across accounts and environments",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/10300",
+      "merged_at": "2026-09-06T07:02:38Z",
+      "merge_commit_sha": "b273d1cfe9515f905d37a9146bb275b905d14399",
+      "changed_files": 9,
+      "additions": 1823,
+      "deletions": 246
+    },
+    {
+      "number": 10421,
+      "title": "fix(server): keep interrupted threads resumable after restarts",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/10421",
+      "merged_at": "2026-09-07T00:36:09Z",
+      "merge_commit_sha": "1abc717f0dbd08027b5be4ec45ae6c5bccf96418",
+      "changed_files": 5,
+      "additions": 304,
+      "deletions": 49
+    },
+    {
+      "number": 10431,
+      "title": "feat(threads): dismiss async questions without replying",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/10431",
+      "merged_at": "2026-09-07T00:16:39Z",
+      "merge_commit_sha": "7112697e8be2d6f231726a91eb565e00ddbeebec",
+      "changed_files": 18,
+      "additions": 369,
+      "deletions": 6
+    },
+    {
+      "number": 10473,
+      "title": "fix(codex): name the usage limit and its reset instead of relaying \"out of credits\"",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/10473",
+      "merged_at": "2026-09-07T23:04:11Z",
+      "merge_commit_sha": "d64335bb5913c21869633a4236d9409911e3da52",
+      "changed_files": 5,
+      "additions": 537,
+      "deletions": 2
+    },
+    {
+      "number": 10501,
+      "title": "fix(mcp): keep preview snapshots usable by the agent and let it save them",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/10501",
+      "merged_at": "2026-09-08T12:41:11Z",
+      "merge_commit_sha": "061543e9e5b54ec0048725c37d52fef2962df173",
+      "changed_files": 6,
+      "additions": 594,
+      "deletions": 66
+    },
+    {
+      "number": 10572,
+      "title": "fix(preview): transfer recordings to the agent environment",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/10572",
+      "merged_at": "2026-09-08T03:34:43Z",
+      "merge_commit_sha": "9e37f0c291974d084a59d7b9f165a1cb056e6043",
+      "changed_files": 11,
+      "additions": 517,
+      "deletions": 17
+    },
+    {
+      "number": 10777,
+      "title": "fix(server): release consumed event replay pages",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/10777",
+      "merged_at": "2026-09-09T02:27:05Z",
+      "merge_commit_sha": "08463e2c401ce87858aaaebcb70ed86fb002fb5f",
+      "changed_files": 2,
+      "additions": 82,
+      "deletions": 45
+    },
+    {
+      "number": 10832,
+      "title": "refactor(web): consolidate setup wizards into shared components",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/10832",
+      "merged_at": "2026-09-08T21:05:20Z",
+      "merge_commit_sha": "3faeee49ac67dfd9534369f1e1c627c0356b75ac",
+      "changed_files": 7,
+      "additions": 690,
+      "deletions": 771
+    },
+    {
+      "number": 10848,
+      "title": "fix(relay): share notification policy and prioritize waiting agents",
+      "html_url": "https://github.com/pingdotgg/t3code/pull/10848",
+      "merged_at": "2026-09-08T23:39:50Z",
+      "merge_commit_sha": "fdf34c4018352df41aa22fbaa774c25c6c1ff7da",
+      "changed_files": 6,
+      "additions": 448,
+      "deletions": 303
+    }
+  ],
+  "local_inputs": [
+    {
+      "path": "packaging/engine/package.json",
+      "sha256": "fa32aae00b2db2dbe8a94ec8216223fcc17e834182c000488b8cacfb98c7c21c"
+    },
+    {
+      "path": "src/main/engine/t3-contract.ts",
+      "sha256": "635602fc92e3cb4d0c9834bda4802f9459da064af7f454939a91e596bb1635f7"
+    },
+    {
+      "path": "src/main/engine/accounts.ts",
+      "sha256": "4e50ce379df630cd8f493492c009df5bf75e48e0c8b5624fe6da46040946ad3e"
+    },
+    {
+      "path": "src/main/engine/local-usage.ts",
+      "sha256": "cf472d2af632cec89ba14712a7374aa6af01443911317637f78c4c4c3903a160"
+    },
+    {
+      "path": "resources/engine-helpers/usage.mjs",
+      "sha256": "8a7aa79e1b2535ba65822e531bdf0fa37ce5cc73b0c7bd90a41692fe34a0e4bd"
+    },
+    {
+      "path": "src/renderer/components/Conversation.tsx",
+      "sha256": "8b72b77030120f16fadcc4fb39764c8e3319adaee4d0d8ec2c9b3d14962fd25b"
+    },
+    {
+      "path": "src/renderer/components/ConversationComposer.tsx",
+      "sha256": "26275c6fec533c58e25686b6d09a3243e6b315f70815e908b89caa10cd99dc3b"
+    },
+    {
+      "path": "src/renderer/components/ProviderModels.tsx",
+      "sha256": "e97862c54bb0a613c9811dd02d848d32ea0f19fa575c3c80c0c5f81804558767"
+    },
+    {
+      "path": "src/renderer/components/ConnectSetup.tsx",
+      "sha256": "ade76553a82b0ff4b77fa48a0f21186b21fdce3d77c2f69a0e8346ff1f9fe245"
+    },
+    {
+      "path": "src/renderer/conversationDrafts.ts",
+      "sha256": "e744ee2488d5faf8a237c656035d486518b9c47be34ba7782b9f8f5765eb5abe"
+    },
+    {
+      "path": "src/core/composer-attachments.ts",
+      "sha256": "dc0bc821497a8c3efc52c8f69ef7256efbabb5852d7ed096dd8d685ae26003c9"
+    },
+    {
+      "path": "src/core/projects-rail.ts",
+      "sha256": "269573976678ccc8f850cf26c516109f8c86cb5d91108be36a5f5e7154c03a9c"
+    },
+    {
+      "path": "src/main/preview/tabs.ts",
+      "sha256": "671adfe02c66b77c24c544a6bad7eeb550d8b1ff724d6df8ee06f2e968a91cb0"
+    },
+    {
+      "path": "src/main/engine/manager.ts",
+      "sha256": "c6cd99e6d86eba6bff41f9c5a8952dfdcb5540760f2ce00817dfcce357e08f2b"
+    }
+  ]
+}

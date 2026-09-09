@@ -1,0 +1,100 @@
+{
+  "changes": [
+    {
+      "height": 59,
+      "label": "Choose computer or project defaults",
+      "number": 1,
+      "selector": "[data-change-id=\"1\"]",
+      "width": 902,
+      "x": 269,
+      "y": 235.5
+    },
+    {
+      "height": 280.890625,
+      "label": "Effective settings, inheritance, and explicit project overrides",
+      "number": 2,
+      "selector": "[data-change-id=\"2\"]",
+      "width": 902,
+      "x": 269,
+      "y": 480
+    },
+    {
+      "height": 31.5,
+      "label": "Save the selected settings scope",
+      "number": 3,
+      "selector": "[data-change-id=\"3\"]",
+      "width": 116.46875,
+      "x": 1054.53125,
+      "y": 821.5
+    }
+  ],
+  "flow": "defaults",
+  "mode": "proposed",
+  "ready": true,
+  "scrollPositions": [],
+  "source": "settings",
+  "state": "project",
+  "theme": "Strata",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "title": "Project inheritance",
+  "features": [
+    10
+  ],
+  "approval": "approved",
+  "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
+  "sourceComponents": [
+    "src/renderer/components/SettingsDialog.tsx",
+    "src/renderer/components/SetupDialog.tsx"
+  ],
+  "behaviorChecks": [
+    "Effective value and source appear together.",
+    "Project overrides affect only new conversations.",
+    "Conflicting saves require reloading the current settings."
+  ],
+  "baseline": "captures/baseline-settings.png",
+  "proposed": "captures/defaults-project-proposed.png",
+  "annotated": "captures/defaults-project-annotated.png",
+  "layoutImpactSelectors": [
+    ".modal"
+  ],
+  "layoutImpactBounds": [
+    {
+      "bottom": 880,
+      "height": 760,
+      "left": 240,
+      "right": 1200,
+      "selector": ".modal",
+      "top": 120,
+      "width": 960,
+      "x": 240,
+      "y": 120
+    },
+    {
+      "bottom": 880,
+      "height": 760,
+      "left": 240,
+      "right": 1200,
+      "selector": ".modal",
+      "top": 120,
+      "width": 960,
+      "x": 240,
+      "y": 120
+    }
+  ],
+  "invarianceOutsideLayoutImpact": {
+    "comparedPixels": 579511,
+    "differentPixels": 0,
+    "pixelsOverTolerance2": 0,
+    "maxChannelDifference": 0
+  },
+  "renderHealth": {
+    "bodyOverflow": false,
+    "brokenImages": [],
+    "offscreenChanges": []
+  },
+  "ownerReviewNotes": "",
+  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+}

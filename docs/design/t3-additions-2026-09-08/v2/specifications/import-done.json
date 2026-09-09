@@ -1,0 +1,82 @@
+{
+  "changes": [
+    {
+      "height": 760,
+      "label": "New import flow inside Strata\u2019s existing setup dialog",
+      "number": 1,
+      "selector": "[data-change-id=\"1\"]",
+      "width": 960,
+      "x": 240,
+      "y": 120
+    }
+  ],
+  "flow": "import",
+  "mode": "proposed",
+  "ready": true,
+  "scrollPositions": [],
+  "source": "settings",
+  "state": "done",
+  "theme": "Strata",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "title": "Import complete",
+  "features": [
+    12
+  ],
+  "approval": "approved",
+  "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
+  "sourceComponents": [
+    "src/renderer/components/SetupDialog.tsx",
+    "src/renderer/components/ProjectsPanel.tsx"
+  ],
+  "behaviorChecks": [
+    "Import copies history without starting an agent.",
+    "Selected histories are grouped by project.",
+    "Retry skips successful imports and names unreadable sources."
+  ],
+  "baseline": "captures/baseline-settings.png",
+  "proposed": "captures/import-done-proposed.png",
+  "annotated": "captures/import-done-annotated.png",
+  "layoutImpactSelectors": [
+    ".modal"
+  ],
+  "layoutImpactBounds": [
+    {
+      "bottom": 880,
+      "height": 760,
+      "left": 240,
+      "right": 1200,
+      "selector": ".modal",
+      "top": 120,
+      "width": 960,
+      "x": 240,
+      "y": 120
+    },
+    {
+      "bottom": 880,
+      "height": 760,
+      "left": 240,
+      "right": 1200,
+      "selector": ".modal",
+      "top": 120,
+      "width": 960,
+      "x": 240,
+      "y": 120
+    }
+  ],
+  "invarianceOutsideLayoutImpact": {
+    "comparedPixels": 579511,
+    "differentPixels": 0,
+    "pixelsOverTolerance2": 0,
+    "maxChannelDifference": 0
+  },
+  "renderHealth": {
+    "bodyOverflow": false,
+    "brokenImages": [],
+    "offscreenChanges": []
+  },
+  "ownerReviewNotes": "",
+  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+}

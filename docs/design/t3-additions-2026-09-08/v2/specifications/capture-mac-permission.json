@@ -1,0 +1,83 @@
+{
+  "changes": [
+    {
+      "height": 760,
+      "label": "Window capture setup and native picker handoff using Strata dialog components",
+      "number": 1,
+      "selector": "[data-change-id=\"1\"]",
+      "width": 960,
+      "x": 240,
+      "y": 120
+    }
+  ],
+  "flow": "capture",
+  "mode": "proposed",
+  "ready": true,
+  "scrollPositions": [],
+  "source": "settings",
+  "state": "mac-permission",
+  "theme": "Strata",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "title": "Mac permissions",
+  "features": [
+    14
+  ],
+  "approval": "approved",
+  "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
+  "sourceComponents": [
+    "src/renderer/components/VisualSession.tsx",
+    "src/renderer/components/ConversationComposer.tsx",
+    "src/renderer/components/SetupDialog.tsx"
+  ],
+  "behaviorChecks": [
+    "System-owned pickers and permissions remain native.",
+    "Captured window name and target conversation appear in review.",
+    "Hold precedes Send; text extraction is optional."
+  ],
+  "baseline": "captures/baseline-settings.png",
+  "proposed": "captures/capture-mac-permission-proposed.png",
+  "annotated": "captures/capture-mac-permission-annotated.png",
+  "layoutImpactSelectors": [
+    ".modal"
+  ],
+  "layoutImpactBounds": [
+    {
+      "bottom": 880,
+      "height": 760,
+      "left": 240,
+      "right": 1200,
+      "selector": ".modal",
+      "top": 120,
+      "width": 960,
+      "x": 240,
+      "y": 120
+    },
+    {
+      "bottom": 880,
+      "height": 760,
+      "left": 240,
+      "right": 1200,
+      "selector": ".modal",
+      "top": 120,
+      "width": 960,
+      "x": 240,
+      "y": 120
+    }
+  ],
+  "invarianceOutsideLayoutImpact": {
+    "comparedPixels": 579511,
+    "differentPixels": 0,
+    "pixelsOverTolerance2": 0,
+    "maxChannelDifference": 0
+  },
+  "renderHealth": {
+    "bodyOverflow": false,
+    "brokenImages": [],
+    "offscreenChanges": []
+  },
+  "ownerReviewNotes": "",
+  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+}

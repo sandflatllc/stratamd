@@ -1,0 +1,106 @@
+{
+  "changes": [
+    {
+      "height": 63.390625,
+      "label": "Native question status, answer files, and dismissal",
+      "number": 1,
+      "selector": "[data-change-id=\"1\"]",
+      "width": 844,
+      "x": 413,
+      "y": 557.34375
+    }
+  ],
+  "flow": "questions",
+  "mode": "proposed",
+  "ready": true,
+  "scrollPositions": [],
+  "source": "questions",
+  "state": "dismissed",
+  "theme": "Strata",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "title": "Question dismissed",
+  "features": [
+    2,
+    7
+  ],
+  "approval": "changes",
+  "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
+  "sourceComponents": [
+    "src/renderer/components/Conversation.tsx",
+    "src/renderer/components/ConversationComposer.tsx"
+  ],
+  "behaviorChecks": [
+    "Hold keeps answers and answer files private until Send.",
+    "Dismiss appears only for optional questions.",
+    "Question file errors name the file and preserve the answer."
+  ],
+  "baseline": "captures/baseline-questions.png",
+  "proposed": "captures/questions-dismissed-proposed.png",
+  "annotated": "captures/questions-dismissed-annotated.png",
+  "layoutImpactSelectors": [
+    ".conversation-messages",
+    ".chat-composer"
+  ],
+  "layoutImpactBounds": [
+    {
+      "bottom": 762.5,
+      "height": 642.5,
+      "left": 370,
+      "right": 1300,
+      "selector": ".conversation-messages",
+      "top": 120,
+      "width": 930,
+      "x": 370,
+      "y": 120
+    },
+    {
+      "bottom": 971,
+      "height": 180.5,
+      "left": 548.328125,
+      "right": 1121.65625,
+      "selector": ".chat-composer",
+      "top": 790.5,
+      "width": 573.328125,
+      "x": 548.328125,
+      "y": 790.5
+    },
+    {
+      "bottom": 762.5,
+      "height": 642.5,
+      "left": 370,
+      "right": 1300,
+      "selector": ".conversation-messages",
+      "top": 120,
+      "width": 930,
+      "x": 370,
+      "y": 120
+    },
+    {
+      "bottom": 971,
+      "height": 180.5,
+      "left": 548.328125,
+      "right": 1121.65625,
+      "selector": ".chat-composer",
+      "top": 790.5,
+      "width": 573.328125,
+      "x": 548.328125,
+      "y": 790.5
+    }
+  ],
+  "invarianceOutsideLayoutImpact": {
+    "comparedPixels": 593009,
+    "differentPixels": 0,
+    "pixelsOverTolerance2": 0,
+    "maxChannelDifference": 0
+  },
+  "renderHealth": {
+    "bodyOverflow": false,
+    "brokenImages": [],
+    "offscreenChanges": []
+  },
+  "ownerReviewNotes": "1. This is really ugly and also all comment windows and stuff we is done as a modal",
+  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+}

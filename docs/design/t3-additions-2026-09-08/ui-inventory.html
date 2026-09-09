@@ -1,0 +1,219 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Strata mockup benchmarks</title><link rel="stylesheet" href="v2/gallery.css"></head><body><main class="guide"><a href="v2/">← Interactive gallery</a><h1>UI inventory for the 15 T3 additions</h1>
+<p>Status: revision 2, awaiting Dillon’s design review. Product implementation has not started.</p>
+<p>The <a href="v2/benchmark-guide.md">new benchmark guide</a> documents real Strata component exports, the default Strata theme, and clean versus highlighted screenshots. Revision 1 is superseded.</p>
+<p>The 15 accepted additions fit into 12 connected flows. Strata can reuse its conversation, Projects list, composer, settings dialogs, document tabs, and visual markup. Most of the visible work is extending those parts. The engine performance changes need no new controls.</p>
+<p><a href="http://127.0.0.1:43871/">Open the interactive gallery</a> · <a href="review-guide.md">Read the screenshot guide</a> · <a href="../../reviews/t3-recent-additions-ranked-2026-09-08.md">Read the original findings</a></p>
+<p>The feature numbers below match the first 15 rows of the ranked report. Flow numbers in the gallery identify groups of related screens, so they are a separate sequence.</p>
+<h2>What each addition needs</h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Existing Strata parts to reuse</th>
+<th>New or changed UI</th>
+<th>Mockup flow</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Engine usage reports and quota display</td>
+<td>Usage Limits dialog, provider groups, account choice, parking</td>
+<td>Remaining quota and reset time, spending pace marker, freshness/error labels, optional combined view, reset-credit confirmation when available</td>
+<td><a href="http://127.0.0.1:43871/?flow=usage&amp;state=accounts">03 · Usage limits</a></td>
+</tr>
+<tr>
+<td>2. Native async questions and dismissal</td>
+<td>Question cards, held answers, Send</td>
+<td>“Agent is still working” or “Agent is waiting”; optional-question Dismiss; held, sent, and dismissed history states</td>
+<td><a href="http://127.0.0.1:43871/?flow=questions&amp;state=asking">01 · Questions</a></td>
+</tr>
+<tr>
+<td>3. Binary attachments</td>
+<td>Composer attachment tray, saved drafts, file picker</td>
+<td>File cards with type, name, size, local state, remove, preview where supported, and retry</td>
+<td><a href="http://127.0.0.1:43871/?flow=files&amp;state=attached">02 · Files and previews</a></td>
+</tr>
+<tr>
+<td>4. Engine streaming and replay efficiency</td>
+<td>Conversation history, work log, engine status</td>
+<td>No performance setting. Preserve the visible conversation and draft during reconnect. Faster replay is behavior to measure during implementation.</td>
+<td><a href="http://127.0.0.1:43871/?flow=recovery&amp;state=reconnecting">11 · Connection and recovery</a></td>
+</tr>
+<tr>
+<td>5. Continue after engine restart</td>
+<td>Engine settings and connection status</td>
+<td>Opt-in preference, reconnect banner, confirmed native resume, distinct continuation-message notice, recovery action</td>
+<td><a href="http://127.0.0.1:43871/?flow=recovery&amp;state=setting">11 · Connection and recovery</a></td>
+</tr>
+<tr>
+<td>6. Compact context on demand</td>
+<td>Context meter and work log</td>
+<td>Context popover, Compact action, pending state, result divider, retry, unsupported state</td>
+<td><a href="http://127.0.0.1:43871/?flow=compact&amp;state=ready">04 · Compact context</a></td>
+</tr>
+<tr>
+<td>7. Attach a file to an individual answer</td>
+<td>Staged attachments, visual evidence, held answers</td>
+<td>Attachment area inside each question, association retained through Hold and Send, attachment error/retry</td>
+<td><a href="http://127.0.0.1:43871/?flow=questions&amp;state=held">01 · Questions</a></td>
+</tr>
+<tr>
+<td>8. Reliable browser evidence</td>
+<td>Transcript attachments, browser preview, markup</td>
+<td>Saved screenshot card, recording transfer state, named transfer failure, retry, preview details</td>
+<td><a href="http://127.0.0.1:43871/?flow=evidence&amp;state=saved">09 · Browser evidence</a></td>
+</tr>
+<tr>
+<td>9. Searchable commands and skills</td>
+<td>Composer and provider-reported capabilities</td>
+<td>Slash menu, grouped results, descriptions, keyboard selection, empty result, inserted skill token</td>
+<td><a href="http://127.0.0.1:43871/?flow=skills&amp;state=menu">05 · Commands and skills</a></td>
+</tr>
+<tr>
+<td>10. Shared project defaults and overrides</td>
+<td>Settings dialog, existing conversation options, conflict-aware saves</td>
+<td>Computer/project selector, effective value with its origin, project override, reset to inheritance, conflict notice</td>
+<td><a href="http://127.0.0.1:43871/?flow=defaults&amp;state=project">07 · Project defaults</a></td>
+</tr>
+<tr>
+<td>11. Unsent draft markers</td>
+<td>Saved composer drafts and Projects rows</td>
+<td>Small pen marker independent of work status, return to saved draft, scoped discard confirmation</td>
+<td><a href="http://127.0.0.1:43871/?flow=drafts&amp;state=markers">06 · Draft markers</a></td>
+</tr>
+<tr>
+<td>12. Import native conversations</td>
+<td>Project navigation, account identities, setup-dialog layout</td>
+<td>Import entry point, source selection, grouped conversation selection, review, progress, partial retry, completion</td>
+<td><a href="http://127.0.0.1:43871/?flow=import&amp;state=sources">08 · Import conversations</a></td>
+</tr>
+<tr>
+<td>13. PDF and HTML previews</td>
+<td>Document tabs, preview frame, attachment cards</td>
+<td>Read-only viewer, PDF page/zoom controls, HTML Preview/Source, file metadata and missing-file recovery</td>
+<td><a href="http://127.0.0.1:43871/?flow=files&amp;state=pdf">02 · Files and previews</a></td>
+</tr>
+<tr>
+<td>14. External-window capture</td>
+<td>Visual markup, held comments, image attachments</td>
+<td>Opt-in settings, shortcut assignment, platform permission explanation, native picker handoff, capture identity, mark/review/hold, screenshot-only fallback</td>
+<td><a href="http://127.0.0.1:43871/?flow=capture&amp;state=review">10 · Window capture</a></td>
+</tr>
+<tr>
+<td>15. Custom model names and options</td>
+<td>Provider Models dialog, favorites/visibility, composer controls</td>
+<td>Name and provider-ID fields, live name preview, supported option controls, validation, preserved-settings disclosure</td>
+<td><a href="http://127.0.0.1:43871/?flow=models&amp;state=edit">12 · Custom models</a></td>
+</tr>
+</tbody>
+</table>
+<h2>Shared component decisions</h2>
+<p>These are the visual and interaction decisions proposed for approval. They are not implementation instructions yet.</p>
+<h3>One private staging pattern</h3>
+<p>Questions, message attachments, visual comments, and external captures all use the same progression. Prepare the item, hold it, then deliver it with Send. A compact summary above the composer tells you what will go with the message.</p>
+<p>An answer’s files stay attached to that answer. Removing a message draft does not remove separate held comments or answers. Attachment-only answers should be allowed when supported, even though the primary mockup uses a written answer and an image together.</p>
+<p>The attachment card needs one shared layout for name, file type, size, local preparation, transfer failure, and preview. The displayed names and sizes are sample content. Actual count and size limits must come from Strata’s attachment policy and the connected engine, with generated document context included in the count.</p>
+<h3>Question status belongs beside the question</h3>
+<p>An optional async question says the agent is still working and has Dismiss. A blocking question says the agent is waiting and has no Dismiss. Hold answer keeps the existing Strata workflow, and Send delivers it.</p>
+<p>A dismissed question remains understandable in history. It does not look like an answered question, and it must not start a new turn. Native questions retain their identity so prose detection does not duplicate them.</p>
+<h3>File viewers use the current tab arrangement</h3>
+<p>PDF and HTML open as read-only documents with a return path to the conversation draft. PDF has page and zoom controls. HTML has Preview and Source. Markdown retains its existing editing behavior.</p>
+<p>The proposed HTML document preview is static. The mockup specifies scripts disabled and external requests blocked. A live website continues to use the browser. This policy is a design proposal for approval, not a claim that the current viewer already implements it.</p>
+<p>The PDF page is a layout fixture. The HTML and saved browser image use the same local sample page loaded by the isolated Strata app. These demonstrate proposed controls; they do not exercise a production PDF implementation or HTML isolation policy.</p>
+<h3>Usage starts with individual accounts</h3>
+<p>Keep account choice and parking in the existing dialog. Show remaining quota more prominently than used quota. Reset time and freshness belong beside the data. A failed refresh keeps the previous reading with an explicit age; absent provider data says “not reported.”</p>
+<p>Combined quota is an optional average of account percentages. It must not imply that account limits are interchangeable tokens. Reset credits appear only when reported as available and require an explicit redemption confirmation.</p>
+<p>The latest pooling and credit behaviors have their own upstream dependencies. Including their designs now does not imply that every part is in Strata’s bundled engine.</p>
+<h3>Defaults show what wins</h3>
+<p>Each setting shows both its current value and where it comes from. A project exception is labeled as an override and has a reset action. Changes affect new conversations; existing conversations retain their choices.</p>
+<p>The mockup covers model, reasoning effort, and working copy because those affect Strata work today. It does not add a project automation editor. A save conflict keeps the proposed changes available and offers a review of current settings.</p>
+<h3>Import is an explicit, bounded action</h3>
+<p>“Import existing work” lives in Projects. The flow shows which local account homes will be read, which conversations were found, where they will appear, and the result for each one.</p>
+<p>Import copies history without starting an agent. Already imported conversations are skipped on retry. Continuing an imported conversation is a later deliberate action, subject to account and provider support. Continuous synchronization with another agent app is outside this addition.</p>
+<h3>Captures arrive in review</h3>
+<p>Capture starts off. The user selects a window through the platform’s picker, reviews the resulting screenshot, adds a note or markup, and holds it for Send. Optional app text has its own setting and can fail without losing the image.</p>
+<p>The window-choice mockup represents the native picker handoff. It is not a proposed replacement for macOS, Windows, or Linux system UI. The macOS permission screen is one platform-specific example. Linux and Windows need their own capability and permission handling during implementation. Shortcut availability must follow the actual desktop environment.</p>
+<h3>Recovery describes what actually happened</h3>
+<p>Restart continuation starts off. A reconnect state keeps history and the draft in place. Success appears only after engine confirmation.</p>
+<p>The two successful outcomes are separate. A native session resumes, or Strata sends a continuation message that starts another provider turn. The latter appears in history with its origin. A failed resume leaves an explicit Continue action. Engine efficiency changes add no configuration panel.</p>
+<h3>Models preserve compatibility</h3>
+<p>Display name and provider model ID are separate fields. Supported options come from the provider. Strata must keep structured settings and unknown options that another client saved, even when Strata cannot edit them.</p>
+<p>The model IDs and options in the mockup are illustrative. The implementation must populate the editor from actual provider capabilities.</p>
+<h2>Screen-state coverage</h2>
+<table>
+<thead>
+<tr>
+<th>Flow</th>
+<th>States available in the gallery</th>
+<th>Review status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>01. Questions</td>
+<td>Working while asked; answer held; answer sent; dismissed; blocking; attachment failed</td>
+<td>Pending</td>
+</tr>
+<tr>
+<td>02. Files and previews</td>
+<td>Draft attachments; PDF; HTML preview; HTML source; missing file; send failed</td>
+<td>Pending</td>
+</tr>
+<tr>
+<td>03. Usage limits</td>
+<td>Individual accounts; combined; stale data; unavailable data; credit confirmation</td>
+<td>Pending</td>
+</tr>
+<tr>
+<td>04. Compact context</td>
+<td>Ready; compacting; completed; failed; unsupported</td>
+<td>Pending</td>
+</tr>
+<tr>
+<td>05. Commands and skills</td>
+<td>Menu; filtered results; inserted token; no match</td>
+<td>Pending</td>
+</tr>
+<tr>
+<td>06. Draft markers</td>
+<td>Sidebar markers; reopened draft; discard confirmation</td>
+<td>Pending</td>
+</tr>
+<tr>
+<td>07. Project defaults</td>
+<td>Computer; inherited project; override; concurrent change conflict</td>
+<td>Pending</td>
+</tr>
+<tr>
+<td>08. Import conversations</td>
+<td>Sources; selection; confirmation; progress; partial failure; complete</td>
+<td>Pending</td>
+</tr>
+<tr>
+<td>09. Browser evidence</td>
+<td>Saved screenshot; recording transfer; transfer failure; preview</td>
+<td>Pending</td>
+</tr>
+<tr>
+<td>10. Window capture</td>
+<td>Settings; macOS permission; picker handoff; marked review; image-only fallback; held</td>
+<td>Pending</td>
+</tr>
+<tr>
+<td>11. Connection and recovery</td>
+<td>Preference; reconnecting; native resume; continuation message; failed resume</td>
+<td>Pending</td>
+</tr>
+<tr>
+<td>12. Custom models</td>
+<td>Model list; details; supported options; invalid value</td>
+<td>Pending</td>
+</tr>
+</tbody>
+</table>
+<p>All 58 screen states can be selected directly. Waiting states stay still so they can be reviewed. Use the state buttons to inspect the corresponding success or failure outcome. Forms and key actions simulate the connected flow; no engine, provider, native capture, or project data is touched.</p>
+<h2>Basis and boundaries</h2>
+<p>The source basis is the <a href="../../reviews/t3-recent-additions-ranked-2026-09-08.md">September 8 research report</a> and its linked T3 changes. The visual basis is current Strata at <code>f461fe9ff3daf018700df3caa4aefa985cac7de0</code>, including its bundled themes, fonts, frameless window layout, composer, provider question cards, Provider Models dialog, and preview arrangements.</p>
+<p>The main reuse points are <a href="../../../src/renderer/components/Conversation.tsx">Conversation</a>, <a href="../../../src/renderer/components/ConversationComposer.tsx">ConversationComposer</a>, <a href="../../../src/renderer/components/ProjectsPanel.tsx">ProjectsPanel</a>, <a href="../../../src/renderer/components/ProviderModels.tsx">ProviderModels</a>, <a href="../../../src/renderer/components/ConnectSetup.tsx">ConnectSetup</a>, and <a href="../../../src/renderer/components/PreviewWindow.tsx">PreviewWindow</a>. The gallery copies fonts, brand assets, and color values into its own folder. It does not import or alter the running application.</p>
+<p>This review approves appearance and behavior. Implementation sequencing, engine version selection, native platform work, data migration, and product verification follow after all mockups are approved. Features 7, 8, and 14, plus some refinements under 1 and 2, depend on work after the stable release inspected in the report.</p>
+</main></body></html>

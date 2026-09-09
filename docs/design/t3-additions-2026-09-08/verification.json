@@ -1,0 +1,2144 @@
+{
+  "created": "2026-09-09T03:33:27Z",
+  "browser": "agent-browser / Chromium",
+  "scope": "Standalone design artifact; no Strata application or engine calls",
+  "screens": [
+    {
+      "flow": "questions",
+      "state": "asking",
+      "label": "Agent still working",
+      "capture": "captures/questions-asking.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "questions",
+      "state": "held",
+      "label": "Answer held",
+      "capture": "captures/questions-held.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "questions",
+      "state": "sent",
+      "label": "Answer sent",
+      "capture": "captures/questions-sent.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "questions",
+      "state": "dismissed",
+      "label": "Question dismissed",
+      "capture": "captures/questions-dismissed.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "questions",
+      "state": "blocking",
+      "label": "Answer required",
+      "capture": "captures/questions-blocking.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "questions",
+      "state": "upload-error",
+      "label": "Attachment failed",
+      "capture": "captures/questions-upload-error.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "files",
+      "state": "attached",
+      "label": "Ready to send",
+      "capture": "captures/files-attached.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "files",
+      "state": "pdf",
+      "label": "PDF preview",
+      "capture": "captures/files-pdf.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "files",
+      "state": "html",
+      "label": "HTML preview",
+      "capture": "captures/files-html.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "files",
+      "state": "source",
+      "label": "HTML source",
+      "capture": "captures/files-source.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "files",
+      "state": "file-error",
+      "label": "File unavailable",
+      "capture": "captures/files-file-error.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "files",
+      "state": "upload-error",
+      "label": "Send failed",
+      "capture": "captures/files-upload-error.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "usage",
+      "state": "accounts",
+      "label": "Account limits",
+      "capture": "captures/usage-accounts.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "usage",
+      "state": "pooled",
+      "label": "Combined limits",
+      "capture": "captures/usage-pooled.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "usage",
+      "state": "stale",
+      "label": "Refresh failed",
+      "capture": "captures/usage-stale.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "usage",
+      "state": "unavailable",
+      "label": "Not reported",
+      "capture": "captures/usage-unavailable.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "usage",
+      "state": "reset",
+      "label": "Use a reset credit",
+      "capture": "captures/usage-reset.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "compact",
+      "state": "ready",
+      "label": "Context is nearly full",
+      "capture": "captures/compact-ready.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "compact",
+      "state": "working",
+      "label": "Compacting",
+      "capture": "captures/compact-working.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "compact",
+      "state": "done",
+      "label": "Context compacted",
+      "capture": "captures/compact-done.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "compact",
+      "state": "failed",
+      "label": "Compaction failed",
+      "capture": "captures/compact-failed.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "compact",
+      "state": "unsupported",
+      "label": "Unavailable for this agent",
+      "capture": "captures/compact-unsupported.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "skills",
+      "state": "menu",
+      "label": "Commands and skills",
+      "capture": "captures/skills-menu.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "skills",
+      "state": "filtered",
+      "label": "Search results",
+      "capture": "captures/skills-filtered.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "skills",
+      "state": "inserted",
+      "label": "Skill in draft",
+      "capture": "captures/skills-inserted.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "skills",
+      "state": "empty",
+      "label": "No matching skill",
+      "capture": "captures/skills-empty.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "drafts",
+      "state": "markers",
+      "label": "Drafts in the sidebar",
+      "capture": "captures/drafts-markers.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "drafts",
+      "state": "opened",
+      "label": "Return to a draft",
+      "capture": "captures/drafts-opened.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "drafts",
+      "state": "discard",
+      "label": "Discard message draft",
+      "capture": "captures/drafts-discard.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "defaults",
+      "state": "computer",
+      "label": "Computer defaults",
+      "capture": "captures/defaults-computer.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "defaults",
+      "state": "project",
+      "label": "Project inheritance",
+      "capture": "captures/defaults-project.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "defaults",
+      "state": "override",
+      "label": "Project override",
+      "capture": "captures/defaults-override.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "defaults",
+      "state": "conflict",
+      "label": "Settings changed elsewhere",
+      "capture": "captures/defaults-conflict.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "import",
+      "state": "sources",
+      "label": "Choose sources",
+      "capture": "captures/import-sources.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "import",
+      "state": "select",
+      "label": "Choose conversations",
+      "capture": "captures/import-select.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "import",
+      "state": "confirm",
+      "label": "Review import",
+      "capture": "captures/import-confirm.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "import",
+      "state": "progress",
+      "label": "Importing",
+      "capture": "captures/import-progress.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "import",
+      "state": "partial",
+      "label": "Some could not be imported",
+      "capture": "captures/import-partial.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "import",
+      "state": "done",
+      "label": "Import complete",
+      "capture": "captures/import-done.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "evidence",
+      "state": "saved",
+      "label": "Screenshot available",
+      "capture": "captures/evidence-saved.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "evidence",
+      "state": "transfer",
+      "label": "Copying recording",
+      "capture": "captures/evidence-transfer.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "evidence",
+      "state": "failed",
+      "label": "Copy failed",
+      "capture": "captures/evidence-failed.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "evidence",
+      "state": "preview",
+      "label": "Review evidence",
+      "capture": "captures/evidence-preview.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "capture",
+      "state": "setup",
+      "label": "Capture settings",
+      "capture": "captures/capture-setup.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "capture",
+      "state": "mac-permission",
+      "label": "Mac permissions",
+      "capture": "captures/capture-mac-permission.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "capture",
+      "state": "choose",
+      "label": "Choose a window",
+      "capture": "captures/capture-choose.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "capture",
+      "state": "review",
+      "label": "Mark and hold",
+      "capture": "captures/capture-review.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "capture",
+      "state": "screenshot-only",
+      "label": "No app text available",
+      "capture": "captures/capture-screenshot-only.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "capture",
+      "state": "held",
+      "label": "Capture held",
+      "capture": "captures/capture-held.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "recovery",
+      "state": "setting",
+      "label": "Continuation preference",
+      "capture": "captures/recovery-setting.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "recovery",
+      "state": "reconnecting",
+      "label": "Reconnecting",
+      "capture": "captures/recovery-reconnecting.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "recovery",
+      "state": "resumed",
+      "label": "Session resumed",
+      "capture": "captures/recovery-resumed.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "recovery",
+      "state": "continued",
+      "label": "Continuation message sent",
+      "capture": "captures/recovery-continued.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "recovery",
+      "state": "failed",
+      "label": "Could not resume",
+      "capture": "captures/recovery-failed.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "models",
+      "state": "list",
+      "label": "Provider models",
+      "capture": "captures/models-list.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "models",
+      "state": "edit",
+      "label": "Model details",
+      "capture": "captures/models-edit.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "models",
+      "state": "options",
+      "label": "Supported options",
+      "capture": "captures/models-options.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    },
+    {
+      "flow": "models",
+      "state": "invalid",
+      "label": "Invalid option value",
+      "capture": "captures/models-invalid.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "horizontalOverflow": false
+    }
+  ],
+  "layoutChecks": [
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "questions",
+      "state": "asking",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "questions",
+      "state": "held",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "questions",
+      "state": "sent",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "questions",
+      "state": "dismissed",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "questions",
+      "state": "blocking",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "questions",
+      "state": "upload-error",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "files",
+      "state": "attached",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "files",
+      "state": "pdf",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "files",
+      "state": "html",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "files",
+      "state": "source",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "files",
+      "state": "file-error",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "files",
+      "state": "upload-error",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "usage",
+      "state": "accounts",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "usage",
+      "state": "pooled",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "usage",
+      "state": "stale",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "usage",
+      "state": "unavailable",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "usage",
+      "state": "reset",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "compact",
+      "state": "ready",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "compact",
+      "state": "working",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "compact",
+      "state": "done",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "compact",
+      "state": "failed",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "compact",
+      "state": "unsupported",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "skills",
+      "state": "menu",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "skills",
+      "state": "filtered",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "skills",
+      "state": "inserted",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "skills",
+      "state": "empty",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "drafts",
+      "state": "markers",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "drafts",
+      "state": "opened",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "drafts",
+      "state": "discard",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "defaults",
+      "state": "computer",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "defaults",
+      "state": "project",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "defaults",
+      "state": "override",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "defaults",
+      "state": "conflict",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "import",
+      "state": "sources",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "import",
+      "state": "select",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "import",
+      "state": "confirm",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "import",
+      "state": "progress",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "import",
+      "state": "partial",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "import",
+      "state": "done",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "evidence",
+      "state": "saved",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "evidence",
+      "state": "transfer",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "evidence",
+      "state": "failed",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "evidence",
+      "state": "preview",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "capture",
+      "state": "setup",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "capture",
+      "state": "mac-permission",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "capture",
+      "state": "choose",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "capture",
+      "state": "review",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "capture",
+      "state": "screenshot-only",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "capture",
+      "state": "held",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "recovery",
+      "state": "setting",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "recovery",
+      "state": "reconnecting",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "recovery",
+      "state": "resumed",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "recovery",
+      "state": "continued",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "recovery",
+      "state": "failed",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "models",
+      "state": "list",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "models",
+      "state": "edit",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "models",
+      "state": "options",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "theme": "night",
+      "flow": "models",
+      "state": "invalid",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "questions",
+      "state": "asking",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "questions",
+      "state": "held",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "questions",
+      "state": "sent",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "questions",
+      "state": "dismissed",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "questions",
+      "state": "blocking",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "questions",
+      "state": "upload-error",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "files",
+      "state": "attached",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "files",
+      "state": "pdf",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "files",
+      "state": "html",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "files",
+      "state": "source",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "files",
+      "state": "file-error",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "files",
+      "state": "upload-error",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "usage",
+      "state": "accounts",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "usage",
+      "state": "pooled",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "usage",
+      "state": "stale",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "usage",
+      "state": "unavailable",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "usage",
+      "state": "reset",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "compact",
+      "state": "ready",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "compact",
+      "state": "working",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "compact",
+      "state": "done",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "compact",
+      "state": "failed",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "compact",
+      "state": "unsupported",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "skills",
+      "state": "menu",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "skills",
+      "state": "filtered",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "skills",
+      "state": "inserted",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "skills",
+      "state": "empty",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "drafts",
+      "state": "markers",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "drafts",
+      "state": "opened",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "drafts",
+      "state": "discard",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "defaults",
+      "state": "computer",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "defaults",
+      "state": "project",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "defaults",
+      "state": "override",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "defaults",
+      "state": "conflict",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "import",
+      "state": "sources",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "import",
+      "state": "select",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "import",
+      "state": "confirm",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "import",
+      "state": "progress",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "import",
+      "state": "partial",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "import",
+      "state": "done",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "evidence",
+      "state": "saved",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "evidence",
+      "state": "transfer",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "evidence",
+      "state": "failed",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "evidence",
+      "state": "preview",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "capture",
+      "state": "setup",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "capture",
+      "state": "mac-permission",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "capture",
+      "state": "choose",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "capture",
+      "state": "review",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "capture",
+      "state": "screenshot-only",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "capture",
+      "state": "held",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "recovery",
+      "state": "setting",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "recovery",
+      "state": "reconnecting",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "recovery",
+      "state": "resumed",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "recovery",
+      "state": "continued",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "recovery",
+      "state": "failed",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "models",
+      "state": "list",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "models",
+      "state": "edit",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "models",
+      "state": "options",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": [
+        960,
+        800
+      ],
+      "theme": "light",
+      "flow": "models",
+      "state": "invalid",
+      "dialogOverflow": false,
+      "hasApp": true,
+      "horizontalOverflow": false
+    }
+  ],
+  "interactions": [
+    {
+      "check": "Hold an edited answer, then send it with the question association",
+      "passed": true
+    },
+    {
+      "check": "Optional questions can be dismissed; blocking questions cannot",
+      "passed": true
+    },
+    {
+      "check": "PDF and HTML cards open the matching read-only tabs",
+      "passed": true
+    },
+    {
+      "check": "Typing filters skills and selecting one inserts it into the draft",
+      "passed": true
+    },
+    {
+      "check": "Compact starts a waiting state and disables Send",
+      "passed": true
+    },
+    {
+      "check": "Discarding a message leaves held comments intact",
+      "passed": true
+    },
+    {
+      "check": "Import selection changes the count and review summary",
+      "passed": true
+    },
+    {
+      "check": "Project override can be reset to inherited defaults",
+      "passed": true
+    },
+    {
+      "check": "Capture is disabled until its opt-in toggle is enabled",
+      "passed": true
+    },
+    {
+      "check": "Capture note is held with the image",
+      "passed": true
+    },
+    {
+      "check": "Custom model names preview immediately; invalid options are rejected",
+      "passed": true
+    },
+    {
+      "check": "Continuation remains off by default and reconnect preserves the draft",
+      "passed": true
+    },
+    {
+      "check": "Keyboard Enter inserts the filtered skill through browser key events",
+      "passed": true
+    },
+    {
+      "check": "Review notes persist status and text in the isolated review browser",
+      "passed": true
+    }
+  ],
+  "browserErrors": {
+    "errors": [],
+    "lifecycle": {
+      "effectiveLaunch": {
+        "browserLaunched": true,
+        "engine": "chrome",
+        "launchHash": 11677035664275010974
+      },
+      "launched": false,
+      "relaunchedBrowser": false,
+      "restartedBackground": false,
+      "restoreStatus": "not_configured",
+      "reused": true,
+      "saveStatus": "not_attempted"
+    }
+  },
+  "reviewNotesCleanup": "Verification note removed; all owner review statuses remain pending",
+  "documentChecks": {
+    "inventoryFeatureRows": 15,
+    "inventoryTables": 2,
+    "guideScreenshots": 12,
+    "horizontalOverflow": false
+  },
+  "manualVisualReview": [
+    "questions/asking",
+    "files/attached",
+    "files/pdf",
+    "usage/accounts",
+    "compact/ready",
+    "skills/menu",
+    "drafts/markers",
+    "defaults/project",
+    "import/select",
+    "evidence/saved",
+    "capture/review",
+    "recovery/reconnecting",
+    "models/edit",
+    "models/invalid",
+    "overview"
+  ],
+  "inputs": {
+    "index.html": "1287506404c6705ad15b110c5e8b2d70a55338e81b4142fe5014a7d7358dc120",
+    "data.js": "dbf0a8498b8fa39e442f70a5606c13e207c32715bb420ada4a612e9bec0e34df",
+    "app.js": "84c224a0f8df0bb811b1224aaab750055e7cfd25d97b84dd3853b2f7d9268afe",
+    "styles.css": "55da2e44c804d694b58a489018d63799d30a43b412962d9cae96b904b3850b60",
+    "themes.css": "ce9314603975cfe91b5a18d4718f4c45114f7e1788955b8f7193f6aa431c9c89"
+  }
+}

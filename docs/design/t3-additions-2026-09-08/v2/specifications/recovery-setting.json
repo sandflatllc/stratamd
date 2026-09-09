@@ -1,0 +1,84 @@
+{
+  "changes": [
+    {
+      "height": 90.1875,
+      "label": "Continuation preference in the existing Engine dialog",
+      "number": 1,
+      "selector": "[data-change-id=\"1\"]",
+      "width": 902,
+      "x": 269,
+      "y": 578
+    }
+  ],
+  "flow": "recovery",
+  "mode": "proposed",
+  "ready": true,
+  "scrollPositions": [],
+  "source": "engine",
+  "state": "setting",
+  "theme": "Strata",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "title": "Continuation preference",
+  "features": [
+    4,
+    5
+  ],
+  "approval": "approved",
+  "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
+  "sourceComponents": [
+    "src/renderer/components/EngineDialog.tsx",
+    "src/renderer/components/Conversation.tsx"
+  ],
+  "behaviorChecks": [
+    "Continuation defaults off.",
+    "Resume is announced only after engine confirmation.",
+    "History and drafts remain available through reconnect.",
+    "Feature 4 is internal performance work and adds no visual control."
+  ],
+  "baseline": "captures/baseline-engine.png",
+  "proposed": "captures/recovery-setting-proposed.png",
+  "annotated": "captures/recovery-setting-annotated.png",
+  "layoutImpactSelectors": [
+    ".modal"
+  ],
+  "layoutImpactBounds": [
+    {
+      "bottom": 880,
+      "height": 760,
+      "left": 240,
+      "right": 1200,
+      "selector": ".modal",
+      "top": 120,
+      "width": 960,
+      "x": 240,
+      "y": 120
+    },
+    {
+      "bottom": 880,
+      "height": 760,
+      "left": 240,
+      "right": 1200,
+      "selector": ".modal",
+      "top": 120,
+      "width": 960,
+      "x": 240,
+      "y": 120
+    }
+  ],
+  "invarianceOutsideLayoutImpact": {
+    "comparedPixels": 579511,
+    "differentPixels": 0,
+    "pixelsOverTolerance2": 0,
+    "maxChannelDifference": 0
+  },
+  "renderHealth": {
+    "bodyOverflow": false,
+    "brokenImages": [],
+    "offscreenChanges": []
+  },
+  "ownerReviewNotes": "",
+  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+}

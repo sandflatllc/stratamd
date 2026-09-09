@@ -1,0 +1,100 @@
+{
+  "changes": [
+    {
+      "height": 35.75,
+      "label": "Read-only document tab",
+      "number": 1,
+      "selector": "[data-change-id=\"1\"]",
+      "width": 187.28125,
+      "x": 269,
+      "y": 78.25
+    },
+    {
+      "height": 73.5,
+      "label": "Document preview controls",
+      "number": 2,
+      "selector": "[data-change-id=\"2\"]",
+      "width": 838,
+      "x": 257,
+      "y": 114
+    },
+    {
+      "height": 795.5,
+      "label": "Read-only file content or file error",
+      "number": 3,
+      "selector": "[data-change-id=\"3\"]",
+      "width": 838,
+      "x": 257,
+      "y": 187.5
+    }
+  ],
+  "flow": "files",
+  "mode": "proposed",
+  "ready": true,
+  "scrollPositions": [],
+  "source": "preview",
+  "state": "source",
+  "theme": "Strata",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "title": "HTML source",
+  "features": [
+    3,
+    13
+  ],
+  "approval": "pending",
+  "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
+  "sourceComponents": [
+    "src/renderer/components/Conversation.tsx",
+    "src/renderer/components/ConversationComposer.tsx",
+    "src/renderer/components/PreviewWindow.tsx"
+  ],
+  "behaviorChecks": [
+    "Binary attachments retain their original bytes.",
+    "Preview is read only; HTML source and preview refer to the same file.",
+    "A send failure retains the message and files."
+  ],
+  "baseline": "captures/baseline-preview.png",
+  "proposed": "captures/files-source-proposed.png",
+  "annotated": "captures/files-source-annotated.png",
+  "layoutImpactSelectors": [
+    ".preview-window"
+  ],
+  "layoutImpactBounds": [
+    {
+      "bottom": 983,
+      "height": 918,
+      "left": 257,
+      "right": 1095,
+      "selector": ".preview-window",
+      "top": 65,
+      "width": 838,
+      "x": 257,
+      "y": 65
+    },
+    {
+      "bottom": 983,
+      "height": 918,
+      "left": 257,
+      "right": 1095,
+      "selector": ".preview-window",
+      "top": 65,
+      "width": 838,
+      "x": 257,
+      "y": 65
+    }
+  ],
+  "invarianceOutsideLayoutImpact": {
+    "comparedPixels": 555419,
+    "differentPixels": 0,
+    "pixelsOverTolerance2": 0,
+    "maxChannelDifference": 0
+  },
+  "renderHealth": {
+    "bodyOverflow": false,
+    "brokenImages": [],
+    "offscreenChanges": []
+  }
+}

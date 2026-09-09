@@ -1,0 +1,124 @@
+{
+  "changes": [
+    {
+      "height": 74,
+      "label": "Draft text for this feature",
+      "number": 1,
+      "selector": "[data-change-id=\"1\"]",
+      "width": 543.328125,
+      "x": 563.328125,
+      "y": 815.5
+    },
+    {
+      "height": 281.890625,
+      "label": "Searchable commands and skills in the composer",
+      "number": 2,
+      "selector": "[data-change-id=\"2\"]",
+      "width": 360,
+      "x": 761.65625,
+      "y": 498.609375
+    }
+  ],
+  "flow": "skills",
+  "mode": "proposed",
+  "ready": true,
+  "scrollPositions": [],
+  "source": "questions",
+  "state": "menu",
+  "theme": "Strata",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "title": "Commands and skills",
+  "features": [
+    9
+  ],
+  "approval": "approved",
+  "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
+  "sourceComponents": [
+    "src/renderer/components/ConversationComposer.tsx"
+  ],
+  "behaviorChecks": [
+    "Selecting a skill changes the draft without sending.",
+    "Search handles an empty result.",
+    "Immediate commands are distinct from draft insertions."
+  ],
+  "baseline": "captures/baseline-questions.png",
+  "proposed": "captures/skills-menu-proposed.png",
+  "annotated": "captures/skills-menu-annotated.png",
+  "layoutImpactSelectors": [
+    ".conversation-messages",
+    ".chat-composer"
+  ],
+  "layoutImpactBounds": [
+    {
+      "bottom": 762.5,
+      "height": 642.5,
+      "left": 370,
+      "right": 1300,
+      "selector": ".conversation-messages",
+      "top": 120,
+      "width": 930,
+      "x": 370,
+      "y": 120
+    },
+    {
+      "bottom": 971,
+      "height": 180.5,
+      "left": 548.328125,
+      "right": 1121.65625,
+      "selector": ".chat-composer",
+      "top": 790.5,
+      "width": 573.328125,
+      "x": 548.328125,
+      "y": 790.5
+    },
+    {
+      "bottom": 762.5,
+      "height": 642.5,
+      "left": 370,
+      "right": 1300,
+      "selector": ".conversation-messages",
+      "top": 120,
+      "width": 930,
+      "x": 370,
+      "y": 120
+    },
+    {
+      "bottom": 971,
+      "height": 180.5,
+      "left": 548.328125,
+      "right": 1121.65625,
+      "selector": ".chat-composer",
+      "top": 790.5,
+      "width": 573.328125,
+      "x": 548.328125,
+      "y": 790.5
+    },
+    {
+      "bottom": 780.5,
+      "height": 281.890625,
+      "left": 761.65625,
+      "right": 1121.65625,
+      "selector": ".proposal-menu",
+      "top": 498.609375,
+      "width": 360,
+      "x": 761.65625,
+      "y": 498.609375
+    }
+  ],
+  "invarianceOutsideLayoutImpact": {
+    "comparedPixels": 593009,
+    "differentPixels": 0,
+    "pixelsOverTolerance2": 0,
+    "maxChannelDifference": 0
+  },
+  "renderHealth": {
+    "bodyOverflow": false,
+    "brokenImages": [],
+    "offscreenChanges": []
+  },
+  "ownerReviewNotes": "",
+  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+}

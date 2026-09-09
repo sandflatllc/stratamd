@@ -1,0 +1,139 @@
+{
+  "changes": [
+    {
+      "height": 24,
+      "label": "Engine reconnect status",
+      "number": 1,
+      "selector": "[data-change-id=\"1\"]",
+      "width": 108.8125,
+      "x": 1009.015625,
+      "y": 14
+    },
+    {
+      "height": 73.5,
+      "label": "Work status for this feature",
+      "number": 2,
+      "selector": "[data-change-id=\"2\"]",
+      "width": 844,
+      "x": 413,
+      "y": 636.34375
+    }
+  ],
+  "flow": "recovery",
+  "mode": "proposed",
+  "ready": true,
+  "scrollPositions": [],
+  "source": "questions",
+  "state": "reconnecting",
+  "theme": "Strata",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "title": "Reconnecting",
+  "features": [
+    4,
+    5
+  ],
+  "approval": "approved",
+  "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
+  "sourceComponents": [
+    "src/renderer/components/EngineDialog.tsx",
+    "src/renderer/components/Conversation.tsx"
+  ],
+  "behaviorChecks": [
+    "Continuation defaults off.",
+    "Resume is announced only after engine confirmation.",
+    "History and drafts remain available through reconnect.",
+    "Feature 4 is internal performance work and adds no visual control."
+  ],
+  "baseline": "captures/baseline-questions.png",
+  "proposed": "captures/recovery-reconnecting-proposed.png",
+  "annotated": "captures/recovery-reconnecting-annotated.png",
+  "layoutImpactSelectors": [
+    ".conversation-messages",
+    ".chat-composer",
+    "[aria-label=\"Engine status\"]"
+  ],
+  "layoutImpactBounds": [
+    {
+      "bottom": 762.5,
+      "height": 642.5,
+      "left": 370,
+      "right": 1300,
+      "selector": ".conversation-messages",
+      "top": 120,
+      "width": 930,
+      "x": 370,
+      "y": 120
+    },
+    {
+      "bottom": 971,
+      "height": 180.5,
+      "left": 548.328125,
+      "right": 1121.65625,
+      "selector": ".chat-composer",
+      "top": 790.5,
+      "width": 573.328125,
+      "x": 548.328125,
+      "y": 790.5
+    },
+    {
+      "bottom": 38,
+      "height": 24,
+      "left": 1025.3125,
+      "right": 1117.828125,
+      "selector": "[aria-label=\"Engine status\"]",
+      "top": 14,
+      "width": 92.515625,
+      "x": 1025.3125,
+      "y": 14
+    },
+    {
+      "bottom": 762.5,
+      "height": 642.5,
+      "left": 370,
+      "right": 1300,
+      "selector": ".conversation-messages",
+      "top": 120,
+      "width": 930,
+      "x": 370,
+      "y": 120
+    },
+    {
+      "bottom": 971,
+      "height": 180.5,
+      "left": 548.328125,
+      "right": 1121.65625,
+      "selector": ".chat-composer",
+      "top": 790.5,
+      "width": 573.328125,
+      "x": 548.328125,
+      "y": 790.5
+    },
+    {
+      "bottom": 38,
+      "height": 24,
+      "left": 1009.015625,
+      "right": 1117.828125,
+      "selector": "[aria-label=\"Engine status\"]",
+      "top": 14,
+      "width": 108.8125,
+      "x": 1009.015625,
+      "y": 14
+    }
+  ],
+  "invarianceOutsideLayoutImpact": {
+    "comparedPixels": 579434,
+    "differentPixels": 0,
+    "pixelsOverTolerance2": 0,
+    "maxChannelDifference": 0
+  },
+  "renderHealth": {
+    "bodyOverflow": false,
+    "brokenImages": [],
+    "offscreenChanges": []
+  },
+  "ownerReviewNotes": "",
+  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+}

@@ -1,0 +1,173 @@
+{
+  "capturedAt": "2026-09-09T05:16:46.698Z",
+  "source": "Gallery localStorage: strata-t3-review-v2",
+  "url": "http://127.0.0.1:43871/v2/?flow=questions&state=asking&mode=annotated",
+  "review": {
+    "questions": {
+      "status": "changes",
+      "notes": "1. This is really ugly and also all comment windows and stuff we is done as a modal"
+    },
+    "usage": {
+      "status": "approved",
+      "notes": "2. codex doesnt have 5 hour limits other than that its god"
+    },
+    "compact": {
+      "status": "approved",
+      "notes": ""
+    },
+    "skills": {
+      "status": "approved",
+      "notes": ""
+    },
+    "drafts": {
+      "status": "approved",
+      "notes": ""
+    },
+    "defaults": {
+      "status": "approved",
+      "notes": ""
+    },
+    "import": {
+      "status": "approved",
+      "notes": ""
+    },
+    "recovery": {
+      "status": "approved",
+      "notes": ""
+    },
+    "models": {
+      "status": "approved",
+      "notes": ""
+    },
+    "capture": {
+      "status": "approved",
+      "notes": ""
+    }
+  },
+  "flows": [
+    {
+      "id": "questions",
+      "title": "Questions",
+      "features": [
+        2,
+        7
+      ],
+      "status": "changes",
+      "notes": "1. This is really ugly and also all comment windows and stuff we is done as a modal"
+    },
+    {
+      "id": "files",
+      "title": "Files and previews",
+      "features": [
+        3,
+        13
+      ],
+      "status": "unreviewed",
+      "notes": ""
+    },
+    {
+      "id": "usage",
+      "title": "Usage limits",
+      "features": [
+        1
+      ],
+      "status": "approved",
+      "notes": "2. codex doesnt have 5 hour limits other than that its god"
+    },
+    {
+      "id": "compact",
+      "title": "Compact context",
+      "features": [
+        6
+      ],
+      "status": "approved",
+      "notes": ""
+    },
+    {
+      "id": "skills",
+      "title": "Commands and skills",
+      "features": [
+        9
+      ],
+      "status": "approved",
+      "notes": ""
+    },
+    {
+      "id": "drafts",
+      "title": "Draft markers",
+      "features": [
+        11
+      ],
+      "status": "approved",
+      "notes": ""
+    },
+    {
+      "id": "defaults",
+      "title": "Project defaults",
+      "features": [
+        10
+      ],
+      "status": "approved",
+      "notes": ""
+    },
+    {
+      "id": "import",
+      "title": "Import conversations",
+      "features": [
+        12
+      ],
+      "status": "approved",
+      "notes": ""
+    },
+    {
+      "id": "evidence",
+      "title": "Browser evidence",
+      "features": [
+        8
+      ],
+      "status": "unreviewed",
+      "notes": ""
+    },
+    {
+      "id": "capture",
+      "title": "Window capture",
+      "features": [
+        14
+      ],
+      "status": "approved",
+      "notes": ""
+    },
+    {
+      "id": "recovery",
+      "title": "Connection and recovery",
+      "features": [
+        4,
+        5
+      ],
+      "status": "approved",
+      "notes": ""
+    },
+    {
+      "id": "models",
+      "title": "Custom models",
+      "features": [
+        15
+      ],
+      "status": "approved",
+      "notes": ""
+    }
+  ],
+  "approvalInterpretation": {
+    "deliveryId": "5d6ccfbc-edf3-4998-8671-2193b12f8cdf",
+    "itemId": "ask_8fd06cc4ddad8fb4",
+    "ownerWording": "If they are marked approved with a comment that meansa fix the comment but evyerything else was good",
+    "rule": "An approved flow remains approved. Comments require targeted corrections; the rest of the design is accepted."
+  },
+  "corrections": {
+    "usage": {
+      "status": "applied",
+      "details": "Removed the Codex five-hour fixture row; combined short window now includes Claude only, and the reset-credit example targets Claude.",
+      "verification": "All five usage states rendered without broken images, offscreen changes, or unexpected differences outside the dialog."
+    }
+  }
+}

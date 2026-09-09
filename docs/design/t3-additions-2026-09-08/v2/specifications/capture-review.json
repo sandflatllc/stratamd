@@ -1,0 +1,83 @@
+{
+  "changes": [
+    {
+      "height": 253.15625,
+      "label": "Window identity and destination in the existing image markup card",
+      "number": 1,
+      "selector": "[data-change-id=\"1\"]",
+      "width": 400,
+      "x": 1016,
+      "y": 722.84375
+    }
+  ],
+  "flow": "capture",
+  "mode": "proposed",
+  "ready": true,
+  "scrollPositions": [],
+  "source": "image-annotation",
+  "state": "review",
+  "theme": "Strata",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "title": "Mark and hold",
+  "features": [
+    14
+  ],
+  "approval": "approved",
+  "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
+  "sourceComponents": [
+    "src/renderer/components/VisualSession.tsx",
+    "src/renderer/components/ConversationComposer.tsx",
+    "src/renderer/components/SetupDialog.tsx"
+  ],
+  "behaviorChecks": [
+    "System-owned pickers and permissions remain native.",
+    "Captured window name and target conversation appear in review.",
+    "Hold precedes Send; text extraction is optional."
+  ],
+  "baseline": "captures/baseline-image-annotation.png",
+  "proposed": "captures/capture-review-proposed.png",
+  "annotated": "captures/capture-review-annotated.png",
+  "layoutImpactSelectors": [
+    ".visual-card"
+  ],
+  "layoutImpactBounds": [
+    {
+      "bottom": 976,
+      "height": 196.875,
+      "left": 1016,
+      "right": 1416,
+      "selector": ".visual-card",
+      "top": 779.125,
+      "width": 400,
+      "x": 1016,
+      "y": 779.125
+    },
+    {
+      "bottom": 976,
+      "height": 253.15625,
+      "left": 1016,
+      "right": 1416,
+      "selector": ".visual-card",
+      "top": 722.84375,
+      "width": 400,
+      "x": 1016,
+      "y": 722.84375
+    }
+  ],
+  "invarianceOutsideLayoutImpact": {
+    "comparedPixels": 1295560,
+    "differentPixels": 1491,
+    "pixelsOverTolerance2": 0,
+    "maxChannelDifference": 1
+  },
+  "renderHealth": {
+    "bodyOverflow": false,
+    "brokenImages": [],
+    "offscreenChanges": []
+  },
+  "ownerReviewNotes": "",
+  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+}

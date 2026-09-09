@@ -1,0 +1,103 @@
+{
+  "changes": [
+    {
+      "height": 208.390625,
+      "label": "Evidence card with saved, transfer, or retry state",
+      "number": 1,
+      "selector": "[data-change-id=\"1\"]",
+      "width": 350,
+      "x": 409,
+      "y": 486.34375
+    }
+  ],
+  "flow": "evidence",
+  "mode": "proposed",
+  "ready": true,
+  "scrollPositions": [],
+  "source": "questions",
+  "state": "saved",
+  "theme": "Strata",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "title": "Screenshot available",
+  "features": [
+    8
+  ],
+  "approval": "pending",
+  "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
+  "sourceComponents": [
+    "src/renderer/components/ConversationMessage.tsx",
+    "src/renderer/components/PreviewWindow.tsx"
+  ],
+  "behaviorChecks": [
+    "Open displays the saved media, not a dead remote path.",
+    "Transfers show progress only while transferring.",
+    "Retry preserves the source evidence and names the failed destination."
+  ],
+  "baseline": "captures/baseline-questions.png",
+  "proposed": "captures/evidence-saved-proposed.png",
+  "annotated": "captures/evidence-saved-annotated.png",
+  "layoutImpactSelectors": [
+    ".conversation-messages",
+    ".chat-composer"
+  ],
+  "layoutImpactBounds": [
+    {
+      "bottom": 762.5,
+      "height": 642.5,
+      "left": 370,
+      "right": 1300,
+      "selector": ".conversation-messages",
+      "top": 120,
+      "width": 930,
+      "x": 370,
+      "y": 120
+    },
+    {
+      "bottom": 971,
+      "height": 180.5,
+      "left": 548.328125,
+      "right": 1121.65625,
+      "selector": ".chat-composer",
+      "top": 790.5,
+      "width": 573.328125,
+      "x": 548.328125,
+      "y": 790.5
+    },
+    {
+      "bottom": 762.5,
+      "height": 642.5,
+      "left": 370,
+      "right": 1300,
+      "selector": ".conversation-messages",
+      "top": 120,
+      "width": 930,
+      "x": 370,
+      "y": 120
+    },
+    {
+      "bottom": 971,
+      "height": 180.5,
+      "left": 548.328125,
+      "right": 1121.65625,
+      "selector": ".chat-composer",
+      "top": 790.5,
+      "width": 573.328125,
+      "x": 548.328125,
+      "y": 790.5
+    }
+  ],
+  "invarianceOutsideLayoutImpact": {
+    "comparedPixels": 593009,
+    "differentPixels": 0,
+    "pixelsOverTolerance2": 0,
+    "maxChannelDifference": 0
+  },
+  "renderHealth": {
+    "bodyOverflow": false,
+    "brokenImages": [],
+    "offscreenChanges": []
+  }
+}
