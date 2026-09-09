@@ -2508,7 +2508,7 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 
 .defaults-tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--line); margin-bottom: 20px; overflow-x: auto; flex-shrink: 0; }
 .defaults-tabs button { border: 0; border-bottom: 2px solid transparent; padding: 14px 4px; background: transparent; color: var(--text); white-space: nowrap; }
-.defaults-tabs button[aria-selected="true"] { border-bottom-color: var(--accent); }
+.defaults-tabs button[aria-selected="true"] { border-bottom-color: var(--controls-primary); }
 .defaults-row { display: flex; justify-content: space-between; gap: 20px; border-top: 1px solid var(--line); padding: 12px 0; }
 .defaults-row small { display: block; color: var(--muted); margin-top: 8px; font-size: 12px; }
 .defaults-row > div:last-child { text-align: right; }
