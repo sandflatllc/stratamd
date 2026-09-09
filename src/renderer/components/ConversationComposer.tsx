@@ -1,3 +1,6 @@
+import { selectedProviderCommands } from '../../shared/provider-commands'
+import { useComposerCommands } from '../useComposerCommands'
+import { ComposerCommandMenu, commandOptionId } from './ComposerCommandMenu'
 import './conversation-drafts.css'
 import { accountForModel } from '../../core/accountState'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
@@ -91,7 +94,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
   const visualImages = includedVisual.reduce((count, comment) => count + visualCaptureIds(comment).length, 0)
   const contextFile = reservedAttachments === 1
   const capacity = sendCapacity({ files: attachments.length, visualImages, visualComments: includedVisual.length, contextFile })
-  const [menu, setMenu] = useState<'models' | 'options' | 'access' | 'discard' | null>(null)
+  const [menu, setMenu] = useState<'models' | 'options' | 'access' | 'discard' | 'commands' | null>(null)
   const [busy, setBusy] = useState(false)
   const sending = useRef(false)
   const attachmentGeneration = useRef(0)
@@ -127,6 +130,11 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
   }).join(' · ') || selection.effort || 'Model defaults'
   const valid = !compact.working && engine.state === 'connected' && !!projectId && !!model && account?.usable !== false
   const persist = (nextText: string, nextSelection: ComposerSelection, nextAttachments: DraftAttachment[]) => setUnsaved(!writeDraft(draftKey, { ...readDraft(draftKey), text: nextText, selection: nextSelection, ...(thread ? { selectionBase: initial } : {}), ...(nextAttachments.length ? { attachments: nextAttachments } : { attachments: undefined }) }))
+  const commandCatalog = engine.state === 'connected' ? selectedProviderCommands(engine.providerCommands ?? [], selection.instanceId, boundThread?.worktreePath ?? workspace) : undefined
+  const commands = useComposerCommands({ text, snapshot: commandCatalog, compact, input, active: menu === 'commands',
+    onOpenChange: open => setMenu(current => open ? 'commands' : current === 'commands' ? null : current),
+    onChange: next => { setText(next); persist(next, selection, latestAttachments.current) },
+  })
   const choose = (next: ComposerSelection) => { setSelection(next); rememberSelection(projectId, next); persist(text, next, latestAttachments.current) }
   const chooseOption = (id: string, value: string | boolean) => {
     const effort = id === 'effort' || id === 'reasoningEffort'
@@ -206,16 +214,16 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     element.showPopover()
     const place = () => {
       const box = root.current!.getBoundingClientRect()
-      const preferredWidth = menu === 'discard' ? 360 : menu === 'models' ? 420 : Math.min(menu === 'options' ? 320 : 420, box.width)
+      const preferredWidth = menu === 'discard' || menu === 'commands' ? 360 : menu === 'models' ? 420 : Math.min(menu === 'options' ? 320 : 420, box.width)
       const width = Math.min(preferredWidth, window.innerWidth - 24)
       element.style.width = `${width}px`
-      element.style.left = `${Math.max(12, Math.min(menu === 'discard' ? box.right - width : box.left, window.innerWidth - width - 12))}px`
+      element.style.left = `${Math.max(12, Math.min(menu === 'discard' || menu === 'commands' ? box.right - width : box.left, window.innerWidth - width - 12))}px`
       const below = window.innerHeight - box.bottom - 20
       const above = box.top - 20
       const down = centered && (below >= 280 || below >= above)
       element.style.maxHeight = `${Math.max(100, Math.min(380, down ? below : above))}px`
       const height = element.getBoundingClientRect().height
-      element.style.top = `${Math.max(12, down ? box.bottom + 6 : box.top - height - (menu === 'discard' ? 10 : 6))}px`
+      element.style.top = `${Math.max(12, down ? box.bottom + 6 : box.top - height - (menu === 'discard' || menu === 'commands' ? 10 : 6))}px`
     }
     place()
     if (menu === 'models' || menu === 'discard') element.querySelector<HTMLElement>('button, select')?.focus({ preventScroll: true })
@@ -273,7 +281,8 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
         </div>
       })}</div>}
       {attachments.length > 0 && <div className="conversation-attachments">{attachments.map((attachment, index) => <div key={attachment.kind !== 'text' ? attachment.id : `${attachment.name}:${index}`} className="conversation-attachment-preview" data-kind={attachment.kind}>{attachment.kind === 'image' && (onMarkUpImage ? <button type="button" className="conversation-attachment-markup" aria-label={`Mark up ${attachment.name}`} title="Mark up this image" disabled={busy} onClick={() => onMarkUpImage(attachment)}><img src={attachment.thumbnail ?? ''} alt="" /></button> : <img src={attachment.thumbnail ?? ''} alt="" />)}{attachment.kind === 'binary' && <span aria-hidden="true">{binaryFileLabel(attachment.name)}</span>}<strong title={attachment.name}>{attachment.name}</strong>{attachment.kind === 'binary' && <small title={attachment.mimeType}>{binaryFileLabel(attachment.name)} · {attachment.sizeBytes < 1024 * 1024 ? `${Math.ceil(attachment.sizeBytes / 1024)} KB` : `${(attachment.sizeBytes / (1024 * 1024)).toFixed(1)} MB`}</small>}<button type="button" aria-label={`Remove ${attachment.name}`} disabled={busy} onClick={() => removeAttachment(index)}>×</button></div>)}</div>}
-      <textarea ref={input} aria-label="Message conversation" placeholder="Ask for changes, send follow-ups, or attach a file" value={text} disabled={busy} onChange={(event) => { setText(event.target.value); persist(event.target.value, selection, latestAttachments.current) }} onKeyDown={(event) => {
+      <textarea ref={input} aria-label="Message conversation" placeholder="Ask for changes, send follow-ups, or attach a file" value={text} disabled={busy} aria-autocomplete="list" aria-haspopup="listbox" aria-controls={menu === 'commands' && commands.items.length ? commands.listId : undefined} aria-activedescendant={menu === 'commands' && commands.selectedId ? commandOptionId(commands.listId, commands.selectedId) : undefined} onSelect={commands.updateSelection} onChange={(event) => { setText(event.target.value); persist(event.target.value, selection, latestAttachments.current); commands.updateSelection(event) }} onKeyDown={(event) => {
+        if (commands.handleKeyDown(event)) return
         if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); void send() }
       }} onPaste={(event) => {
         // An image on the clipboard becomes an attachment, as in T3; files with no text alongside do too. Plain text pastes as text.
@@ -284,6 +293,9 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
         event.preventDefault()
         void stageFiles(files, true)
       }} />
+      {menu === 'commands' && commands.query && <div ref={popup} popover="manual" className="chat-menu chat-command-menu" role="region" aria-label="Command and skill search">
+        <ComposerCommandMenu listId={commands.listId} items={commands.items} selectedId={commands.selectedId} query={commands.query.query} compact={compact} available={Boolean(commandCatalog)} onSelect={commands.select} onClear={commands.clearSearch} />
+      </div>}
       <div className="chat-controls">
         <div className="chat-control"><button type="button" className="chat-pill" aria-label="Choose model and account" aria-expanded={menu === 'models'} disabled={busy} onClick={() => setMenu(menu === 'models' ? null : 'models')} title={model?.name ?? model?.accountName}>{model ? <><ProviderGlyph driver={model.driver} />{modelDesignation(model)}</> : (selection.model || 'Choose model')}<small>{model?.accountName}</small><span aria-hidden="true">⌄</span></button>
           {menu === 'models' && <div ref={popup} popover="manual" className="chat-menu chat-model-menu" aria-label="Models and accounts" role="region">
