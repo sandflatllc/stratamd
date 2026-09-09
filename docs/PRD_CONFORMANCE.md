@@ -260,3 +260,5 @@ The [source audit](reviews/t3-additions-upstream-contracts-2026-09-08.md) and [v
 | Structured model edits retain unknown fields; descriptor validation and exact turn choices | `test/unit/custom-models.test.ts`, `test/e2e/custom-models.spec.ts` |
 
 `test/e2e/question-held-review.spec.ts` proves the native held count and Review action, review of every answer/file in a multi-question request, and removal followed by reholding and sending the original files. Native-only held content does not add a redundant queued-count footer.
+
+The capacity workflow in `test/e2e/visual-comments.spec.ts` sends exactly eight attachments with a marked visual sheet, both with and without a native answer file. Nine combined files fail before any upload or native response. Visual comment sheets do not reserve an additional context attachment.

@@ -57,6 +57,7 @@ export interface ConversationComposerProps {
   initial: ComposerSelection
   centered?: boolean
   queuedCount?: number
+  showQueuedCount?: boolean
   /** 1 when the send will add Strata's context file, which counts toward T3's attachment limit (§6.0). */
   reservedAttachments?: 0 | 1
   context?: ReactNode
@@ -80,7 +81,7 @@ export interface ConversationComposerProps {
   consumedAttachmentIds?: readonly string[]
 }
 
-export function ConversationComposer({ deliveryId, engine, thread, projectId, draftKey, initial, centered = false, queuedCount = 0, reservedAttachments = 0, context, canSendContext = false, workspaceControls, workspace, branch, running = false, sendWhileRunning = false, onStop, onSend, onSendFailureChange, visualComments = [], onOpenVisual, onMarkUpImage, consumedAttachmentIds = [] }: ConversationComposerProps) {
+export function ConversationComposer({ deliveryId, engine, thread, projectId, draftKey, initial, centered = false, queuedCount = 0, showQueuedCount = true, reservedAttachments = 0, context, canSendContext = false, workspaceControls, workspace, branch, running = false, sendWhileRunning = false, onStop, onSend, onSendFailureChange, visualComments = [], onOpenVisual, onMarkUpImage, consumedAttachmentIds = [] }: ConversationComposerProps) {
   const [draft] = useState(() => readDraft(draftKey))
   const [text, setText] = useState(draft.text)
   const [attachments, setAttachmentsState] = useState<DraftAttachment[]>(draft.attachments ?? [])
@@ -328,7 +329,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     </div>
     {workspaceControls}
     {!workspaceControls && (workspace || branch) && <div className="chat-workspace"><span title={workspace}>{thread?.worktreePath ? <FolderGit2Icon /> : <FolderIcon />}{thread?.worktreePath ? 'Worktree' : 'Current checkout'}{workspace && <small>{thread?.worktreePath ?? workspace}</small>}</span>{branch && <span><GitBranchIcon />{branch}</span>}</div>}
-    {queuedCount > 0 && <small>{queuedCount} {queuedCount === 1 ? 'answer' : 'answers'} queued</small>}
+    {showQueuedCount && queuedCount > 0 && <small>{queuedCount} {queuedCount === 1 ? 'answer' : 'answers'} queued</small>}
     {(attachments.length > 0 || includedVisual.length > 0) && <small className="conversation-capacity" role="status" data-over={capacity.refusal ? '' : undefined}>{capacity.refusal ?? capacity.line}</small>}
     {account?.usable === false && <p role="alert">{account.name} cannot take a turn: {account.reason ?? account.state}. Choose another model or account.</p>}
     {unsaved && <p className="conversation-draft-unsaved" role="status">This draft could not be saved and will not survive reload.</p>}

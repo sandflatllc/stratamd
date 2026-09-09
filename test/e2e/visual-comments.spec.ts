@@ -119,39 +119,65 @@ test('1: with no document open, a pasted screenshot opens the session, and Hold 
   }
 })
 
-test('2: the capacity line says what Send carries beside ordinary attachments', async ({}, testInfo) => {
-  const engine = await startEngine({ pendingRequests: false })
+for (const nativeAnswer of [false, true]) test(`2: eight files including a visual sheet${nativeAnswer ? ' and a native answer' : ''} send without an extra context file`, async ({}, testInfo) => {
+  const engine = await startEngine(nativeAnswer ? { userInputResponseMode: 'message' } : { pendingRequests: false })
+  const fileCount = nativeAnswer ? 6 : 7
   const scenario = await seededScenario(testInfo, engine.origin)
   try {
     const page = await scenario.launchEmpty()
     const conversation = await openLiveThread(page)
     await expect(conversation.getByRole('textbox', { name: 'Message conversation' })).toBeVisible()
-    await conversation.locator('.conversation-attachment-input').setInputFiles([1, 2, 3].map((index) => ({ name: `notes-${index}.md`, mimeType: 'text/markdown', buffer: Buffer.from(`# Notes ${index}\n`) })))
-    await expect(conversation.locator('.conversation-attachment-preview')).toHaveCount(3)
-    await expect(conversation.locator('.conversation-capacity')).toHaveText('Send carries 3 files · 3 of 8')
+    if (nativeAnswer) {
+      await conversation.getByRole('button', { name: 'Approve', exact: true }).click()
+      await conversation.getByRole('button', { name: 'Answer question', exact: true }).click()
+      const answer = page.getByRole('dialog', { name: 'Answer question', exact: true })
+      await answer.getByLabel('Attach to answer release', { exact: true }).setInputFiles([1, 2].map(index => ({ name: `answer-${index}.txt`, mimeType: 'text/plain', buffer: Buffer.from(`Native answer file ${index}`) })))
+      await answer.getByRole('button', { name: 'Hold answer', exact: true }).click()
+    }
+    await conversation.locator('.conversation-attachment-input').setInputFiles(Array.from({ length: fileCount }, (_, index) => index + 1).map((index) => ({ name: `notes-${index}.md`, mimeType: 'text/markdown', buffer: Buffer.from(`# Notes ${index}\n`) })))
+    await expect(conversation.locator('.conversation-attachment-preview')).toHaveCount(fileCount)
+    await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${fileCount} files · ${fileCount} of 8`)
     await pasteScreenshot(page)
-    const dialog = await markUp(page, 'Marked beside three files.')
+    const dialog = await markUp(page, 'Marked beside ordinary files.')
     await dialog.getByRole('button', { name: 'Hold' }).click()
     await expect(dialog).toBeHidden()
-    await expect(conversation.locator('.conversation-attachment-preview')).toHaveCount(3)
-    await expect(conversation.locator('.conversation-capacity')).toHaveText('Send carries 3 files and 1 marked screenshot · 4 of 8')
+    await expect(conversation.locator('.conversation-attachment-preview')).toHaveCount(fileCount)
+    await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${fileCount} files and 1 marked screenshot · ${fileCount + 1} of 8`)
     // Setting the comment aside for this send keeps it held and drops it from the count.
     await conversation.getByRole('checkbox', { name: 'Include', exact: true }).uncheck()
-    await expect(conversation.locator('.conversation-capacity')).toHaveText('Send carries 3 files · 3 of 8')
+    await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${fileCount} files · ${fileCount} of 8`)
     await expect(conversation.locator('.conversation-visual-card .visual-status')).toHaveText('held')
     await conversation.getByRole('checkbox', { name: 'Include', exact: true }).check()
-    await expect(conversation.locator('.conversation-capacity')).toHaveText('Send carries 3 files and 1 marked screenshot · 4 of 8')
+    await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${fileCount} files and 1 marked screenshot · ${fileCount + 1} of 8`)
     // The composer sends one image per visual comment, with exact matching details in the message.
     await conversation.getByRole('textbox', { name: 'Message conversation' }).fill('Both at once')
     const stop = conversation.getByRole('button', { name: 'Stop' })
     if (await stop.isVisible()) await stop.click()
+    if (nativeAnswer) {
+      // Nine files fail before any native response or upload. Removing one answer file makes exactly eight.
+      await conversation.getByRole('button', { name: 'Send', exact: true }).click()
+      await expect(conversation.getByRole('alert')).toContainText('at most 8 files')
+      expect(engine.uploadRequests).toEqual([])
+      expect(engine.commands.filter(command => command.type === 'thread.user-input.respond' || command.type === 'thread.turn.start')).toEqual([])
+      await conversation.getByLabel('Held answers for input-1', { exact: true }).getByRole('button', { name: 'Review', exact: true }).click()
+      const answer = page.getByRole('dialog', { name: 'Answer question', exact: true })
+      await answer.getByRole('button', { name: 'Remove answer-2.txt', exact: true }).click()
+      await answer.getByRole('button', { name: 'Hold answer', exact: true }).click()
+    }
     await conversation.getByRole('button', { name: 'Send', exact: true }).click()
     await expect.poll(() => engine.commands.filter((command) => command.type === 'thread.turn.start').length).toBe(1)
     const turn = engine.commands.find((command) => command.type === 'thread.turn.start')!.message as { text: string; attachments: Array<{ type: string; name: string }> }
     expect(turn.text).toContain('Both at once')
-    expect(turn.text).toContain('Marked beside three files.')
-    expect(turn.attachments.map((attachment) => attachment.type)).toEqual(['file', 'file', 'file', 'image'])
-    expect(turn.attachments[3]!.name).toMatch(/^visual-[0-9a-f]{8}-r1-1\.png$/)
+    expect(turn.text).toContain('Marked beside ordinary files.')
+    expect(turn.attachments.map((attachment) => attachment.type)).toEqual([...Array(fileCount).fill('file'), 'image'])
+    expect(engine.uploadRequests).toHaveLength(8)
+    if (nativeAnswer) {
+      const response = engine.commands.find(command => command.type === 'thread.user-input.respond') as { attachmentsByQuestionId: { release: Array<{ id: string; name: string }> } }
+      expect(response.attachmentsByQuestionId.release).toHaveLength(1)
+      expect(response.attachmentsByQuestionId.release[0]!.name).toBe('answer-1.txt')
+      expect(engine.uploadBytesById.get(response.attachmentsByQuestionId.release[0]!.id)).toEqual(Buffer.from('Native answer file 1'))
+    }
+    expect(turn.attachments[fileCount]!.name).toMatch(/^visual-[0-9a-f]{8}-r1-1\.png$/)
     const store = JSON.parse(await readFile(join(scenario.env.XDG_DATA_HOME!, 'stratamd', 'engine-visual-comments.json'), 'utf8'))
     const records = Object.values(store.comments) as Array<{ revisions: Array<{ evidence: string[] }> }>
     const exported = await readFile(join(scenario.env.XDG_DATA_HOME!, 'stratamd', 'visual-evidence', `${records[0]!.revisions[0]!.evidence[0]}.bin`))
