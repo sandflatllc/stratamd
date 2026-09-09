@@ -73,9 +73,11 @@ describe('live engine subscriptions (§5.1)', () => {
     // Detaching stops following: the subscription is interrupted and no new one opens.
     await client.watchThreads([])
     await settle()
-    expect(server.sockets[0]!.streams.map((stream) => (stream.payload as { threadId?: string }).threadId ?? 'shell')).toEqual(['shell', 't1'])
+    // Server configuration is a separate connection-wide stream, not another shell.
+    expect(server.sockets[0]!.streams.map(stream => stream.tag === 'orchestration.subscribeThread' ? `${stream.tag}:${(stream.payload as { threadId: string }).threadId}` : stream.tag).sort()).toEqual(['orchestration.subscribeShell', 'orchestration.subscribeThread:t1', 'subscribeServerConfig'])
     expect(threadSubscriptions()).toEqual(['t1', 't2'])
     await client.shutdown()
+    expect(server.sockets.filter(socket => !socket.closed)).toEqual([])
   })
 
   it('switching the selected thread closes its old subscription and reconnect follows only the new selection', async () => {
