@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test'
+import type { Page } from './test'
 import { mkdir } from 'node:fs/promises'
 import { expect, test } from './test'
 import { DEFAULT_PROVIDERS, seededScenario, startEngine } from './cockpit-engine-harness'

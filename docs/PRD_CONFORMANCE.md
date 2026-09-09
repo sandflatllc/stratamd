@@ -250,7 +250,7 @@ The [source audit](reviews/t3-additions-upstream-contracts-2026-09-08.md) and [v
 
 | Behavior | Focused evidence |
 | --- | --- |
-| Native quota windows, freshness, account/source scope, guarded reset and equal-account summaries | `test/unit/engine-accounts.test.ts`, `test/unit/accounts-dialog.test.ts`, `test/e2e/cockpit-engine.spec.ts` |
+| Native quota windows, freshness, account/source scope, guarded reset and equal-account summaries | `test/unit/engine-accounts.test.ts`, `test/unit/accounts-dialog.test.ts`, `test/e2e/account-quota.spec.ts` |
 | Original binary bytes, MIME, retained failed sends and attachment capacity | `test/unit/composer-attachments.test.ts`, `test/unit/engine-client.test.ts`, `test/e2e/binary-attachments.spec.ts` |
 | Guarded native compaction, result correlation, preserved draft/history and pane zoom | `test/unit/context-compaction.test.ts`, `test/e2e/context-compaction.spec.ts` |
 | Browser snapshot bounds, exact destination retry, durable local media and recording playback | `test/unit/browser-evidence.test.ts`, `test/e2e/browser-evidence.spec.ts`; real stock-engine MCP save/claim evidence in the feature 8 report |
@@ -262,3 +262,5 @@ The [source audit](reviews/t3-additions-upstream-contracts-2026-09-08.md) and [v
 `test/e2e/question-held-review.spec.ts` proves the native held count and Review action, review of every answer/file in a multi-question request, and removal followed by reholding and sending the original files. Native-only held content does not add a redundant queued-count footer.
 
 The capacity workflow in `test/e2e/visual-comments.spec.ts` sends exactly eight attachments with a marked visual sheet, both with and without a native answer file. Nine combined files fail before any upload or native response. Visual comment sheets do not reserve an additional context attachment.
+
+External capture: `test/unit/window-capture.test.ts`, `test/integration/main-ipc.test.ts` and `test/e2e/window-capture.spec.ts` cover permission UI, opt-in/shortcut conflicts, expired selection and changed destinations, native X11 capture and selected-window GTK accessibility, markup, private Hold and explicit Send. `test/integration/packaged-cli.test.ts` loads packaged xa11y and verifies the worker, native helper and T3 license. Native macOS execution and completed Wayland selection remain unverified on this host; isolated portal handoff is recorded separately.

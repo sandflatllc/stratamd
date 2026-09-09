@@ -4,7 +4,7 @@ export function HeldWindowCapture({ comment, busy, onReview, onRemove }: { comme
   const label = comment.anchor.windowCapture?.selection === 'system-source' ? 'System capture' : 'Window capture'
   return <div className="held-window-capture">
     <div className="conversation-attachment-preview" data-kind="capture">
-      {comment.thumbnail && <img src={comment.thumbnail} alt="" />}
+      <span aria-hidden="true">PNG</span>
       <div><strong>{comment.anchor.name}</strong><small>{label} · comment held</small></div>
       <button type="button" disabled={busy} aria-label={`Remove held capture: ${comment.anchor.name}`} onClick={onRemove}>×</button>
     </div>

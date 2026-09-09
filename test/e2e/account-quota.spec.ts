@@ -4,7 +4,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test } from './test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
-import type { Page, TestInfo } from '@playwright/test'
+import type { Page, TestInfo } from './test'
 
 const now = Date.parse('2026-09-03T12:02:00.000Z')
 const checkedAt = new Date(now).toISOString()

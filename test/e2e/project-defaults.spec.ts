@@ -1,7 +1,7 @@
 import { expect, test } from './test'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
 import { openAppMenu } from './harness'
-import type { Page } from '@playwright/test'
+import type { Page } from './test'
 
 const settings = { defaultModelSelection: { instanceId: 'codex', model: 'gpt-5.6', options: [{ id: 'effort', value: 'high' }] }, defaultThreadEnvMode: 'local', newWorktreesStartFromOrigin: true, futureRoot: 'preserve' }
 async function resize(page: Page) {
