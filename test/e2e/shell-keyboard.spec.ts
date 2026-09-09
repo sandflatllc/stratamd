@@ -174,3 +174,37 @@ test('composer and reply drafts survive Escape, and Escape closes one surface at
     await engine.close()
   }
 })
+
+test('Escape reads the current error while listener replacement is delayed', async ({}, testInfo) => {
+  const scenario = await Scenario.create(testInfo, '# Notice\n\nOriginal.\n')
+  const folder = dirname(scenario.file)
+  try {
+    const page = await scenario.launch()
+    await setSource(page, '# Notice\n\nEdited.\n')
+    await scenario.waitForBuffer('# Notice\n\nEdited.\n')
+    await chmod(folder, 0o500)
+    await page.keyboard.press(primaryKey('s'))
+    const alert = page.getByRole('alert')
+    await expect(alert).toBeVisible()
+    // Hold the old window listeners across the next commit. This models the
+    // interval before passive-effect cleanup and registration can run.
+    await page.evaluate(() => {
+      const add = window.addEventListener, remove = window.removeEventListener
+      window.addEventListener = ((type: string, ...args: unknown[]) => {
+        if (type !== 'keydown') Reflect.apply(add, window, [type, ...args])
+      }) as typeof window.addEventListener
+      window.removeEventListener = ((type: string, ...args: unknown[]) => {
+        if (type !== 'keydown') Reflect.apply(remove, window, [type, ...args])
+      }) as typeof window.removeEventListener
+    })
+    await alert.getByRole('button', { name: 'Dismiss' }).click()
+    await expect(alert).toBeHidden()
+    await page.keyboard.press(primaryKey('s'))
+    await expect(alert).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(alert).toBeHidden()
+  } finally {
+    await chmod(folder, 0o700).catch(() => undefined)
+    await scenario.dispose()
+  }
+})

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { toastLifetime, type ToastState } from '../toasts'
 import { isEscapeClaimed } from '../escape'
 
@@ -10,6 +10,8 @@ interface ToastProps { toast: ToastState | null; onDone(id: number): void }
  * already claimed the key, so it never closes two things at once.
  */
 export function Toast({ toast, onDone }: ToastProps) {
+  const current = useRef({ toast, onDone })
+  useLayoutEffect(() => { current.current = { toast, onDone } }, [toast, onDone])
   useEffect(() => {
     if (!toast) return
     const lifetime = toastLifetime(toast)
@@ -18,15 +20,15 @@ export function Toast({ toast, onDone }: ToastProps) {
     return () => window.clearTimeout(timer)
   }, [toast, onDone])
   useEffect(() => {
-    if (toast?.tone !== 'error') return
     const key = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
+      const { toast, onDone } = current.current
+      if (event.key !== 'Escape' || toast?.tone !== 'error') return
       // Surfaces above the toast claim Escape synchronously; check after they ran.
       window.setTimeout(() => { if (!isEscapeClaimed(event)) onDone(toast.id) }, 0)
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [toast, onDone])
+  }, [])
   if (!toast) return null
   if (toast.tone === 'error') {
     return (

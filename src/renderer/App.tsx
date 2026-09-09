@@ -1,3 +1,4 @@
+import { parentPath } from '../core/project-source'
 import { DocumentPreview } from './components/DocumentPreview'
 import { DOCUMENT_PREVIEW_EVENT, openDocumentPreview } from './documentPreview'
 import type { DocumentSource } from '../shared/documents'
@@ -1006,7 +1007,7 @@ export function App({ createEditor }: AppProps) {
     })
   }, [bridgeMissing, perform, report])
   const newFileHere = useCallback(() => {
-    const directory = document ? document.path.slice(0, document.path.lastIndexOf('/')) || '/' : null
+    const directory = document ? parentPath(document.path) : null
     if (!directory) { report('Open a document first. Ctrl+N then makes a new file beside it.'); return }
     newFile(directory)
   }, [document, newFile, report])

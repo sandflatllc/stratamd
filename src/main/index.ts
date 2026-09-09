@@ -7,7 +7,7 @@ import { createLoginRegistration } from './start-at-login'
 import { installEngineActivity } from './engine/background-activity'
 import { engineTray } from './engine/tray'
 import { readFile, writeFile } from 'node:fs/promises'
-import { join, dirname } from 'node:path'
+import { join, dirname, basename } from 'node:path'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, Notification } from 'electron'
 import type { AppView, StrataApi } from '../shared/contracts'
 import { createStrataApplication } from './application'
@@ -66,7 +66,7 @@ export async function resolveDirtyClose(
 }
 
 async function askAboutDirtyDocuments(window: BrowserWindow, paths: readonly string[]): Promise<DirtyCloseChoice> {
-  const names = paths.map((path) => path.slice(path.lastIndexOf('/') + 1))
+  const names = paths.map((path) => basename(path))
   const count = paths.length
   const { response } = await dialog.showMessageBox(window, {
     type: 'question',
