@@ -1,4 +1,6 @@
-import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
+import { pendingUserInputs } from '../../src/core/user-input'
+import { connectionDirectory } from '../../src/main/engine/identity'
+import { mkdtemp, readFile, stat, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -795,4 +797,60 @@ it('compacts with the exact attachment-free command and preserves queued work an
     await expect(client.compactContext('t1', input)).rejects.toThrow('Wait for thread')
     await expect(client.startTurn('t1', { ...input, text: 'Do not consume held work' })).rejects.toThrow('Wait for context compaction')
   } finally { await client.shutdown() }
+})
+
+for (const proof of ['resolved', 'answer-submitted'] as const) it(`reconciles a lost native receipt from matching ${proof} history without another send`, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'strata-question-reconcile-'))
+  const server = liveServer()
+  const commands: Array<Record<string, any>> = []
+  let activities: Array<Record<string, unknown>> = []
+  let uploads = 0
+  const request = { id: 'question-request', kind: 'user-input.requested', summary: 'Which?', tone: 'info', turnId: 'turn-1', createdAt: at, payload: { requestId: 'input-receipt', responseMode: 'message', questions: [{ id: 'choice', question: 'Which?', allowCustomAnswer: true }] } }
+  activities = [request]
+  const fetch: typeof globalThis.fetch = async (input, init) => {
+    const url = String(input)
+    if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'fixture', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+    if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'fixture', expiresAt: at })
+    if (url.endsWith('/api/orchestration/shell')) return Response.json(shell())
+    if (url.endsWith('/upload/signed')) { uploads++; return new Response('') }
+    if (url.endsWith('/api/orchestration/dispatch')) { commands.push(JSON.parse(String(init?.body))); throw new Error('Response connection lost after engine acceptance') }
+    return Response.json({ ...detail(), thread: { ...detail().thread, activities } })
+  }
+  let client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
+  try {
+    await client.pair('http://engine.test', 'fixture'); await client.openThread('t1')
+    await client.holdMessageComment('t1', { messageId: 'm1', from: 0, to: 6, kind: 'comment', text: 'Keep private' })
+    const held = structuredClone(client.view().projects[0]!.threads[0]!.comments)
+    await expect(client.respondUserInput('t1', 'input-receipt', { choice: 'Original answer' }, { choice: [{ kind: 'text', name: 'answer.md', text: 'Exact file bytes' }] })).rejects.toThrow('Response connection lost')
+    const command = commands[0]!
+    const storePath = join(await connectionDirectory(directory, client.view().identity!), 'engine-conversations.json')
+    const frozen = JSON.parse(await readFile(storePath, 'utf8')).threads.t1.userInputResponses['input-receipt']
+    await client.shutdown()
+    const readingPath = join(await connectionDirectory(directory, client.view().identity!), 'engine-reading.json')
+    const reading = JSON.parse(await readFile(readingPath, 'utf8'))
+    await writeFile(readingPath, JSON.stringify({ ...reading, activeThreadId: null }))
+    client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
+    // Absence and a different request/answer must never release the maintenance guard.
+    activities = []
+    await client.initialize()
+    expect(() => client.assertNoPendingSends()).toThrow('queued conversation sends')
+    activities = [request, { ...request, id: 'unrelated', kind: 'user-input.resolved', payload: { requestId: 'another-request', answers: command.answers } }]
+    await client.reconnect()
+    expect(() => client.assertNoPendingSends()).toThrow('queued conversation sends')
+    activities = [request, { ...request, id: 'different-answer', kind: 'user-input.resolved', payload: { requestId: 'input-receipt', answers: { choice: 'Someone else answered' } } }]
+    await client.reconnect()
+    expect(() => client.assertNoPendingSends()).toThrow('queued conversation sends')
+    activities = [request, { ...request, id: proof === 'resolved' ? 'async-answer:input-receipt' : `question-answer:${command.commandId}`, kind: `user-input.${proof}`, payload: { requestId: 'input-receipt', answers: command.answers, attachmentsByQuestionId: command.attachmentsByQuestionId } }]
+    if (proof === 'answer-submitted') activities.push({ ...request, id: 'provider-resolution', kind: 'user-input.resolved', payload: { requestId: 'input-receipt', answers: command.answers } })
+    await client.reconnect()
+    await vi.waitFor(() => expect(() => client.assertNoPendingSends()).not.toThrow())
+    // This is the exact pending-question projection consumed by Conversation's UI.
+    expect(pendingUserInputs(client.view().projects[0]!.threads[0]!.activities)).toEqual([])
+    await client.prepareLocalSetup(); await client.freezeForBackup(); client.assertNoPendingSends(); await client.resumeAfterMaintenance()
+    await client.respondUserInput('t1', 'input-receipt', { choice: 'Later draft must stay private' })
+    expect(commands).toHaveLength(1); expect(uploads).toBe(1)
+    expect(client.view().projects[0]!.threads[0]!.comments).toEqual(held)
+    const saved = JSON.parse(await readFile(storePath, 'utf8')).threads.t1.userInputResponses['input-receipt']
+    expect(saved).toEqual({ ...frozen, sent: true })
+  } finally { await client.shutdown(); await rm(directory, { recursive: true, force: true }) }
 })

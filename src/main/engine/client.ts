@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util'
 import { checkedInEnvironment, mergeProjectDefaults, type ProjectDefaults, type ProjectDefaultsEdit } from '../../shared/project-defaults'
 import { MAX_DOCUMENT_BYTES, type DocumentSource } from '../../shared/documents'
 
@@ -932,7 +933,7 @@ export class T3EngineClient implements EngineReadClient {
   #followedThreadIds(): string[] {
     const ids = new Set<string>([...this.#watched, ...this.#sendingThreads.keys()])
     if (this.#reading.activeThreadId) ids.add(this.#reading.activeThreadId)
-    for (const [threadId, state] of Object.entries(this.#conversations.threads)) if (state.pending.length > 0) ids.add(threadId)
+    for (const [threadId, state] of Object.entries(this.#conversations.threads)) if (state.pending.length > 0 || Object.values(state.userInputResponses ?? {}).some(response => !response.sent)) ids.add(threadId)
     // A sent visual revision awaits the agent's reply in its thread; the reply is what moves the card.
     for (const comment of Object.values(this.#visual.comments)) { const latest = comment.revisions.at(-1); if (latest && latest.state === 'sent' && !latest.accepted) ids.add(latest.destination.threadId) }
     return [...ids].filter((id) => this.#shell?.threads.some((thread) => thread.id === id))
@@ -2747,6 +2748,20 @@ export class T3EngineClient implements EngineReadClient {
     for (const [threadId, entry] of this.#threads) {
       const listed = new Set(entry.detail?.thread.messages.map((message) => message.id) ?? [])
       const state = this.#conversations.threads[threadId]
+      // Native history is an independent receipt when the response connection was lost.
+      // Request absence, dismissal, another answer, and unrelated request IDs are not receipts.
+      for (const [requestId, response] of Object.entries(state?.userInputResponses ?? {})) {
+        if (response.sent) continue
+        const uploaded = Object.fromEntries(Object.entries(response.attachmentsByQuestionId).filter(([, files]) => files.length).map(([id, files]) => [id, files.map(file => file.uploaded)]))
+        const confirmed = entry.detail?.thread.activities.some(activity => {
+          const payload = inputPayload(activity)
+          if (payload.requestId !== requestId) return false
+          if (activity.kind === 'user-input.answer-submitted') return activity.id === `question-answer:${response.commandId}`
+          return activity.kind === 'user-input.resolved' && isDeepStrictEqual(payload.answers, response.answers)
+            && (Object.keys(uploaded).length === 0 || isDeepStrictEqual(payload.attachmentsByQuestionId, uploaded))
+        })
+        if (confirmed) { response.sent = true; repliesChanged = true }
+      }
       if (!state || (!state.pending.some((pending) => listed.has(pending.deliveryId)) && !state.prepared?.some((prepared) => listed.has(prepared.messageId)))) continue
       const acknowledged = state.pending.filter((pending) => listed.has(pending.deliveryId))
       // A visual revision is sent once its delivery is acknowledged; from here the agent's reply decides its state.
