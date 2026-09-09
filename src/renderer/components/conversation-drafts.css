@@ -1,0 +1,9 @@
+.project-thread-draft { display: inline-flex; color: var(--controls-primary-highlight); align-items: center; }
+.project-thread-draft svg { width: 13px; height: 13px; }
+.conversation-draft-status { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 6px 0; color: var(--muted); font-size: 12px; }
+.chat-composer .conversation-draft-status button { margin-left: auto; padding: 2px 7px; font-size: 12px; }
+.chat-menu.conversation-draft-confirm { padding: 8px; }
+.conversation-draft-confirm h3 { margin: 4px 6px; font-size: 14px; font-weight: 500; }
+.chat-menu.conversation-draft-confirm p { margin: 6px; padding: 8px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.conversation-draft-confirm > div { display: flex; align-items: center; padding: 6px; gap: 8px; }
+.chat-composer .conversation-draft-confirm > div > button { width: auto; font-size: 13px; font-weight: 700; }

@@ -232,3 +232,5 @@ Effort persistence in PRD §6.0 is covered by `test/e2e/conversation-effort.spec
 Theme panel resize and zoom (2026-09-07): `test/e2e/theme-panel.spec.ts` checks pointer and keyboard resizing, independent keyboard and wheel zoom, persistence across restart, and Reset zoom. `test/unit/styles-zoom.test.ts` covers theme-panel typography alongside the other panes.
 
 Stock themes (2026-09-07): Strata is the default and fallback, promoted from the owner's Night copy; Vivid and Light use the owner's corresponding copies, and Day is renamed Mono. Existing theme ids remain stable. `test/unit/themes.test.ts`, `test/unit/settings.test.ts`, and `test/integration/main-themes.test.ts` cover complete definitions, names, defaults, copying, and fallback.
+
+Unsent composer drafts: `test/unit/conversation-drafts.test.ts` proves per-thread boolean notifications. `test/e2e/conversation-drafts.spec.ts` proves pen markers, reload restoration of text/files, scoped discard and Keep draft, preservation of held answers and document/visual comments, no turn on discard, and marker removal after Send.

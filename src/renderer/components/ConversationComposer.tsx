@@ -1,3 +1,4 @@
+import './conversation-drafts.css'
 import { accountForModel } from '../../core/accountState'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { ConversationInput, EngineView, EngineThreadView, EngineModelView, VisualCommentView } from '../../shared/contracts'
@@ -79,9 +80,10 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
   const visualImages = includedVisual.reduce((count, comment) => count + visualCaptureIds(comment).length, 0)
   const contextFile = reservedAttachments === 1
   const capacity = sendCapacity({ files: attachments.length, visualImages, visualComments: includedVisual.length, contextFile })
-  const [menu, setMenu] = useState<'models' | 'options' | 'access' | null>(null)
+  const [menu, setMenu] = useState<'models' | 'options' | 'access' | 'discard' | null>(null)
   const [busy, setBusy] = useState(false)
   const sending = useRef(false)
+  const attachmentGeneration = useRef(0)
   const [error, setError] = useState('')
   const root = useRef<HTMLFormElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
@@ -126,6 +128,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     if (canSendContext) { setError('The first turn from a document carries the document; attach files on the next turn.'); return }
     const { accepted, refusal } = acceptFiles(latestAttachments.current.length + visualImages, files, contextFile ? 1 : 0, { pasted })
     if (refusal) setError(refusal)
+    const generation = attachmentGeneration.current
     let opened = false
     for (const entry of accepted) {
       try {
@@ -134,6 +137,10 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
           const [staged, thumbnail] = await Promise.all([window.strata.stageConversationAttachment({ name: entry.name, mimeType: entry.mimeType, bytes: new Uint8Array(await entry.file.arrayBuffer()) }), thumbnailFor(entry.file)])
           next = { kind: 'image', id: staged.id, name: entry.name, mimeType: entry.mimeType, sizeBytes: staged.sizeBytes, ...(thumbnail ? { thumbnail } : {}) }
         } else next = { kind: 'text', name: entry.name, text: await entry.file.text() }
+        if (generation !== attachmentGeneration.current) {
+          if (next.kind === 'image') void window.strata.discardConversationAttachment(next.id).catch(() => {})
+          continue
+        }
         const list = [...latestAttachments.current, next]
         setAttachments(list); persist(text, selection, list)
         // A pasted screenshot opens the annotation session at once (docs/plans/open/visual-review); a picked file stays an attachment until Mark up.
@@ -182,25 +189,35 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     element.showPopover()
     const place = () => {
       const box = root.current!.getBoundingClientRect()
-      const preferredWidth = menu === 'models' ? 420 : Math.min(menu === 'options' ? 320 : 420, box.width)
+      const preferredWidth = menu === 'discard' ? 360 : menu === 'models' ? 420 : Math.min(menu === 'options' ? 320 : 420, box.width)
       const width = Math.min(preferredWidth, window.innerWidth - 24)
       element.style.width = `${width}px`
-      element.style.left = `${Math.max(12, Math.min(box.left, window.innerWidth - width - 12))}px`
+      element.style.left = `${Math.max(12, Math.min(menu === 'discard' ? box.right - width : box.left, window.innerWidth - width - 12))}px`
       const below = window.innerHeight - box.bottom - 20
       const above = box.top - 20
       const down = centered && (below >= 280 || below >= above)
       element.style.maxHeight = `${Math.max(100, Math.min(380, down ? below : above))}px`
       const height = element.getBoundingClientRect().height
-      element.style.top = `${Math.max(12, down ? box.bottom + 6 : box.top - height - 6)}px`
+      element.style.top = `${Math.max(12, down ? box.bottom + 6 : box.top - height - (menu === 'discard' ? 10 : 6))}px`
     }
     place()
-    if (menu === 'models') element.querySelector<HTMLElement>('button, select')?.focus({ preventScroll: true })
+    if (menu === 'models' || menu === 'discard') element.querySelector<HTMLElement>('button, select')?.focus({ preventScroll: true })
     const observer = new ResizeObserver(place)
     observer.observe(element)
     window.addEventListener('resize', place)
     window.addEventListener('scroll', place, true)
     return () => { observer.disconnect(); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); if (element.matches(':popover-open')) element.hidePopover() }
   }, [menu])
+  const discardMessage = () => {
+    if (busy || sending.current) return
+    attachmentGeneration.current += 1
+    const removed = latestAttachments.current
+    const { messageId: _messageId, attachments: _attachments, ...saved } = readDraft(draftKey)
+    setUnsaved(!writeDraft(draftKey, { ...saved, text: '' }, { immediate: true }))
+    setText(''); setAttachments([]); setError(''); setMenu(null)
+    for (const attachment of removed) if (attachment.kind === 'image') window.strata.discardConversationAttachment(attachment.id).catch(() => { /* Startup sweep removes unreferenced files. */ })
+    input.current?.focus()
+  }
   const canSend = Boolean(text.trim() || attachments.length || queuedCount || canSendContext || includedVisual.length) && !capacity.refusal
   const send = async () => {
     if (sending.current || busy || !valid || !canSend) return
@@ -263,6 +280,11 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
           ? <button className="chat-send chat-stop" type="button" aria-label="Stop" title="Stop the agent" onClick={onStop}><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="2" /></svg></button>
           : <button className="chat-send" type="submit" aria-label="Send" disabled={busy || !valid || !canSend}>{busy ? '…' : '↑'}</button>}</div>
       </div>
+      {Boolean(text.trim() || attachments.length) && menu !== 'discard' && <div className="conversation-draft-status"><span>{unsaved ? 'Message draft in memory' : 'Message draft saved'}</span><button type="button" className="chat-pill" disabled={busy} onClick={() => setMenu('discard')}>Discard message…</button></div>}
+      {menu === 'discard' && <div ref={popup} popover="manual" className="chat-menu conversation-draft-confirm" role="dialog" aria-label="Discard this message draft?">
+        <h3>Discard this message draft?</h3><p>Only the unsent message and its files will be removed. Held answers and comments stay available.</p>
+        <div><button type="button" onClick={() => { setMenu(null); input.current?.focus() }}>Keep draft</button><button type="button" disabled={busy} onClick={discardMessage}>Discard message</button></div>
+      </div>}
     </div>
     {workspaceControls}
     {!workspaceControls && (workspace || branch) && <div className="chat-workspace"><span title={workspace}>{thread?.worktreePath ? <FolderGit2Icon /> : <FolderIcon />}{thread?.worktreePath ? 'Worktree' : 'Current checkout'}{workspace && <small>{thread?.worktreePath ?? workspace}</small>}</span>{branch && <span><GitBranchIcon />{branch}</span>}</div>}

@@ -23,6 +23,22 @@ const pending = new Map<string, { key: string; timer: ReturnType<typeof setTimeo
 /** Draft keys whose last durable write was refused by storage. */
 const refused = new Set<string>()
 const storageListeners = new Set<(key: string, stored: boolean) => void>()
+const presenceListeners = new Map<string, Set<() => void>>()
+/** Only composer text and files count; model settings and held work do not. */
+export function hasDraftContent(key: string): boolean {
+  const draft = readDraft(key)
+  return Boolean(draft.text.trim() || draft.attachments?.length)
+}
+export function onDraftPresence(key: string, listener: () => void): () => void {
+  const scoped = engineStorageKey(key)
+  const listeners = presenceListeners.get(scoped) ?? new Set<() => void>()
+  presenceListeners.set(scoped, listeners)
+  listeners.add(listener)
+  return () => { listeners.delete(listener); if (!listeners.size) presenceListeners.delete(scoped) }
+}
+function notifyPresence(key: string, previous: boolean): void {
+  if (previous !== hasDraftContent(key)) for (const listener of presenceListeners.get(engineStorageKey(key)) ?? []) listener()
+}
 export const DRAFT_WRITE_DELAY_MS = 300
 
 function parseDraft(raw: string | null): ConversationDraft | null {
@@ -70,7 +86,9 @@ function flushOne(scoped: string): boolean {
  */
 export function writeDraft(key: string, draft: ConversationDraft, options?: { immediate?: boolean }): boolean {
   const scoped = engineStorageKey(key)
+  const previous = hasDraftContent(key)
   memory.set(scoped, draft)
+  notifyPresence(key, previous)
   if (options?.immediate) { cancelPending(scoped); return writeDurable(key, draft) }
   if (!pending.has(scoped)) pending.set(scoped, { key, timer: setTimeout(() => flushOne(scoped), DRAFT_WRITE_DELAY_MS) })
   return !refused.has(scoped)
@@ -102,11 +120,13 @@ export function draftAttachmentIds(): string[] {
   return [...ids]
 }
 export function clearDraft(key: string): void {
+  const previous = hasDraftContent(key)
   const scoped = engineStorageKey(key)
   cancelPending(scoped)
   memory.delete(scoped)
   refused.delete(scoped)
   try { engineStorage.removeItem(prefix + key) } catch { /* Storage may be unavailable. */ }
+  notifyPresence(key, previous)
 }
 /** Sending consumes content and delivery IDs, but model settings outlive the message. */
 export function clearDraftContent(key: string, selection: ComposerSelection, selectionBase?: ComposerSelection): boolean {

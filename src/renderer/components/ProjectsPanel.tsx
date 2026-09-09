@@ -1,5 +1,6 @@
+import { hasDraftContent, onDraftPresence } from '../conversationDrafts'
 import { engineStorage } from '../engineStorage'
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
+import { useCallback, useSyncExternalStore, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
 import { AddProjectDialog } from './AddProjectDialog'
 import { GlobeIcon, PlusIcon } from '../icons/lucide'
 import { buildProjectsRail, moveProject, orderProjects, projectThreadState, resolveShelfThreads, type ProjectFolderState, type ProjectShelfEntry, type ProjectThreadSort, type ProjectThreadState } from '../../core/projects-rail'
@@ -74,7 +75,7 @@ export function relativeTime(iso: string, nowMs: number): string {
   return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
-/** One indicator per row (§6.9): a pill when the thread waits on the owner or failed, a dot while it works or finished unseen, a robot while it only monitors. Each carries text for readers and tests. */
+/** One runtime indicator per row (§6.9), independent of the composer draft pen: a pill when the thread waits on the owner or failed, a dot while it works or finished unseen, a robot while it only monitors. Each carries text for readers and tests. */
 function ThreadIndicator({ thread, state }: { thread: EngineThreadView; state: ProjectThreadState }) {
   if (state === 'input') return <span className="project-thread-status pill input" title={thread.pendingApprovals ? 'Approval needed' : 'Input needed'}><i aria-hidden="true" />{thread.pendingApprovals ? 'Approval' : 'Input'}</span>
   if (state === 'failed') return <span className="project-thread-status pill failed" title="The session failed"><i aria-hidden="true" />Failed</span>
@@ -82,6 +83,13 @@ function ThreadIndicator({ thread, state }: { thread: EngineThreadView; state: P
   if (state === 'completed') return <span className="project-thread-status completed" title="Finished since you last opened it"><i aria-hidden="true" /><span className="sr-only">Completed</span></span>
   if (state === 'monitoring') return <span className="project-thread-status monitoring" title="Monitoring"><span aria-hidden="true">🤖</span><span className="sr-only">Monitoring</span></span>
   return null
+}
+
+function DraftMarker({ threadId }: { threadId: string }) {
+  const key = `thread:${threadId}`
+  const subscribe = useCallback((listener: () => void) => onDraftPresence(key, listener), [key])
+  const present = useSyncExternalStore(subscribe, () => hasDraftContent(key))
+  return present ? <span className="project-thread-draft" role="img" aria-label="Unsent message draft" title="Unsent message draft"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span> : null
 }
 
 const FOLDER_STATE_LABEL: Record<Exclude<ProjectFolderState, null>, string> = { input: 'A thread is waiting on you', working: 'A thread is working', completed: 'A thread finished' }
@@ -119,7 +127,7 @@ function ThreadRow({ thread, projectName, active, attached, nowMs, shelf, renami
     {shelf && projectName && <span className="project-thread-project">{projectName}</span>}
     <ThreadIndicator thread={thread} state={state} />
     {renaming ? <RenameInput thread={thread} onUpdate={(_id, change) => onUpdate(change)} onDone={onDoneRenaming} /> : <button type="button" className="project-thread-open" aria-label={`Open ${thread.title}`} onClick={onOpen} onDoubleClick={(event) => { event.preventDefault(); onRename() }}><span className={thread.unread ? 'unread' : undefined}>{thread.title}</span></button>}
-    <span className="project-thread-marks">{attached && <i className="attached-mark" aria-label="Attached" title="Attached">⌁</i>}{thread.pendingWork > 0 && <b aria-label={`${thread.pendingWork} pending work`}>{thread.pendingWork}</b>}</span>
+    <span className="project-thread-marks"><DraftMarker threadId={thread.id} />{attached && <i className="attached-mark" aria-label="Attached" title="Attached">⌁</i>}{thread.pendingWork > 0 && <b aria-label={`${thread.pendingWork} pending work`}>{thread.pendingWork}</b>}</span>
     <time dateTime={thread.lastExchangeAt}>{relativeTime(thread.lastExchangeAt, nowMs)}</time>
     {shelf ? <button type="button" className="project-thread-restore" onClick={() => shelf === 'snoozed' ? onUpdate({ snoozedUntil: null }) : onAction('unsettle')}>Restore</button> : <button type="button" className="project-thread-settle" aria-label={`Settle ${thread.title}`} onClick={() => onAction('settle')}>✓</button>}
   </div>

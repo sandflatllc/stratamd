@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
-import { availableModels, clearDraft, clearDraftContent, draftAttachmentIds, draftSelection, flushDrafts, initialSelection, onDraftStorage, readDraft, rememberedSelection, rememberSelection, selectionForModel, writeDraft } from '../../src/renderer/conversationDrafts'
+import { availableModels, hasDraftContent, onDraftPresence, clearDraft, clearDraftContent, draftAttachmentIds, draftSelection, flushDrafts, initialSelection, onDraftStorage, readDraft, rememberedSelection, rememberSelection, selectionForModel, writeDraft } from '../../src/renderer/conversationDrafts'
 import { setEngineStorageIdentity } from '../../src/renderer/engineStorage'
 import { EMPTY_VIEW } from '../../src/renderer/model'
 import type { EngineModelView, EngineView } from '../../src/shared/contracts'
@@ -150,4 +150,24 @@ it('coalesces durable writes while typing and flushes them on demand', () => {
   expect(flushDrafts()).toBe(true)
   expect(written).toHaveLength(1)
   clearDraft('thread:typing')
+})
+
+it('notifies only the affected thread when composer content appears or disappears', () => {
+  const key = 'thread:presence'
+  clearDraft(key)
+  const changed = vi.fn(), unrelated = vi.fn()
+  const off = onDraftPresence(key, changed), offOther = onDraftPresence('thread:unrelated', unrelated)
+  writeDraft(key, { text: '   ', selection: selectionForModel(codex, 'full-access') })
+  expect(hasDraftContent(key)).toBe(false)
+  expect(changed).not.toHaveBeenCalled()
+  writeDraft(key, { text: 'First' })
+  writeDraft(key, { text: 'First sentence' })
+  writeDraft(key, { text: '', attachments: [{ kind: 'text', name: 'notes.md', text: 'Notes' }] })
+  expect(hasDraftContent(key)).toBe(true)
+  expect(changed).toHaveBeenCalledTimes(1)
+  clearDraftContent(key, selectionForModel(codex, 'full-access'))
+  expect(hasDraftContent(key)).toBe(false)
+  expect(changed).toHaveBeenCalledTimes(2)
+  expect(unrelated).not.toHaveBeenCalled()
+  off(); offOther(); clearDraft(key)
 })
