@@ -27,10 +27,12 @@
     7
   ],
   "approval": "changes",
+  "ownerReviewNotes": "1. This is really ugly and also all comment windows and stuff we is done as a modal",
   "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
   "sourceComponents": [
     "src/renderer/components/Conversation.tsx",
-    "src/renderer/components/ConversationComposer.tsx"
+    "src/renderer/components/ConversationComposer.tsx",
+    "src/renderer/components/SetupDialog.tsx"
   ],
   "behaviorChecks": [
     "Hold keeps answers and answer files private until Send.",
@@ -100,7 +102,5 @@
     "bodyOverflow": false,
     "brokenImages": [],
     "offscreenChanges": []
-  },
-  "ownerReviewNotes": "1. This is really ugly and also all comment windows and stuff we is done as a modal",
-  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+  }
 }

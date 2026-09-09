@@ -41,7 +41,7 @@ window.Proposals = (() => {
     const r=q(anchor).getBoundingClientRect();el.style.width=width+'px';el.style.left=Math.min(r.right-width,innerWidth-width-20)+'px';el.style.bottom=(innerHeight-r.top+10)+'px';return el;
   }
   function quota(name,value,reset,pace){return `<div class="proposal-quota"><div class="proposal-quota-line"><strong>${name} · ${value}% left</strong><span>${reset}</span></div><div class="proposal-bar" role="meter" aria-label="${name} remaining" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${value}"><i style="width:${value}%"></i>${pace?`<b style="left:${pace}%" title="Time remaining in this window"></b>`:''}</div></div>`;}
-  function questions(state){
+  async function questions(state){
     const card=q('.conversation-request');mark(card,'Native question status, answer files, and dismissal');
     if(['held','sent','dismissed'].includes(state)){
       const text=state==='held'?'Answer held · Version one':state==='sent'?'Answer sent · Version one':'Question dismissed';
@@ -49,14 +49,29 @@ window.Proposals = (() => {
       if(state==='held'){heldSummary('1 answer · 1 file','held');sendButton('sent');}
       return;
     }
-    const head=node(`<div class="proposal-between proposal-question-head"><span>${state==='blocking'?'Waiting for your answer':'Agent can keep working'}</span>${state==='blocking'?'':button('Dismiss','dismissed')}</div>`);card.prepend(head);
-    q('.conversation-request form button[type="submit"]').disabled=state==='upload-error';
-    q('.conversation-request form button[type="submit"]').dataset.go='held';
-    const choice=q('.conversation-request fieldset button');choice.setAttribute('aria-pressed','true');
-    add(q('.conversation-request fieldset'),`<div class="proposal-question-files">${attachment('inspection-report.pdf',state==='upload-error'?'Could not stage this file':'PDF · 248 KB','files/pdf')}${button('Attach to answer','upload-error')}</div>`);
+    const settings=await (await fetch('reference/settings.json')).json();
+    const exported=document.createElement('template');exported.innerHTML=settings.html;
+    const backdrop=exported.content.querySelector('.modal-backdrop');
+    const modal=backdrop.querySelector('.setup-dialog');
+    modal.className='modal setup-dialog proposal-question-modal';
+    modal.setAttribute('aria-label','Answer question');
+    const header=modal.querySelector('.setup-dialog-header');
+    header.querySelector('h2').textContent='Answer question';
+    header.querySelector('.modal-subtitle').textContent=state==='blocking'?'The agent is waiting for your answer.':'The agent can keep working while you answer.';
+    header.querySelector('[aria-label="Close dialog"]').dataset.go='held';
+    const body=modal.querySelector('.setup-dialog-body');body.replaceChildren(card);
+    delete card.dataset.change;
+    card.querySelector('form > button[type="submit"]')?.remove();
+    card.querySelector('form button[type="submit"]')?.remove();
+    const choice=card.querySelector('fieldset button');choice.setAttribute('aria-pressed','true');
+    const input=card.querySelector('input');const answerLabel=node('<label class="setup-field">Or write an answer</label>');input.before(answerLabel);answerLabel.append(input);card.querySelector('fieldset').classList.add('setup-fields');
+    add(card.querySelector('fieldset'),`<div class="proposal-question-files">${attachment('inspection-report.pdf',state==='upload-error'?'Could not stage this file':'PDF · 248 KB','files/pdf')}${button('Attach to answer','upload-error')}</div>`);
     if(state==='upload-error')add(card,status('Could not read inspection-report.pdf. Choose it again to attach it.','error',button('Choose file again','asking')));
+    modal.querySelector('.parity-dialog-footer').innerHTML=`${note('Hold keeps this answer private until you press Send.')}${state==='blocking'?'':button('Dismiss','dismissed')}${button('Hold answer','held',true,state==='upload-error')}`;
+    q('.app-shell').append(backdrop);mark(modal,'Answer in the existing Strata modal, with per-answer files and Hold');
     if(state==='blocking'){const row=q('.conversation-working-row');row.textContent='Waiting for your answer';mark(row,'Working status reflects a required answer');}
   }
+
   function files(state){
     if(['attached','upload-error'].includes(state)){
       const tray=node(`<div class="conversation-attachments proposal-file-tray">${attachment('inspection-report.pdf','PDF · 248 KB','pdf')}${attachment('inspection-export.zip','ZIP · 1.8 MB','attached','ZIP')}</div>`);
@@ -192,7 +207,7 @@ window.Proposals = (() => {
   }
   const renderers={questions,files,usage,compact,skills,drafts,defaults,import:importFlow,evidence,capture,recovery,models};
   async function render(flow,state){
-    renderers[flow](state);
+    await renderers[flow](state);
     document.querySelectorAll('[data-change]').forEach(el=>{
       for(let parent=el.parentElement;parent&&parent!==document.body;parent=parent.parentElement){
         if(!['auto','scroll'].includes(getComputedStyle(parent).overflowY))continue;

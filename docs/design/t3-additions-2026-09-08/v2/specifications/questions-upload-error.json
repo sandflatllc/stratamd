@@ -1,24 +1,19 @@
 {
   "changes": [
     {
-      "height": 242,
-      "label": "Native question status, answer files, and dismissal",
+      "height": 560,
+      "label": "Answer in the existing Strata modal, with per-answer files and Hold",
       "number": 1,
       "selector": "[data-change-id=\"1\"]",
-      "width": 844,
-      "x": 413,
-      "y": 512.34375
+      "width": 640,
+      "x": 400,
+      "y": 220
     }
   ],
   "flow": "questions",
   "mode": "proposed",
   "ready": true,
-  "scrollPositions": [
-    {
-      "className": "conversation-messages",
-      "scrollTop": 45
-    }
-  ],
+  "scrollPositions": [],
   "source": "questions",
   "state": "upload-error",
   "theme": "Strata",
@@ -32,10 +27,12 @@
     7
   ],
   "approval": "changes",
+  "ownerReviewNotes": "1. This is really ugly and also all comment windows and stuff we is done as a modal",
   "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
   "sourceComponents": [
     "src/renderer/components/Conversation.tsx",
-    "src/renderer/components/ConversationComposer.tsx"
+    "src/renderer/components/ConversationComposer.tsx",
+    "src/renderer/components/SetupDialog.tsx"
   ],
   "behaviorChecks": [
     "Hold keeps answers and answer files private until Send.",
@@ -47,7 +44,8 @@
   "annotated": "captures/questions-upload-error-annotated.png",
   "layoutImpactSelectors": [
     ".conversation-messages",
-    ".chat-composer"
+    ".chat-composer",
+    ".modal-backdrop"
   ],
   "layoutImpactBounds": [
     {
@@ -93,10 +91,21 @@
       "width": 573.328125,
       "x": 548.328125,
       "y": 790.5
+    },
+    {
+      "bottom": 1000,
+      "height": 1000,
+      "left": 0,
+      "right": 1440,
+      "selector": ".modal-backdrop",
+      "top": 0,
+      "width": 1440,
+      "x": 0,
+      "y": 0
     }
   ],
   "invarianceOutsideLayoutImpact": {
-    "comparedPixels": 593009,
+    "comparedPixels": 0,
     "differentPixels": 0,
     "pixelsOverTolerance2": 0,
     "maxChannelDifference": 0
@@ -105,7 +114,5 @@
     "bodyOverflow": false,
     "brokenImages": [],
     "offscreenChanges": []
-  },
-  "ownerReviewNotes": "1. This is really ugly and also all comment windows and stuff we is done as a modal",
-  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+  }
 }

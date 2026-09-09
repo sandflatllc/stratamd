@@ -1,5 +1,5 @@
 {
-  "recordedAt": "2026-09-09T05:52:00.268468+00:00",
+  "recordedAt": "2026-09-09T06:18:04.677722+00:00",
   "viewport": [
     1440,
     1000
@@ -65,8 +65,8 @@
   "inputHashes": {
     "screen.html": "f6aa5db9efd6dee7227d3d7eadd8728e7f372c66d3010b960d3334d865c532c6",
     "screen.js": "cbc240276703c30ea6f41ae03f42b2a4d575338f723862e21ffb1e4ee0684ff7",
-    "proposals.js": "4ff96bf10d0559ab3b3943457d682c0b1a8b7680516639a60770dda71fe87d11",
-    "proposals.css": "f50cb5414588770242a3d37b709ea3b41e585602d3b48e64c33f3a1ee0a7f0d0",
+    "proposals.js": "7ee056461c91d605f5359ea50b310e077ff4181bda0b69943708222dae1e4337",
+    "proposals.css": "a0164994f6b6c9ceff8bb5d57848baf0e1efad29cd42dc343b0b965ee2a71dae",
     "reference/annotation.json": "b029465e674147b9b5e3a9e04362e6d758b088a6c4692e4899c3e688a4a9fdaf",
     "reference/engine.json": "2bc6c7f7037eb01e7ca0a6bfce7d4afc8aac36319096b58474f27a1dd266e5bc",
     "reference/image-annotation.json": "cba09b563c68fd9599d695d7b2dace9a6bb36e1699567fa1d6fd6f9e02ae6164",
@@ -100,19 +100,5 @@
     "../data.js": "dbf0a8498b8fa39e442f70a5606c13e207c32715bb420ada4a612e9bec0e34df"
   },
   "outsideImpactFailures": [],
-  "renderFailures": [],
-  "latestCorrection": {
-    "flow": "usage",
-    "scope": "Only Codex quota example and dependent combined/reset fixture details. Approved layout retained.",
-    "statesVerified": 5,
-    "approval": "approved",
-    "source": "Owner browser comment and clarification delivery 5d6ccfbc-edf3-4998-8671-2193b12f8cdf"
-  },
-  "galleryHashes": {
-    "index.html": "e05c32c32719ef4605c840029425f27f94e27b945b2b249bf6fe970f61b008a8",
-    "gallery.js": "cfba40f1dc9fa679d4dccc0bf896dcfeaa858247c48a5359142e82359c6d3158",
-    "gallery.css": "4ec4453d5a8006cf9286a3616575181eae334822bb051bef851d8973a82fa017",
-    "benchmark-guide.md": "1977459f8ef59855aa5ea9d49e07db3a1c42f9cba497c75aac4f0ab90648ed35",
-    "benchmark-guide.html": "c199bcd84edf56f0cc18aca46fe395f12ca7b138ebd75ea977fd2eff0a42e676"
-  }
+  "renderFailures": []
 }

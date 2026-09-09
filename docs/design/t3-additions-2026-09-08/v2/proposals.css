@@ -74,3 +74,13 @@
 .benchmark-overlay { position:fixed; inset:0; z-index:9999; pointer-events:none; }
 .benchmark-highlight { position:absolute; border:2px solid #ffd166; border-radius:6px; box-shadow:0 0 0 1px #000b; }
 .benchmark-highlight > b { position:absolute; left:4px; top:-13px; display:grid; place-items:center; min-width:23px; height:23px; border-radius:12px; padding:0 5px; color:#17120b; background:#ffd166; border:1px solid #17120b; font:700 12px/1 system-ui,sans-serif; }
+
+/* Owner correction: reuse the SetupDialog frame and existing answer controls. */
+.modal.setup-dialog.proposal-question-modal { width:640px; height:560px; }
+.proposal-question-modal .conversation-request { margin:0; padding:0; border:0; background:transparent; box-shadow:none; }
+.proposal-question-modal .parity-dialog-footer .proposal-note { margin-right:auto; max-width:250px; }
+
+.proposal-question-modal .conversation-request form { display:block; }
+.proposal-question-modal .conversation-request fieldset { display:grid; gap:12px; }
+.proposal-question-modal .conversation-request legend { margin-bottom:12px; }
+.proposal-question-modal .conversation-request fieldset > button { justify-self:start; }

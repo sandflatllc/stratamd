@@ -39,7 +39,7 @@ sources={}
 owner_review_path=base/'owner-review.json'
 owner_review=json.loads(owner_review_path.read_text()).get('review',{}) if owner_review_path.exists() else {}
 components={
- 'questions':['Conversation.tsx','ConversationComposer.tsx'], 'files':['Conversation.tsx','ConversationComposer.tsx','PreviewWindow.tsx'],
+ 'questions':['Conversation.tsx','ConversationComposer.tsx','SetupDialog.tsx'], 'files':['Conversation.tsx','ConversationComposer.tsx','PreviewWindow.tsx'],
  'usage':['AccountsDialog.tsx'], 'compact':['Conversation.tsx','ConversationComposer.tsx'], 'skills':['ConversationComposer.tsx'],
  'drafts':['ProjectsPanel.tsx','ConversationComposer.tsx'], 'defaults':['SettingsDialog.tsx','SetupDialog.tsx'], 'import':['SetupDialog.tsx','ProjectsPanel.tsx'],
  'evidence':['ConversationMessage.tsx','PreviewWindow.tsx'], 'capture':['VisualSession.tsx','ConversationComposer.tsx','SetupDialog.tsx'],
@@ -79,6 +79,7 @@ for flow in data['flows']:
         elif source=='image-annotation':affected=['.visual-card']
         elif flow['id']=='drafts':affected=['.project-thread[data-lifecycle="active"]','.chat-composer']+(['.conversation-messages'] if state=='opened' else [])
         else:affected=['.conversation-messages','.chat-composer']
+        if flow['id']=='questions' and state in ['asking','blocking','upload-error']:affected+=['.modal-backdrop']
         if flow['id']=='recovery' and state=='reconnecting':affected+=['[aria-label="Engine status"]']
         baseline_rects=rects(affected)
         info=load(flow['id'],state,'proposed')

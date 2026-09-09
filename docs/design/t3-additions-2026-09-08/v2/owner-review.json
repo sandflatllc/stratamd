@@ -169,5 +169,27 @@
       "details": "Removed the Codex five-hour fixture row; combined short window now includes Claude only, and the reset-credit example targets Claude.",
       "verification": "All five usage states rendered without broken images, offscreen changes, or unexpected differences outside the dialog."
     }
+  },
+  "implementationAuthorization": {
+    "source": "Subsequent user request to implement all 15 features with Astra subagents",
+    "scope": "All 15 features; correct approved comments and use existing Strata modal for questions",
+    "doesNotChangeHistoricalReview": true
+  },
+  "questionModalCorrection": {
+    "status": "Applied to benchmark, not a new owner approval",
+    "sourceComponents": [
+      "src/renderer/components/SetupDialog.tsx",
+      "src/renderer/components/Conversation.tsx"
+    ],
+    "states": [
+      "asking",
+      "blocking",
+      "upload-error"
+    ],
+    "size": [
+      640,
+      560
+    ],
+    "verification": "All six question states recaptured; no broken assets or out-of-viewport feature controls."
   }
 }

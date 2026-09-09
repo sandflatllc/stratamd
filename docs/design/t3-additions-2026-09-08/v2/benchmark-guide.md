@@ -1,6 +1,6 @@
 # Strata mockup benchmarks, revision 2
 
-All 15 accepted additions are covered by 12 flows and 58 visual states. The [saved owner review](owner-review.md) records nine approved flows, one needing changes, and two without a saved decision. Approved flows with comments require only the named corrections. Implementation starts after the remaining design decisions.
+All 15 accepted additions are covered by 12 flows and 58 visual states. The [saved owner review](owner-review.md) records nine approved flows, one needing changes, and two without a saved decision. Approved flows with comments require only the named corrections. Dillon subsequently authorized implementation of all 15 features. The question states now apply his requested modal correction; the historical review remains unchanged.
 
 Open the [interactive gallery](http://127.0.0.1:43871/v2/) to compare current Strata, the proposal, and numbered change highlights. The first gallery is superseded and must not be used as an implementation benchmark.
 
@@ -43,9 +43,9 @@ The surrounding gallery controls and yellow highlights are review aids. They are
 
 ## Instructions for implementation agents
 
-Use the approved state's `captures/<flow>-<state>-proposed.png` as the visual target. Its `-annotated.png` identifies the changed elements. The gallery links both images and the state's JSON specification. That specification lists the actual source components, change selectors and bounds, scroll positions, affected layout areas, and behavior checks.
+Use each state’s `captures/<flow>-<state>-proposed.png` as the visual target. Its `-annotated.png` identifies the changed elements. The gallery links both images and the state's JSON specification. That specification lists the actual source components, change selectors and bounds, scroll positions, affected layout areas, and behavior checks.
 
-Keep the existing app frame, fonts, theme, component spacing, icons, and unrelated controls. Extend the named product components. Do not copy the exported HTML into the product: this folder is a design fixture, not a new component architecture.
+Keep the existing app frame, fonts, theme, component spacing, icons, and unrelated controls. Questions use the exported SetupDialog frame at 640 × 560 with its existing answer controls. The modal backdrop intentionally dims the app; this affects the whole viewport in those states. Extend the named product components. Do not copy the exported HTML into the product: this folder is a design fixture, not a new component architecture.
 
 Match the capture conditions before comparing screenshots:
 

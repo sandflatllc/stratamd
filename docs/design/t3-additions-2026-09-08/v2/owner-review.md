@@ -31,3 +31,7 @@ The other eight approved flows have no notes. No decision was inferred for the t
 
 The [raw browser record](owner-review.json) preserves Dillon's exact wording and the original saved status for every flow. This export does not change the gallery's saved feedback.
 
+
+## Implementation authorization and question correction
+
+Dillon subsequently requested implementation of all 15 features. The historical decisions above remain unchanged. The question benchmark now uses the existing SetupDialog frame and answer controls in a 640 × 560 modal, with Hold, optional dismissal, and per-answer files. The asking, blocking and upload-error images were replaced; all six question states were recaptured and checked. This records the requested correction, not a new owner approval.
