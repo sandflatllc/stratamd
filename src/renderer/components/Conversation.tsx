@@ -20,7 +20,7 @@ import { deriveAgentRuns, deriveBackgroundTasks, type AgentRun } from '../../cor
 import { AgentClusters, AgentsDialog } from './AgentClusters'
 import { engineStorage } from '../engineStorage'
 import { conversationTurns } from '../../core/conversation-turns'
-import { ConversationComposer } from './ConversationComposer'
+import { ConversationComposer, type ComposerSendFailure } from './ConversationComposer'
 import { ConversationHistory, TranscriptStaging } from './ConversationHistory'
 import { ConversationNavigator } from './ConversationNavigator'
 import { isOwnerComment } from '../../core/conversation-delivery'
@@ -249,6 +249,7 @@ export function Conversation({ browserEvidence = [], onOpenBrowserEvidence, visi
   const [answerRequest, setAnswerRequest] = useState<string | null>(null)
   useEffect(() => setAnswerRequest(null), [thread?.id])
   const [inputError, setInputError] = useState('')
+  const [sendFailure, setSendFailure] = useState<ComposerSendFailure | null>(null)
 
   const panelRef = useRef<HTMLElement>(null)
   const history = useRef<ConversationHistory>(null)
@@ -469,6 +470,10 @@ export function Conversation({ browserEvidence = [], onOpenBrowserEvidence, visi
           <TurnChecklist items={allItems.filter((item) => !item.inferred && item.threadId === thread.id && item.turnId === turn.turnId)} onReply={(item, value) => { if (item.annotationId && onReplyItem) onReplyItem(item, value); else onQueueReply?.(thread.id, item, value) }} onDismiss={(item) => onDismissItem?.(thread.id, item)} onOpen={item => { if (item.annotationId) onOpenItem?.(item); else workspace.open(item.id) }} {...(onActItem ? { onAct: onActItem } : {})} />
         </section>
       })}
+      {sendFailure?.draftKey === `thread:${thread.id}` && <section className="conversation-request conversation-send-failure" role="alert" data-history-row>
+        <span>{sendFailure.message}</span>
+        <div className="conversation-actions"><button type="button" disabled={sendFailure.disabled} onClick={sendFailure.retry}>Retry send</button></div>
+      </section>}
       <TranscriptStaging />
       <ContextCompactionNotice engine={engine} thread={thread} />
       </div>
@@ -484,6 +489,6 @@ export function Conversation({ browserEvidence = [], onOpenBrowserEvidence, visi
       await window.strata.dismissEngineUserInput(thread.id, answerRequest!)
       heldInputs.remove(answerRequest!); inputDrafts.remove(answerRequest!); setAnswerRequest(null)
     }} />)}
-    <ConversationComposer deliveryId={workspace.previewId} key={`composer:${thread.id}`} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} context={<div className="conversation-context">{placement === 'side' && onDocumentContext && <button type="button" onClick={onDocumentContext}>Document context</button>}{workspace.tray}{pendingInputs.map(entry => <div className="conversation-context-entry" key={entry.id}><span>Held answer: {Object.values(entry.answers).join(' · ')}</span><button type="button" aria-label={`Remove held answer: ${Object.values(entry.answers).join(' · ')}`} onClick={() => { try { heldInputs.remove(entry.id); setInputError('') } catch (failure) { setInputError(String(failure)) } }}>×</button></div>)}{inputError && <p role="alert">{inputError}</p>}</div>} queuedCount={workspace.selectedCount + pendingInputs.length} reservedAttachments={workspace.selectedCount > 0 || (thread.outcomes?.length ?? 0) > 0 ? 1 : 0} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} running={running} sendWhileRunning={pendingInputs.length > 0} onStop={() => onStop(thread.id)} onSend={async input => { for (const entry of pendingInputs) { await onUserInput(thread.id, entry.id, entry.answers); heldInputs.remove(entry.id); inputDrafts.remove(entry.id) }; if (input.text.trim() || input.attachments?.length || input.visual?.length || workspace.selectedCount || thread.outcomes?.length) { await onStart(thread.id, { ...input, ...workspace.outgoing }); workspace.sent() } }} visualComments={heldVisual} {...(onOpenVisual ? { onOpenVisual: (comment: VisualCommentView) => onOpenVisual(comment.id) } : {})} {...(onMarkUpImage ? { onMarkUpImage } : {})} {...(consumedAttachmentIds ? { consumedAttachmentIds } : {})} />
+    <ConversationComposer onSendFailureChange={setSendFailure} deliveryId={workspace.previewId} key={`composer:${thread.id}`} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} context={<div className="conversation-context">{placement === 'side' && onDocumentContext && <button type="button" onClick={onDocumentContext}>Document context</button>}{workspace.tray}{pendingInputs.map(entry => <div className="conversation-context-entry" key={entry.id}><span>Held answer: {Object.values(entry.answers).join(' · ')}</span><button type="button" aria-label={`Remove held answer: ${Object.values(entry.answers).join(' · ')}`} onClick={() => { try { heldInputs.remove(entry.id); setInputError('') } catch (failure) { setInputError(String(failure)) } }}>×</button></div>)}{inputError && <p role="alert">{inputError}</p>}</div>} queuedCount={workspace.selectedCount + pendingInputs.length} reservedAttachments={workspace.selectedCount > 0 || (thread.outcomes?.length ?? 0) > 0 ? 1 : 0} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} running={running} sendWhileRunning={pendingInputs.length > 0} onStop={() => onStop(thread.id)} onSend={async input => { for (const entry of pendingInputs) { await onUserInput(thread.id, entry.id, entry.answers); heldInputs.remove(entry.id); inputDrafts.remove(entry.id) }; if (input.text.trim() || input.attachments?.length || input.visual?.length || workspace.selectedCount || thread.outcomes?.length) { await onStart(thread.id, { ...input, ...workspace.outgoing }); workspace.sent() } }} visualComments={heldVisual} {...(onOpenVisual ? { onOpenVisual: (comment: VisualCommentView) => onOpenVisual(comment.id) } : {})} {...(onMarkUpImage ? { onMarkUpImage } : {})} {...(consumedAttachmentIds ? { consumedAttachmentIds } : {})} />
   </section>
 }

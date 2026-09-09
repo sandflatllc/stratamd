@@ -36,6 +36,13 @@ const accessModes = [
   ['full-access', 'Full access', 'Allow commands and edits without prompts.'],
 ] as const
 
+export interface ComposerSendFailure {
+  draftKey: string
+  message: string
+  disabled: boolean
+  retry(): void
+}
+
 export interface ConversationComposerProps {
   deliveryId?: string
   engine: EngineView
@@ -58,6 +65,7 @@ export interface ConversationComposerProps {
   sendWhileRunning?: boolean
   onStop?(): void
   onSend(input: ConversationInput): Promise<void>
+  onSendFailureChange?(failure: ComposerSendFailure | null): void
   /** Held visual comments addressed to this thread; each rides the next Send as a staged card (docs/plans/open/visual-review). */
   visualComments?: VisualCommentView[]
   onOpenVisual?(comment: VisualCommentView): void
@@ -67,7 +75,7 @@ export interface ConversationComposerProps {
   consumedAttachmentIds?: readonly string[]
 }
 
-export function ConversationComposer({ deliveryId, engine, thread, projectId, draftKey, initial, centered = false, queuedCount = 0, reservedAttachments = 0, context, canSendContext = false, workspaceControls, workspace, branch, running = false, sendWhileRunning = false, onStop, onSend, visualComments = [], onOpenVisual, onMarkUpImage, consumedAttachmentIds = [] }: ConversationComposerProps) {
+export function ConversationComposer({ deliveryId, engine, thread, projectId, draftKey, initial, centered = false, queuedCount = 0, reservedAttachments = 0, context, canSendContext = false, workspaceControls, workspace, branch, running = false, sendWhileRunning = false, onStop, onSend, onSendFailureChange, visualComments = [], onOpenVisual, onMarkUpImage, consumedAttachmentIds = [] }: ConversationComposerProps) {
   const [draft] = useState(() => readDraft(draftKey))
   const [text, setText] = useState(draft.text)
   const [attachments, setAttachmentsState] = useState<DraftAttachment[]>(draft.attachments ?? [])
@@ -89,6 +97,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
   const attachmentGeneration = useRef(0)
   const [error, setError] = useState('')
   const [sendFailed, setSendFailed] = useState(false)
+  const retrySend = useRef<() => Promise<void>>(async () => {})
   const root = useRef<HTMLFormElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -241,6 +250,15 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'The message could not be sent. Try again.'); setSendFailed(true) }
     finally { sending.current = false; setBusy(false) }
   }
+  // The composer owns submission and its frozen message id. The conversation owns
+  // the transcript notice; a current ref keeps Retry aligned with this composer.
+  const reportFailure = Boolean(onSendFailureChange && sendFailed && attachments.some(attachment => attachment.kind === 'binary'))
+  useLayoutEffect(() => { retrySend.current = send })
+  useEffect(() => {
+    onSendFailureChange?.(reportFailure && error ? { draftKey, message: error, disabled: busy || !canSend, retry: () => { void retrySend.current() } } : null)
+  }, [onSendFailureChange, reportFailure, error, draftKey, busy, canSend])
+  useEffect(() => () => onSendFailureChange?.(null), [onSendFailureChange])
+
   return <form ref={root} className="chat-composer" data-centered={centered} aria-label="Conversation composer" onSubmit={(event) => { event.preventDefault(); void send() }} onKeyDown={(event) => {
     if (event.key === 'Escape' && menu) { event.preventDefault(); event.stopPropagation(); setMenu(null); input.current?.focus() }
 
@@ -300,6 +318,6 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     {(attachments.length > 0 || includedVisual.length > 0) && <small className="conversation-capacity" role="status" data-over={capacity.refusal ? '' : undefined}>{capacity.refusal ?? capacity.line}</small>}
     {account?.usable === false && <p role="alert">{account.name} cannot take a turn: {account.reason ?? account.state}. Choose another model or account.</p>}
     {unsaved && <p className="conversation-draft-unsaved" role="status">This draft could not be saved and will not survive reload.</p>}
-    {error && <div className="send-error" role="alert">{error}{sendFailed && <button type="button" className="chat-pill" disabled={busy || !canSend} onClick={() => void send()}>Retry send</button>}</div>}
+    {error && !reportFailure && <div className="send-error" role="alert">{error}{sendFailed && <button type="button" className="chat-pill" disabled={busy || !canSend} onClick={() => void send()}>Retry send</button>}</div>}
   </form>
 }

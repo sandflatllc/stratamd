@@ -22,6 +22,7 @@ async function open(page: Page) {
 test('PDF and ZIP retain original bytes after draft reload and failed upload retry', async ({}, testInfo) => {
   const engine = await startEngine({ projectsParity: true })
   engine.setMessage('# Inspection page review\n\nThe main offer is clear. I’ll review the inspection flow and the supporting copy.\n\n## Keep the next step visible\n\nUse a direct call to action and explain what happens after a homeowner requests an inspection.\n')
+  engine.complete('2026-09-03T12:02:00Z')
   const scenario = await seededScenario(testInfo, engine.origin)
   await scenario.writeSettings({ theme: 'strata-night' })
   try {
@@ -45,11 +46,13 @@ test('PDF and ZIP retain original bytes after draft reload and failed upload ret
     await page.screenshot({ path: testInfo.outputPath('files-attached.png') })
     const stop = conversation.getByRole('button', { name: 'Stop', exact: true })
     if (await stop.isVisible()) { await stop.click(); await expect(page.getByText('Stop requested.', { exact: true })).toBeVisible(); await expect(page.getByText('Stop requested.', { exact: true })).toBeHidden() }
-    engine.failNextUpload()
+    engine.failNextUpload(1)
     await conversation.getByRole('button', { name: 'Send', exact: true }).click()
-    await expect(conversation.getByRole('alert')).toContainText('inspection-report.pdf could not be sent. Your message and files are still held.')
+    await expect(conversation.getByRole('alert')).toContainText('inspection-export.zip could not be sent. Your message and files are still held.')
     await expect(conversation.locator('[data-kind="binary"]')).toHaveCount(2)
-    await conversation.locator('.conversation-messages').evaluate(el => { el.scrollTop = 0 })
+    await expect(conversation.locator('.conversation-messages').getByRole('alert')).toContainText('inspection-export.zip could not be sent')
+    await expect(conversation.getByRole('alert')).toHaveCount(1)
+    await expect(conversation.locator('form').getByRole('alert')).toHaveCount(0)
     await conversation.getByRole('button', { name: 'Retry send', exact: true }).scrollIntoViewIfNeeded()
     await page.screenshot({ path: testInfo.outputPath('files-upload-error.png') })
     await conversation.getByRole('textbox', { name: 'Message conversation' }).fill('This edit must not replace the frozen delivery.')
@@ -63,11 +66,13 @@ test('PDF and ZIP retain original bytes after draft reload and failed upload ret
       expect(engine.uploadBytesById.get(attachment.id)).toEqual(files[index]!.buffer)
     }
     await expect(conversation.locator('.conversation-attachment-preview')).toHaveCount(0)
+    await expect(conversation.locator('.conversation-send-failure')).toHaveCount(0)
   } finally { await scenario.dispose(); await engine.close() }
 })
 
 test('a missing binary draft names the file and discard removes its saved draft', async ({}, testInfo) => {
   const engine = await startEngine()
+  engine.complete('2026-09-03T12:02:00Z')
   const scenario = await seededScenario(testInfo, engine.origin)
   await scenario.writeSettings({ theme: 'strata-night' })
   try {

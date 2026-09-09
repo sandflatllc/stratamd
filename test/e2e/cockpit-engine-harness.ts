@@ -122,7 +122,7 @@ export interface FakeEngine {
   tokenRequests: string[]
   rpcRequests: Array<{ tag: string; payload: unknown }>
   /** Offline refuses HTTP and drops every socket, as a stopped server would; online again accepts new connections. */
-  failNextUpload(): void
+  failNextUpload(after?: number): void
   failNextTurn(): void
   failNextModelSettings(): void
   setOnline(value: boolean): void
@@ -177,7 +177,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   const uploads: string[] = []
   const uploadsById = new Map<string, string>()
   const uploadBytesById = new Map<string, Buffer>()
-  let rejectNextUpload = false
+  let uploadsUntilFailure: number | null = null
   const uploadRequests: FakeEngine['uploadRequests'] = []
   let uploadCount = 0
   let rejectNextTurn = false
@@ -345,7 +345,8 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       request.on('data', (piece) => chunks.push(Buffer.from(piece)))
       request.on('end', () => {
         const bytes = Buffer.concat(chunks)
-        if (rejectNextUpload) { rejectNextUpload = false; response.statusCode = 503; response.end(); return }
+        if (uploadsUntilFailure === 0) { uploadsUntilFailure = null; response.statusCode = 503; response.end(); return }
+        if (uploadsUntilFailure !== null) uploadsUntilFailure -= 1
         uploadBytesById.set(attachmentId, bytes)
         const text = bytes.toString('utf8')
         uploads.push(text); uploadsById.set(attachmentId, text)
@@ -497,7 +498,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     setOnline: (value) => { online = value; if (!value) dropSockets() },
     setMessage: (value) => { message = value; broadcast() },
     setWorkspaceRoot: (value) => { workspaceRoot = value; broadcast() },
-    failNextUpload: () => { rejectNextUpload = true },
+    failNextUpload: (after = 0) => { uploadsUntilFailure = after },
     failNextTurn: () => { rejectNextTurn = true },
     failNextModelSettings: () => { rejectNextModelSettings = true },
     setSettings: (patch) => { settings = { ...settings, ...patch }; providerInstances = settings.providerInstances as typeof providerInstances },

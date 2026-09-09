@@ -1705,6 +1705,7 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .conversation-request { display: grid; gap: 7px; border-left: 3px solid var(--controls-primary-highlight); }
 .conversation-actions, .conversation-request form { display: flex; gap: 6px; }
 .conversation-actions button, .conversation-request button { border: 0; border-radius: 7px; padding: 5px 9px; background: var(--controls-primary); color: var(--controls-primary-text); cursor: pointer; }
+.conversation-send-failure { border: 1px solid var(--controls-danger); font-size: calc(12.5px * var(--zoom, 1)); }
 .conversation-request input { min-width: 0; flex: 1; }
 .conversation-attachment-input { display: none; }
 .conversation-attachments { display: flex; flex-wrap: wrap; gap: 6px; }
