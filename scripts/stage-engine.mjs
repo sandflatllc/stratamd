@@ -1,7 +1,7 @@
 import { applyEngineBackport } from './engine-backport.mjs'
 import { createHash } from 'node:crypto'
 import { readFile, writeFile, mkdir, rm, readdir, lstat, readlink, copyFile } from 'node:fs/promises'
-import { join, resolve, relative } from 'node:path'
+import { join, resolve, relative, delimiter } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
@@ -10,12 +10,15 @@ const linuxToolchain = process.env.STRATAMD_LINUX_TOOLCHAIN
   ? source.linuxToolchainProfiles?.[process.env.STRATAMD_LINUX_TOOLCHAIN]
   : source.linuxToolchain
 if (process.platform === 'linux' && !linuxToolchain) throw new Error(`Unknown pinned Linux toolchain: ${process.env.STRATAMD_LINUX_TOOLCHAIN}`)
+const windows = process.platform === 'win32'
+const nodeEntry = windows ? 'node/node.exe' : 'node/bin/node'
+const npmRoot = windows ? 'node/node_modules/npm' : 'node/lib/node_modules/npm'
 const target = `${process.platform}-${process.arch}`
-if (!source.nodeArchives[target]) throw new Error(`No bundled engine for ${target}. Build Linux x64, macOS x64 or macOS arm64 on that native host.`)
+if (!source.nodeArchives[target]) throw new Error(`No bundled engine for ${target}. Build Linux x64, macOS x64/arm64 or Windows x64 on that native host.`)
 const destination = resolve(process.argv[2] || join(root, 'build/engine'))
 const cache = join(root, 'build/engine-downloads')
 await mkdir(cache, { recursive: true })
-const name = `node-v${source.node}-${target}.tar.gz`, archive = join(cache, name)
+const name = windows ? `node-v${source.node}-win-${process.arch}.zip` : `node-v${source.node}-${target}.tar.gz`, archive = join(cache, name)
 try { await lstat(archive) } catch {
   const response = await fetch(`https://nodejs.org/dist/v${source.node}/${name}`)
   if (!response.ok) throw new Error(`Node download returned ${response.status}`)
@@ -29,10 +32,10 @@ function run(executable, args, cwd, env = process.env) {
 }
 await rm(destination, { recursive: true, force: true })
 await mkdir(join(destination, 'node'), { recursive: true })
-run('tar', ['-xzf', archive, '--strip-components=1', '-C', join(destination, 'node')], root)
+run('tar', ['-xf', archive, '--strip-components=1', '-C', join(destination, 'node')], root)
 for (const file of ['package.json', 'package-lock.json']) await copyFile(join(root, 'packaging/engine', file), join(destination, file))
-const executable = join(destination, 'node/bin/node')
-const env = { ...process.env, PATH: `${join(destination, 'node/bin')}:${process.env.PATH || ''}`, npm_config_nodedir: join(destination, 'node') }
+const executable = join(destination, nodeEntry)
+const env = { ...process.env, PATH: `${join(destination, windows ? 'node' : 'node/bin')}${delimiter}${process.env.PATH || ''}`, ...(windows ? {} : { npm_config_nodedir: join(destination, 'node') }) }
 if (process.platform === 'linux') {
   const toolchain = linuxToolchain
   const version = (tool, args) => {
@@ -48,13 +51,13 @@ if (process.platform === 'linux') {
     npm_config_build_from_source: 'true' })
 }
 
-run(executable, [join(destination, 'node/lib/node_modules/npm/bin/npm-cli.js'), 'ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', '--cache', join(cache, 'npm')], destination, env)
+run(executable, [join(destination, npmRoot, 'bin/npm-cli.js'), 'ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', '--cache', join(cache, 'npm')], destination, env)
 const backport = await applyEngineBackport(root, destination, source)
 run(executable, ['--input-type=module', '-e', "import {createRequire} from 'node:module';import {pathToFileURL} from 'node:url';const r=createRequire(process.cwd()+'/node_modules/t3/dist/bin.mjs');const stream=await import(pathToFileURL(r.resolve('effect/Stream')).href);if(typeof stream.paginate!=='function')throw Error('The replay backport cannot load effect/Stream.paginate');"], destination, env)
 // Build the PTY with the node-gyp version bundled in the authenticated Node archive.
 // Other native dependencies carry lockfile-authenticated platform packages.
 await rm(join(destination, 'node_modules/node-pty/prebuilds'), { recursive: true, force: true })
-run(executable, [join(destination, 'node/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js'), 'rebuild', `--nodedir=${join(destination, 'node')}`], join(destination, 'node_modules/node-pty'), env)
+run(executable, [join(destination, npmRoot, 'node_modules/node-gyp/bin/node-gyp.js'), 'rebuild', ...(windows ? [`--target=${source.node}`] : [`--nodedir=${join(destination, 'node')}`])], join(destination, 'node_modules/node-pty'), env)
 run(executable, ['scripts/post-install.js'], join(destination, 'node_modules/node-pty'), env)
 run(executable, ['--input-type=module', '-e', "import {createRequire} from 'node:module';const r=createRequire(process.cwd()+'/package.json');r('node-pty');r('msgpackr-extract');await import('@ff-labs/fff-node');"], destination, env)
 // node-gyp emits machine paths in Makefiles, config.gypi and object files.
@@ -62,10 +65,10 @@ run(executable, ['--input-type=module', '-e', "import {createRequire} from 'node
 const nativeBuild = join(destination, 'node_modules/node-pty/build')
 try {
   for (const entry of await readdir(nativeBuild)) if (entry !== 'Release') await rm(join(nativeBuild, entry), { recursive: true, force: true })
-  for (const entry of await readdir(join(nativeBuild, 'Release'))) if (!entry.endsWith('.node') && entry !== 'spawn-helper') await rm(join(nativeBuild, 'Release', entry), { recursive: true, force: true })
+  for (const entry of await readdir(join(nativeBuild, 'Release'))) if (!windows && !entry.endsWith('.node') && entry !== 'spawn-helper') await rm(join(nativeBuild, 'Release', entry), { recursive: true, force: true })
 } catch (error) { if (error.code !== 'ENOENT') throw error }
 for (const entry of await readdir(join(destination, 'node_modules/node-pty/node-addon-api'))) if (entry.endsWith('.target.mk')) await rm(join(destination, 'node_modules/node-pty/node-addon-api', entry))
-await writeFile(join(destination, 'build-provenance.json'), JSON.stringify({ t3SourceCommit: source.t3SourceCommit, backport, nodeArchiveSHA256: source.nodeArchives[target], headers: 'node/include/node from the verified Node archive', toolchain: process.platform === 'linux' ? linuxToolchain : 'native macOS build; reproducibility unverified' }, null, 2) + '\n')
+await writeFile(join(destination, 'build-provenance.json'), JSON.stringify({ t3SourceCommit: source.t3SourceCommit, backport, nodeArchiveSHA256: source.nodeArchives[target], headers: windows ? 'node-gyp target headers and import library, verified by node-gyp' : 'node/include/node from the verified Node archive', toolchain: process.platform === 'linux' ? linuxToolchain : `native ${process.platform} build; reproducibility unverified` }, null, 2) + '\n')
 const lock = JSON.parse(await readFile(join(destination, 'package-lock.json'), 'utf8'))
 const inventory = []
 const notices = [`Bundled Node ${source.node} and official t3 ${source.t3}, with MIT upstream replay backport ${source.backport.commit}.`, 'These packages retain their own licenses. No hosted service access is granted by redistribution.', await readFile(join(destination, 'node/LICENSE'), 'utf8')]
@@ -82,7 +85,7 @@ async function npmPackages(path) {
     else await npmPackages(next)
   }
 }
-await npmPackages('node/lib/node_modules/npm')
+await npmPackages(npmRoot)
 for (const [path, metadata] of Object.entries(packages)) {
   if (!path) continue
   try { await lstat(join(destination, path, 'package.json')) } catch { continue }
@@ -94,7 +97,8 @@ for (const [path, metadata] of Object.entries(packages)) {
 }
 await writeFile(join(destination, 'dependency-inventory.json'), JSON.stringify({ t3SourceCommit: source.t3SourceCommit, backport, node: source.node, nodeArchiveSHA256: source.nodeArchives[target], packages: inventory }, null, 2) + '\n')
 await writeFile(join(destination, 'THIRD_PARTY_NOTICES.txt'), notices.join('\n'))
-await writeFile(join(destination, 'runtime.json'), JSON.stringify({ version: `t3-${source.t3}-node-${source.node}-${target}-${source.runtimeRevision}`, nodeVersion: source.node, platform: process.platform, arch: process.arch, executable: 'node/bin/node', entry: 'node_modules/t3/dist/bin.mjs', integrity: 'integrity.json' }, null, 2) + '\n')
+await writeFile(join(destination, 'runtime.json'), JSON.stringify({ version: `t3-${source.t3}-node-${source.node}-${target}-${source.runtimeRevision}`, nodeVersion: source.node, platform: process.platform, arch: process.arch, executable: nodeEntry, ...(windows ? { preload: 'windows-lifecycle.mjs' } : {}), entry: 'node_modules/t3/dist/bin.mjs', integrity: 'integrity.json' }, null, 2) + '\n')
+if (windows) await copyFile(join(root, 'resources/engine-helpers/windows-lifecycle.mjs'), join(destination, 'windows-lifecycle.mjs'))
 const files = {}
 async function visit(directory) {
   for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {

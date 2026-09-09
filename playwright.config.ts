@@ -16,10 +16,10 @@ const managedTag = /@managed/
 // runners have four cores and run two. A Mac has one desktop, one focus, and
 // one clipboard, so it runs one worker in total. STRATAMD_E2E_WORKERS exists
 // for the eight-worker stress pass and for measurements, never as a way down.
-const macHost = process.platform === 'darwin'
+const sharedDesktop = process.platform !== 'linux'
 export const ORDINARY_WORKERS = 6
 function ordinaryWorkerCount(): number {
-  if (macHost) return 1
+  if (sharedDesktop) return 1
   const override = process.env.STRATAMD_E2E_WORKERS
   if (override === undefined || override === '') return process.env.CI ? 2 : ORDINARY_WORKERS
   if (!/^[1-9]\d*$/.test(override)) {
@@ -37,7 +37,7 @@ export default defineConfig({
   // makes progress beside it. `--workers 1` on the command line caps this
   // total and gives a true serial run; STRATAMD_E2E_WORKERS=1 does not, it
   // only sets the ordinary count. A Mac stays at one in total.
-  workers: macHost ? 1 : ordinaryWorkers + 1,
+  workers: sharedDesktop ? 1 : ordinaryWorkers + 1,
   // Starts one Xvfb per worker slot on Linux and fails the run, naming the
   // serial command, if it cannot.
   globalSetup: './test/e2e/display.ts',

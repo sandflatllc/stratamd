@@ -174,7 +174,7 @@ export class ReferencePreviewController {
     }
     const { title, excerpt } = markdownPreviewText(preview.source)
     const heading = document.createElement('strong')
-    heading.textContent = title ?? preview.path.split('/').at(-1) ?? 'Markdown document'
+    heading.textContent = title ?? preview.path.split(/[/\\]/).at(-1) ?? 'Markdown document'
     const path = document.createElement('span')
     path.className = 'strata-reference-preview__path'
     path.textContent = preview.path

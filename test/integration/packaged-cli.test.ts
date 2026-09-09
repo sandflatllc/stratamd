@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, type ExecFileOptions } from 'node:child_process'
 import { mkdtemp, readdir, readlink, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -7,6 +7,9 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { AGENT_HELP } from '../../src/cli/agent-help.js'
 
 const executeFile = promisify(execFile)
+const executeCli = (file: string, args: readonly string[] = [], options: ExecFileOptions = {}) => process.platform === 'win32' && file.endsWith('.cmd')
+  ? executeFile('cmd.exe', ['/d', '/s', '/c', `\"\"${file}\" ${args.join(' ')}\"`], { ...options, windowsVerbatimArguments: true })
+  : executeFile(file, args, options)
 const temporaryDirectories: string[] = []
 
 export interface PackagedLayout {
@@ -17,6 +20,7 @@ export interface PackagedLayout {
 
 /** Where the CLI script and GUI binary live inside each packaged build (mac-plan §4.4). */
 export function packagedLayout(platform: string, root: string): PackagedLayout {
+  if (platform === 'win32') return { root, cli: join(root, 'stratamd.cmd'), gui: join(root, 'StrataMD.exe') }
   if (platform === 'darwin') {
     return {
       root,
@@ -56,7 +60,7 @@ async function discoverPackagedRoot(): Promise<string | undefined> {
     }
     return undefined
   }
-  const candidate = join(dist, 'linux-unpacked')
+  const candidate = join(dist, process.platform === 'win32' ? 'win-unpacked' : 'linux-unpacked')
   try {
     await stat(candidate)
     return candidate
@@ -77,13 +81,13 @@ describe('packaged layout calculations', () => {
   it('places the CLI beside the Linux binary and under Contents/Resources/bin on macOS', () => {
     expect(packagedLayout('linux', '/opt/strata')).toEqual({
       root: '/opt/strata',
-      cli: '/opt/strata/stratamd',
-      gui: '/opt/strata/stratamd-app',
+      cli: join('/opt/strata', 'stratamd'),
+      gui: join('/opt/strata', 'stratamd-app'),
     })
     expect(packagedLayout('darwin', '/Applications/StrataMD.app')).toEqual({
       root: '/Applications/StrataMD.app',
-      cli: '/Applications/StrataMD.app/Contents/Resources/bin/stratamd',
-      gui: '/Applications/StrataMD.app/Contents/MacOS/StrataMD',
+      cli: join('/Applications/StrataMD.app', 'Contents/Resources/bin/stratamd'),
+      gui: join('/Applications/StrataMD.app', 'Contents/MacOS/StrataMD'),
     })
   })
 })
@@ -106,10 +110,10 @@ describePackaged('packaged CLI', () => {
 
   it('runs from the packaged build and setup links that packaged executable', async () => {
     const layout = packagedLayout(process.platform, packagedRoot!)
-    expect((await stat(layout.cli)).mode & 0o111).not.toBe(0)
+    if (process.platform !== 'win32') expect((await stat(layout.cli)).mode & 0o111).not.toBe(0)
     expect((await stat(layout.gui)).mode & 0o111).not.toBe(0)
 
-    const help = await executeFile(layout.cli, ['--agent-help'])
+    const help = await executeCli(layout.cli, ['--agent-help'])
     expect(help.stderr).toBe('')
     expect(help.stdout).toBe(`${AGENT_HELP}\n`)
 
@@ -119,16 +123,20 @@ describePackaged('packaged CLI', () => {
     const environment = {
       ...process.env,
       HOME: home,
+      USERPROFILE: home,
+      LOCALAPPDATA: join(home, 'local'),
+      APPDATA: join(home, 'roaming'),
       XDG_DATA_HOME: data,
       XDG_CONFIG_HOME: join(home, 'config'),
       XDG_RUNTIME_DIR: join(home, 'run')
     }
-    await executeFile(layout.cli, ['setup'], { env: environment })
-    const installed = join(home, '.local', 'bin', 'stratamd')
-    expect(await readlink(installed)).toBe(layout.cli)
-    expect((await executeFile(installed, ['--agent-help'], { env: environment })).stdout).toBe(`${AGENT_HELP}\n`)
+    await executeCli(layout.cli, ['setup'], { env: environment })
+    const installed = process.platform === 'win32' ? join(home, 'local', 'stratamd', 'bin', 'stratamd.cmd') : join(home, '.local', 'bin', 'stratamd')
+    if (process.platform === 'win32') expect(await readFile(installed, 'utf8')).toContain(layout.cli)
+    else expect(await readlink(installed)).toBe(layout.cli)
+    expect((await executeCli(installed, ['--agent-help'], { env: environment })).stdout).toBe(`${AGENT_HELP}\n`)
 
-    await executeFile(layout.cli, ['setup', '--remove'], { env: environment })
+    await executeCli(layout.cli, ['setup', '--remove'], { env: environment })
     await expect(stat(installed)).rejects.toMatchObject({ code: 'ENOENT' })
   }, 120_000)
 })

@@ -266,3 +266,11 @@ The capacity workflow in `test/e2e/visual-comments.spec.ts` sends exactly eight 
 External capture: `test/unit/window-capture.test.ts`, `test/integration/main-ipc.test.ts` and `test/e2e/window-capture.spec.ts` cover permission UI, opt-in/shortcut conflicts, expired selection and changed destinations, native X11 capture and selected-window GTK accessibility, markup, private Hold and explicit Send. `test/integration/packaged-cli.test.ts` loads packaged xa11y and verifies the worker, native helper and T3 license. Native macOS execution and completed Wayland selection remain unverified on this host; isolated portal handoff is recorded separately.
 
 Fable repair regressions (2026-09-09): `test/unit/engine-client.test.ts` covers the upstream active settled override, explicit unsettle reason, native retirement and local cancellation without another send. `test/unit/user-input.test.ts` preserves unresolved asynchronous questions beyond the activity cap. `test/e2e/native-questions.spec.ts` checks multiple provider option values, and `test/e2e/question-files.spec.ts` checks read-only retry review. `test/e2e/binary-attachments.spec.ts` proves later composer edits survive retry. `test/e2e/composer-commands.spec.ts` sends unmatched paths and dollar amounts normally. `test/unit/browser-evidence.test.ts` covers bounded screenshot retention; `test/e2e/browser-evidence.spec.ts` checks takeover pause, stopping while paused, protocol media and playback. Successful history import with skipped source sessions is informational; only failed RPCs offer retry.
+
+## Windows native target
+
+| Contract | Coverage |
+|---|---|
+| Windows data/config locations, drive-letter links, native frame and login registration | `test/unit/windows-platform.test.ts` |
+| Windows save/rename, descriptor locks and process incarnation checks | Windows-only cases in `test/unit/windows-platform.test.ts` |
+| Windows document workflows, managed runtime and installed CLI | `.github/workflows/windows.yml`; native execution required before release signoff |

@@ -15,7 +15,7 @@ import { LocalEngineManager } from './engine/manager'
 import { connectionIdentity } from './engine/identity'
 import { conversationDelivery, renderConversationDelivery } from '../core/conversation-delivery'
 import { randomUUID } from 'node:crypto'
-import { basename, dirname, extname, join, resolve } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { open, realpath, stat, type FileHandle } from 'node:fs/promises'
 import { pathForDescriptor } from '../platform/descriptor-path'
 import type {
@@ -4222,9 +4222,8 @@ function activeConversationInProject(path: string, engine: AppView['engine']): {
 
 /** True when `path` sits inside `root` (or is it), by path segments, never by prefix alone. */
 export function pathWithin(path: string, root: string): boolean {
-  const normalizedRoot = resolve(root)
-  const normalizedPath = resolve(path)
-  return normalizedPath === normalizedRoot || normalizedPath.startsWith(normalizedRoot.endsWith('/') ? normalizedRoot : `${normalizedRoot}/`)
+  const fromRoot = relative(resolve(root), resolve(path))
+  return fromRoot === '' || fromRoot !== '..' && !fromRoot.startsWith(`..${sep}`) && !isAbsolute(fromRoot)
 }
 
 function explorerView(scan: ExplorerScanResult, sessions: Map<string, OpenDocumentSession>): ExplorerFolderView[] {

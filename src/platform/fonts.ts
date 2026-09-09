@@ -51,6 +51,11 @@ export async function queryInstalledFontFamilies(
   platform: string = process.platform,
 ): Promise<string[] | null> {
   try {
+    if (platform === 'win32') {
+      const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '[Console]::OutputEncoding = [Text.UTF8Encoding]::new(); Add-Type -AssemblyName System.Drawing; (New-Object System.Drawing.Text.InstalledFontCollection).Families.Name | ConvertTo-Json -Compress'])
+      const names: unknown = JSON.parse(stdout)
+      return typeof names === 'string' ? [names] : Array.isArray(names) && names.every(name => typeof name === 'string') ? names : null
+    }
     if (platform === 'darwin') {
       const { stdout } = await run('system_profiler', ['-json', 'SPFontsDataType'])
       return fontFamiliesFromSystemProfiler(stdout)

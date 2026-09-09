@@ -1,11 +1,16 @@
+import { slashPath } from '../shared/file-path'
+
 /** Paths belong to the paired workstation, never the renderer's filesystem. */
 export function parentPath(path: string): string {
+  path = slashPath(path)
+  if (/^[a-z]:\/?$/i.test(path)) return path.slice(0, 2) + '/'
+  if (/^\/\/[^/]+\/[^/]+\/?$/.test(path)) return path.replace(/\/$/, '')
   if (path === '/') return '/'
   const clean = path.replace(/\/+$/, '')
   const index = clean.lastIndexOf('/')
-  return index < 0 ? '~' : index === 0 ? '/' : clean.slice(0, index)
+  return index < 0 ? '~' : index === 0 ? '/' : /^[a-z]:$/i.test(clean.slice(0, index)) ? clean.slice(0, index) + '/' : clean.slice(0, index)
 }
-export function joinPath(parent: string, child: string): string { return `${parent.replace(/\/+$/, '')}/${child.replace(/^\/+/, '')}` }
+export function joinPath(parent: string, child: string): string { return `${slashPath(parent).replace(/\/+$/, '')}/${child.replace(/^\/+/, '')}` }
 export function repositoryFolderName(repository: string): string {
   return repository.replace(/[?#].*$/, '').replace(/\/+$/, '').split(/[/:]/).at(-1)?.replace(/\.git$/, '') ?? ''
 }

@@ -1,3 +1,4 @@
+import { unixSupportBinding } from './unix-support.js'
 import { execFile } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
@@ -24,6 +25,8 @@ const defaultRunner: Runner = async (file, args) => execFileAsync(file, [...args
 let cachedBootId: Promise<string | null> | undefined
 
 export async function bootId(platform: string = process.platform, run: Runner = defaultRunner): Promise<string | null> {
+  // Windows process creation FILETIME already identifies an incarnation across boots.
+  if (platform === 'win32') return 'windows-filetime-v1'
   if (platform === 'linux') {
     try {
       return (await readFile('/proc/sys/kernel/random/boot_id', 'utf8')).trim() || null
@@ -49,6 +52,9 @@ export async function processStartTime(
   platform: string = process.platform,
   run: Runner = defaultRunner,
 ): Promise<string | null> {
+  if (platform === 'win32') {
+    try { return unixSupportBinding().processInfo?.(pid).startTime ?? null } catch { return null }
+  }
   if (platform === 'linux') {
     try {
       const stat = await readFile(`/proc/${pid}/stat`, 'utf8')

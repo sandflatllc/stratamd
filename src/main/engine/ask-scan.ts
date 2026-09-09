@@ -1,3 +1,5 @@
+import { terminateProcessTree } from '../../platform/process-tree'
+import { pathDelimiter, nodeCommand } from '../../platform/commands'
 import { spawn } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -9,7 +11,7 @@ import { generatedModelSchema } from '../../shared/engine-settings'
 
 const configText = (value: unknown): string => typeof value === 'string' ? value.trim() : ''
 
-export interface AskInvocation { binary: string; env: NodeJS.ProcessEnv; model: string }
+export interface AskInvocation { binary: string; node?: string; env: NodeJS.ProcessEnv; model: string }
 export function askConfigurationProblem(context: LocalRuntimeContext | null, settings: EngineSettings | null): string | null {
   if (!context) return 'Ask scans require the managed engine on this computer.'
   const parsed = generatedModelSchema.safeParse(settings?.textGenerationModelSelection)
@@ -24,12 +26,12 @@ export async function resolveAskInvocation(context: LocalRuntimeContext, setting
   if (problem) throw new Error(problem)
   const selected = generatedModelSchema.parse(settings.textGenerationModelSelection)
   const config = settings.providerInstances[selected.instanceId]!.config ?? {}
-  const path = `${dirname(context.executable)}:${process.env.PATH ?? ''}`
+  const path = `${dirname(context.executable)}${pathDelimiter}${process.env.PATH ?? ''}`
   const binary = await findProviderExecutable(configText(config.binaryPath) || 'codex', context.baseDirectory, path)
   if (!binary) throw new Error('The selected Codex executable is unavailable. Check Accounts.')
   const home = configText(config.shadowHomePath) || configText(config.homePath)
   const env = { ...process.env, PATH: path, ...(home ? { CODEX_HOME: resolveProviderHome(home, context.baseDirectory) } : {}) }
-  return { binary, env, model: selected.model }
+  return { binary, node: context.executable, env, model: selected.model }
 }
 export function askArguments(model: string, directory: string): string[] {
   return ['exec', '--ephemeral', '--ignore-user-config', '--skip-git-repo-check', '-s', 'read-only', '--model', model,
@@ -44,15 +46,17 @@ export async function scanAsks(invocation: AskInvocation, source: string, regist
   try {
     await writeFile(join(directory, 'schema.json'), JSON.stringify(ASK_JSON_SCHEMA), { mode: 0o600 })
     if (signal.aborted) throw new Error('Scan cancelled')
+    const command = await nodeCommand(invocation.binary, askArguments(invocation.model, directory), invocation.node ?? process.execPath)
+    if (signal.aborted) throw new Error('Scan cancelled')
     await new Promise<void>((resolve, reject) => {
-      const child = spawn(invocation.binary, askArguments(invocation.model, directory), { cwd: directory, env: invocation.env, detached: true, stdio: ['pipe','pipe','pipe'] })
+      const child = spawn(command.executable, command.args, { cwd: directory, env: invocation.env, detached: true, windowsHide: true, stdio: ['pipe','pipe','pipe'] })
       let failure: Error | null = null, output = '', bytes = 0, killTimer: ReturnType<typeof setTimeout> | undefined
       const stop = (reason: string) => {
         failure ??= new Error(reason)
         if (!child.pid) return
         // Descendants may still own our pipes after the parent has exited.
-        try { process.kill(-child.pid, 'SIGTERM') } catch { child.kill('SIGTERM') }
-        killTimer ??= setTimeout(() => { try { process.kill(-child.pid!, 'SIGKILL') } catch { child.kill('SIGKILL') } }, 1000)
+        terminateProcessTree(child.pid!, 'SIGTERM')
+        killTimer ??= setTimeout(() => { terminateProcessTree(child.pid!, 'SIGKILL') }, 1000)
         killTimer.unref()
       }
       const cancel = () => stop('Scan cancelled')

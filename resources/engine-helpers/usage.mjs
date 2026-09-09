@@ -12,7 +12,7 @@ let query
 const timer = setTimeout(() => { child?.kill('SIGTERM'); query?.close(); process.exit(2) }, 30000)
 try {
   if (request.driver === 'codex') {
-    child = spawn(request.binary, ['app-server'], { cwd: request.cwd, env: process.env, stdio: ['pipe', 'pipe', 'pipe'] })
+    child = spawn(request.command?.executable ?? request.binary, request.command?.args ?? ['app-server'], { cwd: request.cwd, env: process.env, stdio: ['pipe', 'pipe', 'pipe'] })
     child.stderr.resume()
     let sequence = 0, buffer = ''
     const pending = new Map()

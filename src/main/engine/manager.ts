@@ -1,3 +1,7 @@
+import { pathToFileURL } from 'node:url'
+import { pathDelimiter } from '../../platform/commands'
+import { isWindows } from '../../platform/runtime'
+import { terminateProcessTree } from '../../platform/process-tree'
 import { engineEnvironment } from './launch-environment'
 import { createEngineBackup, listEngineBackups, readEngineBackup, restoreEngineBackup, retainEngineRecovery, type EngineBackup } from './backups'
 import type { RecoveryView } from '../../shared/engine-recovery'
@@ -240,8 +244,8 @@ export class LocalEngineManager {
     const token = randomBytes(32).toString('base64url')
     const executable = join(runtime.directory, runtime.executable)
     const env = engineEnvironment()
-    env.PATH = `${dirname(executable)}:${env.PATH ?? ''}`
-    const child = spawn(executable, [join(runtime.directory, runtime.entry), '--base-dir', baseDirectory, '--host', host, '--port', String(port), '--no-browser', '--bootstrap-fd', '3'], { cwd: baseDirectory, env, detached: true, stdio: ['ignore', 'pipe', 'pipe', 'pipe'] })
+    env.PATH = `${dirname(executable)}${pathDelimiter}${env.PATH ?? ''}`
+    const child = spawn(executable, [...(runtime.preload ? ['--import', pathToFileURL(join(runtime.directory, runtime.preload)).href] : []), join(runtime.directory, runtime.entry), '--base-dir', baseDirectory, '--host', host, '--port', String(port), '--no-browser', '--bootstrap-fd', '3'], { cwd: baseDirectory, env, detached: true, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe', 'pipe', ...(isWindows() ? ['ipc' as const] : [])] })
     this.#child = child
     let spawnError: Error | null = null
     child.once('error', error => { spawnError = error })
@@ -362,12 +366,19 @@ export class LocalEngineManager {
     const alive = this.#record && await verifiedProcess(this.#record)
     clean = clean && !!alive
     if (this.#record && alive) {
-      process.kill(this.#record.pid, 'SIGTERM')
+      if (isWindows()) {
+        const child = this.#child
+        if (child?.pid === this.#record.pid && child.connected) {
+          try { await new Promise<void>((resolve, reject) => child.send!({ type: 'strata:shutdown' }, error => error ? reject(error) : resolve())) }
+          catch { clean = false; terminateProcessTree(this.#record.pid, 'SIGTERM') }
+        } else { clean = false; terminateProcessTree(this.#record.pid, 'SIGTERM') }
+      }
+      else process.kill(this.#record.pid, 'SIGTERM')
       const deadline = Date.now() + 5000
       while (Date.now() < deadline && await verifiedProcess(this.#record)) await pause(50)
       if (await verifiedProcess(this.#record)) {
         clean = false
-        process.kill(-this.#record.pid, 'SIGKILL')
+        terminateProcessTree(this.#record.pid, 'SIGKILL')
         const killedDeadline = Date.now() + 2000
         while (Date.now() < killedDeadline && await verifiedProcess(this.#record)) await pause(25)
         if (await verifiedProcess(this.#record)) throw new Error('The owned engine did not stop. Its data was left in place.')
@@ -378,7 +389,7 @@ export class LocalEngineManager {
       child.kill('SIGTERM')
       const deadline = Date.now() + 5000
       while (Date.now() < deadline && child.exitCode === null && child.signalCode === null) await pause(50)
-      if (child.exitCode === null && child.signalCode === null) { try { process.kill(-child.pid!, 'SIGKILL') } catch { child.kill('SIGKILL') } }
+      if (child.exitCode === null && child.signalCode === null) { terminateProcessTree(child.pid!, 'SIGKILL') }
     }
     await this.#logQueue
     if (clean && this.#record) await retainEngineRecovery(this.#options.directory, this.#record.version).catch(error => this.#publish({ problem: `Engine stopped. Recovery files were kept because cleanup could not finish: ${String(error)}` }))

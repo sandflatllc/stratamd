@@ -1,17 +1,19 @@
 // Builds the packaged app for the host platform (mac-plan §5): the Linux
 // unpacked directory or the macOS .app, without shell-specific conditionals.
+import { toolCommand } from './tool-command.mjs'
 import { spawnSync } from 'node:child_process'
 import { writeFile } from 'node:fs/promises'
 import { reservePackageOutput } from './package-output.mjs'
 
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, { stdio: 'inherit', ...options })
+  const invocation = toolCommand(command, args)
+  const result = spawnSync(invocation.command, invocation.args, { stdio: 'inherit', ...options })
   if (result.error) throw result.error
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
 
-if (process.platform !== 'linux' && process.platform !== 'darwin') {
-  console.error(`StrataMD packages for Linux and macOS, not ${process.platform}`)
+if (!['linux', 'darwin', 'win32'].includes(process.platform)) {
+  console.error(`StrataMD packages for Linux, macOS and Windows, not ${process.platform}`)
   process.exit(1)
 }
 
@@ -31,6 +33,8 @@ const builderOptions = {
 if (process.platform === 'darwin') {
   run(process.execPath, ['scripts/mac-icon.mjs'])
   run('./node_modules/.bin/electron-builder', ['--mac', 'dir', `--config.directories.output=${output}`], builderOptions)
+} else if (process.platform === 'win32') {
+  run('./node_modules/.bin/electron-builder', ['--win', 'nsis', '--x64', '--publish', 'never', `--config.directories.output=${output}`], builderOptions)
 } else {
   run('./node_modules/.bin/electron-builder', ['--linux', 'dir', `--config.directories.output=${output}`], builderOptions)
 }

@@ -21,11 +21,12 @@ export async function pathForDescriptor(
       throw error
     }
   }
-  if (platform === 'darwin') {
+  if (platform === 'darwin' || platform === 'win32') {
     const getPathForFd = unixSupportBinding().getPathForFd
     if (!getPathForFd) return null
     try {
-      return getPathForFd(descriptor)
+      const path = getPathForFd(descriptor)
+      return platform === 'win32' ? path.replace(/^\\\\\?\\UNC\\/i, '\\\\').replace(/^\\\\\?\\/, '') : path
     } catch {
       // A deleted or unlinked file has no path; rename following just pauses.
       return null

@@ -104,8 +104,8 @@ try {
   // Record hashes, never credentials. Conservative env matching includes unknown
   // variables; only invocation-specific shell/runner values are excluded.
   const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) => !['PWD', 'OLDPWD', 'SHLVL', '_', 'STRATAMD_VERIFY_HOME'].includes(key)).sort().map(([key, value]) => [key, digest(value)]))
-  const ordinary = platform() === 'darwin' ? 1 : mode === 'stress' ? (process.env.CI ? 2 : 8) : (process.env.CI ? 2 : 6)
-  report.coverage = { mode, unit: options.unit, e2e: options.e2e, repetitions: mode === 'stress' ? 2 : options.repeat, ordinaryWorkers: ordinary, managedWorkers: 1, clipboardWorkers: 1, totalWorkers: platform() === 'darwin' ? 1 : ordinary + 1, retries: { unit: process.env.CI ? 1 : 0, electron: process.env.CI ? 2 : 0 } }
+  const ordinary = platform() !== 'linux' ? 1 : mode === 'stress' ? (process.env.CI ? 2 : 8) : (process.env.CI ? 2 : 6)
+  report.coverage = { mode, unit: options.unit, e2e: options.e2e, repetitions: mode === 'stress' ? 2 : options.repeat, ordinaryWorkers: ordinary, managedWorkers: 1, clipboardWorkers: 1, totalWorkers: platform() !== 'linux' ? 1 : ordinary + 1, retries: { unit: process.env.CI ? 1 : 0, electron: process.env.CI ? 2 : 0 } }
   report.environment = environment
   report.identity = { ...identity, platform: report.platform, environment, coverage: report.coverage }
   report.fingerprint = digest(JSON.stringify(report.identity))

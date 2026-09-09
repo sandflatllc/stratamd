@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 interface UnixSupportBinding {
   tryLock(descriptor: number): boolean
+  processInfo?(pid: number): { startTime: string; executable: string }
   /** Darwin only: Linux resolves descriptors through /proc instead. */
   getPathForFd?(descriptor: number): string
 }
@@ -15,7 +16,9 @@ function bindingCandidates(): string[] {
   const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
   return [
     ...(resourcesPath ? [join(resourcesPath, 'unix-support.node')] : []),
-    resolve(dirname(fileURLToPath(import.meta.url)), '../../native/unix-support/build/Release/unix_support.node')
+    resolve(dirname(fileURLToPath(import.meta.url)), '../../native/unix-support/build/Release/unix_support.node'),
+    // Shared main/CLI code can be emitted one level deeper in out/main/chunks.
+    resolve(dirname(fileURLToPath(import.meta.url)), '../../../native/unix-support/build/Release/unix_support.node')
   ]
 }
 

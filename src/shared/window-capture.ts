@@ -10,7 +10,7 @@ export interface WindowCaptureContext {
 }
 export interface CaptureStatus {
   shortcut: 'disabled' | 'registered' | 'conflict'
-  platform: 'linux' | 'darwin' | 'unsupported'
+  platform: 'linux' | 'darwin' | 'win32' | 'unsupported'
   picker: 'system' | 'windows'
   screenPermission: string
   accessibilityPermission: boolean

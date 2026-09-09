@@ -37,7 +37,7 @@ export async function chooseWindows(): Promise<CaptureSource[]> {
   expiry = setTimeout(() => pending.clear(), 120_000)
   expiry.unref()
   const status = captureStatus()
-  if (status.platform === 'unsupported') throw new Error('Window capture is available on Linux and macOS.')
+  if (status.platform === 'unsupported') throw new Error('Window capture is available on Linux, macOS and Windows.')
   if (['denied', 'restricted'].includes(status.screenPermission)) throw new Error('Allow Strata in Screen Recording, then restart Strata.')
   // PipeWire opens the native picker and returns its selected source. On X11 and
   // macOS Electron enumerates window thumbnails for Strata's explicit chooser.
@@ -70,7 +70,11 @@ export async function captureWindow(token: string): Promise<{ bytes: Uint8Array;
   const numericId = /^window:(\d+):/.exec(source.id)?.[1]
   let bounds: { x: number; y: number; width: number; height: number } | null = null
   let bytes = source.image.toPNG(), pid: number | null = null, appName: string | null = null
-  if (capturePlatform.windowIdentity === 'core-graphics' && numericId) {
+  if (capturePlatform.platform === 'win32') {
+    const current = (await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 3840, height: 2160 }, fetchWindowIcons: false })).find(entry => entry.id === source.id)
+    if (!current || current.thumbnail.isEmpty()) throw new Error('The selected window closed. Choose a window again.')
+    bytes = current.thumbnail.toPNG()
+  } else if (capturePlatform.windowIdentity === 'core-graphics' && numericId) {
     // Selected CGWindowNumber, not whichever app acquired focus after the picker.
     // Adapted from T3 Code ActiveWindow.ts and MacSnapShot.ts (MIT; see LICENSE).
     const script = `ObjC.import('CoreGraphics'); ObjC.import('AppKit'); var ws=ObjC.deepUnwrap($.CGWindowListCopyWindowInfo(17,0)); var w=ws.find(w=>w.kCGWindowNumber===${Number(numericId)}); JSON.stringify(w ? {pid:w.kCGWindowOwnerPID,name:w.kCGWindowOwnerName,bounds:w.kCGWindowBounds} : null)`

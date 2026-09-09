@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { cp, lstat, mkdir, readFile, readdir, readlink, realpath } from 'node:fs/promises'
+import { cp, lstat, mkdir, readFile, readdir, readlink, realpath, symlink } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+
+async function identityLink(root, path) {
+  const link = await readlink(path)
+  return process.platform === 'win32' ? relative(root, resolve(dirname(path), link)) : link
+}
 
 export const digest = value => createHash('sha256').update(value).digest('hex')
 export async function filesIn(root, prefix = '') {
@@ -16,7 +21,7 @@ export async function fingerprint(root, files) {
   for (let i = 0; i < files.length; i += 32) {
     const rows = await Promise.all(files.slice(i, i + 32).map(async name => {
       const path = join(root, name), stat = await lstat(path)
-      const bytes = stat.isSymbolicLink() ? await readlink(path) : await readFile(path)
+      const bytes = stat.isSymbolicLink() ? await identityLink(root, path) : await readFile(path)
       return [name, stat.mode, digest(bytes)]
     }))
     for (const row of rows) hash.update(JSON.stringify(row))
@@ -26,7 +31,7 @@ export async function fingerprint(root, files) {
 async function fileIdentity(root, name) {
   try {
     const path = join(root, name), stat = await lstat(path)
-    const bytes = stat.isSymbolicLink() ? await readlink(path) : await readFile(path)
+    const bytes = stat.isSymbolicLink() ? await identityLink(root, path) : await readFile(path)
     return `${stat.mode}:${digest(bytes)}`
   } catch (error) {
     if (error.code === 'ENOENT') return null
@@ -73,6 +78,16 @@ export async function copyDependencies(source, destination) {
   // Preserve pnpm's relative links, executable modes and Electron sandbox mode.
   // Never hardlink: writes in the checkout must not mutate the candidate.
   if (process.platform === 'linux') execFileSync('cp', ['-a', '--reflink=auto', `${actual}/.`, destination])
+  else if (process.platform === 'win32') {
+    for (const name of await filesIn(actual)) {
+      const from = join(actual, name), to = join(destination, name)
+      await mkdir(dirname(to), { recursive: true })
+      if ((await lstat(from)).isSymbolicLink()) {
+        const target = resolve(dirname(from), await readlink(from))
+        await symlink(join(destination, relative(actual, target)), to, 'junction')
+      } else await cp(from, to, { preserveTimestamps: true })
+    }
+  }
   else await cp(actual, destination, { recursive: true, verbatimSymlinks: true, preserveTimestamps: true })
   if (process.platform === 'linux') {
     const sandbox = 'electron/dist/chrome-sandbox'
@@ -94,7 +109,7 @@ export async function validateLinks(root, names) {
     if ((await lstat(path)).isSymbolicLink()) {
       const link = await readlink(path)
       const target = resolve(dirname(path), link)
-      if (isAbsolute(link) || relative(root, target).startsWith('..')) throw new Error(`Input symlink escapes its identity: ${name}`)
+      if ((process.platform !== 'win32' && isAbsolute(link)) || relative(root, target).startsWith('..') || isAbsolute(relative(root, target))) throw new Error(`Input symlink escapes its identity: ${name}`)
     }
   }
 }

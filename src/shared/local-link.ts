@@ -1,3 +1,5 @@
+import { windowsAbsolutePath } from './file-path'
+
 /** What a non-web link in a reply, saved comment, or terminal points at. */
 export type LocalLinkKind = 'html' | 'markdown' | 'other'
 
@@ -30,14 +32,14 @@ export function classifyLocalLink(href: string): LocalLink | null {
   const raw = href.trim()
   if (!raw || raw.startsWith('#') || raw.startsWith('//') || raw.includes('\0')) return null
   const scheme = /^([a-z][a-z\d+.-]*):/i.exec(raw)?.[1]?.toLowerCase()
-  if (scheme && scheme !== 'file') return null
+  if (scheme && scheme !== 'file' && !windowsAbsolutePath(raw)) return null
   let path: string
   let suffix: string
   if (scheme === 'file') {
     let url: URL
     try { url = new URL(raw) } catch { return null }
     if (url.host && url.host !== 'localhost') return null
-    path = url.pathname
+    path = url.pathname.replace(/^\/(?=[a-z]:\/)/i, '')
     suffix = `${url.search}${url.hash}`
   } else {
     const cut = raw.search(/[?#]/u)

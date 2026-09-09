@@ -4,7 +4,7 @@
       "target_name": "unix_support",
       "sources": ["unix-support.c"],
       "conditions": [
-        ["OS!='linux' and OS!='mac'", { "type": "none" }]
+        ["OS!='linux' and OS!='mac' and OS!='win'", { "type": "none" }]
       ]
     }
   ]

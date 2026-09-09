@@ -20,7 +20,7 @@ import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getCliLinkPath } from '../platform/paths.js'
-import { isDarwin } from '../platform/runtime.js'
+import { assertSupportedPlatform } from '../platform/runtime.js'
 class CommandFailure extends Error {
   constructor(
     message: string,
@@ -325,7 +325,7 @@ async function restoreDefaultAssociation(
   ])
 }
 
-export type SetupPlatform = 'linux' | 'darwin'
+export type SetupPlatform = 'linux' | 'darwin' | 'win32'
 
 export interface SkillInstallResult {
   /** What was asked for: claude, codex, agents, or the directory given. */
@@ -599,18 +599,17 @@ export async function setup(options: SetupOptions = {}): Promise<SetupResult> {
   const environment = options.environment ?? process.env
   const home = options.home ?? homedir()
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+  const platform = assertSupportedPlatform(options.platform)
   const executable = resolve(
     options.executable
       ?? environment.STRATAMD_CLI_EXECUTABLE
-      ?? join(root, 'bin', 'stratamd')
+      ?? join(root, 'bin', platform === 'win32' ? 'stratamd.cmd' : 'stratamd')
   )
-  const platform: SetupPlatform =
-    (options.platform ? options.platform === 'darwin' : isDarwin()) ? 'darwin' : 'linux'
   const result: SetupResult = {
     ok: true,
     platform,
     action: options.remove ? 'remove' : 'install',
-    link: getCliLinkPath(home),
+    link: platform === 'win32' ? join(environment.LOCALAPPDATA || join(home, 'AppData', 'Local'), 'stratamd', 'bin', 'stratamd.cmd') : getCliLinkPath(home),
     executable,
     warnings: []
   }
@@ -620,7 +619,8 @@ export async function setup(options: SetupOptions = {}): Promise<SetupResult> {
     await report(`${text}\n`)
   }
 
-  if (platform === 'darwin') await setupDarwin(options, environment, executable, result, warn)
+  if (platform === 'win32') await setupWindows(options, executable, result, warn)
+  else if (platform === 'darwin') await setupDarwin(options, environment, executable, result, warn)
   else await setupLinux(options, environment, home, root, executable, result, warn)
 
   if (!options.remove) {
@@ -628,4 +628,14 @@ export async function setup(options: SetupOptions = {}): Promise<SetupResult> {
     else result.hint = SKILL_HINT
   }
   return result
+}
+
+async function setupWindows(options: SetupOptions, executable: string, result: SetupResult, warn: (text: string) => Promise<void>): Promise<void> {
+  if (options.remove) { await removeManagedFile(result.link); return }
+  await access(executable)
+  if (/["\r\n]/.test(executable)) throw new CommandFailure(`Invalid launcher path ${executable}`, 1, 'SETUP_CONFLICT')
+  const escaped = executable.replace(/%/g, '%%')
+  await writeManagedFile(result.link, `@echo off\r\nrem ${MANAGED_MARKER}\r\nsetlocal DisableDelayedExpansion\r\n"${escaped}" %*\r\nexit /b %errorlevel%\r\n`)
+  await warn(`Add ${dirname(result.link)} to your user Path in Windows Environment Variables, then open a new terminal.`)
+  if (options.makeDefault) await warn('Choose StrataMD for .md and .markdown in Windows Settings > Apps > Default apps.')
 }

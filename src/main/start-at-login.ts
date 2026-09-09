@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { mkdir, rm, readFile } from 'node:fs/promises'
 import { atomicWriteFile } from './storage'
 export async function setStartAtLogin(enabled: boolean, executable: string, platform: string, mac: (enabled: boolean) => void, env: NodeJS.ProcessEnv = process.env): Promise<void> {
-  if (platform === 'darwin') { mac(enabled); return }
+  if (platform === 'darwin' || platform === 'win32') { mac(enabled); return }
   if (platform !== 'linux') throw new Error('Start at login is unavailable on this operating system.')
   const path = join(env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'autostart', 'stratamd.desktop')
   if (!enabled) { await rm(path, { force: true }); return }

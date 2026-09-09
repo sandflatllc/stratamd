@@ -1002,7 +1002,7 @@ export function App({ createEditor }: AppProps) {
     if (!create) { bridgeMissing(); return }
     void perform(async () => {
       const path = await create(directory)
-      report(`Created ${path.split('/').pop() ?? path}.`)
+      report(`Created ${path.split(/[/\\]/).pop() ?? path}.`)
     })
   }, [bridgeMissing, perform, report])
   const newFileHere = useCallback(() => {
@@ -1021,7 +1021,7 @@ export function App({ createEditor }: AppProps) {
     if (!dialog) return
     const create = window.strata.createFile
     if (!create) { bridgeMissing(); return }
-    void perform(async () => { const path = await create(dialog.directory, name); report(`Created ${path.split('/').pop() ?? path}.`) })
+    void perform(async () => { const path = await create(dialog.directory, name); report(`Created ${path.split(/[/\\]/).pop() ?? path}.`) })
   }, [bridgeMissing, fileDialog, perform, report])
 
   const jumpTo = useCallback((target: ReviewTarget) => {
@@ -1222,8 +1222,8 @@ export function App({ createEditor }: AppProps) {
       }} />}
       {mixedHunk && <MixedRevertDialog hunk={mixedHunk} onCancel={() => setMixedHunk(null)} onConfirm={() => void perform(() => window.strata.revertHunk(document.path, mixedHunk.id, true), 'Reverted. Your edits inside it were discarded.').then(() => setMixedHunk(null))} />}
       {detaching && <DetachDialog attachment={detaching} onCancel={() => setDetaching(null)} onConfirm={() => detach(detaching)} />}
-      {document.recovery && <RecoveryDialog fileName={document.path.split('/').pop() ?? document.path} onChoose={(choice) => void perform(() => window.strata.resolveRecovery(document.path, choice), choice === 'recover' ? 'Recovered the buffer.' : 'Discarded the buffer and restored the disk copy.')} />}
-      {document.conflicts[0] && <ConflictDialog conflict={document.conflicts[0]} fileName={document.path.split('/').pop() ?? document.path} onChoose={(choice) => void perform(() => window.strata.resolveConflict(document.path, document.conflicts[0]!.id, choice), choice === 'mine' ? 'Kept your block.' : 'Incoming block applied for review.')} />}
+      {document.recovery && <RecoveryDialog fileName={document.path.split(/[/\\]/).pop() ?? document.path} onChoose={(choice) => void perform(() => window.strata.resolveRecovery(document.path, choice), choice === 'recover' ? 'Recovered the buffer.' : 'Discarded the buffer and restored the disk copy.')} />}
+      {document.conflicts[0] && <ConflictDialog conflict={document.conflicts[0]} fileName={document.path.split(/[/\\]/).pop() ?? document.path} onChoose={(choice) => void perform(() => window.strata.resolveConflict(document.path, document.conflicts[0]!.id, choice), choice === 'mine' ? 'Kept your block.' : 'Incoming block applied for review.')} />}
       {closingTab && <CloseTabDialog tab={closingTab} onChoose={(choice) => { if (choice === 'cancel') { setClosingTab(null); return } void perform(() => window.strata.closeDocument(closingTab.path, choice)).then(() => setClosingTab(null)) }} />}
       {settingsDialogNode}
       {captureOpen && <WindowCaptureDialog engine={view.engine} enabled={view.settings.windowCapture?.enabled ?? false} onClose={() => setCaptureOpen(false)} onCapture={(capture, target) => { setCaptureOpen(false); setVisualSession({ kind: 'staged', ...capture, context: capture.context, projectId: target.projectId, destination: { threadId: target.threadId, threadTitle: target.threadTitle } }) }} />}

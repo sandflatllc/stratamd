@@ -76,7 +76,7 @@ export const lineEndKey = macHost ? 'Meta+ArrowRight' : 'End'
 export const selectToLineEndKey = macHost ? 'Shift+Meta+ArrowRight' : 'Shift+End'
 
 /** X11 and ozone settings apply only on Linux; a Mac host launches plainly. */
-export const launchArgs: string[] = macHost ? [] : ['--ozone-platform=x11']
+export const launchArgs: string[] = process.platform === 'linux' ? ['--ozone-platform=x11'] : []
 const linuxLaunchEnv = { ELECTRON_OZONE_PLATFORM_HINT: 'x11' }
 
 /**
@@ -86,7 +86,7 @@ const linuxLaunchEnv = { ELECTRON_OZONE_PLATFORM_HINT: 'x11' }
  * is refused rather than allowed to flake.
  */
 function workerDisplay(testInfo: TestInfo): string | undefined {
-  if (macHost) return undefined
+  if (process.platform !== 'linux') return undefined
   const displays = parseDisplays(process.env[DISPLAYS_VARIABLE])
   if (!displays) {
     if (testInfo.config.workers > 1) {
@@ -180,7 +180,7 @@ export class Scenario {
       STRATAMD_ENGINE_MODE: 'external',
       STRATAMD_USER_DATA: userData,
       STRATAMD_TEST_LOGIN_FILE: join(runtime, 'login-registration.json'),
-      ...(macHost ? {} : linuxLaunchEnv),
+      ...(process.platform === 'linux' ? linuxLaunchEnv : {}),
       // Every e2e run checks each merged view update against the full view.
       // Performance profiles measure the production protocol, so verify mode
       // (which ships the full view beside every patch) stays off for them.

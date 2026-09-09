@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import { realpath } from 'node:fs/promises'
 import { basename, extname, resolve } from 'node:path'
 
@@ -162,7 +163,7 @@ export function documentPathsFromArgv(argv: readonly string[], cwd = process.cwd
   for (const argument of argv) {
     if (argument.startsWith('-')) continue
     try {
-      const candidate = argument.startsWith('file://') ? decodeURIComponent(new URL(argument).pathname) : argument
+      const candidate = argument.startsWith('file://') ? fileURLToPath(argument) : argument
       if (isMarkdownPath(candidate)) paths.push(resolve(cwd, candidate))
     } catch {
       // A malformed command-line URL is not a document launch request.

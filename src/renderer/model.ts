@@ -1,3 +1,4 @@
+import { comparablePath } from '../shared/file-path'
 import type {
   AccountView,
   AgentIdentity,
@@ -115,12 +116,12 @@ export function pickerAccountOptions(engine: EngineView): Array<{ instanceId: st
 }
 
 export function projectForPath(engine: Pick<EngineView, 'projects'>, path: string): EngineProjectView | null {
-  const normalized = path.replace(/\/+$/u, '')
+  const normalized = comparablePath(path)
   let best: EngineProjectView | null = null
   for (const project of engine.projects) {
-    const root = project.workspaceRoot.replace(/\/+$/u, '')
+    const root = comparablePath(project.workspaceRoot)
     if (normalized !== root && !normalized.startsWith(`${root}/`)) continue
-    if (!best || root.length > best.workspaceRoot.replace(/\/+$/u, '').length) best = project
+    if (!best || root.length > comparablePath(best.workspaceRoot).length) best = project
   }
   return best
 }
@@ -529,7 +530,7 @@ export function pendingCount(document: DocumentView | null): number {
 
 export function bannerFor(document: DocumentView): { tone: 'warning' | 'danger'; text: string } | null {
   if (document.invalidUtf8) return { tone: 'danger', text: 'Invalid UTF-8. Opened read-only in source view.' }
-  if (document.deleted) return { tone: 'warning', text: `${document.path.split('/').pop() ?? 'This file'} was deleted. The tab stays open; Save will recreate it.` }
+  if (document.deleted) return { tone: 'warning', text: `${document.path.split(/[/\\]/).pop() ?? 'This file'} was deleted. The tab stays open; Save will recreate it.` }
   const problem = document.problems[0]
   if (problem) return { tone: 'warning', text: PROBLEM_COPY[problem] }
   return null

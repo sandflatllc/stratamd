@@ -11,9 +11,10 @@ import {
   stat,
   unlink,
 } from 'node:fs/promises'
-import { basename, dirname, join, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { contentHash } from '../core/diff.js'
+import { isWindows } from '../platform/runtime.js'
 import { getDataDirectory as getPlatformDataDirectory } from '../platform/paths.js'
 import { currentProcessIdentity, identityMatches } from '../platform/process-identity.js'
 
@@ -182,6 +183,8 @@ export const getDataRoot = getDataDirectory
 
 export async function ensurePrivateDirectory(path: string): Promise<void> {
   await mkdir(path, { recursive: true, mode: PRIVATE_DIRECTORY_MODE })
+  // Windows inherits the profile directory ACL; POSIX modes do not control it.
+  if (isWindows()) return
   // mkdir honors umask and does not tighten an existing directory.
   const handle = await open(path, fsConstants.O_RDONLY | fsConstants.O_DIRECTORY)
   try {
@@ -192,6 +195,7 @@ export async function ensurePrivateDirectory(path: string): Promise<void> {
 }
 
 async function syncDirectory(path: string): Promise<void> {
+  if (isWindows()) return
   let handle
   try {
     handle = await open(path, fsConstants.O_RDONLY | fsConstants.O_DIRECTORY)
@@ -317,7 +321,7 @@ function normalizeMeta(value: unknown, expectedRealpath?: string): DocumentMeta 
     throw new Error('Invalid document metadata save history')
   }
   migrated.saves = saves
-  if (typeof migrated.realpath !== 'string' || !migrated.realpath.startsWith('/')) {
+  if (typeof migrated.realpath !== 'string' || !isAbsolute(migrated.realpath)) {
     throw new Error('Invalid document metadata realpath')
   }
   if (expectedRealpath && migrated.realpath !== expectedRealpath) {
@@ -462,7 +466,7 @@ export class GhostStore {
    * full-length keys keep working, and pathsForDocument salts on collision.
    */
   documentKey(documentRealpath: string): string {
-    if (!documentRealpath.startsWith('/')) throw new Error('A document realpath must be absolute')
+    if (!isAbsolute(documentRealpath)) throw new Error('A document realpath must be absolute')
     return sha256(documentRealpath).slice(0, DOCUMENT_KEY_LENGTH)
   }
 

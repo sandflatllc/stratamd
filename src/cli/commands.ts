@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { access, readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import { resolve } from 'node:path'
 import { getConfigDirectory, getDataDirectory } from '../platform/paths.js'
@@ -56,11 +57,12 @@ async function appVersion(): Promise<string> {
 }
 
 async function appExecutable(environment: NodeJS.ProcessEnv): Promise<string | null> {
-  const root = resolve(new URL('../../', import.meta.url).pathname)
+  const root = fileURLToPath(new URL('../../', import.meta.url))
   const candidates = environment.STRATAMD_APP_EXECUTABLE
     ? [environment.STRATAMD_APP_EXECUTABLE]
     : [
         resolve(root, 'node_modules/electron/dist/electron'),
+        resolve(root, 'node_modules/electron/dist/electron.exe'),
         resolve(root, 'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'),
       ]
   for (const candidate of candidates) {
@@ -82,7 +84,7 @@ async function defaultLaunchApp(file: string | undefined, environment: NodeJS.Pr
   const executable = await appExecutable(environment)
   if (!executable) throw new CliFailure('StrataMD application executable was not found', 2, 'APP_NOT_FOUND')
   const packaged = Boolean(environment.STRATAMD_APP_EXECUTABLE)
-  const root = resolve(new URL('../../', import.meta.url).pathname)
+  const root = fileURLToPath(new URL('../../', import.meta.url))
   const args = packaged ? (file ? [file] : []) : [root, ...(file ? [file] : [])]
   // Set before Electron starts: Wayland cannot position the browser's hidden host.
   if (assertSupportedPlatform() === 'linux') args.unshift('--ozone-platform=x11')

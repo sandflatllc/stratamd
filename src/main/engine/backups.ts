@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { readFile, writeFile, readdir, lstat, readlink, rename, rm } from 'node:fs/promises'
-import { join, relative, resolve } from 'node:path'
+import { join, relative, resolve, sep } from 'node:path'
 import { copyRuntimeDirectory } from '../../platform/runtime-copy'
 import { atomicWriteFile, ensurePrivateDirectory } from '../storage'
 import type { StagedRuntime } from './managed-runtime'
@@ -44,7 +44,7 @@ export async function listEngineBackups(root: string): Promise<EngineBackup[]> {
 export async function readEngineBackup(root: string, id: string): Promise<EngineBackup> {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(id)) throw new Error('Invalid engine backup id.')
   const value = JSON.parse(await readFile(join(root, 'backups', id, 'backup.json'), 'utf8')) as EngineBackup
-  if (value.id !== id || !value.runtime || !resolve(value.runtime.directory).startsWith(resolve(root, 'runtime') + '/')) throw new Error(`Invalid engine backup at ${id}`)
+  if (value.id !== id || !value.runtime || !resolve(value.runtime.directory).startsWith(resolve(root, 'runtime') + sep)) throw new Error(`Invalid engine backup at ${id}`)
   return value
 }
 export async function restoreEngineBackup(root: string, backup: EngineBackup, restore: (directory: string) => Promise<void>): Promise<void> {

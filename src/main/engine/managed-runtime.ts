@@ -2,21 +2,21 @@ import { copyRuntimeDirectory } from '../../platform/runtime-copy'
 import { assertSupportedPlatform } from '../../platform/runtime'
 import { execFile } from 'node:child_process'
 import { readFile, readlink, rename, rm, stat } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { Worker } from 'node:worker_threads'
 import { ensurePrivateDirectory } from '../storage'
 
 const execute = promisify(execFile)
-export interface BundledRuntime { version: string; nodeVersion: string; platform: string; arch: string; executable: string; entry: string; integrity?: string }
+export interface BundledRuntime { version: string; nodeVersion: string; platform: string; arch: string; executable: string; preload?: string; entry: string; integrity?: string }
 export interface StagedRuntime extends BundledRuntime { directory: string }
 
 export async function stageRuntime(bundle: string, root: string): Promise<StagedRuntime> {
   const manifest = JSON.parse(await readFile(join(bundle, 'runtime.json'), 'utf8')) as BundledRuntime
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(manifest.version) || manifest.platform !== assertSupportedPlatform() || manifest.arch !== process.arch) throw new Error(`Bundled engine at ${bundle} does not support ${assertSupportedPlatform()}-${process.arch}`)
   const directory = join(root, 'runtime', manifest.version)
-  for (const relative of [manifest.executable, manifest.entry]) {
-    if (typeof relative !== 'string' || !resolve(bundle, relative).startsWith(resolve(bundle) + '/')) throw new Error(`Invalid bundled engine path at ${bundle}`)
+  for (const relative of [manifest.executable, manifest.entry, ...(manifest.preload ? [manifest.preload] : [])]) {
+    if (typeof relative !== 'string' || !resolve(bundle, relative).startsWith(resolve(bundle) + sep)) throw new Error(`Invalid bundled engine path at ${bundle}`)
   }
   try { await stat(join(directory, 'runtime.json')) } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
@@ -96,15 +96,15 @@ function hashFilesInWorker(directory: string, files: Array<[string, string]>): P
 }
 
 async function verifyRuntimeFiles(runtime: StagedRuntime): Promise<void> {
-  for (const path of [runtime.executable, runtime.entry, ...(runtime.integrity ? [runtime.integrity] : [])]) if (typeof path !== 'string' || !resolve(runtime.directory, path).startsWith(resolve(runtime.directory) + '/')) throw new Error('Invalid runtime manifest path')
+  for (const path of [runtime.executable, runtime.entry, ...(runtime.preload ? [runtime.preload] : []), ...(runtime.integrity ? [runtime.integrity] : [])]) if (typeof path !== 'string' || !resolve(runtime.directory, path).startsWith(resolve(runtime.directory) + sep)) throw new Error('Invalid runtime manifest path')
   if (runtime.integrity) {
     const manifest = JSON.parse(await readFile(join(runtime.directory, runtime.integrity), 'utf8')) as { files: Record<string, { sha256?: string; link?: string }> }
     const hashes: Array<[string, string]> = []
     for (const [path, expected] of Object.entries(manifest.files)) {
-      if (!resolve(runtime.directory, path).startsWith(resolve(runtime.directory) + '/')) throw new Error('Invalid runtime integrity path')
+      if (!resolve(runtime.directory, path).startsWith(resolve(runtime.directory) + sep)) throw new Error('Invalid runtime integrity path')
       const file = join(runtime.directory, path)
       if (expected.link !== undefined) {
-        if (await readlink(file) !== expected.link || !resolve(file, '..', expected.link).startsWith(resolve(runtime.directory) + '/')) throw new Error(`Runtime link verification failed at ${file}`)
+        if (await readlink(file) !== expected.link || !resolve(file, '..', expected.link).startsWith(resolve(runtime.directory) + sep)) throw new Error(`Runtime link verification failed at ${file}`)
       } else hashes.push([path, expected.sha256 ?? ''])
     }
     await hashFilesInWorker(runtime.directory, hashes)

@@ -1,5 +1,6 @@
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { posix, win32 } from 'node:path'
+const { join } = posix
 
 /**
  * Every filesystem location StrataMD derives, resolved in one place for the
@@ -16,6 +17,9 @@ export interface PathEnvironment {
   readonly XDG_CONFIG_HOME?: string
   readonly XDG_DATA_HOME?: string
   readonly HOME?: string
+  readonly USERPROFILE?: string
+  readonly APPDATA?: string
+  readonly LOCALAPPDATA?: string
 }
 
 export interface PathContext {
@@ -25,7 +29,7 @@ export interface PathContext {
 }
 
 function contextHome(context: PathContext): string {
-  return context.home ?? context.env?.HOME ?? process.env.HOME ?? homedir()
+  return context.home ?? (contextPlatform(context) === 'win32' ? contextEnv(context).USERPROFILE : contextEnv(context).HOME) ?? homedir()
 }
 
 function contextEnv(context: PathContext): PathEnvironment {
@@ -38,12 +42,14 @@ function contextPlatform(context: PathContext): string {
 
 export function getConfigDirectory(context: PathContext = {}): string {
   const env = contextEnv(context)
+  if (contextPlatform(context) === 'win32') return win32.join(env.XDG_CONFIG_HOME || env.APPDATA || win32.join(contextHome(context), 'AppData', 'Roaming'), 'stratamd')
   const base = env.XDG_CONFIG_HOME || join(contextHome(context), '.config')
   return join(base, 'stratamd')
 }
 
 export function getDataDirectory(context: PathContext = {}): string {
   const env = contextEnv(context)
+  if (contextPlatform(context) === 'win32') return win32.join(env.XDG_DATA_HOME || env.LOCALAPPDATA || win32.join(contextHome(context), 'AppData', 'Local'), 'stratamd')
   if (env.XDG_DATA_HOME) return join(env.XDG_DATA_HOME, 'stratamd')
   const home = contextHome(context)
   if (contextPlatform(context) === 'darwin') {

@@ -1,5 +1,5 @@
 const { join } = require('node:path')
-const { rm, readFile, readlink } = require('node:fs/promises')
+const { cp, rm, readFile, readlink } = require('node:fs/promises')
 const { createHash } = require('node:crypto')
 const { execFile } = require('node:child_process')
 const { promisify } = require('node:util')
@@ -9,7 +9,8 @@ module.exports = async function packageEngine(context) {
   const resources = context.electronPlatformName === 'darwin' ? join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents/Resources') : join(context.appOutDir, 'resources')
   const destination = join(resources, 'engine')
   await rm(destination, { recursive: true, force: true })
-  await promisify(execFile)('/bin/cp', process.platform === 'darwin' ? ['-R', '-P', source, destination] : ['-a', '--reflink=auto', '--', source, destination])
+  if (process.platform === 'win32') await cp(source, destination, { recursive: true, verbatimSymlinks: true })
+  else await promisify(execFile)('/bin/cp', process.platform === 'darwin' ? ['-R', '-P', source, destination] : ['-a', '--reflink=auto', '--', source, destination])
   const manifest = JSON.parse(await readFile(join(destination, 'integrity.json'), 'utf8'))
   for (const [path, expected] of Object.entries(manifest.files)) {
     const file = join(destination, path)

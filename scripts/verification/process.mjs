@@ -1,10 +1,12 @@
+import { toolCommand } from '../tool-command.mjs'
 import { execFileSync, spawn } from 'node:child_process'
 import { createWriteStream, statSync } from 'node:fs'
 
 export async function runProcess(command, args, { cwd, env, log, signal, streamOutput = Boolean(process.env.CI), progress }) {
   signal.throwIfAborted()
   const stream = createWriteStream(log)
-  const child = spawn(command, args, { cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
+  const invocation = toolCommand(command, args, cwd)
+  const child = spawn(invocation.command, invocation.args, { cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
   child.stdout.on('data', chunk => { stream.write(chunk); if (streamOutput) process.stdout.write(chunk) })
   child.stderr.on('data', chunk => { stream.write(chunk); if (streamOutput) process.stderr.write(chunk) })
   const diagnostic = error => {
@@ -12,7 +14,7 @@ export async function runProcess(command, args, { cwd, env, log, signal, streamO
     stream.write(message)
     if (streamOutput) process.stderr.write(message)
   }
-  const killGroup = how => { if (!child.pid) return; try { process.kill(-child.pid, how) } catch (error) { if (error.code !== 'ESRCH') diagnostic(error) } }
+  const killGroup = how => { if (process.platform === 'win32') return; if (!child.pid) return; try { process.kill(-child.pid, how) } catch (error) { if (error.code !== 'ESRCH') diagnostic(error) } }
   // Electron and managed children may own separate process groups. Capture
   // descendants before terminating the parent, while ownership is observable.
   const processRows = () => execFileSync('ps', ['-axo', 'pid=,ppid=,lstart='], { encoding: 'utf8' }).trim().split('\n').map(line => {
@@ -32,6 +34,10 @@ export async function runProcess(command, args, { cwd, env, log, signal, streamO
   const cancel = () => {
     if (terminating) return
     terminating = true
+    if (process.platform === 'win32') {
+      if (child.pid) { try { execFileSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }) } catch (error) { if (child.exitCode === null) diagnostic(error) } }
+      return
+    }
     const owned = new Set([child.pid])
     // Freeze the command group before taking the ownership snapshot. Otherwise
     // a child can detach between `ps` and SIGTERM, losing its visible lineage.

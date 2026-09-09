@@ -1,3 +1,6 @@
+import { terminateProcessTree } from '../../platform/process-tree'
+import { pathDelimiter, nodeCommand } from '../../platform/commands'
+import { isWindows } from '../../platform/runtime'
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { promisify } from 'node:util'
 import { access, mkdir } from 'node:fs/promises'
@@ -26,8 +29,8 @@ export class ProviderSetupJobs {
   #terminate(): void {
     const child = this.#child
     if (!child?.pid || child.exitCode !== null || child.signalCode !== null) return
-    try { process.kill(-child.pid, 'SIGTERM') } catch { child.kill('SIGTERM') }
-    const timer = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) { try { process.kill(-child.pid!, 'SIGKILL') } catch { child.kill('SIGKILL') } } }, 1500)
+    terminateProcessTree(child.pid!, 'SIGTERM')
+    const timer = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) { terminateProcessTree(child.pid!, 'SIGKILL') } }, 1500)
     timer.unref(); child.once('exit', () => clearTimeout(timer))
   }
   async start(action: 'install' | 'login', context: LocalRuntimeContext, account: AccountView, settings: EngineSettings, installRoot: string, saveBinary: (binary: string) => Promise<void>, refresh: () => Promise<void>): Promise<ProviderSetupView> {
@@ -40,7 +43,7 @@ export class ProviderSetupJobs {
       if (!instance) throw new Error(`Account ${account.instanceId} is no longer configured.`)
       if (instance.environment?.length) throw new Error('This account has environment overrides. Sign in with its configured tool, then refresh Accounts.')
       const config = instance.config ?? {}, name = account.driver === 'codex' ? 'codex' : 'claude'
-      const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${dirname(context.executable)}:${process.env.PATH ?? ''}` }
+      const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${dirname(context.executable)}${pathDelimiter}${process.env.PATH ?? ''}` }
       const home = typeof config.shadowHomePath === 'string' && config.shadowHomePath.trim() ? config.shadowHomePath : typeof config.homePath === 'string' ? config.homePath : ''
       if (home) env[account.driver === 'codex' ? 'CODEX_HOME' : 'CLAUDE_CONFIG_DIR'] = home
       const configured = typeof config.binaryPath === 'string' && config.binaryPath.trim() ? config.binaryPath : name
@@ -48,7 +51,7 @@ export class ProviderSetupJobs {
       let args: string[], executable: string
       const prefix = join(installRoot, account.driver)
       if (action === 'install' && binary) {
-        try { const version = await promisify(execFile)(binary, ['--version'], { cwd: context.baseDirectory, env, timeout: 5000, maxBuffer: 16000 }); if (!/codex|claude/i.test(version.stdout + version.stderr)) binary = null } catch { binary = null }
+        try { const versionCommand = await nodeCommand(binary, ['--version'], context.executable); const version = await promisify(execFile)(versionCommand.executable, versionCommand.args, { cwd: context.baseDirectory, env, timeout: 5000, maxBuffer: 16000 }); if (!/codex|claude/i.test(version.stdout + version.stderr)) binary = null } catch { binary = null }
       }
       if (generation !== this.#generation) throw new Error('Setup cancelled.')
       if (action === 'install' && binary) {
@@ -57,21 +60,23 @@ export class ProviderSetupJobs {
         return this.view(account.instanceId)
       }
       if (action === 'install') {
-        const npmCandidates = [join(context.directory, 'node/lib/node_modules/npm/bin/npm-cli.js'), join(context.directory, 'node_modules/npm/bin/npm-cli.js')]
+        const npmCandidates = [join(context.directory, 'node/lib/node_modules/npm/bin/npm-cli.js'), join(context.directory, 'node/node_modules/npm/bin/npm-cli.js'), join(context.directory, 'node_modules/npm/bin/npm-cli.js')]
         let npm: string | undefined
         for (const candidate of npmCandidates) { try { await access(candidate); npm = candidate; break } catch { /* Try the bundled layout. */ } }
         if (!npm) throw new Error(`The bundled npm installer is missing from ${context.directory}. Replace this Strata folder with a complete release.`)
         await mkdir(prefix, { recursive: true, mode: 0o700 })
         executable = context.executable
         args = [npm, 'install', '--global', '--prefix', prefix, '--cache', join(installRoot, 'npm-cache'), '--no-audit', '--no-fund', account.driver === 'codex' ? '@openai/codex@0.153.4' : '@anthropic-ai/claude-code@2.1.263']
-        binary = join(prefix, 'bin', name)
+        binary = isWindows() ? join(prefix, name + '.cmd') : join(prefix, 'bin', name)
       } else {
         if (!binary) throw new Error(`Install ${account.name} before signing in.`)
         executable = binary; args = account.driver === 'codex' ? ['login'] : ['auth', 'login']
       }
       if (generation !== this.#generation) throw new Error('Setup cancelled.')
+      const command = await nodeCommand(executable, args, context.executable)
+      if (generation !== this.#generation) throw new Error('Setup cancelled.')
       this.#view = { instanceId: account.instanceId, state: 'running', message: action === 'install' ? `Installing ${account.name} in Strata's folder…` : `Complete ${account.name} sign-in in your browser.`, output: '' }
-      const child = spawn(executable, args, { cwd: context.baseDirectory, env, detached: true, stdio: ['pipe', 'pipe', 'pipe'] })
+      const child = spawn(command.executable, command.args, { cwd: context.baseDirectory, env, detached: true, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
       this.#child = child
       const installedBinary = binary
       this.#done = new Promise<void>(resolve => {

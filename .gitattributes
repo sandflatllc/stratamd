@@ -1,3 +1,7 @@
 test/corpus/constructs/visual.md whitespace=-trailing-space
 test/fixtures/attachments/*.pdf binary
 test/fixtures/attachments/*.zip binary
+
+# These inputs have exact byte checksums on every build host.
+packaging/engine/patches/** -text
+bin/stratamd.cmd text eol=crlf

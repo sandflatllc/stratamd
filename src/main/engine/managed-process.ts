@@ -1,5 +1,6 @@
+import { windowsProcessArguments } from '../../platform/windows-process'
 import { randomUUID } from 'node:crypto'
-import { isDarwin } from '../../platform/runtime'
+import { isDarwin, isWindows } from '../../platform/runtime'
 import { execFile } from 'node:child_process'
 import { open, readFile, realpath, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -19,6 +20,13 @@ export async function verifiedProcess(record: OwnedProcess): Promise<boolean> {
   try {
     const stamp = await processStamp(record.pid)
     if (stamp.bootId !== record.bootId || stamp.startTime !== record.startTime) return false
+    if (isWindows()) {
+      const info = unixSupportBinding().processInfo?.(record.pid)
+      const args = await windowsProcessArguments(record.pid)
+      const index = args.indexOf('--base-dir')
+      if (index < 0 || args[index + 1] !== record.baseDirectory || unixSupportBinding().processInfo?.(record.pid).startTime !== stamp.startTime) return false
+      return !!info && info.startTime === stamp.startTime && (await realpath(info.executable)).toLowerCase() === (await realpath(record.executable)).toLowerCase()
+    }
     if (!isDarwin()) {
       const [executable, command] = await Promise.all([realpath(`/proc/${record.pid}/exe`), readFile(`/proc/${record.pid}/cmdline`, 'utf8')])
       const args = command.split('\0')

@@ -1,3 +1,5 @@
+import { slashPath, comparablePath } from '../shared/file-path'
+
 // A turn's changed files as the conversation shows them (PRD §6.9, decided
 // 2026-09-04): a count and a net delta, the top-level folders they fall under,
 // a few file chips, and the full list on request. Paths read relative to the
@@ -51,10 +53,12 @@ function trimSlash(path: string): string {
 }
 
 export function relativeChangedPath(path: string, root: string | null): string {
+  path = slashPath(path)
   if (!root) return path
-  const base = trimSlash(root)
-  if (path === base) return '.'
-  return path.startsWith(`${base}/`) ? path.slice(base.length + 1) : path
+  const base = trimSlash(slashPath(root))
+  const candidate = comparablePath(path), comparison = comparablePath(base)
+  if (candidate === comparison) return '.'
+  return candidate.startsWith(`${comparison}/`) ? path.slice(base.length + 1) : path
 }
 
 export function describeChangedFile(file: ChangedFileInput, root: string | null): ChangedFileView {

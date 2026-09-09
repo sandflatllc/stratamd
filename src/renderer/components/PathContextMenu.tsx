@@ -64,7 +64,7 @@ export function PathContextMenu({ menu, onClose, ...actions }: { menu: PathConte
   const item = (label: string, run: () => void, className?: string) => (
     <button type="button" role="menuitem" key={label} className={className} onClick={() => { run(); onClose() }}>{label}</button>
   )
-  const name = menu.path.split('/').pop() ?? menu.path
+  const name = menu.path.split(/[/\\]/).pop() ?? menu.path
   const isFile = !menu.folder && !menu.root
   return (
     <div

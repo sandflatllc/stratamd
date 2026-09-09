@@ -1,3 +1,5 @@
+import { terminateProcessTree } from '../../platform/process-tree'
+import { pathDelimiter } from '../../platform/commands'
 import { engineEnvironment } from './launch-environment'
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -29,7 +31,7 @@ export class T3Connect {
   get account(): string | null { return this.#account }
   view(): ConnectJob { return { ...this.#job } }
   #invocation(context: LocalRuntimeContext, args: string[]) {
-    const env: NodeJS.ProcessEnv = { ...engineEnvironment(), PATH: `${dirname(context.executable)}:${process.env.PATH ?? ''}`, BROWSER: 'false', NO_COLOR: '1' }
+    const env: NodeJS.ProcessEnv = { ...engineEnvironment(), PATH: `${dirname(context.executable)}${pathDelimiter}${process.env.PATH ?? ''}`, BROWSER: 'false', NO_COLOR: '1' }
     // Strata runs on the browser's computer even when its parent shell came through SSH.
     delete env.SSH_CONNECTION; delete env.SSH_TTY
     return { executable: context.executable, args: [join(context.directory, 'node_modules/t3/dist/bin.mjs'), 'connect', ...args, '--base-dir', context.baseDirectory], options: { cwd: context.baseDirectory, env } }
@@ -66,8 +68,8 @@ export class T3Connect {
   #terminate(): void {
     const child = this.#child
     if (!child?.pid || child.exitCode !== null || child.signalCode !== null) return
-    try { process.kill(-child.pid, 'SIGTERM') } catch { child.kill('SIGTERM') }
-    const timer = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) { try { process.kill(-child.pid!, 'SIGKILL') } catch { child.kill('SIGKILL') } } }, 1500)
+    terminateProcessTree(child.pid!, 'SIGTERM')
+    const timer = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) { terminateProcessTree(child.pid!, 'SIGKILL') } }, 1500)
     timer.unref(); child.once('exit', () => clearTimeout(timer))
   }
   start(context: LocalRuntimeContext, run: (operation: ConnectOperation) => Promise<string>): void {
@@ -96,7 +98,7 @@ export class T3Connect {
     const command = this.#invocation(context, args)
     let output = '', cancelled = false, timedOut = false
     await new Promise<void>((resolve, reject) => {
-      const child = spawn(command.executable, command.args, { ...command.options, detached: true, stdio: ['pipe', 'pipe', 'pipe'] })
+      const child = spawn(command.executable, command.args, { ...command.options, detached: true, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
       this.#child = child
       child.stdin.on('error', () => undefined)
       const collect = (bytes: Buffer) => {

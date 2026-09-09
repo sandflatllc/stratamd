@@ -16,6 +16,7 @@ async function fixture() {
   await mkdir(source); await mkdir(home)
   execFileSync('git', ['init', '-q'], { cwd: source })
   await mkdir(join(source, 'scripts'), { recursive: true })
+  await cp(resolve('scripts/tool-command.mjs'), join(source, 'scripts/tool-command.mjs'))
   await cp(resolve('scripts/verify.mjs'), join(source, 'scripts/verify.mjs'))
   await cp(resolve('scripts/verification'), join(source, 'scripts/verification'), { recursive: true })
   await writeFile(join(source, 'scripts/verify-fixture.mjs'), `import { verify } from './verification/run.mjs'; await verify(process.argv.slice(2), { lockRoot: ${JSON.stringify(join(home, 'locks'))}, electronStallMs: process.env.FIXTURE_ELECTRON_STALL_MS ? Number(process.env.FIXTURE_ELECTRON_STALL_MS) : undefined });`)

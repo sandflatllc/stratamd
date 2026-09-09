@@ -30,11 +30,12 @@ describe('platform path resolution', () => {
     expect(getCliLinkPath(home)).toBe('/home/test/.local/bin/stratamd')
   })
 
-  it('accepts only Linux and macOS as supported platforms', () => {
+  it('accepts Linux, macOS and Windows as supported platforms', () => {
     expect(isSupportedPlatform('linux')).toBe(true)
     expect(isSupportedPlatform('darwin')).toBe(true)
-    expect(isSupportedPlatform('win32')).toBe(false)
-    expect(() => assertSupportedPlatform('win32')).toThrow(/Linux and macOS/)
+    expect(isSupportedPlatform('win32')).toBe(true)
+    expect(assertSupportedPlatform('win32')).toBe('win32')
+    expect(() => assertSupportedPlatform('freebsd')).toThrow(/Linux, macOS and Windows/)
     expect(assertSupportedPlatform('darwin')).toBe('darwin')
   })
 })

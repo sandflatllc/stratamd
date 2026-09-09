@@ -32,7 +32,7 @@ it.skipIf(!process.env.STRATAMD_ENGINE_BUNDLE)('starts the pinned bundled server
 
 it.skipIf(!process.env.STRATAMD_ENGINE_BUNDLE)('bundled replay releases consumed pages and resets its cursor for each reader', () => {
   const bundle = process.env.STRATAMD_ENGINE_BUNDLE!
-  const result = JSON.parse(execFileSync(join(bundle, 'node/bin/node'), ['scripts/check-engine-replay.mjs', bundle], { encoding: 'utf8' }))
+  const result = JSON.parse(execFileSync(join(bundle, process.platform === 'win32' ? 'node/node.exe' : 'node/bin/node'), ['scripts/check-engine-replay.mjs', bundle], { encoding: 'utf8' }))
   expect(result.checks).toMatchObject([
     { reader: 'readFromSequence', events: 1501, pageSize: 500, maximumRetainedPageMarkers: 1, repeated: true },
     { reader: 'readAggregateRange', events: 1501, pageSize: 500, maximumRetainedPageMarkers: 1, repeated: true },

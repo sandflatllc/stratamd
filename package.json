@@ -30,7 +30,8 @@
     "build:linux": "node scripts/build-packaged.mjs",
     "build:mac": "node scripts/build-packaged.mjs",
     "build:packaged": "node scripts/build-packaged.mjs",
-    "test:packaged": "pnpm build:packaged && STRATAMD_PACKAGED_TEST=1 vitest run test/integration/packaged-cli.test.ts"
+    "test:packaged": "pnpm build:packaged && STRATAMD_PACKAGED_TEST=1 vitest run test/integration/packaged-cli.test.ts",
+    "build:windows": "node scripts/build-packaged.mjs"
   },
   "engines": {
     "node": ">=22"
@@ -39,12 +40,16 @@
     "appId": "local.stratamd.app",
     "productName": "StrataMD",
     "asar": true,
-    "asarUnpack": ["node_modules/@crowecawcaw/**/*", "out/main/capture-x11"],
+    "asarUnpack": [
+      "node_modules/@crowecawcaw/**/*",
+      "out/main/capture-x11"
+    ],
     "files": [
       "out/**/*",
       "resources/stratamd-tray.png",
       "bin/stratamd",
-      "package.json"
+      "package.json",
+      "bin/stratamd.cmd"
     ],
     "extraResources": [
       {
@@ -103,7 +108,25 @@
     },
     "npmRebuild": false,
     "beforePack": "scripts/package-before-pack.cjs",
-    "afterPack": "scripts/package-engine.cjs"
+    "afterPack": "scripts/package-engine.cjs",
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "executableName": "StrataMD",
+      "extraFiles": [
+        {
+          "from": "bin/stratamd.cmd",
+          "to": "stratamd.cmd"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
   },
   "dependencies": {
     "@crowecawcaw/xa11y": "0.13.0",

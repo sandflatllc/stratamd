@@ -22,7 +22,7 @@ describe('platform source boundaries', () => {
     // modules (mac-plan §3); feature code must not grow its own checks.
     const offenders: string[] = []
     for (const file of await sourceFiles(sourceRoot)) {
-      const path = relative(sourceRoot, file)
+      const path = relative(sourceRoot, file).replaceAll('\\', '/')
       if (path.startsWith('platform/')) continue
       const content = await readFile(file, 'utf8')
       if (content.includes('process.platform')) offenders.push(path)
@@ -35,7 +35,7 @@ describe('platform source boundaries', () => {
     // never reach main-process APIs (mac-plan §3 boundaries).
     const offenders: string[] = []
     for (const file of await sourceFiles(sourceRoot)) {
-      const path = relative(sourceRoot, file)
+      const path = relative(sourceRoot, file).replaceAll('\\', '/')
       if (!/^(?:platform|cli|shared|renderer|editor|core)\//.test(path)) continue
       const content = await readFile(file, 'utf8')
       if (/from 'electron'|import\('electron'\)|require\('electron'\)/.test(content)) offenders.push(path)
