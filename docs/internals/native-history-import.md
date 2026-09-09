@@ -1,0 +1,13 @@
+# Native history import
+
+Projects opens Import existing work in the shared setup dialog. Discovery calls the engine's `agentSessions.scan` with `{}`. The returned project folders are grouped by Git remote identity, sorted by last activity, and limited to the chosen 20, 50, or 100 recent projects. This display limit does not filter conversations inside a project.
+
+The pinned T3 contract, introduced through PRs 5362 and 10493, has no source selector, individual conversation selector, date-range input, or destination remapping. Each selected source folder uses an existing project at that folder or creates one first. Confirmation states the source folder, destination project, and engine bounds. The discovery count is an estimate. The pinned scanner imports recent history subject to 100 transcripts, 200 messages per transcript, and additional byte/record limits.
+
+Import calls `agentSessions.import({ projectId, expectedWorkspaceRoot })`. Strata checks the current project root, and the engine checks the expected root again. Decoding, native resume metadata, source identity, and unchanged-history detection belong to the engine. Strata does not convert transcripts or start a provider turn. Imported threads arrive through the ordinary shell subscription.
+
+Progress counts finished projects, not individual conversations. Keep the dialog open while import runs. Failures name their source folder. A retry skips successful projects, reuses project ids already created, and relies on engine idempotence for history imported before a failure. Results report the engine's imported and skipped counts. Import is a one-time copy.
+
+Private assistant paths are excluded lexically from displayed candidates and refused before import. This includes `.openclaw`, `/srv/openclaw/private`, `openclaw-private`, and `openclaw_private_state`. Filtering a scan result does not prove the upstream scanner never read metadata for that candidate. The upstream scanner can inspect candidate directory and Git metadata before returning results. No scanner-side machine-specific exclusion is claimed here.
+
+The focused tests use synthetic discovery and import results over application IPC and a real WebSocket server. They cover exact RPC payloads, repository grouping, root-change and private-path refusals, unchanged-result counts, creation before import, partial failure, retry dispatch, and absence of provider-turn commands. They do not verify stock-engine native transcript decoding. Never exercise discovery against the owner's provider homes during development; stock-runtime checks require explicitly isolated homes for both built-in native providers.

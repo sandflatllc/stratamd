@@ -1,6 +1,7 @@
 import { validatedModelOptions } from '../../shared/custom-models'
 import type { BrowserEvidenceTransfer } from '../../shared/browser-evidence'
 import { inputPayload, pendingUserInputs } from '../../core/user-input'
+import { historyScanSchema, historyImportResultSchema, isPrivateHistoryPath } from '../../shared/history-import'
 import { legacyCommentNote, sentCommentsFromDelivery } from '../../core/sent-comments'
 import { installRelayClient } from './relay-install'
 import { accountForModel } from '../../core/accountState'
@@ -180,6 +181,8 @@ export interface EngineReadClient {
   dismissUserInput(threadId: string, requestId: string): Promise<void>
   respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
   createThread?(input: StartThreadInput): Promise<string>
+  scanHistory?(): Promise<import('../../shared/history-import').HistoryScan>
+  importHistory?(input: { projectId: string; expectedWorkspaceRoot: string }): Promise<import('../../shared/history-import').HistoryImportResult>
   createProject?(input: { title: string; workspaceRoot: string; createWorkspaceRootIfMissing?: boolean }): Promise<string>
   actOnThread?(threadId: string, action: 'archive' | 'settle' | 'unsettle' | 'delete'): Promise<void>
   updateThread?(threadId: string, change: EngineThreadChange): Promise<void>
@@ -1701,6 +1704,21 @@ export class T3EngineClient implements EngineReadClient {
 
   async cloneRepository(input: CloneRepositoryInput): Promise<{ cwd: string }> {
     return cloneRepositoryResult.parse(await this.#rpcOrSocket(T3_RPC.cloneRepository, cloneRepositoryInput.parse(input), `clone into ${input.destinationPath}`, 300_000))
+  }
+
+  async scanHistory() {
+    const result = historyScanSchema.parse(await this.#rpcOrSocket('agentSessions.scan', {}, 'native history discovery', 60_000))
+    return { ...result, candidates: result.candidates.filter(candidate => !isPrivateHistoryPath(candidate.path)) }
+  }
+
+  async importHistory(input: { projectId: string; expectedWorkspaceRoot: string }) {
+    return this.#operations.run(async () => {
+      const project = this.#shell?.projects.find(project => project.id === input.projectId)
+      if (!project) throw new Error(`Project was not found: ${input.projectId}`)
+      if (isPrivateHistoryPath(input.expectedWorkspaceRoot) || isPrivateHistoryPath(project.workspaceRoot)) throw new Error('Private assistant history cannot be imported')
+      if (project.workspaceRoot !== input.expectedWorkspaceRoot) throw new Error(`Project folder changed: ${input.expectedWorkspaceRoot}. Scan again before importing.`)
+      return historyImportResultSchema.parse(await this.#rpcOrSocket('agentSessions.import', input, `history in ${input.expectedWorkspaceRoot}`, 60_000))
+    })
   }
 
   async createProject(input: { title: string; workspaceRoot: string; createWorkspaceRootIfMissing?: boolean }): Promise<string> {

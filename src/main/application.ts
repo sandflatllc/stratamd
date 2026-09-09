@@ -1005,6 +1005,16 @@ export class StrataApplication implements StrataApi {
     return this.#engine.createThread(input)
   }
 
+  async scanEngineHistory() {
+    if (!this.#engine.scanHistory) throw new Error('This engine does not support history discovery')
+    return this.#engine.scanHistory()
+  }
+
+  async importEngineHistory(input: { projectId: string; expectedWorkspaceRoot: string }) {
+    if (!this.#engine.importHistory) throw new Error('This engine cannot import native history')
+    return this.#engine.importHistory(input)
+  }
+
   async createEngineProject(input: { title: string; workspaceRoot: string; createWorkspaceRootIfMissing?: boolean }): Promise<string> {
     if (!this.#engine.createProject) throw new Error('This engine cannot add projects')
     return this.#engine.createProject(input)

@@ -11,6 +11,8 @@ export const IPC = {
   reconnectEngine: 'strata:reconnect-engine',
   openConversation: 'strata:open-conversation',
   createEngineThread: 'strata:create-engine-thread',
+  scanEngineHistory: 'strata:scan-engine-history',
+  importEngineHistory: 'strata:import-engine-history',
   createEngineProject: 'strata:create-engine-project',
   startThreadFromDocument: 'strata:start-thread-from-document',
   actOnEngineThread: 'strata:act-on-engine-thread',

@@ -118,6 +118,8 @@ const api: StrataApi & {
   reconnectEngine: () => invoke<void>(IPC.reconnectEngine),
   openConversation: (threadId) => invoke<void>(IPC.openConversation, threadId),
   createEngineThread: (input) => invoke<string>(IPC.createEngineThread, input),
+  scanEngineHistory: () => invoke(IPC.scanEngineHistory),
+  importEngineHistory: (input) => invoke(IPC.importEngineHistory, input),
   createEngineProject: (input) => invoke<string>(IPC.createEngineProject, input),
   startThreadFromDocument: (path, input) => invoke<string>(IPC.startThreadFromDocument, path, input),
   actOnEngineThread: (threadId, action) => invoke<void>(IPC.actOnEngineThread, threadId, action),

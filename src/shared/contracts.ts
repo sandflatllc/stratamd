@@ -1138,6 +1138,8 @@ export interface StrataApi {
   answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
   createEngineThread(input: StartThreadInput): Promise<string>
   /** Adds a T3 project for a folder no project contains yet (§5.7 Add project); returns its id. */
+  scanEngineHistory(): Promise<import('./history-import').HistoryScan>
+  importEngineHistory(input: { projectId: string; expectedWorkspaceRoot: string }): Promise<import('./history-import').HistoryImportResult>
   createEngineProject(input: { title: string; workspaceRoot: string; createWorkspaceRootIfMissing?: boolean }): Promise<string>
   /** Creates the thread, attaches it to the document, and sends the pending comment and drafts as its first turn (§5.7, §5.14). */
   startThreadFromDocument(path: string, input: StartThreadFromDocumentInput): Promise<string>

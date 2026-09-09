@@ -10,6 +10,8 @@ import { Scenario } from './harness'
 const at = '2026-09-03T12:00:00.000Z'
 
 export interface FakeEngineOptions {
+  historyRpc?: (tag: string, payload: unknown) => Promise<unknown>
+
   settings?: Record<string, unknown>
   /** The one-time codes the fake accepts at the token endpoint; each returns a session token derived from it. */
   pairingCodes?: string[]
@@ -421,6 +423,10 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
         if (rpc._tag === 'Interrupt') { connection.subscriptions = connection.subscriptions.filter((subscription) => subscription.requestId !== rpc.requestId); continue }
         if (rpc._tag !== 'Request' || !rpc.id || !rpc.tag) continue
         rpcRequests.push({ tag: rpc.tag, payload: rpc.payload })
+        if (rpc.tag.startsWith('agentSessions.') && options.historyRpc) {
+          void options.historyRpc(rpc.tag, rpc.payload).then(value => send(socket, { _tag: 'Exit', requestId: rpc.id, exit: { _tag: 'Success', value } }), error => send(socket, { _tag: 'Exit', requestId: rpc.id, exit: { _tag: 'Failure', cause: { _tag: 'Fail', error: { message: String(error) } } } }))
+          continue
+        }
         if (rpc.tag === 'orchestration.dispatchCommand') {
           const command = rpc.payload as Record<string, unknown>
           if (rejectNextTurn) { rejectNextTurn = false; send(socket, { _tag: 'Exit', requestId: rpc.id, exit: { _tag: 'Failure', cause: 'Test refusal' } }); continue }

@@ -57,6 +57,8 @@ function fakeApi(): StrataApi {
     pairEngine: vi.fn(async () => undefined),
     reconnectEngine: vi.fn(async () => undefined),
     createEngineThread: vi.fn(async () => 'thread-new'),
+    scanEngineHistory: vi.fn(async () => ({ candidates: [], scannedAt: '2026-09-03T12:00:00Z' })),
+    importEngineHistory: vi.fn(async () => ({ importedCount: 0, skippedCount: 0 })),
     createEngineProject: vi.fn(async () => 'project-new'),
     parkAccount: vi.fn(async () => undefined),
     updateEngineThread: vi.fn(async () => undefined),
