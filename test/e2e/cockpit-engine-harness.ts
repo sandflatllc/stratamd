@@ -35,6 +35,7 @@ export interface FakeEngineOptions {
   /** Whether `t1` starts with an open approval and an open user-input request; defaults to true. False leaves it plainly running. */
   pendingRequests?: boolean
   userInputResponseMode?: 'message'
+  userInputQuestions?: Array<{ id: string; question: string; options?: Array<{ label: string }>; allowCustomAnswer?: boolean }>
   rejectFirstUserInput?: 'respond' | 'dismiss'
   /** T3 background liveness per seeded thread (§6.9 thread states): `monitoring` draws the robot, `working` the pulse after the turn settles. */
   liveness?: Partial<Record<'t1' | 't2', 'working' | 'monitoring'>>
@@ -259,7 +260,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       { id: 'live-update', tone: 'tool', kind: 'tool.updated', summary: 'Running build', payload: { itemType: 'command_execution', detail: 'electron-vite build', toolCallId: 'call-live', status: 'inProgress' }, turnId: 'turn-1', createdAt: at },
     ] : [
       ...(approvalOpen ? [{ id: 'a1', tone: 'approval', kind: 'approval.requested', summary: 'Command approval requested', payload: { requestId: 'approval-1', detail: 'Run the cockpit verification?' }, turnId: 'turn-1', createdAt: at }] : [{ id: 'a2', tone: 'approval', kind: 'approval.resolved', summary: 'Approval resolved', payload: { requestId: 'approval-1' }, turnId: 'turn-1', createdAt: at }]),
-      ...(inputOpen ? [{ id: 'u1', tone: 'info', kind: 'user-input.requested', summary: 'User input requested', payload: { requestId: 'input-1', ...(options.userInputResponseMode ? { responseMode: options.userInputResponseMode } : {}), questions: [{ id: 'release', question: 'Which release?', options: [{ label: 'Version one' }] }] }, turnId: 'turn-1', createdAt: at }] : [{ id: 'u2', tone: 'info', kind: 'user-input.resolved', summary: inputResolution?.type === 'thread.user-input.dismiss' ? 'User input dismissed' : 'User input submitted', payload: { requestId: 'input-1', ...(inputResolution?.answers ? { answers: inputResolution.answers } : {}), ...(options.userInputResponseMode ? { responseMode: options.userInputResponseMode } : {}) }, turnId: 'turn-1', createdAt: at }]),
+      ...(inputOpen ? [{ id: 'u1', tone: 'info', kind: 'user-input.requested', summary: 'User input requested', payload: { requestId: 'input-1', ...(options.userInputResponseMode ? { responseMode: options.userInputResponseMode } : {}), questions: options.userInputQuestions ?? [{ id: 'release', question: 'Which release?', options: [{ label: 'Version one' }] }] }, turnId: 'turn-1', createdAt: at }] : [{ id: 'u2', tone: 'info', kind: 'user-input.resolved', summary: inputResolution?.type === 'thread.user-input.dismiss' ? 'User input dismissed' : 'User input submitted', payload: { requestId: 'input-1', ...(inputResolution?.answers ? { answers: inputResolution.answers } : {}), ...(inputResolution?.attachmentsByQuestionId ? { attachmentsByQuestionId: inputResolution.attachmentsByQuestionId } : {}), ...(options.userInputResponseMode ? { responseMode: options.userInputResponseMode } : {}) }, turnId: 'turn-1', createdAt: at }]),
       { id: 'tool-1', tone: 'tool', kind: 'tool.completed', summary: 'Updated cockpit files', payload: {}, turnId: 'turn-1', createdAt: at },
       ...(options.agentTasks ? agentTaskActivities(at) : []),
     ]

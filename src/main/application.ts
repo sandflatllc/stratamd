@@ -1483,8 +1483,8 @@ export class StrataApplication implements StrataApi {
     await this.#engine.dismissUserInput(threadId, requestId)
   }
 
-  async answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void> {
-    await this.#engine.respondUserInput(threadId, requestId, answers)
+  async answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>, attachmentsByQuestionId?: Record<string, import('../shared/contracts').ConversationAttachment[]>): Promise<void> {
+    await this.#engine.respondUserInput(threadId, requestId, answers, attachmentsByQuestionId)
   }
 
   #newThreadAttachment(session: OpenDocumentSession, threadId: string): Attachment | null {

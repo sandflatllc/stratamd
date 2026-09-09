@@ -189,7 +189,7 @@ export interface EngineReadClient {
   interrupt(threadId: string): Promise<void>
   respondApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
   dismissUserInput(threadId: string, requestId: string): Promise<void>
-  respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
+  respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>, attachmentsByQuestionId?: Record<string, import('../../shared/contracts').ConversationAttachment[]>): Promise<void>
   createThread?(input: StartThreadInput): Promise<string>
   scanHistory?(): Promise<import('../../shared/history-import').HistoryScan>
   importHistory?(input: { projectId: string; expectedWorkspaceRoot: string }): Promise<import('../../shared/history-import').HistoryImportResult>
@@ -1693,7 +1693,7 @@ export class T3EngineClient implements EngineReadClient {
 
   async freezeForBackup(): Promise<void> { await this.#operations.switch(async () => { this.#operations.suspend() }) }
   assertNoPendingSends(): void {
-    if (this.#pendingCommands.length || Object.values(this.#conversations.threads).some(thread => thread.prepared?.length || thread.pending.length)) throw new Error('Finish or discard queued conversation sends before updating or restoring the engine.')
+    if (this.#pendingCommands.length || Object.values(this.#conversations.threads).some(thread => thread.prepared?.length || thread.pending.length || Object.values(thread.userInputResponses ?? {}).some(response => !response.sent))) throw new Error('Finish or discard queued conversation sends before continuing.')
   }
   async reloadStoredState(): Promise<void> {
     await this.shutdown()
@@ -1983,8 +1983,8 @@ export class T3EngineClient implements EngineReadClient {
     }))
   }
 
-  async respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void> {
-    return this.#operations.run(() => this.#respondUserInput(threadId, requestId, answers))
+  async respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>, attachmentsByQuestionId?: Record<string, import('../../shared/contracts').ConversationAttachment[]>): Promise<void> {
+    return this.#operations.run(() => this.#respondUserInput(threadId, requestId, answers, attachmentsByQuestionId))
   }
 
   async dismissUserInput(threadId: string, requestId: string): Promise<void> {
@@ -1996,14 +1996,47 @@ export class T3EngineClient implements EngineReadClient {
         type: 'thread.user-input.dismiss', commandId: randomUUID(), threadId, requestId,
         createdAt: new Date(this.#now()).toISOString(),
       }))
+      const responses = this.#conversations.threads[threadId]?.userInputResponses
+      if (responses?.[requestId]) {
+        delete responses[requestId]
+        await writeConversationsStore(this.#conversationsPath, this.#conversations)
+      }
     })
   }
 
-  async #respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void> {
-    await this.#dispatch(userInputRespondCommand.parse({
-      type: 'thread.user-input.respond', commandId: randomUUID(), threadId, requestId, answers,
-      createdAt: new Date(this.#now()).toISOString(),
-    }))
+  async #respondUserInput(threadId: string, requestId: string, answers: Record<string, unknown>, attachmentsByQuestionId: Record<string, import('../../shared/contracts').ConversationAttachment[]> = {}): Promise<void> {
+    const state = this.#conversations.threads[threadId] ??= emptyConversationState()
+    const responses = state.userInputResponses ??= {}
+    let response = responses[requestId]
+    if (response?.sent) return
+    if (!response) {
+      const files = Object.values(attachmentsByQuestionId).flat()
+      if (files.length > MAX_ATTACHMENTS) throw new Error(`Question ${requestId} accepts at most ${MAX_ATTACHMENTS} files across its answers.`)
+      if (files.length) {
+        const request = pendingUserInputs(this.#threads.get(threadId)?.detail?.thread.activities ?? []).find(activity => inputPayload(activity).requestId === requestId)
+        const questions = request ? inputPayload(request).questions : undefined
+        if (!Array.isArray(questions)) throw new Error(`Question ${requestId} is no longer pending.`)
+        for (const [id, attachments] of Object.entries(attachmentsByQuestionId)) {
+          const question = questions.find(value => value && typeof value === 'object' && value.id === id)
+          if (attachments.length && (!question || question.allowCustomAnswer === false)) throw new Error(`Question ${id} does not accept files.`)
+        }
+        for (const attachment of files) if (attachment.kind !== 'text' && !(await this.#staged.exists(attachment.id))) throw new Error(`Attachment ${attachment.name} is no longer staged. Choose it again.`)
+      }
+      response = responses[requestId] = { commandId: randomUUID(), createdAt: new Date(this.#now()).toISOString(), answers: structuredClone(answers), attachmentsByQuestionId: structuredClone(attachmentsByQuestionId) }
+      await writeConversationsStore(this.#conversationsPath, this.#conversations)
+    }
+    try {
+      for (const attachment of Object.values(response.attachmentsByQuestionId).flat()) if (!attachment.uploaded) {
+        try { attachment.uploaded = await this.#uploadAttachment(attachment, false) }
+        catch (error) { throw new Error(`Could not send ${attachment.name}. ${error instanceof Error ? error.message : String(error)}`) }
+        await writeConversationsStore(this.#conversationsPath, this.#conversations)
+      }
+      const uploaded = Object.fromEntries(Object.entries(response.attachmentsByQuestionId).map(([id, files]) => [id, files.map(file => file.uploaded!)]))
+      await this.#dispatch(userInputRespondCommand.parse({ type: 'thread.user-input.respond', commandId: response.commandId, createdAt: response.createdAt, threadId, requestId, answers: response.answers, ...(Object.values(uploaded).some(files => files.length) ? { attachmentsByQuestionId: uploaded } : {}) }))
+      response.sent = true
+      await writeConversationsStore(this.#conversationsPath, this.#conversations)
+      for (const attachment of Object.values(response.attachmentsByQuestionId).flat()) if (attachment.kind === 'image' || attachment.kind === 'binary') await this.#staged.discard(attachment.id)
+    } catch (error) { throw new Error(`${error instanceof Error ? error.message : String(error)} Retry sends the original held answer and files.`) }
   }
 
   /** HTTP snapshots: the initial picture and the one taken on every reconnect (§5.1). */
@@ -2587,7 +2620,7 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   /** Markdown goes up as a `file`; a staged image as an `image` with its own type, and its staged bytes leave once T3 holds them. Evidence is copied, never consumed. */
-  async #uploadAttachment(attachment: PreparedAttachment): Promise<UploadedAttachment> {
+  async #uploadAttachment(attachment: PreparedAttachment, consume = true): Promise<UploadedAttachment> {
     if (attachment.kind === 'evidence') {
       const evidence = await this.#evidence.read(attachment.id)
       if (!evidence) throw new MissingEvidenceError(attachment.name)
@@ -2597,7 +2630,7 @@ export class T3EngineClient implements EngineReadClient {
       const staged = await this.#staged.read(attachment.id)
       if (!staged) throw new MissingStagedAttachmentError(attachment.name)
       const uploaded = await this.#uploadBytes({ type: attachment.kind === 'image' ? 'image' : 'file', name: staged.meta.name, mimeType: staged.meta.mimeType, bytes: staged.bytes })
-      await this.#staged.discard(attachment.id)
+      if (consume) await this.#staged.discard(attachment.id)
       return uploaded
     }
     const bytes = new TextEncoder().encode(attachment.text)
@@ -2658,6 +2691,7 @@ export class T3EngineClient implements EngineReadClient {
 
   async #retainAttachments(ids: readonly string[]): Promise<void> {
     const keep = new Set(ids)
+    for (const state of Object.values(this.#conversations.threads)) for (const response of Object.values(state.userInputResponses ?? {})) if (!response.sent) for (const file of Object.values(response.attachmentsByQuestionId).flat()) if (file.kind === 'image' || file.kind === 'binary') keep.add(file.id)
     for (const state of Object.values(this.#conversations.threads)) for (const prepared of state.prepared ?? []) for (const attachment of prepared.attachments) if ((attachment.kind === 'image' || attachment.kind === 'binary') && !attachment.uploaded) keep.add(attachment.id)
     await this.#staged.sweep(keep)
   }

@@ -1,4 +1,6 @@
 import { supportsOption, validatedModelOptions } from '../shared/custom-models'
+
+import { userInputAttachmentIds } from './userInputDrafts'
 import { accountForModel } from '../core/accountState'
 import { engineStorage, engineStorageKey } from './engineStorage'
 import { flagshipModel } from '../shared/modelSelection'
@@ -113,7 +115,7 @@ if (typeof window !== 'undefined') {
 }
 /** Every staged image any saved draft still references, so the main process can delete the rest. */
 export function draftAttachmentIds(): string[] {
-  const ids = new Set<string>()
+  const ids = new Set<string>(userInputAttachmentIds())
   const keys: string[] = []
   try { for (let index = 0; index < engineStorage.length; index += 1) { const key = engineStorage.key(index); if (key?.startsWith(prefix)) keys.push(key) } } catch { /* No storage means no saved drafts. */ }
   for (const key of keys) for (const attachment of parseDraft(engineStorage.getItem(key))?.attachments ?? []) if (attachment.kind !== 'text') ids.add(attachment.id)

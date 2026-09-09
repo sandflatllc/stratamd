@@ -66,6 +66,8 @@ export interface VisualSessionProps {
   adjustStatus?: string | undefined
   /** A plain notice when the live page changed under the session. */
   notice?: string | null
+  /** Question markup returns to its private answer draft, without a composer Send shortcut. */
+  returnToComposer?: boolean
   onHold(input: HoldVisualCommentInput): Promise<string>
   /** Removes the original photo from its conversation draft when attachment is cancelled. */
   onCancelAttachment?(): Promise<void>
@@ -79,7 +81,7 @@ function inTextField(target: EventTarget | null): boolean {
   return target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement || (target instanceof HTMLElement && target.isContentEditable)
 }
 
-export function VisualSession({ sessionId, session: controlled, setSession: setControlled, closeRequest, capture: opened, captures: all, commentId, source, page, onScroll, projectId, destination, place, initial, describe, onAdjust, adjustStatus, notice, onHold, onCancelAttachment, onClose, onError }: VisualSessionProps) {
+export function VisualSession({ sessionId, session: controlled, setSession: setControlled, closeRequest, capture: opened, captures: all, commentId, source, page, onScroll, projectId, destination, place, initial, describe, onAdjust, adjustStatus, notice, returnToComposer = true, onHold, onCancelAttachment, onClose, onError }: VisualSessionProps) {
   const captures = all && all.length ? all : [opened]
   const capture = captures[captures.length - 1]!
   const [local, setLocal] = useState(() => { const data = newVisualSession(initial); if (data.requested) data.requestedFor = JSON.stringify([data.adjusted, data.marks, data.strokes, captures.map(frame => frame.id)]); return data })
@@ -246,12 +248,16 @@ export function VisualSession({ sessionId, session: controlled, setSession: setC
   }
   const resetAdjustments = async () => { setHistory([]); await applyAdjustments([], false) }
 
-  const holdAndClose = useCallback(() => holdConversationContext(async () => {
-    if (!hasContent()) { await finishSession(); return }
-    const id = await hold()
-    if (!id) return false
-    await finishSession()
-  }), [hold, onClose])
+  const holdAndClose = useCallback(async () => {
+    const action = async () => {
+      if (!hasContent()) { await finishSession(); return }
+      const id = await hold()
+      if (!id) return false
+      await finishSession()
+    }
+    if (returnToComposer) await holdConversationContext(action)
+    else await action()
+  }, [hold, onClose, returnToComposer])
 
   const cancel = async () => {
     if (holding.current || latest.current.busy || ending.current) return

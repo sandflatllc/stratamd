@@ -333,7 +333,7 @@ Each must hold before the product is done. `docs/PRD_CONFORMANCE.md` names the t
 14. A strata block with two valid entries and one stale block id creates two items and one failure, all reported entry by entry in the next delivery; an attach-only block bootstraps an unattached thread.
 15. A prior certain write yields no document on unchanged first delivery and a diff after owner change; no/uncertain attribution yields the whole buffer.
 16. With two simultaneous root-mode threads, a write is external and attributed to neither; either thread's first delivery receives the whole buffer.
-17. Native agent questions open in a Strata modal. Closing preserves the draft; Hold keeps the answer private until Send. Only asynchronous questions can be dismissed, without an answer, message, or new turn. Native request identities survive reconnects.
+17. Native agent questions open in a Strata modal. Closing preserves the draft; Hold keeps the answer private until Send. Only asynchronous questions can be dismissed, without an answer, message, or new turn. Native request identities survive reconnects. Each answer can include its own files or screenshot markup, including an answer with files alone. Draft and held files remain private across app restarts; Send uploads durable references under their native question IDs. A failed Send retries the frozen answers and uploaded files without duplicating successful uploads. Submitted history retains the question-to-file association.
 18. A no-op Save is byte-identical; structural corpus edits rewrite only the smallest grammar-safe region.
 19. Save with agent changes pending writes the shadow while every pending hunk stays reviewable.
 20. An external disk write racing Save is detected before writing.

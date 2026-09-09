@@ -305,6 +305,46 @@ describe('T3 engine read client', () => {
     await client.shutdown()
   })
 
+  it('blocks maintenance for an uncertain native answer and retries its frozen command after restart', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'strata-question-receipt-'))
+    const server = liveServer()
+    const commands: Array<Record<string, unknown>> = []
+    let reject = true
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
+      if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket', expiresAt: at })
+      if (url.endsWith('/api/orchestration/dispatch')) {
+        commands.push(JSON.parse(String(init?.body)))
+        if (reject) throw new TypeError('response connection lost')
+        return Response.json({ sequence: commands.length })
+      }
+      if (url.endsWith('/api/orchestration/shell')) return Response.json(shell())
+      return Response.json({ ...detail(), thread: { ...detail().thread, activities: [{ id: 'ask2', kind: 'user-input.requested', summary: 'Another question', tone: 'info', turnId: 'turn-1', createdAt: at, payload: { requestId: 'input-2', responseMode: 'message', questions: [{ id: 'choice', question: 'Which?' }] } }] } })
+    }) as typeof globalThis.fetch
+    let client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
+    await client.pair('http://engine.test', 'code')
+    await client.openThread('t1')
+    await expect(client.respondUserInput('t1', 'input-1', { choice: 'Original answer' })).rejects.toThrow('Retry sends the original held answer')
+    expect(() => client.assertNoPendingSends()).toThrow('queued conversation sends')
+    await client.shutdown()
+    client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket })
+    await client.initialize()
+    expect(() => client.assertNoPendingSends()).toThrow('queued conversation sends')
+    reject = false
+    await client.respondUserInput('t1', 'input-1', { choice: 'Later edit' })
+    expect(commands).toHaveLength(2)
+    expect(commands[1]).toEqual(commands[0])
+    expect(commands[1]).toMatchObject({ answers: { choice: 'Original answer' } })
+    expect(() => client.assertNoPendingSends()).not.toThrow()
+    reject = true
+    await expect(client.respondUserInput('t1', 'input-2', { choice: 'Optional answer' })).rejects.toThrow()
+    reject = false
+    await client.dismissUserInput('t1', 'input-2')
+    expect(() => client.assertNoPendingSends()).not.toThrow()
+    await client.shutdown()
+  })
+
   it('saves Codex effort before sending and retries refused settings with stable IDs after restart', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'strata-engine-effort-'))
     const server = liveServer()

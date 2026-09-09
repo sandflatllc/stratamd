@@ -14,6 +14,7 @@ import type { ItemView } from '../../shared/contracts'
  * per message. Lives in the ghost store; T3 never sees it.
  */
 export interface ConversationState {
+  userInputResponses?: Record<string, { commandId: string; createdAt: string; answers: Record<string, unknown>; attachmentsByQuestionId: Record<string, PreparedAttachment[]>; sent?: boolean }>
   asks?: Record<string, import('../../shared/contracts').StoredAskScan>
   askDrafts?: Record<string, string>
   workspace?: import('../../shared/contracts').WorktreeRequest
@@ -110,6 +111,12 @@ export function normalizeConversationsStore(value: unknown): ConversationsStore 
       outcomes: Array.isArray(raw.outcomes) ? raw.outcomes.flatMap(entry => { const parsed = outcomeSchema.safeParse(entry); return parsed.success ? [parsed.data as import('../../core/conversation-delivery').ConversationOutcome] : [] }) : [],
       receipts: strings(raw.receipts),
       sentComments: isRecord(raw.sentComments) ? Object.fromEntries(Object.entries(raw.sentComments).flatMap(([id, value]) => { const parsed = sentCommentsSchema.safeParse(value); return parsed.success ? [[id, parsed.data]] : [] })) : {},
+      userInputResponses: isRecord(raw.userInputResponses) ? Object.fromEntries(Object.entries(raw.userInputResponses).flatMap(([id, entry]) => {
+        if (!isRecord(entry) || typeof entry.commandId !== 'string' || typeof entry.createdAt !== 'string' || !isRecord(entry.answers) || !isRecord(entry.attachmentsByQuestionId)) return []
+        const files = Object.entries(entry.attachmentsByQuestionId).map(([question, files]) => [question, Array.isArray(files) ? files.map(normalizePreparedAttachment) : [null]] as const)
+        if (files.some(([, list]) => list.some(file => file === null))) return []
+        return [[id, { commandId: entry.commandId, createdAt: entry.createdAt, answers: entry.answers, attachmentsByQuestionId: Object.fromEntries(files) as Record<string, PreparedAttachment[]>, ...(entry.sent === true ? { sent: true } : {}) }]]
+      })) : {},
       asks: normalizeAskScans(raw.asks),
       askDrafts: isRecord(raw.askDrafts) ? Object.fromEntries(Object.entries(raw.askDrafts).filter((entry): entry is [string, string] => typeof entry[1] === 'string')) : {},
       replies: replies(raw.replies),

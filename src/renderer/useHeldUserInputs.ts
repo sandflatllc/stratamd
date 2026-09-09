@@ -1,33 +1,27 @@
 import { useEffect, useState } from 'react'
+import type { ConversationAttachment, UserInputDraft } from '../shared/contracts'
 import { engineStorage } from './engineStorage'
+import { readUserInputDrafts } from './userInputDrafts'
 
-type Answers = Record<string, Record<string, string>>
 const changed = 'strata-held-user-inputs'
-function read(key: string): Answers {
-  try {
-    const value: unknown = JSON.parse(engineStorage.getItem(key) ?? '{}')
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-    return Object.fromEntries(Object.entries(value).filter(([, answers]) => answers && typeof answers === 'object' && !Array.isArray(answers) && Object.values(answers).every(answer => typeof answer === 'string')))
-  } catch { return {} }
-}
-
-/** Provider questions wait with other held context, scoped to this engine and thread. */
+/** Provider question drafts are atomic and private, scoped to this engine, thread and request. */
 export function useHeldUserInputs(threadId: string | undefined, kind = 'held-user-inputs') {
   const key = `${kind}:${threadId ?? ''}`
-  const [snapshot, setSnapshot] = useState(() => ({ key, answers: read(key) }))
+  const [snapshot, setSnapshot] = useState(() => ({ key, drafts: readUserInputDrafts(key) }))
   useEffect(() => {
-    const refresh = () => setSnapshot({ key, answers: read(key) })
+    const refresh = () => setSnapshot({ key, drafts: readUserInputDrafts(key) })
     refresh()
     window.addEventListener(changed, refresh)
     return () => window.removeEventListener(changed, refresh)
   }, [key])
-  const write = (requestId: string, value: Record<string, string> | null) => {
-    const answers = read(key)
-    if (value) answers[requestId] = value
-    else delete answers[requestId]
-    engineStorage.setItem(key, JSON.stringify(answers))
-    setSnapshot({ key, answers })
+  const write = (requestId: string, value: UserInputDraft | null) => {
+    const drafts = readUserInputDrafts(key)
+    if (value) drafts[requestId] = value
+    else delete drafts[requestId]
+    engineStorage.setItem(key, JSON.stringify(drafts))
+    setSnapshot({ key, drafts })
     window.dispatchEvent(new Event(changed))
   }
-  return { answers: snapshot.key === key ? snapshot.answers : read(key), hold: (id: string, answers: Record<string, string>) => write(id, answers), remove: (id: string) => write(id, null) }
+  const drafts = snapshot.key === key ? snapshot.drafts : readUserInputDrafts(key)
+  return { drafts, answers: Object.fromEntries(Object.entries(drafts).map(([id, draft]) => [id, draft.answers])), hold: (id: string, answers: Record<string, string>, attachmentsByQuestionId: Record<string, ConversationAttachment[]> = {}) => write(id, { answers, attachmentsByQuestionId }), remove: (id: string) => write(id, null) }
 }

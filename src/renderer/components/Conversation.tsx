@@ -1,8 +1,13 @@
 import { openDocumentPreview } from '../documentPreview'
 
 import { ThreadRecoveryNotice } from './ThreadRecoveryNotice'
+
+import { MAX_ATTACHMENTS } from '../../core/composer-attachments'
+import { readDraft } from '../conversationDrafts'
+import { visualCaptureIds } from '../../core/visual-comments'
 import { BrowserEvidence } from './BrowserEvidence'
 import type { BrowserEvidenceView } from '../../shared/browser-evidence'
+import { UserInputResult, type QuestionFileSource } from './UserInputResult'
 import { UserInputDialog } from './UserInputDialog'
 import { pendingUserInputs, inputPayload } from '../../core/user-input'
 import { ContextCompactionNotice } from './ContextCompactionNotice'
@@ -142,7 +147,7 @@ interface ConversationProps {
   onStart(threadId: string, input: import('../../shared/contracts').ConversationInput): Promise<void>
   onStop(threadId: string): void
   onApproval(threadId: string, requestId: string, decision: 'accept' | 'decline'): void
-  onUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
+  onUserInput(threadId: string, requestId: string, answers: Record<string, unknown>, attachmentsByQuestionId?: Record<string, import('../../shared/contracts').ConversationAttachment[]>): Promise<void>
   items?: readonly ItemView[]
   onReplyItem?(item: ItemView, text: string): void
   /** Message-anchored replies queue in the main process (§5.4); dismissals are remembered per message (§5.12). */
@@ -160,6 +165,7 @@ interface ConversationProps {
   /** Show me under an agent reply that references a page comment (phase 3). */
   onShowVisual?(id: string): void
   onMarkUpImage?(attachment: DraftAttachment): void
+  onOpenQuestionFile?(source: QuestionFileSource): void
   consumedAttachmentIds?: readonly string[]
 }
 
@@ -232,7 +238,7 @@ function TurnChecklist({ items, onReply, onOpen, onAct, onDismiss }: { items: re
   </section>
 }
 
-export function Conversation({ browserEvidence = [], onOpenBrowserEvidence, visible = true, onDocumentContext, documentMeasure = 860, onDocumentMeasure, engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput, items = [], onReplyItem, onQueueReply, onDismissItem, onOpenItem, onActItem, onOpenDocument, onCopyText, visualComments = [], onOpenVisual, onShowVisual, onMarkUpImage, consumedAttachmentIds }: ConversationProps) {
+export function Conversation({ browserEvidence = [], onOpenBrowserEvidence, visible = true, onDocumentContext, documentMeasure = 860, onDocumentMeasure, engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput, items = [], onReplyItem, onQueueReply, onDismissItem, onOpenItem, onActItem, onOpenDocument, onCopyText, visualComments = [], onOpenVisual, onShowVisual, onMarkUpImage, onOpenQuestionFile, consumedAttachmentIds }: ConversationProps) {
   const selected = activeThread(engine)
   const [inspectedImage, setInspectedImage] = useState<{ url: string; name: string } | null>(null)
   useEffect(() => setInspectedImage(null), [engine.activeThreadId])
@@ -342,7 +348,7 @@ export function Conversation({ browserEvidence = [], onOpenBrowserEvidence, visi
       row?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true })
     })
   }
-  const pendingInputs = userInputs.flatMap(activity => { const id = String(record(activity.payload).requestId ?? ''); return heldInputs.answers[id] ? [{ id, answers: heldInputs.answers[id]! }] : [] })
+  const pendingInputs = userInputs.flatMap(activity => { const id = String(record(activity.payload).requestId ?? ''); return heldInputs.answers[id] ? [{ id, answers: heldInputs.answers[id]!, files: heldInputs.drafts[id]!.attachmentsByQuestionId }] : [] })
   const allItems = useMemo(() => thread ? [...items, ...(thread.items ?? []).filter(item => !isOwnerComment(item))] : [...items], [items, thread])
   /** Per-message asks and comments, grouped once per list so an unchanged message keeps the same array between renders. */
   const asksByMessage = useMemo(() => groupBy(thread?.items ?? [], (item) => item.inferred ? item.messageId ?? null : null), [thread?.items])
@@ -463,14 +469,11 @@ export function Conversation({ browserEvidence = [], onOpenBrowserEvidence, visi
           {approvals.filter(activity => turn.activities.some(candidate => candidate.id === activity.id)).map((activity) => { const payload = record(activity.payload); const requestId = String(payload.requestId ?? ''); return <section className="conversation-request" data-kind="approval" key={activity.id}><strong>{typeof payload.detail === 'string' ? payload.detail : activity.summary}</strong><div className="conversation-actions"><button type="button" onClick={() => onApproval(thread.id, requestId, 'accept')}>Approve</button><button type="button" onClick={() => onApproval(thread.id, requestId, 'decline')}>Decline</button></div></section> })}
           {userInputs.filter(activity => turn.activities.some(candidate => candidate.id === activity.id)).map(activity => {
             const requestId = String(inputPayload(activity).requestId)
-            return <section className="conversation-request" data-kind="user-input" key={requestId}><strong>{heldInputs.answers[requestId] ? `Answer held · ${Object.values(heldInputs.answers[requestId]!).join(' · ')}` : 'Question from agent'}</strong><button type="button" onClick={() => setAnswerRequest(requestId)}>{heldInputs.answers[requestId] ? 'Edit answer' : 'Answer question'}</button></section>
+            const held = heldInputs.drafts[requestId]
+            const files = Object.values(held?.attachmentsByQuestionId ?? {}).flat()
+            return <section className="conversation-request" data-kind="user-input" key={requestId}><strong>{held ? `Answer held${Object.values(held.answers).filter(Boolean).length ? ` · ${Object.values(held.answers).filter(Boolean).join(' · ')}` : ''}` : 'Question from agent'}</strong><button type="button" onClick={() => setAnswerRequest(requestId)}>{held ? 'Edit answer' : 'Answer question'}</button>{files.length > 0 && <small className="question-held-files">{files.map(file => file.name).join(', ')} {files.length === 1 ? 'is' : 'are'} attached to this answer. Send delivers both.</small>}</section>
           })}
-          {turn.activities.filter(activity => activity.kind === 'user-input.resolved').map(activity => {
-            const payload = inputPayload(activity)
-            const dismissed = activity.summary === 'User input dismissed'
-            const answers = Object.values(record(payload.answers)).filter(value => typeof value === 'string').join(' · ')
-            return <section className="conversation-request conversation-input-result" data-kind="user-input-result" key={activity.id}><strong>{dismissed ? 'Question dismissed' : `Answer sent${answers ? ` · ${answers}` : ''}`}</strong><small>{dismissed ? 'The agent can continue without an answer.' : 'The agent received your answer.'}</small></section>
-          })}
+          {turn.activities.filter(activity => activity.kind === 'user-input.answer-submitted' || (activity.kind === 'user-input.resolved' && !turn.activities.some(submitted => submitted.kind === 'user-input.answer-submitted' && record(submitted.payload).requestId === record(activity.payload).requestId))).map(activity => <UserInputResult key={activity.id} activity={activity} threadId={thread.id} {...(onOpenQuestionFile ? { onOpenFile: onOpenQuestionFile } : {})} />)}
           <TurnChecklist items={allItems.filter((item) => !item.inferred && item.threadId === thread.id && item.turnId === turn.turnId)} onReply={(item, value) => { if (item.annotationId && onReplyItem) onReplyItem(item, value); else onQueueReply?.(thread.id, item, value) }} onDismiss={(item) => onDismissItem?.(thread.id, item)} onOpen={item => { if (item.annotationId) onOpenItem?.(item); else workspace.open(item.id) }} {...(onActItem ? { onAct: onActItem } : {})} />
         </section>
       })}
@@ -488,12 +491,12 @@ export function Conversation({ browserEvidence = [], onOpenBrowserEvidence, visi
     {visible && <button type="button" className="conversation-latest" data-direction={jumpToResponse ? 'up' : 'down'} aria-label={jumpToResponse ? 'Latest response' : 'Newest'} title={jumpToResponse ? 'Read the latest response from its start' : 'Jump to the newest message'} onClick={() => { if (jumpToResponse) workspace.jumpToLatest(); else history.current?.scrollToBottom() }}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 7.5 6 3.5l4 4" /></svg></button>}
     </div>
     {visible && workspace.overlay}
-    {visible && userInputs.filter(activity => inputPayload(activity).requestId === answerRequest).map(activity => <UserInputDialog key={`${thread.id}:${answerRequest}`} activity={activity} draft={inputDrafts.answers[answerRequest!] ?? heldInputs.answers[answerRequest!]} held={!!heldInputs.answers[answerRequest!]} onDraft={answers => inputDrafts.hold(answerRequest!, answers)} onClose={() => setAnswerRequest(null)} onHold={async answers => {
-      await holdConversationContext(async () => { heldInputs.hold(answerRequest!, answers); setAnswerRequest(null); setInputError('') }, panelRef.current)
+    {visible && userInputs.filter(activity => inputPayload(activity).requestId === answerRequest).map(activity => <UserInputDialog key={`${thread.id}:${answerRequest}`} activity={activity} projectId={thread.projectId} threadId={thread.id} files={inputDrafts.drafts[answerRequest!]?.attachmentsByQuestionId ?? heldInputs.drafts[answerRequest!]?.attachmentsByQuestionId ?? {}} reservedFiles={(readDraft(`thread:${thread.id}`).attachments?.length ?? 0) + pendingInputs.filter(entry => entry.id !== answerRequest).reduce((count, entry) => count + Object.values(entry.files).flat().length, 0) + (workspace.selectedCount > 0 || (thread.outcomes?.length ?? 0) > 0 ? 1 : 0)} {...(onOpenQuestionFile ? { onOpenFile: (file: import('../../shared/contracts').ConversationAttachment) => { if (file.kind !== 'text') { onOpenQuestionFile({ kind: 'staged', id: file.id, name: file.name }); setAnswerRequest(null) } } } : {})} draft={inputDrafts.answers[answerRequest!] ?? heldInputs.answers[answerRequest!]} held={!!heldInputs.answers[answerRequest!]} onDraft={(answers, files) => inputDrafts.hold(answerRequest!, answers, files)} onClose={() => setAnswerRequest(null)} onHold={async (answers, files) => {
+      await holdConversationContext(async () => { heldInputs.hold(answerRequest!, answers, files); setAnswerRequest(null); setInputError('') }, panelRef.current)
     }} onDismiss={async () => {
       await window.strata.dismissEngineUserInput(thread.id, answerRequest!)
       heldInputs.remove(answerRequest!); inputDrafts.remove(answerRequest!); setAnswerRequest(null)
     }} />)}
-    <ConversationComposer onSendFailureChange={setSendFailure} deliveryId={workspace.previewId} key={`composer:${thread.id}`} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} context={<div className="conversation-context">{placement === 'side' && onDocumentContext && <button type="button" onClick={onDocumentContext}>Document context</button>}{workspace.tray}{pendingInputs.map(entry => <div className="conversation-context-entry" key={entry.id}><span>Held answer: {Object.values(entry.answers).join(' · ')}</span><button type="button" aria-label={`Remove held answer: ${Object.values(entry.answers).join(' · ')}`} onClick={() => { try { heldInputs.remove(entry.id); setInputError('') } catch (failure) { setInputError(String(failure)) } }}>×</button></div>)}{inputError && <p role="alert">{inputError}</p>}</div>} queuedCount={workspace.selectedCount + pendingInputs.length} reservedAttachments={workspace.selectedCount > 0 || (thread.outcomes?.length ?? 0) > 0 ? 1 : 0} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} running={running} sendWhileRunning={pendingInputs.length > 0} onStop={() => onStop(thread.id)} onSend={async input => { for (const entry of pendingInputs) { await onUserInput(thread.id, entry.id, entry.answers); heldInputs.remove(entry.id); inputDrafts.remove(entry.id) }; if (input.text.trim() || input.attachments?.length || input.visual?.length || workspace.selectedCount || thread.outcomes?.length) { await onStart(thread.id, { ...input, ...workspace.outgoing }); workspace.sent() } }} visualComments={heldVisual} {...(onOpenVisual ? { onOpenVisual: (comment: VisualCommentView) => onOpenVisual(comment.id) } : {})} {...(onMarkUpImage ? { onMarkUpImage } : {})} {...(consumedAttachmentIds ? { consumedAttachmentIds } : {})} />
+    <ConversationComposer onSendFailureChange={setSendFailure} deliveryId={workspace.previewId} key={`composer:${thread.id}`} engine={engine} thread={thread} projectId={thread.projectId} draftKey={`thread:${thread.id}`} initial={{ model: thread.model, instanceId: thread.providerInstanceId, effort: thread.effort, access: thread.access, options: thread.options ?? (thread.effort ? [{ id: 'effort', value: thread.effort }] : []) }} context={<div className="conversation-context">{placement === 'side' && onDocumentContext && <button type="button" onClick={onDocumentContext}>Document context</button>}{workspace.tray}{pendingInputs.map(entry => <div className="conversation-context-entry" key={entry.id}><span>Held answer: {[...Object.values(entry.answers).filter(Boolean), ...Object.values(entry.files).flat().map(file => file.name)].join(' · ')}</span><button type="button" aria-label={`Remove held answer: ${[...Object.values(entry.answers).filter(Boolean), ...Object.values(entry.files).flat().map(file => file.name)].join(' · ')}`} onClick={() => { try { heldInputs.remove(entry.id); setInputError('') } catch (failure) { setInputError(String(failure)) } }}>×</button></div>)}{inputError && <p role="alert">{inputError}</p>}</div>} queuedCount={workspace.selectedCount + pendingInputs.length} reservedAttachments={workspace.selectedCount > 0 || (thread.outcomes?.length ?? 0) > 0 ? 1 : 0} workspace={engine.projects.find((project) => project.id === thread.projectId)?.workspaceRoot ?? ''} branch={thread.branch ?? null} running={running} sendWhileRunning={pendingInputs.length > 0} onStop={() => onStop(thread.id)} onSend={async input => { const nativeFiles = pendingInputs.reduce((count, entry) => count + Object.values(entry.files).flat().length, 0); const visualFiles = heldVisual.filter(comment => input.visual?.includes(comment.id)).reduce((count, comment) => count + visualCaptureIds(comment).length, 0); if (nativeFiles + (input.attachments?.length ?? 0) + visualFiles + (workspace.selectedCount > 0 || (thread.outcomes?.length ?? 0) > 0 || (input.visual?.length ?? 0) > 0 ? 1 : 0) > MAX_ATTACHMENTS) throw new Error(`This Send carries at most ${MAX_ATTACHMENTS} files including answer files and Strata context. Remove a file or send held context separately.`); for (const entry of pendingInputs) { await onUserInput(thread.id, entry.id, entry.answers, entry.files); heldInputs.remove(entry.id); inputDrafts.remove(entry.id) }; if (input.text.trim() || input.attachments?.length || input.visual?.length || workspace.selectedCount || thread.outcomes?.length) { await onStart(thread.id, { ...input, ...workspace.outgoing }); workspace.sent() } }} visualComments={heldVisual} {...(onOpenVisual ? { onOpenVisual: (comment: VisualCommentView) => onOpenVisual(comment.id) } : {})} {...(onMarkUpImage ? { onMarkUpImage } : {})} {...(consumedAttachmentIds ? { consumedAttachmentIds } : {})} />
   </section>
 }

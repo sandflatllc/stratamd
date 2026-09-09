@@ -2544,3 +2544,16 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .restart-continuation-choice { display: flex; align-items: center; gap: 12px; }
 .thread-recovery-notice[data-state="failed"] { border: 1px solid var(--controls-danger); }
 .thread-recovery-notice button { background: transparent; color: var(--text); font-weight: 700; }
+
+.question-files { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 34px; }
+.question-files .conversation-attachment-preview { width: 250px; margin: 0; }
+.question-files .question-attach { border: 0; border-radius: 8px; padding: 5px 9px; background: var(--controls-primary); color: var(--controls-primary-text); font-size: 12px; font-weight: 800; }
+.question-sent-files { display: grid; gap: 8px; }
+.question-file-error { border: 1px solid var(--controls-danger); border-radius: 8px; background: var(--surfaces-inset); padding: 10px; font-size: 12px; }
+.question-file-error p { margin: 0 0 8px; }
+.question-file-error .question-attach { border: 0; border-radius: 8px; background: var(--controls-primary); color: var(--controls-primary-text); padding: 5px 9px; font-weight: 800; }
+.conversation-input-result { min-width: 0; overflow-wrap: anywhere; }
+
+.question-held-files { grid-column: 1 / -1; color: var(--muted); }
+
+.user-input-fields fieldset:last-child { margin-bottom: 6px; }

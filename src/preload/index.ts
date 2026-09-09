@@ -188,7 +188,7 @@ const api: StrataApi & {
   stopConversationTurn: (threadId) => invoke<void>(IPC.stopConversationTurn, threadId),
   answerEngineApproval: (threadId, requestId, decision) => invoke<void>(IPC.answerEngineApproval, threadId, requestId, decision),
   dismissEngineUserInput: (threadId, requestId) => invoke<void>(IPC.dismissEngineUserInput, threadId, requestId),
-  answerEngineUserInput: (threadId, requestId, answers) => invoke<void>(IPC.answerEngineUserInput, threadId, requestId, answers),
+  answerEngineUserInput: (threadId, requestId, answers, attachmentsByQuestionId) => invoke<void>(IPC.answerEngineUserInput, threadId, requestId, answers, attachmentsByQuestionId),
   onTerminalEvent(listener) {
     const wrapped = (_event: Electron.IpcRendererEvent, push: import('../shared/contracts').TerminalPush) => listener(push)
     ipcRenderer.on(IPC.terminalEvent, wrapped)

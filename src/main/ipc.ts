@@ -57,6 +57,12 @@ const holdVisualCommentSchema = z.object({
   marked: z.array(z.object({ captureId: idSchema, bytes: z.instanceof(Uint8Array).refine((bytes) => bytes.byteLength >= 1 && bytes.byteLength <= MAX_IMAGE_BYTES * 4, 'Image size out of range') }).strict()).max(32),
 }).strict()
 const modelOptionsSchema = z.array(z.object({ id: idSchema, value: z.union([idSchema, z.boolean()]) }).strict()).max(64)
+const conversationAttachmentSchema = z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('text'), name: idSchema, text: z.string().max(MAX_TEXT_BYTES) }).strict(),
+    z.object({ kind: z.literal('binary'), id: stagedAttachmentIdSchema, name: idSchema, mimeType: z.string().max(100).regex(BINARY_MIME_PATTERN), sizeBytes: z.number().int().positive().max(MAX_BINARY_BYTES) }).strict(),
+    // Image bytes never cross this channel; the renderer staged them and names the id (§6.0).
+    z.object({ kind: z.literal('image'), id: stagedAttachmentIdSchema, name: idSchema, mimeType: z.enum(SUPPORTED_IMAGE_TYPES), sizeBytes: z.number().int().positive().max(MAX_IMAGE_BYTES) }).strict(),
+  ])
 const conversationTurnSchema = z.object({
   workspace: worktreeRequest.optional(),
   comments: z.record(idSchema, z.number().int().positive()).optional(),
@@ -71,12 +77,7 @@ const conversationTurnSchema = z.object({
   options: modelOptionsSchema.optional(),
   access: z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access']),
   visual: z.array(visualCommentIdSchema).max(64).optional(),
-  attachments: z.array(z.discriminatedUnion('kind', [
-    z.object({ kind: z.literal('text'), name: idSchema, text: z.string().max(MAX_TEXT_BYTES) }).strict(),
-    z.object({ kind: z.literal('binary'), id: stagedAttachmentIdSchema, name: idSchema, mimeType: z.string().max(100).regex(BINARY_MIME_PATTERN), sizeBytes: z.number().int().positive().max(MAX_BINARY_BYTES) }).strict(),
-    // Image bytes never cross this channel; the renderer staged them and names the id (§6.0).
-    z.object({ kind: z.literal('image'), id: stagedAttachmentIdSchema, name: idSchema, mimeType: z.enum(SUPPORTED_IMAGE_TYPES), sizeBytes: z.number().int().positive().max(MAX_IMAGE_BYTES) }).strict(),
-  ])).max(MAX_ATTACHMENTS).optional(),
+  attachments: z.array(conversationAttachmentSchema).max(MAX_ATTACHMENTS).optional(),
 }).strict()
 const stageAttachmentSchema = z.object({
   name: idSchema,
@@ -273,7 +274,7 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.stopConversationTurn]: z.tuple([idSchema]),
   [IPC.answerEngineApproval]: z.tuple([idSchema, idSchema, z.enum(['accept', 'acceptForSession', 'acceptAlways', 'decline', 'cancel'])]),
   [IPC.dismissEngineUserInput]: z.tuple([idSchema, idSchema]),
-  [IPC.answerEngineUserInput]: z.tuple([idSchema, idSchema, z.record(z.string(), z.unknown())]),
+  [IPC.answerEngineUserInput]: z.tuple([idSchema, idSchema, z.record(z.string(), z.unknown()), z.record(z.string(), z.array(conversationAttachmentSchema).max(MAX_ATTACHMENTS)).optional()]),
   [IPC.openDocument]: z.tuple([pathSchema.optional()]),
   [IPC.closeDocument]: z.tuple([pathSchema, z.enum(['save', 'discard', 'cancel']).optional()]),
   [IPC.updateBuffer]: z.tuple([
@@ -537,7 +538,7 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.stopConversationTurn]: (threadId: string) => options.api.stopConversationTurn(threadId),
     [IPC.answerEngineApproval]: (threadId: string, requestId: string, decision: Parameters<StrataApi['answerEngineApproval']>[2]) => options.api.answerEngineApproval(threadId, requestId, decision),
     [IPC.dismissEngineUserInput]: (threadId: string, requestId: string) => options.api.dismissEngineUserInput(threadId, requestId),
-    [IPC.answerEngineUserInput]: (threadId: string, requestId: string, answers: Record<string, unknown>) => options.api.answerEngineUserInput(threadId, requestId, answers),
+    [IPC.answerEngineUserInput]: (threadId: string, requestId: string, answers: Record<string, unknown>, files?: Record<string, import('../shared/contracts').ConversationAttachment[]>) => options.api.answerEngineUserInput(threadId, requestId, answers, files),
     [IPC.openDocument]: (path?: string) => options.api.openDocument(path),
     [IPC.closeDocument]: (path: string, decision?: 'save' | 'discard' | 'cancel') => options.api.closeDocument(path, decision),
     [IPC.updateBuffer]: (path: string, content: string, origin: BufferOrigin, blockRanges?: readonly BufferBlockRange[]) => options.api.updateBuffer(path, content, origin, blockRanges),

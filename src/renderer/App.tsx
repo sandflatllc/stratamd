@@ -501,7 +501,7 @@ export function App({ createEditor }: AppProps) {
     onStart: (threadId: string, input: Parameters<typeof window.strata.startConversationTurn>[1]) => window.strata.startConversationTurn(threadId, input),
     onStop: (threadId: string) => void perform(() => window.strata.stopConversationTurn(threadId), 'Stop requested.'),
     onApproval: (threadId: string, requestId: string, decision: 'accept' | 'decline') => void perform(() => window.strata.answerEngineApproval(threadId, requestId, decision)),
-    onUserInput: (threadId: string, requestId: string, answers: Record<string, unknown>) => window.strata.answerEngineUserInput(threadId, requestId, answers),
+    onUserInput: (threadId: string, requestId: string, answers: Record<string, unknown>, files?: Record<string, import('../shared/contracts').ConversationAttachment[]>) => window.strata.answerEngineUserInput(threadId, requestId, answers, files),
     onQueueReply: (threadId: string, item: ItemView, text: string) => void perform(() => window.strata.queueItemReply(threadId, item.id, text)),
     onDismissItem: (threadId: string, item: ItemView) => void perform(() => window.strata.dismissItem(threadId, item.id)),
     // A changed Markdown file opens as a document; the center leaves the conversation or preview for it (§6.9).

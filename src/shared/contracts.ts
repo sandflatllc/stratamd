@@ -275,6 +275,12 @@ export type ConversationAttachment =
   | { kind: 'image'; id: string; name: string; mimeType: string; sizeBytes: number }
   | { kind: 'binary'; id: string; name: string; mimeType: string; sizeBytes: number }
 
+/** Private native answer draft, keyed by native question id. */
+export interface UserInputDraft {
+  answers: Record<string, string>
+  attachmentsByQuestionId: Record<string, ConversationAttachment[]>
+}
+
 /** T3's latest turn: the fold label, timing, and the stopped state come from here (§6.9). */
 export interface EngineTurnView {
   id: string
@@ -1160,7 +1166,7 @@ export interface StrataApi {
   stopConversationTurn(threadId: string): Promise<void>
   answerEngineApproval(threadId: string, requestId: string, decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): Promise<void>
   dismissEngineUserInput(threadId: string, requestId: string): Promise<void>
-  answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>): Promise<void>
+  answerEngineUserInput(threadId: string, requestId: string, answers: Record<string, unknown>, attachmentsByQuestionId?: Record<string, ConversationAttachment[]>): Promise<void>
   createEngineThread(input: StartThreadInput): Promise<string>
   /** Adds a T3 project for a folder no project contains yet (§5.7 Add project); returns its id. */
   scanEngineHistory(): Promise<import('./history-import').HistoryScan>
