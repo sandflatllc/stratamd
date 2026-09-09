@@ -19,7 +19,17 @@
   "runtime": "t3-0.0.41-nightly.20260909.1426-node-24.20.0-linux-x64-replay10777-r1",
   "limits": [
     "Whole-conversation UI performance not remeasured; replay measurement isolates actual emitted functions with synthetic SQL pages.",
-    "Upgrade/rollback checks use changed runtime identities around this same artifact; seeded 0.0.38-to-nightly database migration not separately exercised.",
     "Final integrated full and packaged gates belong to the implementation batch."
-  ]
+  ],
+  "migration": {
+    "evidence": "docs/plans/open/t3-additions/evidence/feature04/migration-verification.md",
+    "runtimeBefore": "0.0.38",
+    "runtimeAfter": "0.0.41-nightly.20260909.1426 + replay10777-r1",
+    "checksPassed": 3,
+    "skipped": 0,
+    "schemaBefore": 43,
+    "schemaAfter": 49,
+    "restore": "Actual old-runtime backup restored and returned preserved synthetic history/settings/native request",
+    "commandSeconds": 40.6
+  }
 }
