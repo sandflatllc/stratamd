@@ -1,3 +1,4 @@
+import { windowCapturePlatform } from '../platform/window-capture'
 import { configureCaptureShortcut } from './capture/window-capture'
 import { DEFAULT_THEME_VALUES } from '../shared/bundled-themes'
 import { isAppRootNavigation } from './local-link'
@@ -89,10 +90,10 @@ export interface StartMainOptions {
   devServerUrl?: string
 }
 
-if (process.platform === 'linux') {
+const captureChromiumFeatures = windowCapturePlatform().chromiumFeatures
+if (captureChromiumFeatures.length) {
   const features = new Set(app.commandLine.getSwitchValue('enable-features').split(',').filter(Boolean))
-  features.add('GlobalShortcutsPortal')
-  features.add('WebRTCPipeWireCapturer')
+  for (const feature of captureChromiumFeatures) features.add(feature)
   app.commandLine.appendSwitch('enable-features', [...features].join(','))
 }
 registerPrivilegedSchemes()

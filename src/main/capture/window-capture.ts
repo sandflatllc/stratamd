@@ -1,3 +1,4 @@
+import { windowCapturePlatform } from '../../platform/window-capture'
 import { globalShortcut, desktopCapturer, nativeImage, systemPreferences, shell } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { execFile, fork } from 'node:child_process'
@@ -7,6 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CaptureSource, CaptureStatus, WindowCaptureContext } from '../../shared/window-capture'
 const exec = promisify(execFile)
+const capturePlatform = windowCapturePlatform()
 const pending = new Map<string, { id: string; name: string; png: Buffer; expires: number }>()
 let shortcutStatus: CaptureStatus['shortcut'] = 'disabled'
 const accelerator = 'CommandOrControl+Shift+5'
@@ -18,14 +20,14 @@ export function configureCaptureShortcut(enabled: boolean, callback: () => void)
 export function captureStatus(): CaptureStatus {
   return {
     shortcut: shortcutStatus,
-    platform: process.platform === 'linux' || process.platform === 'darwin' ? process.platform : 'unsupported',
-    picker: process.platform === 'linux' && !!process.env.WAYLAND_DISPLAY ? 'system' : 'windows',
-    screenPermission: process.platform === 'darwin' ? systemPreferences.getMediaAccessStatus('screen') : 'system-picker',
-    accessibilityPermission: process.platform !== 'darwin' || systemPreferences.isTrustedAccessibilityClient(false),
+    platform: capturePlatform.platform,
+    picker: capturePlatform.picker,
+    screenPermission: capturePlatform.macPermissions ? systemPreferences.getMediaAccessStatus('screen') : 'system-picker',
+    accessibilityPermission: !capturePlatform.macPermissions || systemPreferences.isTrustedAccessibilityClient(false),
   }
 }
 export async function openCaptureSettings(kind: 'screen-settings' | 'accessibility-settings'): Promise<void> {
-  if (process.platform !== 'darwin') throw new Error('Screen permissions are managed by your system picker.')
+  if (!capturePlatform.macPermissions) throw new Error('Screen permissions are managed by your system picker.')
   await shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${kind === 'screen-settings' ? 'Privacy_ScreenCapture' : 'Privacy_Accessibility'}`)
 }
 let expiry: ReturnType<typeof setTimeout> | undefined
@@ -72,7 +74,7 @@ export async function captureWindow(token: string): Promise<{ bytes: Uint8Array;
   const numericId = /^window:(\d+):/.exec(source.id)?.[1]
   let bounds: { x: number; y: number; width: number; height: number } | null = null
   let bytes = source.png, pid: number | null = null, appName: string | null = null
-  if (process.platform === 'darwin' && numericId) {
+  if (capturePlatform.windowIdentity === 'core-graphics' && numericId) {
     // Selected CGWindowNumber, not whichever app acquired focus after the picker.
     // Adapted from T3 Code ActiveWindow.ts and MacSnapShot.ts (MIT; see LICENSE).
     const script = `ObjC.import('CoreGraphics'); ObjC.import('AppKit'); var ws=ObjC.deepUnwrap($.CGWindowListCopyWindowInfo(17,0)); var w=ws.find(w=>w.kCGWindowNumber===${Number(numericId)}); JSON.stringify(w ? {pid:w.kCGWindowOwnerPID,name:w.kCGWindowOwnerName,bounds:w.kCGWindowBounds} : null)`
@@ -87,7 +89,7 @@ export async function captureWindow(token: string): Promise<{ bytes: Uint8Array;
       await exec('/usr/sbin/screencapture', ['-l', numericId, '-o', '-x', '-t', 'png', path], { timeout: 15_000 })
       bytes = await readFile(path)
     } finally { await rm(dir, { recursive: true, force: true }) }
-  } else if (process.platform === 'linux' && !process.env.WAYLAND_DISPLAY && numericId) {
+  } else if (capturePlatform.windowIdentity === 'x11' && numericId) {
     try {
       const result = await exec(join(__dirname, 'capture-x11'), [numericId], { timeout: 2_000, maxBuffer: 64 * 1024 })
       const identity = JSON.parse(result.stdout) as { pid: number; app: string; bounds: { x: number; y: number; width: number; height: number } }
@@ -99,7 +101,7 @@ export async function captureWindow(token: string): Promise<{ bytes: Uint8Array;
   if (bytes.byteLength > 32 * 1024 * 1024 || !bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) throw new Error('The selected window did not produce a valid PNG.')
   let image = nativeImage.createFromBuffer(bytes)
   if (image.isEmpty()) throw new Error('The selected window did not produce an image.')
-  const size = image.getSize(), scale = Math.min(1, 2560 / size.width, 1600 / size.height, ...(process.platform === 'linux' && bounds ? [bounds.width / size.width, bounds.height / size.height] : []))
+  const size = image.getSize(), scale = Math.min(1, 2560 / size.width, 1600 / size.height, ...(capturePlatform.constrainToWindowBounds && bounds ? [bounds.width / size.width, bounds.height / size.height] : []))
   if (scale < 1) image = image.resize({ width: Math.max(1, Math.round(size.width * scale)), height: Math.max(1, Math.round(size.height * scale)) })
   const allowed = captureStatus().accessibilityPermission
   const text = allowed && pid && bounds ? await accessibility(pid, source.name, bounds) : { text: '', app: null }
