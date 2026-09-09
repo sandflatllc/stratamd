@@ -58,7 +58,7 @@ window.Proposals = (() => {
     const header=modal.querySelector('.setup-dialog-header');
     header.querySelector('h2').textContent='Answer question';
     header.querySelector('.modal-subtitle').textContent=state==='blocking'?'The agent is waiting for your answer.':'The agent can keep working while you answer.';
-    header.querySelector('[aria-label="Close dialog"]').dataset.go='held';
+    header.querySelector('[aria-label="Close dialog"]').addEventListener('click',()=>{backdrop.remove();workNotice('Question draft saved. Nothing has been sent.','',button('Answer question','asking'));});
     const body=modal.querySelector('.setup-dialog-body');body.replaceChildren(card);
     delete card.dataset.change;
     card.querySelector('form > button[type="submit"]')?.remove();
