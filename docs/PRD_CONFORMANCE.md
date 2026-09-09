@@ -242,3 +242,19 @@ Composer commands and skills: `test/unit/composer-commands.test.ts` covers caret
 Restart continuation: `test/unit/thread-recovery.test.ts` and `test/unit/engine-continuation.test.ts` cover precise outcomes and idempotent retry. `test/e2e/thread-recovery.spec.ts` covers the off-default preference, retained transcript, draft and held native answers, and explicit continuation. `test/integration/managed-continuation.test.ts` checks actual managed shutdown markers and startup behavior for both preference values using a synthetic provider peer and the prepared engine bundle.
 
 Per-answer files in PRD §6.12.17 are covered by `test/unit/user-input-drafts.test.ts` and `test/e2e/question-files.spec.ts`. Two attachment-only answers retain separate files and original bytes through close, restart, private Hold, partial upload failure and retry. The real question modal also verifies failed staging, submitted history and screenshot markup returning to the same answer.
+
+
+## T3 additions, September 2026
+
+The [source audit](reviews/t3-additions-upstream-contracts-2026-09-08.md) and [visual benchmark guide](design/t3-additions-2026-09-08/v2/benchmark-guide.md) define the protocol and appearance references. Screenshots use the default Strata theme. Individual feature evidence and the final candidate gates are recorded in the release report.
+
+| Behavior | Focused evidence |
+| --- | --- |
+| Native quota windows, freshness, account/source scope, guarded reset and equal-account summaries | `test/unit/engine-accounts.test.ts`, `test/unit/accounts-dialog.test.ts`, `test/e2e/cockpit-engine.spec.ts` |
+| Original binary bytes, MIME, retained failed sends and attachment capacity | `test/unit/composer-attachments.test.ts`, `test/unit/engine-client.test.ts`, `test/e2e/binary-attachments.spec.ts` |
+| Guarded native compaction, result correlation, preserved draft/history and pane zoom | `test/unit/context-compaction.test.ts`, `test/e2e/context-compaction.spec.ts` |
+| Browser snapshot bounds, exact destination retry, durable local media and recording playback | `test/unit/browser-evidence.test.ts`, `test/e2e/browser-evidence.spec.ts`; real stock-engine MCP save/claim evidence in the feature 8 report |
+| Computer/project/checked-in defaults, reset, actual new-thread settings and concurrent-save conflicts | `test/unit/project-defaults.test.ts`, `test/e2e/project-defaults.spec.ts` |
+| Native history grouping, root verification, partial results and retry without new turns | `test/unit/history-import.test.ts`, `test/e2e/history-import.spec.ts`; actual Codex/Claude native-source import evidence in the feature 12 report |
+| PDF pages/zoom, HTML original source, denied privileges/storage/popups, Locate file and guest cleanup | `test/unit/document-preview.test.ts`, `test/e2e/document-preview.spec.ts`; answer-file entry points in `test/e2e/question-files.spec.ts` |
+| Structured model edits retain unknown fields; descriptor validation and exact turn choices | `test/unit/custom-models.test.ts`, `test/e2e/custom-models.spec.ts` |
