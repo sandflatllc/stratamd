@@ -78,6 +78,33 @@ describe('live engine subscriptions (§5.1)', () => {
     await client.shutdown()
   })
 
+  it('switching the selected thread closes its old subscription and reconnect follows only the new selection', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'strata-engine-selection-'))
+    const second = { ...thread, id: 't2', title: 'Second thread' }
+    const server = fakeEngineServer(tag => tag.startsWith('orchestration.subscribe') ? [{ kind: 'synchronized' }] : null)
+    const baseline = engineFetch().fetch
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/api/orchestration/shell')) return Response.json({ ...shell, threads: [thread, second] })
+      if (url.endsWith('/api/orchestration/threads/t2')) return Response.json({ ...detail, thread: { ...detail.thread, ...second, messages: [] } })
+      return baseline(input, init)
+    }
+    const client = new T3EngineClient({ dataDirectory: directory, fetch, webSocket: server.WebSocket, now: () => Date.parse(at), publishDelayMs: 0 })
+    const followed = () => server.sockets.filter(socket => !socket.closed).flatMap(socket => socket.streams.filter(stream => stream.tag === 'orchestration.subscribeThread').map(stream => (stream.payload as { threadId: string }).threadId))
+    try {
+      await client.pair('http://engine.test', 'code')
+      expect(followed()).toEqual([])
+      await client.openThread('t1'); await settle()
+      expect(followed()).toEqual(['t1'])
+      await client.openThread('t2'); await settle()
+      expect(followed()).toEqual(['t2'])
+      server.dropAll(); await settle()
+      await client.reconnect(); await settle()
+      expect(followed()).toEqual(['t2'])
+      expect(client.view().activeThreadId).toBe('t2')
+    } finally { await client.shutdown() }
+  })
+
   it('a streamed message appears in the view with no poll tick, token by token, and settles when streaming ends', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'strata-engine-live-'))
     const server = fakeEngineServer((tag) => tag.startsWith('orchestration.subscribe') ? [{ kind: 'synchronized' }] : null)

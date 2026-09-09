@@ -1,6 +1,6 @@
 # T3 engine contract for cockpit v1
 
-Status: Phase 1 verified on 2026-09-03.
+Status: Phase 1 verified on 2026-09-03. September 9 runtime foundation updates below.
 
 Strata is pinned to T3 source revision `fe96f7f2b7cb07da4fc7585f5869d58d2e592fd3` for the first cockpit integration. The vendored runtime-neutral schema slice is in `src/main/engine/t3-contract.ts`. It uses Strata's Zod dependency and imports no private T3 workspace package.
 
@@ -55,3 +55,12 @@ env -u CLAUDE_CONFIG_DIR ./node_modules/.bin/vp test run apps/server/src/server.
 ```
 
 The contract slice has its own parsing and correlation checks in `test/unit/t3-contract.test.ts`, including the exact shell projection returned by the exercised HTTP snapshot.
+
+
+## September 9 runtime compatibility
+
+The distribution now pins `0.0.41-nightly.20260909.1426` plus upstream replay fix #10777. Exact origin, transformation hashes and licenses live in `packaging/engine/`. The legacy phase 1 source revision above describes the original audit, not the current package.
+
+The selected-thread subscription contract remains unchanged. Strata subscribes only to the selected conversation, threads attached to open documents, and active Ask work. Selection changes interrupt unused streams; reconnect restores only followed threads. `engine-live.test.ts` covers selection switching, document detachment, reconnect, streaming message accumulation and duplicate events. No broad all-thread subscription or renderer optimization was added.
+
+New optional provider/command fields remain passthrough until their respective features consume them. Rich custom model objects affect provider patch validation and editor behavior, not settings reads; that belongs to the custom-model feature. Existing shell/thread/config parsers and the baseline client need no schema change for startup on this artifact.

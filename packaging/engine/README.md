@@ -1,6 +1,6 @@
 # Bundled engine distribution
 
-Strata ships official `t3@0.0.38` and Node 24.20.0 with npm. `runtime-source.json` pins the official Node archive SHA-256 for Linux x64, macOS x64 and macOS arm64. `package-lock.json` pins the production dependency tree. Build each target on its native platform and architecture; Linux arm64 is not supported.
+Strata ships official `t3@0.0.41-nightly.20260909.1426` with the upstream #10777 replay backport and Node 24.20.0 with npm. `runtime-source.json` pins the official Node archive SHA-256 for Linux x64, macOS x64 and macOS arm64. `package-lock.json` pins the production dependency tree. Build each target on its native platform and architecture; Linux arm64 is not supported.
 
 Run `node scripts/build-packaged.mjs` from the repository root. It stages `build/engine`, loads node-pty, fff-node and msgpackr-extract under the dedicated Node, builds Electron, and makes the unpacked folder. It uses repository binaries directly and does not rebuild shared checkout dependencies. A fresh clone must build Strata's own native helper first as AGENTS.md describes.
 
@@ -12,6 +12,17 @@ The packaging hook copies the complete engine after Electron Builder finishes. E
 
 First launch copies the engine into a private, versioned application-data directory. A folder replacement stages and verifies its new runtime before touching the running engine. Active turns or unfinished deliveries defer the change. Strata retains the lock while stopping and backing up the engine, then checks authenticated readiness and subscriptions after startup. Failed and interrupted transitions retain matching backups. A manual restore first archives current data, then restores the selected engine history and Strata conversation records. Markdown, review history, editor text and newer unsent image bytes stay intact. Worktree files are not rewound. The restored runtime stays selected until a different bundle arrives or the owner explicitly chooses Use bundled engine.
 
-The current verification uses different release manifests around the same official T3 version to exercise upgrade and rollback mechanics. It does not claim validation of a future T3 database migration. Each future release must repeat the package and upgrade checks against its actual server artifact.
+The upgrade verification uses different release manifests around the same pinned T3 artifact to exercise upgrade and rollback mechanics. It does not claim validation of a future T3 database migration. Each future release must repeat the package and upgrade checks against its actual server artifact.
 
-Release remains blocked on hosted T3 authorization and Android discovery/turn/reconnect, successful fresh provider sign-ins, macOS x64/arm64 packaging and Keychain usage, and physical-device power/reconnection checks. The Linux build and automated fixtures do not substitute for these proofs. Stock 0.0.38 has no environment-name override or locally queryable proof of relay reachability; the UI reports those limits.
+Release remains blocked on hosted T3 authorization and Android discovery/turn/reconnect, successful fresh provider sign-ins, macOS x64/arm64 packaging and Keychain usage, and physical-device power/reconnection checks. The Linux build and automated fixtures do not substitute for these proofs. The previously verified 0.0.38 runtime has no environment-name override or locally queryable proof of relay reachability; the UI reports those limits.
+
+
+## September 9 engine foundation
+
+The npm artifact is pinned by its authenticated package-lock integrity. The saved npm provenance statement identifies source `3e6f856f2359421958a3aa046f2c393e00f3dc6a`. This official nightly contains incremental append, summary queries, and terminal output byte bounds. No published package at selection time included replay cleanup #10777, which merged two commits later.
+
+`patches/10777-upstream.patch` preserves the exact MIT upstream change at `08463e2c401ce87858aaaebcb70ed86fb002fb5f`. `patches/10777-bundle.json` translates only its two replay functions into the release's emitted JavaScript. The bundle imports `paginate` from its existing exact `effect@4.0.0-rc.112` dependency because release tree shaking omitted that helper. Staging checks the patch hashes, complete before/after bundle hashes, and exactly one replacement per function. Unexpected artifact changes fail staging. No server UI or Strata UI is copied or changed.
+
+`build-provenance.json` and `dependency-inventory.json` record both the original release commit and the applied backport. The original package license remains included in notices. The runtime id ends in `replay10777-r1`, so managed upgrades distinguish it from the original official artifact. This is an official artifact with a recorded upstream backport, not an unmodified stock release.
+
+`check-engine-replay.mjs` runs the actual emitted functions using the release's bundled Effect helpers and the installed paginate helper. It checks ordered 1,501-event replay, repeatable consumers, negative limits, and live page markers under forced V8 garbage collection. The managed integration gate runs this alongside the real server handshake, settings, thread/attachment and upgrade checks. Recorded before/after measurements in `docs/release/evidence/engine-replay-{before,after}.json` isolate the same replay workload. Timings include forced collection and are diagnostic, not a user-visible speed claim. Full-conversation UI performance was not remeasured; the approved engine-efficiency visual specification remains unchanged.

@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -5,7 +6,7 @@ import { expect, it } from 'vitest'
 import { LocalEngineManager } from '../../src/main/engine/manager'
 import { T3EngineClient } from '../../src/main/engine/client'
 
-it.skipIf(!process.env.STRATAMD_ENGINE_BUNDLE)('starts the unmodified bundled server, pairs automatically, and stops only its owned child', async () => {
+it.skipIf(!process.env.STRATAMD_ENGINE_BUNDLE)('starts the pinned bundled server, pairs automatically, and stops only its owned child', async () => {
   const root = await mkdtemp(join(tmpdir(), 'strata-managed-'))
   const client = new T3EngineClient({ dataDirectory: root, terminalShimDirectory: null })
   const manager = new LocalEngineManager({ directory: join(root, 'engine'), bundle: process.env.STRATAMD_ENGINE_BUNDLE!, connect: (address, token, identity) => client.pair(address, token, identity), reconnect: () => client.reconnect(), changed: () => undefined, authenticate: async address => {
@@ -27,3 +28,13 @@ it.skipIf(!process.env.STRATAMD_ENGINE_BUNDLE)('starts the unmodified bundled se
     expect(client.view().projects).toEqual([])
   } finally { await manager.stop(); await client.shutdown(); await rm(root, { recursive: true, force: true }) }
 }, 60_000)
+
+
+it.skipIf(!process.env.STRATAMD_ENGINE_BUNDLE)('bundled replay releases consumed pages and resets its cursor for each reader', () => {
+  const bundle = process.env.STRATAMD_ENGINE_BUNDLE!
+  const result = JSON.parse(execFileSync(join(bundle, 'node/bin/node'), ['scripts/check-engine-replay.mjs', bundle], { encoding: 'utf8' }))
+  expect(result.checks).toMatchObject([
+    { reader: 'readFromSequence', events: 1501, pageSize: 500, maximumRetainedPageMarkers: 1, repeated: true },
+    { reader: 'readAggregateRange', events: 1501, pageSize: 500, maximumRetainedPageMarkers: 1, repeated: true },
+  ])
+})

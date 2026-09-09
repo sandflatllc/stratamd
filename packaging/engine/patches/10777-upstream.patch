@@ -1,0 +1,186 @@
+From 08463e2c401ce87858aaaebcb70ed86fb002fb5f Mon Sep 17 00:00:00 2001
+From: Guillermo Casanova <75276669+Gigioxx@users.noreply.github.com>
+Date: Tue, 8 Sep 2026 23:27:05 -0300
+Subject: [PATCH] fix(server): release consumed event replay pages (#10777)
+
+---
+ .../Layers/OrchestrationEventStore.test.ts    | 51 +++++++++++++
+ .../Layers/OrchestrationEventStore.ts         | 76 ++++++++-----------
+ 2 files changed, 82 insertions(+), 45 deletions(-)
+
+diff --git a/apps/server/src/persistence/Layers/OrchestrationEventStore.test.ts b/apps/server/src/persistence/Layers/OrchestrationEventStore.test.ts
+index e7e6b6590080..2287dd10af45 100644
+--- a/apps/server/src/persistence/Layers/OrchestrationEventStore.test.ts
++++ b/apps/server/src/persistence/Layers/OrchestrationEventStore.test.ts
+@@ -1,3 +1,5 @@
++import * as NodeV8 from "node:v8";
++
+ import {
+   CommandId,
+   EventId,
+@@ -303,6 +305,55 @@ layer("OrchestrationEventStore", (it) => {
+         replayed.map((event) => event.sequence),
+         persisted.map((event) => event.sequence),
+       );
++      const limited = store.readFromSequence(persisted[0]!.sequence, 501.9);
++      for (let run = 0; run < 2; run++) {
++        assert.deepEqual(
++          (yield* Stream.runCollect(limited)).map((event) => event.sequence),
++          persisted.slice(1).map((event) => event.sequence),
++        );
++      }
++      assert.deepEqual(yield* Stream.runCollect(store.readFromSequence(0, -1)), []);
+     }),
+   );
+ });
++
++for (const reader of ["all", "aggregate"] as const) {
++  it.effect(`releases consumed pages during ${reader} replay`, () =>
++    Effect.gen(function* () {
++      const store = yield* OrchestrationEventStore;
++      const threadId = ThreadId.make(`retention-${reader}`);
++      yield* Effect.forEach(
++        Array.from({ length: 1_501 }, (_, index) => index),
++        (index) => store.append(messageEvent(threadId, `retention-${reader}-${index}`)),
++        { discard: true },
++      );
++      // oxlint-disable-next-line typescript/no-extraneous-class -- Identifies page markers for V8's heap query.
++      class ReplayPage {}
++      let count = 0;
++      const replay =
++        reader === "all"
++          ? store.readAll()
++          : store.readAggregateRange({
++              aggregateKind: "thread",
++              aggregateId: threadId,
++              fromSequenceExclusive: 0,
++              toSequenceInclusive: 1_501,
++              limit: 1_501,
++            });
++      yield* Stream.runForEach(replay, (event) =>
++        Effect.sync(() => {
++          assert.equal(event.sequence, count + 1);
++          if (count % 500 === 0) {
++            // Count live page markers after full GC, without timing or heap-size thresholds.
++            Object.assign(event, { replayPage: new ReplayPage() });
++            assert.isAtMost(NodeV8.queryObjects(ReplayPage, { format: "count" }), 1);
++          }
++          count++;
++        }),
++      );
++      assert.equal(count, 1_501);
++    }).pipe(
++      Effect.provide(OrchestrationEventStoreLive.pipe(Layer.provide(SqlitePersistenceMemory))),
++    ),
++  );
++}
+diff --git a/apps/server/src/persistence/Layers/OrchestrationEventStore.ts b/apps/server/src/persistence/Layers/OrchestrationEventStore.ts
+index 1f97f514e43c..a13b4f77e39e 100644
+--- a/apps/server/src/persistence/Layers/OrchestrationEventStore.ts
++++ b/apps/server/src/persistence/Layers/OrchestrationEventStore.ts
+@@ -287,11 +287,9 @@ const makeEventStore = Effect.gen(function* () {
+     if (normalizedLimit === 0) {
+       return Stream.empty;
+     }
+-    const readPage = (
+-      cursor: number,
+-      remaining: number,
+-    ): Stream.Stream<OrchestrationEvent, OrchestrationEventStoreError> =>
+-      Stream.fromEffect(
++    return Stream.paginate(
++      { cursor: sequenceExclusive, remaining: normalizedLimit },
++      ({ cursor, remaining }) =>
+         readEventRowsFromSequence({
+           sequenceExclusive: cursor,
+           limit: Math.min(remaining, READ_PAGE_SIZE),
+@@ -311,24 +309,18 @@ const makeEventStore = Effect.gen(function* () {
+               ),
+             ),
+           ),
++          Effect.map((events) => {
++            const last = events.at(-1);
++            const nextRemaining = remaining - events.length;
++            return [
++              events,
++              last === undefined || nextRemaining <= 0
++                ? Option.none()
++                : Option.some({ cursor: last.sequence, remaining: nextRemaining }),
++            ] as const;
++          }),
+         ),
+-      ).pipe(
+-        Stream.flatMap((events) => {
+-          if (events.length === 0) {
+-            return Stream.empty;
+-          }
+-          const nextRemaining = remaining - events.length;
+-          if (nextRemaining <= 0) {
+-            return Stream.fromIterable(events);
+-          }
+-          return Stream.concat(
+-            Stream.fromIterable(events),
+-            readPage(events[events.length - 1]!.sequence, nextRemaining),
+-          );
+-        }),
+-      );
+-
+-    return readPage(sequenceExclusive, normalizedLimit);
++    );
+   };
+ 
+   const findEventAfter = SqlSchema.findOneOption({
+@@ -363,11 +355,9 @@ const makeEventStore = Effect.gen(function* () {
+     if (limit === 0 || input.fromSequenceExclusive >= input.toSequenceInclusive) {
+       return Stream.empty;
+     }
+-    const readPage = (
+-      cursor: number,
+-      remaining: number,
+-    ): Stream.Stream<OrchestrationEvent, OrchestrationEventStoreError> =>
+-      Stream.fromEffect(
++    return Stream.paginate(
++      { cursor: input.fromSequenceExclusive, remaining: limit },
++      ({ cursor, remaining }) =>
+         readAggregateEventRows({
+           ...input,
+           fromSequenceExclusive: cursor,
+@@ -388,25 +378,21 @@ const makeEventStore = Effect.gen(function* () {
+               ),
+             ),
+           ),
++          Effect.map((events) => {
++            const last = events.at(-1);
++            const nextRemaining = remaining - events.length;
++            return [
++              events,
++              last === undefined ||
++              events.length < READ_PAGE_SIZE ||
++              nextRemaining === 0 ||
++              last.sequence >= input.toSequenceInclusive
++                ? Option.none()
++                : Option.some({ cursor: last.sequence, remaining: nextRemaining }),
++            ] as const;
++          }),
+         ),
+-      ).pipe(
+-        Stream.flatMap((events) => {
+-          const last = events.at(-1);
+-          if (last === undefined) {
+-            return Stream.empty;
+-          }
+-          const nextRemaining = remaining - events.length;
+-          if (
+-            events.length < READ_PAGE_SIZE ||
+-            nextRemaining === 0 ||
+-            last.sequence >= input.toSequenceInclusive
+-          ) {
+-            return Stream.fromIterable(events);
+-          }
+-          return Stream.concat(Stream.fromIterable(events), readPage(last.sequence, nextRemaining));
+-        }),
+-      );
+-    return readPage(input.fromSequenceExclusive, limit);
++    );
+   };
+ 
+   const getAggregateReplayStats: OrchestrationEventStoreShape["getAggregateReplayStats"] = (

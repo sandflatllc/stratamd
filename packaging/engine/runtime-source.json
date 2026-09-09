@@ -1,5 +1,5 @@
 {
-  "t3": "0.0.38",
+  "t3": "0.0.41-nightly.20260909.1426",
   "node": "24.20.0",
   "nodeArchives": {
     "linux-x64": "855d581f8a4eb1a8117e3426de25fe02770592febcfb31369aee1ffbfee9e8ec",
@@ -23,5 +23,16 @@
       "make": "4.3",
       "sourceDateEpoch": "1788652800"
     }
+  },
+  "t3SourceCommit": "3e6f856f2359421958a3aa046f2c393e00f3dc6a",
+  "runtimeRevision": "replay10777-r1",
+  "backport": {
+    "commit": "08463e2c401ce87858aaaebcb70ed86fb002fb5f",
+    "url": "https://github.com/pingdotgg/t3code/pull/10777",
+    "license": "MIT",
+    "upstreamPatch": "patches/10777-upstream.patch",
+    "bundlePatch": "patches/10777-bundle.json",
+    "upstreamPatchSHA256": "ad7a145885a95f64672602b09d8ef0e89c01def2a58d98d34da0e551ad07a4c8",
+    "bundlePatchSHA256": "256ff7d33fc30a8885fa54d16cd6b6bcd44e97de8e51acd92b5f100a01b0e520"
   }
 }

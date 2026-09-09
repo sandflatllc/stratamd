@@ -1,3 +1,4 @@
+import { applyEngineBackport } from './engine-backport.mjs'
 import { createHash } from 'node:crypto'
 import { readFile, writeFile, mkdir, rm, readdir, lstat, readlink, copyFile } from 'node:fs/promises'
 import { join, resolve, relative } from 'node:path'
@@ -48,6 +49,7 @@ if (process.platform === 'linux') {
 }
 
 run(executable, [join(destination, 'node/lib/node_modules/npm/bin/npm-cli.js'), 'ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', '--cache', join(cache, 'npm')], destination, env)
+const backport = await applyEngineBackport(root, destination, source)
 // Build the PTY with the node-gyp version bundled in the authenticated Node archive.
 // Other native dependencies carry lockfile-authenticated platform packages.
 await rm(join(destination, 'node_modules/node-pty/prebuilds'), { recursive: true, force: true })
@@ -62,10 +64,10 @@ try {
   for (const entry of await readdir(join(nativeBuild, 'Release'))) if (!entry.endsWith('.node') && entry !== 'spawn-helper') await rm(join(nativeBuild, 'Release', entry), { recursive: true, force: true })
 } catch (error) { if (error.code !== 'ENOENT') throw error }
 for (const entry of await readdir(join(destination, 'node_modules/node-pty/node-addon-api'))) if (entry.endsWith('.target.mk')) await rm(join(destination, 'node_modules/node-pty/node-addon-api', entry))
-await writeFile(join(destination, 'build-provenance.json'), JSON.stringify({ nodeArchiveSHA256: source.nodeArchives[target], headers: 'node/include/node from the verified Node archive', toolchain: process.platform === 'linux' ? linuxToolchain : 'native macOS build; reproducibility unverified' }, null, 2) + '\n')
+await writeFile(join(destination, 'build-provenance.json'), JSON.stringify({ t3SourceCommit: source.t3SourceCommit, backport, nodeArchiveSHA256: source.nodeArchives[target], headers: 'node/include/node from the verified Node archive', toolchain: process.platform === 'linux' ? linuxToolchain : 'native macOS build; reproducibility unverified' }, null, 2) + '\n')
 const lock = JSON.parse(await readFile(join(destination, 'package-lock.json'), 'utf8'))
 const inventory = []
-const notices = [`Bundled Node ${source.node} and official t3 ${source.t3}.`, 'These packages retain their own licenses. No hosted service access is granted by redistribution.', await readFile(join(destination, 'node/LICENSE'), 'utf8')]
+const notices = [`Bundled Node ${source.node} and official t3 ${source.t3}, with MIT upstream replay backport ${source.backport.commit}.`, 'These packages retain their own licenses. No hosted service access is granted by redistribution.', await readFile(join(destination, 'node/LICENSE'), 'utf8')]
 const packages = { ...lock.packages }
 async function npmPackages(path) {
   const manifest = JSON.parse(await readFile(join(destination, path, 'package.json'), 'utf8'))
@@ -89,9 +91,9 @@ for (const [path, metadata] of Object.entries(packages)) {
   notices.push(`\n\n## ${manifest.name}@${manifest.version}\nLicense: ${JSON.stringify(manifest.license ?? metadata.license ?? 'UNDECLARED')}\n`)
   for (const file of licenses) if ((await lstat(join(destination, path, file))).isFile()) notices.push(await readFile(join(destination, path, file), 'utf8'))
 }
-await writeFile(join(destination, 'dependency-inventory.json'), JSON.stringify({ node: source.node, nodeArchiveSHA256: source.nodeArchives[target], packages: inventory }, null, 2) + '\n')
+await writeFile(join(destination, 'dependency-inventory.json'), JSON.stringify({ t3SourceCommit: source.t3SourceCommit, backport, node: source.node, nodeArchiveSHA256: source.nodeArchives[target], packages: inventory }, null, 2) + '\n')
 await writeFile(join(destination, 'THIRD_PARTY_NOTICES.txt'), notices.join('\n'))
-await writeFile(join(destination, 'runtime.json'), JSON.stringify({ version: `t3-${source.t3}-node-${source.node}-${target}-r1`, nodeVersion: source.node, platform: process.platform, arch: process.arch, executable: 'node/bin/node', entry: 'node_modules/t3/dist/bin.mjs', integrity: 'integrity.json' }, null, 2) + '\n')
+await writeFile(join(destination, 'runtime.json'), JSON.stringify({ version: `t3-${source.t3}-node-${source.node}-${target}-${source.runtimeRevision}`, nodeVersion: source.node, platform: process.platform, arch: process.arch, executable: 'node/bin/node', entry: 'node_modules/t3/dist/bin.mjs', integrity: 'integrity.json' }, null, 2) + '\n')
 const files = {}
 async function visit(directory) {
   for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {

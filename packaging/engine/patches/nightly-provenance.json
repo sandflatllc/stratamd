@@ -1,0 +1,47 @@
+{
+  "_type": "https://in-toto.io/Statement/v1",
+  "subject": [
+    {
+      "name": "pkg:npm/t3@0.0.41-nightly.20260909.1426",
+      "digest": {
+        "sha512": "10c98bd6dae6f31413303ee9cf8748a99078524b61e7eff18247e2b1c27e3d5d36d99d7b26adeb430ce55f35ab1d642c1ce067dcabca17e7c71fb86825d946a9"
+      }
+    }
+  ],
+  "predicateType": "https://slsa.dev/provenance/v1",
+  "predicate": {
+    "buildDefinition": {
+      "buildType": "https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1",
+      "externalParameters": {
+        "workflow": {
+          "ref": "refs/heads/main",
+          "repository": "https://github.com/pingdotgg/t3code",
+          "path": ".github/workflows/release.yml"
+        }
+      },
+      "internalParameters": {
+        "github": {
+          "event_name": "schedule",
+          "repository_id": "1153130349",
+          "repository_owner_id": "89191727"
+        }
+      },
+      "resolvedDependencies": [
+        {
+          "uri": "git+https://github.com/pingdotgg/t3code@refs/heads/main",
+          "digest": {
+            "gitCommit": "3e6f856f2359421958a3aa046f2c393e00f3dc6a"
+          }
+        }
+      ]
+    },
+    "runDetails": {
+      "builder": {
+        "id": "https://github.com/actions/runner/github-hosted"
+      },
+      "metadata": {
+        "invocationId": "https://github.com/pingdotgg/t3code/actions/runs/34297062529/attempts/1"
+      }
+    }
+  }
+}

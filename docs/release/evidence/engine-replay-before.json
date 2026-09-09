@@ -1,0 +1,1 @@
+{"checks":[{"reader":"readFromSequence","events":1501,"pageSize":500,"maximumRetainedPageMarkers":4,"repeated":true,"replayMsIncludingForcedGC":381},{"reader":"readAggregateRange","events":1501,"pageSize":500,"maximumRetainedPageMarkers":4,"repeated":true,"replayMsIncludingForcedGC":341}]}

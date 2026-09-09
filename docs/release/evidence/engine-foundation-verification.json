@@ -1,0 +1,25 @@
+{
+  "focused": {
+    "evidence": "/home/dillonc/.cache/stratamd-verification/runs/2026-09-09T06-18-27-071Z-252eb1d7",
+    "typecheck": "passed",
+    "testsPassed": 10,
+    "skipped": 0,
+    "commandSeconds": 31.1
+  },
+  "managed": {
+    "evidence": "/home/dillonc/.cache/stratamd-verification/runs/2026-09-09T06-20-06-248Z-b58c2128",
+    "integrationPassed": 11,
+    "electronPassed": 9,
+    "build": "passed",
+    "skipped": 0,
+    "commandSeconds": 265.2,
+    "queueSeconds": 27.1
+  },
+  "host": "CachyOS Linux x64; default pinned toolchain",
+  "runtime": "t3-0.0.41-nightly.20260909.1426-node-24.20.0-linux-x64-replay10777-r1",
+  "limits": [
+    "Whole-conversation UI performance not remeasured; replay measurement isolates actual emitted functions with synthetic SQL pages.",
+    "Upgrade/rollback checks use changed runtime identities around this same artifact; seeded 0.0.38-to-nightly database migration not separately exercised.",
+    "Final integrated full and packaged gates belong to the implementation batch."
+  ]
+}
