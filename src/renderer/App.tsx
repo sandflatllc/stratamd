@@ -1,5 +1,5 @@
 import { DocumentPreview } from './components/DocumentPreview'
-import { DOCUMENT_PREVIEW_EVENT } from './documentPreview'
+import { DOCUMENT_PREVIEW_EVENT, openDocumentPreview } from './documentPreview'
 import type { DocumentSource } from '../shared/documents'
 import type { BrowserEvidenceView } from '../shared/browser-evidence'
 import { SettingsDialog } from './components/SettingsDialog'
@@ -756,7 +756,7 @@ export function App({ createEditor }: AppProps) {
   const previewRailNode = previewShown ? <div data-pane="rightRail" style={{ width: panelSizes.rightRailWidth, flex: 'none', minWidth: 0, '--zoom': zoom.rightRail } as CSSProperties}><Boundary region="rightRail"><PreviewRail projectId={previewShown} engine={view.engine} tabs={previewTabs.filter((tab) => tab.projectId === previewShown)} serving={view.preview.serving} visualComments={view.engine.projects.find((candidate) => candidate.id === previewShown)?.visualComments ?? []} visualActions={visualActions} upperReviewHeight={panelSizes.upperReviewHeight} onHeight={(value, commit) => updatePanel('upperReviewHeight', value, commit)} onOpenConversation={(id) => { showCenterConversation(id); void perform(() => window.strata.openConversation(id)) }} onStop={(id) => void perform(() => window.strata.stopConversationTurn(id), 'Stop requested.')} /></Boundary></div> : null
   /** A held comment opens back into the session; anything sent opens its card. */
   const openVisual = (id: string) => { const comment = visualById(id); if (comment?.draft) { setVisualOpen(null); setVisualSession({ kind: 'comment', id }) } else setVisualOpen(id) }
-  const runVisual = { visualComments: activeThreadProject?.visualComments ?? [], onOpenVisual: openVisual, onShowVisual: (id: string) => { const comment = visualById(id); if (comment) visualActions.onShowMe?.(comment) }, onMarkUpImage: markUpImage, consumedAttachmentIds: consumedStaged }
+  const runVisual = { onOpenQuestionFile: (source: DocumentSource) => openDocumentPreview(source, activeThreadProject?.id), visualComments: activeThreadProject?.visualComments ?? [], onOpenVisual: openVisual, onShowVisual: (id: string) => { const comment = visualById(id); if (comment) visualActions.onShowMe?.(comment) }, onMarkUpImage: markUpImage, consumedAttachmentIds: consumedStaged }
   /** Shows a thread in the center and keeps its tab listed until closed. */
   const showCenterConversation = (threadId: string) => {
     setDocumentPicker(null)

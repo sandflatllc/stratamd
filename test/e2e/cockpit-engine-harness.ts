@@ -300,6 +300,10 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   let settings: Record<string, unknown> = { addProjectBaseDirectory: '/home/owner/Projects', newWorktreesStartFromOrigin: true, providerInstances, ...options.settings }
   providerInstances = settings.providerInstances as typeof providerInstances
   function rpcValue(tag: string, payload: Record<string, unknown>): unknown {
+    if (tag === 'assets.createUrl') {
+      const resource = payload.resource as { attachmentId: string }
+      return { relativeUrl: `/api/assets/${encodeURIComponent(resource.attachmentId)}?signature=test-document`, expiresAt: Date.now() + 60_000 }
+    }
     if (tag === 'attachments.createUploadUrl') {
       uploadCount += 1
       const attachmentId = `upload-${uploadCount}`
@@ -329,6 +333,14 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       return
     }
     response.setHeader('content-type', 'application/json')
+    if (request.url?.startsWith('/api/assets/')) {
+      const asset = new URL(request.url, 'http://fixture.invalid')
+      const bytes = uploadBytesById.get(decodeURIComponent(asset.pathname.slice('/api/assets/'.length)))
+      if (asset.searchParams.get('signature') !== 'test-document' || !bytes) { response.writeHead(404).end(); return }
+      response.setHeader('content-type', 'application/octet-stream')
+      response.end(bytes)
+      return
+    }
     if (request.url === '/oauth/token' && request.method === 'POST') {
       const chunks: Buffer[] = []
       request.on('data', (piece) => chunks.push(Buffer.from(piece)))

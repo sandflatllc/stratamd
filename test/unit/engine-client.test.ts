@@ -49,6 +49,7 @@ describe('T3 engine read client', () => {
     const original = Buffer.from([37, 80, 68, 70, 0, 128, 255])
     const page = detail()
     page.thread.messages[0]!.attachments = [{ type: 'file', id: 'document-1', name: 'original.pdf', mimeType: 'application/pdf', sizeBytes: original.length }] as never[]
+    page.thread.activities = [{ id: 'answer-event', kind: 'user-input.answer-submitted', summary: 'User input submitted', tone: 'info', turnId: 'turn-1', createdAt: at, payload: { requestId: 'input-1', attachmentsByQuestionId: { report: [{ type: 'file', id: 'answer-document', name: 'answer.pdf', mimeType: 'application/pdf', sizeBytes: original.length }, { id: 'malformed-document', name: 'fake.pdf' }] } } }] as never[]
     const fetch = vi.fn(async (input: string | URL | Request) => {
       const url = String(input)
       if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
@@ -63,6 +64,8 @@ describe('T3 engine read client', () => {
       await client.openThread('t1')
       const source = { kind: 'attachment' as const, id: 'document-1', threadId: 't1', name: 'untrusted-label.pdf' }
       expect(await client.readDocumentAttachment(source)).toEqual({ bytes: original, name: 'original.pdf' })
+      expect(await client.readDocumentAttachment({ ...source, id: 'answer-document' })).toEqual({ bytes: original, name: 'answer.pdf' })
+      await expect(client.readDocumentAttachment({ ...source, id: 'malformed-document' })).rejects.toThrow('not attached')
       const request = vi.mocked(fetch).mock.calls.find(call => String(call[0]).includes('/api/assets/'))!
       expect(request[1]?.redirect).toBe('error')
       expect(request[1]?.headers).toBeUndefined()

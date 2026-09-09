@@ -33,6 +33,7 @@ import {
   websocketTicketResult,
   attachmentUploadResult,
   assetUrlResult,
+  chatAttachment,
   turnStartCommand,
   turnInterruptCommand,
   threadCreateCommand,
@@ -1366,7 +1367,15 @@ export class T3EngineClient implements EngineReadClient {
     const server = this.#credential?.server
     if (!server) throw new Error(`${source.name} cannot be read while disconnected.`)
     const detail = this.#threads.get(source.threadId)?.detail?.thread
-    const attachment = detail?.messages.flatMap(message => message.attachments ?? []).find(item => item.id === source.id)
+    const answerFiles = (detail?.activities ?? []).filter(activity => activity.kind === 'user-input.resolved' || activity.kind === 'user-input.answer-submitted').flatMap(activity => {
+      const groups = inputPayload(activity).attachmentsByQuestionId
+      if (!groups || typeof groups !== 'object') return []
+      return Object.values(groups).flatMap(files => Array.isArray(files) ? files.flatMap(file => {
+        const parsed = chatAttachment.safeParse(file)
+        return parsed.success ? [parsed.data] : []
+      }) : [])
+    })
+    const attachment = [...(detail?.messages.flatMap(message => message.attachments ?? []) ?? []), ...answerFiles].find(item => item.id === source.id)
     if (!attachment) throw new Error(`${source.name} is not attached to conversation ${source.threadId}.`)
     const asset = assetUrlResult.parse(await this.#rpcOrSocket(T3_RPC.createAssetUrl, { resource: { _tag: 'attachment', attachmentId: attachment.id, fileName: attachment.name, mimeType: attachment.mimeType } }, 'document attachment'))
     const url = new URL(asset.relativeUrl, server)
