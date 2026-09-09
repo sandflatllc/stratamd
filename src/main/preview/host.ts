@@ -1,3 +1,7 @@
+import { boundSnapshot } from './snapshot'
+import { BrowserRecording } from './recording'
+import { BrowserEvidenceStore } from './evidence'
+import type { BrowserEvidenceTransfer } from '../../shared/browser-evidence'
 import { captureWhenPainted } from './capture'
 import { isLocalPage, isLocalPageSync } from '../local-link'
 import { randomUUID } from 'node:crypto'
@@ -25,7 +29,7 @@ import { applyOverridesScript, CLEAR_OVERRIDES_SCRIPT, type OverrideTarget } fro
  * requests, one tab per thread at a time, and pauses an agent tab the moment
  * the owner interacts with it.
  */
-export const PREVIEW_OPERATIONS = ['status', 'open', 'navigate', 'snapshot', 'click', 'type', 'press', 'scroll', 'evaluate', 'waitFor', 'resize'] as const
+export const PREVIEW_OPERATIONS = ['status', 'open', 'navigate', 'snapshot', 'click', 'type', 'press', 'scroll', 'evaluate', 'waitFor', 'resize', 'recordingStart', 'recordingStop'] as const
 export type PreviewOperation = typeof PREVIEW_OPERATIONS[number]
 
 export interface PreviewAutomationRequest {
@@ -94,6 +98,10 @@ export class PreviewHost {
   readonly #serving = new Map<string, number>()
   readonly #sessions = new Set<Session>()
   readonly #persistPath: string
+  readonly #recordings = new Map<string, BrowserRecording>()
+  readonly #recordingDestinations = new Map<string, string | null>()
+  readonly #finishedRecordings = new Map<string, string>()
+  readonly #evidence: BrowserEvidenceStore
   #window: BrowserWindow | null = null
   #parking: BaseWindow | null = null
   #shownTabId: string | null = null
@@ -109,6 +117,7 @@ export class PreviewHost {
     this.#options = options
     this.#now = options.now ?? Date.now
     this.#persistPath = join(options.dataDirectory, 'preview-tabs.json')
+    this.#evidence = new BrowserEvidenceStore(join(options.dataDirectory, 'browser-evidence'), () => this.#publish())
   }
 
   // ---- State
@@ -125,10 +134,19 @@ export class PreviewHost {
   view(): PreviewStateView {
     return {
       tabs: this.#model.list().map(({ workingFolder: _folder, partition: _partition, ...tab }): PreviewTabView => ({ ...tab })),
+      evidence: this.#evidence.view(),
       registered: this.#registered,
       serving: [...this.#serving.keys()],
       reveal: this.#reveal,
     }
+  }
+
+  setEvidenceTransfer(transfer: BrowserEvidenceTransfer): void { this.#evidence.setTransfer(transfer) }
+
+  async evidenceAction(id: string, action: 'open' | 'retry'): Promise<string | null> {
+    if (action === 'retry') { await this.#evidence.transfer(id); return null }
+    const { record, bytes } = await this.#evidence.read(id)
+    return `data:${record.mimeType};base64,${Buffer.from(bytes).toString('base64')}`
   }
 
   setRegistered(registered: boolean): void {
@@ -353,6 +371,9 @@ export class PreviewHost {
   #forget(id: string): void {
     const runtime = this.#runtimes.get(id)
     this.#runtimes.delete(id)
+    this.#recordings.get(id)?.dispose()
+    this.#recordings.delete(id)
+    this.#recordingDestinations.delete(id)
     this.#model.remove(id)
     if (runtime) {
       for (const popup of runtime.popups) if (!popup.isDestroyed()) popup.destroy()
@@ -457,6 +478,7 @@ export class PreviewHost {
   }
 
   async restore(): Promise<void> {
+    await this.#evidence.restore()
     let tabs: PersistedPreviewTab[] = []
     try {
       const raw = JSON.parse(await readFile(this.#persistPath, 'utf8')) as { formatVersion?: unknown; tabs?: unknown }
@@ -474,6 +496,9 @@ export class PreviewHost {
 
   async shutdown(): Promise<void> {
     this.#closed = true
+    for (const recording of this.#recordings.values()) recording.dispose()
+    this.#recordings.clear()
+    this.#recordingDestinations.clear()
     if (this.#persistTimer) clearTimeout(this.#persistTimer)
     await this.persist()
     for (const [id, runtime] of [...this.#runtimes]) { this.#runtimes.delete(id); runtime.epoch += 1; for (const popup of runtime.popups) if (!popup.isDestroyed()) popup.destroy(); try { runtime.view.webContents.close() } catch { /* already gone */ } }
@@ -695,15 +720,32 @@ export class PreviewHost {
           while (!fits() && this.#now() < deadline) { await delay(50); check(); measured = await this.viewportOf(tab.id) }
           return { tabId: tab.id, setting: viewportSetting(viewport), viewport: { width: measured.width, height: measured.height } }
         }
+        case 'recordingStart': {
+          let recording = this.#recordings.get(tab.id)
+          if (!recording) { const destination = this.#evidence.destination; recording = await BrowserRecording.start(contents); this.#recordings.set(tab.id, recording); this.#recordingDestinations.set(tab.id, destination); this.#finishedRecordings.delete(tab.id) }
+          return { tabId: tab.id, recording: true, startedAt: recording.startedAt }
+        }
+        case 'recordingStop': {
+          let id = this.#finishedRecordings.get(tab.id)
+          const recording = this.#recordings.get(tab.id)
+          if (recording) {
+            try {
+              const bytes = await recording.stop()
+              const artifact = await this.#evidence.save({ tabId: tab.id, threadId: request.threadId, bytes, mimeType: 'video/webm', name: `${pageName(tab.url, tab.title)} recording`, destination: this.#recordingDestinations.get(tab.id) ?? null })
+              id = artifact.id; this.#finishedRecordings.set(tab.id, id)
+            } finally { this.#recordings.delete(tab.id); this.#recordingDestinations.delete(tab.id) }
+          }
+          if (!id) throw new PreviewFailure('PreviewAutomationExecutionError', `No recording was started in tab ${tab.id}`)
+          try { return await this.#evidence.transfer(id) }
+          catch (error) { throw new PreviewFailure('PreviewAutomationRecordingTransferError', error instanceof Error ? error.message : String(error), { evidenceId: id }) }
+        }
         case 'snapshot': return withCleanPage(contents, async () => {
           const page = await contents.executeJavaScript(snapshotScript(SNAPSHOT_LIMITS), true) as Record<string, unknown>
           const image = await this.#captureImage(tab.id)
           const size = image.getSize()
+          await this.#evidence.save({ tabId: tab.id, threadId: request.threadId, bytes: image.toPNG(), mimeType: 'image/png', name: pageName(tab.url, tab.title) })
           return {
-            ...page, loading: contents.isLoading(),
-            consoleEntries: runtime.console.slice(-50),
-            networkEntries: [],
-            actionTimeline: runtime.actions.slice(-50),
+            ...boundSnapshot({ ...page, loading: contents.isLoading(), consoleEntries: runtime.console.slice(-50), networkEntries: [], actionTimeline: runtime.actions.slice(-50) }),
             screenshot: { mimeType: 'image/png', data: image.toPNG().toString('base64'), width: size.width, height: size.height },
           }
         }, () => runtime.epoch === epoch)
@@ -761,7 +803,7 @@ export class PreviewHost {
           const outcome = await contents.executeJavaScript(`(async () => { try { const value = (${expression}); return { ok: true, value: ${input.awaitPromise === false ? 'value' : 'await value'} } } catch (error) { return { ok: false, error: String(error && error.message || error) } } })()`, true).catch((error: unknown) => ({ ok: false, error: error instanceof Error ? error.message : String(error) })) as { ok: boolean; value?: unknown; error?: string }
           if (!outcome.ok) throw new PreviewFailure('PreviewAutomationExecutionError', outcome.error ?? 'The expression failed')
           const serialized = JSON.stringify(outcome.value ?? null)
-          if (serialized && serialized.length > MAX_RESULT_BYTES) throw new PreviewFailure('PreviewAutomationResultTooLargeError', 'The result is too large to return', { maximumBytes: MAX_RESULT_BYTES })
+          if (serialized && Buffer.byteLength(serialized, 'utf8') > MAX_RESULT_BYTES) throw new PreviewFailure('PreviewAutomationResultTooLargeError', 'The result is too large to return', { maximumBytes: MAX_RESULT_BYTES })
           return outcome.value ?? null
         }
         case 'waitFor': {

@@ -1,3 +1,5 @@
+import { BrowserEvidence } from './BrowserEvidence'
+import type { BrowserEvidenceView } from '../../shared/browser-evidence'
 import { SentComments } from './SentComments'
 import { useHeldUserInputs } from '../useHeldUserInputs'
 import { holdConversationContext } from '../focusConversationComposer'
@@ -139,6 +141,8 @@ function UserInputCard({ activity, held, onAnswer }: { activity: EngineActivityV
 }
 
 interface ConversationProps {
+  browserEvidence?: BrowserEvidenceView[] | undefined
+  onOpenBrowserEvidence?(evidence: BrowserEvidenceView, url: string): void
   visible?: boolean
   onDocumentContext?(): void
   documentMeasure?: number
@@ -242,7 +246,7 @@ function TurnChecklist({ items, onReply, onOpen, onAct, onDismiss }: { items: re
   </section>
 }
 
-export function Conversation({ visible = true, onDocumentContext, documentMeasure = 860, onDocumentMeasure, engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput, items = [], onReplyItem, onQueueReply, onDismissItem, onOpenItem, onActItem, onOpenDocument, onCopyText, visualComments = [], onOpenVisual, onShowVisual, onMarkUpImage, consumedAttachmentIds }: ConversationProps) {
+export function Conversation({ browserEvidence = [], onOpenBrowserEvidence, visible = true, onDocumentContext, documentMeasure = 860, onDocumentMeasure, engine, placement = 'side', passage, onReconnect, onMove, onStart, onStop, onApproval, onUserInput, items = [], onReplyItem, onQueueReply, onDismissItem, onOpenItem, onActItem, onOpenDocument, onCopyText, visualComments = [], onOpenVisual, onShowVisual, onMarkUpImage, consumedAttachmentIds }: ConversationProps) {
   const selected = activeThread(engine)
   const [inspectedImage, setInspectedImage] = useState<{ url: string; name: string } | null>(null)
   useEffect(() => setInspectedImage(null), [engine.activeThreadId])
@@ -461,6 +465,7 @@ export function Conversation({ visible = true, onDocumentContext, documentMeasur
               </div>))}
               {message.role === 'assistant' && !message.streaming && (() => { const replies = message.visualReplies ?? []; return replies.length ? <div className="conversation-visual-replies">{replies.map((reply) => { const comment = visualById.get(reply.id); const latest = comment?.revisions.at(-1); return <span className="conversation-visual-reply-row" key={`${reply.id}:${reply.revision ?? ''}`}><button type="button" className="conversation-visual-reply" data-ready={reply.ready || undefined} onClick={() => onOpenVisual?.(reply.id)}><span>Visual comment</span>{comment ? ` · ${comment.title}` : ''}<em>{comment && comment.status === 'ready' ? 'ready for review' : reply.ready ? 'marked ready' : 'answered'}</em></button>{comment?.anchor.kind === 'page' && onShowVisual && <button type="button" className="conversation-visual-action" onClick={() => onShowVisual(reply.id)}>Show me</button>}{latest?.comparison && onOpenVisual && <button type="button" className="conversation-visual-action" onClick={() => onOpenVisual(reply.id)}>Then / now</button>}</span> })}</div> : null })()}
               {message.id === lastAssistant && changedFiles.length > 0 && <ChangedFilesCard files={changedFiles} root={selected.root} {...(onOpenDocument ? { onOpen: onOpenDocument } : {})} />}
+              {message.id === selected.thread.messages.findLast(candidate => candidate.role === 'assistant')?.id && onOpenBrowserEvidence && browserEvidence.filter(evidence => evidence.threadId === selected.thread.id && (!evidence.destination || evidence.destination.endsWith(`(${engine.server})`))).map(evidence => <BrowserEvidence key={evidence.id} evidence={evidence} onOpen={onOpenBrowserEvidence} />)}
             </article></Fragment>
           })}
           {headerIndex === -1 && workingRow}

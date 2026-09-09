@@ -20,7 +20,7 @@ const CONTENT_SECURITY_POLICY = [
   "form-action 'none'",
   "frame-ancestors 'none'",
   "img-src 'self' app: strata-image: strata-visual: data:",
-  "media-src 'none'",
+  "media-src data:",
   "object-src 'none'",
   "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'"

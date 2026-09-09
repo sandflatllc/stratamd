@@ -11,7 +11,19 @@ import { claimEscape } from '../escape'
  * Annotate toggle. The page itself is a main-process view; this component
  * leaves a hole for it and reports where the hole is whenever layout changes.
  */
+export interface SavedPreviewMedia {
+  id: string
+  name: string
+  url: string
+  mimeType: string
+  active: boolean
+  onSelect(): void
+  onClose(): void
+  onAnnotate(): void
+}
+
 export interface PreviewWindowProps {
+  savedMedia?: SavedPreviewMedia | undefined
   projectId: string
   projectTitle: string
   tabs: PreviewTabView[]
@@ -37,7 +49,7 @@ export function tabLabel(tab: PreviewTabView, engine: EngineView): string {
   return `${threadAgentName(engine, tab.threadId)} · ${page}`
 }
 
-export function PreviewWindow({ projectId, projectTitle, tabs, activeTabId, engine, onSelectTab, onNewTab, onCloseTab, onNavigate, onResize, onResume, annotate }: PreviewWindowProps) {
+export function PreviewWindow({ savedMedia, projectId, projectTitle, tabs, activeTabId, engine, onSelectTab, onNewTab, onCloseTab, onNavigate, onResize, onResume, annotate }: PreviewWindowProps) {
   const active = tabs.find((tab) => tab.id === activeTabId) ?? null
   const hole = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
@@ -55,7 +67,7 @@ export function PreviewWindow({ projectId, projectTitle, tabs, activeTabId, engi
   // Where the page sits: measured after every layout change and sent to the main process, which draws the view there.
   useLayoutEffect(() => {
     const element = hole.current
-    const tabId = active && !annotate?.active ? active.id : null
+    const tabId = active && !annotate?.active && !savedMedia?.active ? active.id : null
     let frame = 0
     const report = () => {
       frame = 0
@@ -79,7 +91,7 @@ export function PreviewWindow({ projectId, projectTitle, tabs, activeTabId, engi
       window.removeEventListener('resize', schedule)
       window.removeEventListener('scroll', schedule, true)
     }
-  }, [active?.id, active?.viewport, annotate?.active])
+  }, [active?.id, active?.viewport, annotate?.active, savedMedia?.active])
   // Leaving the preview hides the page; the page itself stays alive for the next visit.
   useEffect(() => () => { reported.current = ''; void window.strata.reportPreviewBounds({ tabId: null, bounds: null }).catch(() => undefined) }, [])
 
@@ -119,16 +131,19 @@ export function PreviewWindow({ projectId, projectTitle, tabs, activeTabId, engi
     <section className="preview-window" aria-label={`${projectTitle} preview`} data-project={projectId}>
       <div className="preview-tabstrip" role="tablist" aria-label="Preview tabs">
         {tabs.map((tab) => (
-          <div key={tab.id} role="tab" tabIndex={0} aria-selected={tab.id === active?.id} className="preview-tab" data-kind={tab.kind} data-paused={tab.paused || undefined} data-working={tab.working || undefined} title={tab.url || undefined} onClick={() => onSelectTab(tab.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectTab(tab.id) } }}>
+          <div key={tab.id} role="tab" tabIndex={0} aria-selected={!savedMedia?.active && tab.id === active?.id} className="preview-tab" data-kind={tab.kind} data-paused={tab.paused || undefined} data-working={tab.working || undefined} title={tab.url || undefined} onClick={() => onSelectTab(tab.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectTab(tab.id) } }}>
             {tab.kind === 'agent' ? <RobotGlyph /> : <span className="preview-tab-fav" aria-hidden="true" />}
             <span className="preview-tab-name">{tabLabel(tab, engine)}</span>
             {tab.kind === 'agent' && tab.working && <i className="preview-live" aria-label="working" />}
             <span role="button" tabIndex={0} className="preview-tab-close" aria-label={`Close tab ${tabLabel(tab, engine)}`} onClick={(event) => { event.stopPropagation(); onCloseTab(tab.id) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onCloseTab(tab.id) } }}>×</span>
           </div>
         ))}
+        {savedMedia && <div role="tab" tabIndex={0} aria-selected={savedMedia.active} className="preview-tab" onClick={savedMedia.onSelect} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); savedMedia.onSelect() } }}>
+          <span className="preview-tab-fav" aria-hidden="true" /><span className="preview-tab-name">{savedMedia.name}</span><button type="button" className="preview-tab-close" aria-label={`Close saved ${savedMedia.name}`} onClick={event => { event.stopPropagation(); savedMedia.onClose() }}>×</button>
+        </div>}
         <button type="button" className="preview-tab-add" aria-label="New tab" onClick={onNewTab}>+</button>
       </div>
-      <div className="preview-chrome">
+      {savedMedia?.active ? <div className="preview-chrome preview-saved-chrome"><strong>{savedMedia.name}</strong><span>{savedMedia.mimeType === 'image/png' ? 'Saved screenshot' : 'Saved recording'}</span>{savedMedia.mimeType === 'image/png' && <button type="button" className="preview-annotate" onClick={savedMedia.onAnnotate}>Annotate</button>}</div> : <div className="preview-chrome">
         <div className="preview-nav">
           <button type="button" aria-label="Back" disabled={!active?.canGoBack} onClick={() => active && onNavigate(active.id, { action: 'back' })}>‹</button>
           <button type="button" aria-label="Forward" disabled={!active?.canGoForward} onClick={() => active && onNavigate(active.id, { action: 'forward' })}>›</button>
@@ -148,9 +163,10 @@ export function PreviewWindow({ projectId, projectTitle, tabs, activeTabId, engi
         </div>
         {annotate && <button type="button" className="preview-annotate" aria-pressed={annotate.active} disabled={annotate.disabled || !active?.url} onClick={annotate.onToggle} title={annotate.active ? 'Stop annotating (Esc)' : 'Mark up this page'}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>{annotate.active ? 'Annotating' : 'Annotate'}{annotate.active && <kbd>Esc</kbd>}</button>}
       </div>
-      {active?.error && <p className="preview-notice" role="alert">{active.error}</p>}
+      }
+      {!savedMedia?.active && active?.error && <p className="preview-notice" role="alert">{active.error}</p>}
       <div className="preview-stage" ref={stage} data-mode={active?.viewport.mode ?? 'fill'}>
-        {active
+        {savedMedia?.active ? <div className="preview-saved-media">{savedMedia.mimeType === 'image/png' ? <img src={savedMedia.url} alt={savedMedia.name} /> : <video src={savedMedia.url} controls autoPlay />}</div> : active
           ? <figure className="preview-frame">
               <div className="preview-hole" ref={hole} data-tab={active.id} style={holeStyle} />
               {caption && <figcaption>{caption}</figcaption>}

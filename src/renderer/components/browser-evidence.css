@@ -1,0 +1,20 @@
+.browser-evidence { width: min(350px, 100%); margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surfaces-window); }
+.browser-evidence-thumbnail { display: block; width: 100%; height: 112px; object-fit: cover; object-position: top left; }
+.browser-evidence-copy { display: grid; gap: 8px; padding: 10px; }
+.browser-evidence-copy strong { font-size: 13px; overflow-wrap: anywhere; }
+.browser-evidence-copy small { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.browser-evidence-copy button { padding: 6px 12px; font-size: 12px; font-weight: 700; color: var(--dim); }
+.browser-evidence-copy progress { width: 100%; height: 6px; accent-color: var(--controls-primary-highlight); }
+.browser-evidence-video { width: 100%; flex: 1; min-height: 0; object-fit: contain; }
+
+.browser-evidence-copy progress { appearance: none; border: 0; border-radius: 4px; overflow: hidden; background: var(--card-2); }
+.browser-evidence-copy progress::-webkit-progress-bar { background: var(--card-2); }
+.browser-evidence-copy progress:indeterminate { background: linear-gradient(90deg, var(--card-2) 0 15%, var(--controls-primary-highlight) 15% 65%, var(--card-2) 65%); }
+.preview-saved-chrome { min-height: 52px; margin: 10px 14px; padding: 10px 12px; background: var(--bg); }
+.preview-saved-chrome strong { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-saved-chrome > span { font-size: 12px; }
+.preview-saved-media { position: absolute; inset: 0; overflow: auto; background: white; }
+.preview-saved-media > img { display: block; width: 100%; height: auto; }
+.preview-saved-media > video { width: 100%; height: 100%; object-fit: contain; background: var(--bg); }
+
+.preview-saved-chrome .preview-annotate { border: 0; background: transparent; color: var(--dim); }

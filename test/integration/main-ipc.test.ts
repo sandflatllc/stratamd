@@ -74,6 +74,7 @@ function fakeApi(): StrataApi {
     closePreviewTab: vi.fn(async () => undefined),
     navigatePreview: vi.fn(async () => undefined),
     resizePreview: vi.fn(async () => undefined),
+    previewEvidenceAction: vi.fn(async () => null),
     resumePreviewTab: vi.fn(async () => undefined),
     reportPreviewBounds: vi.fn(async () => undefined),
     reportOverlay: vi.fn(async () => undefined),

@@ -401,7 +401,7 @@ export class StrataApplication implements StrataApi {
       localUsageAvailable: () => this.#manager !== null,
       askRuntime: () => this.#manager?.runtimeContext() ?? null,
       measureUsage: (provider, settings, signal) => measureLocalUsage(this.#manager?.runtimeContext() ?? null, options.engineUsageHelper ?? resolve('resources/engine-helpers/usage.mjs'), provider, settings, signal),
-      previewHost: { operations: this.#preview.operations, handle: (request) => this.#preview.handle(request), setRegistered: (registered) => this.#preview.setRegistered(registered), recheckVisual: (comment) => this.#recheckVisual(comment), compareVisual: (comment, revision) => this.#compareVisual(comment, revision) },
+      previewHost: { setEvidenceTransfer: (transfer) => this.#preview.setEvidenceTransfer(transfer), operations: this.#preview.operations, handle: (request) => this.#preview.handle(request), setRegistered: (registered) => this.#preview.setRegistered(registered), recheckVisual: (comment) => this.#recheckVisual(comment), compareVisual: (comment, revision) => this.#compareVisual(comment, revision) },
       // Terminal launchers are scripts Strata writes on Linux (§5.13); macOS gets none.
       terminalShimDirectory: isDarwin() ? null : join(this.#store.dataDirectory, 'bin'),
       ...(options.notifications ? { isFocused: () => options.notifications!.isFocused(), notify: (notification) => options.notifications!.notify(notification) } : {}),
@@ -1285,6 +1285,10 @@ export class StrataApplication implements StrataApi {
 
   async resizePreview(tabId: string, viewport: Parameters<StrataApi['resizePreview']>[1]): Promise<void> {
     this.#preview.resize(tabId, viewport)
+  }
+
+  async previewEvidenceAction(id: string, action: 'open' | 'retry'): Promise<string | null> {
+    return this.#preview.evidenceAction(id, action)
   }
 
   async resumePreviewTab(tabId: string): Promise<void> {

@@ -53,6 +53,7 @@ export const IPC = {
   navigatePreview: 'strata:navigate-preview',
   resizePreview: 'strata:resize-preview',
   resumePreviewTab: 'strata:resume-preview-tab',
+  previewEvidenceAction: 'strata:preview-evidence-action',
   reportPreviewBounds: 'strata:report-preview-bounds',
   reportOverlay: 'strata:report-overlay',
   previewProbe: 'strata:preview-probe',

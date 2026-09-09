@@ -15,6 +15,7 @@ export interface PreviewTabRecord extends PreviewTabView {
 
 /** What T3's broker reads from a refused request. */
 export type PreviewFailureTag =
+  | 'PreviewAutomationRecordingTransferError'
   | 'PreviewAutomationTabNotFoundError'
   | 'PreviewAutomationControlInterruptedError'
   | 'PreviewAutomationTimeoutError'

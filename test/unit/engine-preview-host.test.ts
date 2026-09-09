@@ -1,3 +1,4 @@
+import type { BrowserEvidenceTransfer } from '../../src/shared/browser-evidence'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -23,12 +24,13 @@ const thread = {
 const shell = { snapshotSequence: 10, projects: [{ id: 'p1', title: 'Mesa', workspaceRoot: '/work', defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at }], threads: [thread], updatedAt: at }
 const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 5))
 
-function engine(options: { identity?: string | null; accept?: boolean } = {}) {
+function engine(options: { identity?: string | null; accept?: boolean; uploadUrl?: string } = {}) {
   let identity = options.identity === undefined ? 'env-1' : options.identity
   const answers: unknown[] = []
   const server = fakeEngineServer((tag, payload) => {
     if (tag.startsWith('orchestration.subscribe')) return [{ kind: 'synchronized' }]
     if (tag === 'previewAutomation.connect') return options.accept === false ? null : [{ type: 'connected', connectionId: 'conn-1' }]
+    if (tag === 'attachments.createUploadUrl') return { attachmentId: 'pending-recording', expiresAt: Date.now() + 60000, relativeUrl: options.uploadUrl ?? '/upload/recording' }
     if (tag === 'previewAutomation.respond') { answers.push(payload); return null }
     return null
   })
@@ -36,6 +38,7 @@ function engine(options: { identity?: string | null; accept?: boolean } = {}) {
     const url = String(input)
     if (url.endsWith('/.well-known/t3/environment') && new Headers(init?.headers).get('authorization') !== 'Bearer secret') return new Response('authentication required', { status: 401 })
     if (url.endsWith('/.well-known/t3/environment')) return identity ? Response.json({ environmentId: identity, label: 'Fake' }) : new Response('nope', { status: 404 })
+    if (url === 'http://engine.test/upload/recording' && init?.method === 'POST') return new Response(null, { status: 204 })
     if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'secret', issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 3600, scope: 'orchestration:read orchestration:operate' })
     if (url.endsWith('/api/auth/websocket-ticket')) return Response.json({ ticket: 'ticket-1', expiresAt: at })
     if (url.endsWith('/api/orchestration/shell')) return Response.json(shell)
@@ -122,4 +125,26 @@ describe('registering as the browser host', () => {
     expect(bridge2.registered).toBe(false)
     await second.shutdown()
   })
+})
+
+it('uploads completed browser bytes to the registered engine and refuses a foreign upload URL', async () => {
+  for (const foreign of [false, true]) {
+    const fake = engine({ uploadUrl: foreign ? 'http://another-engine.test/upload/recording' : '/upload/recording' })
+    let transfer: BrowserEvidenceTransfer | undefined
+    const bridge = { ...host(), setEvidenceTransfer(value: BrowserEvidenceTransfer) { transfer = value } }
+    const instance = await client(fake, await mkdtemp(join(tmpdir(), 'strata-preview-transfer-')), bridge)
+    try {
+      await vi.waitFor(() => expect(transfer).toBeDefined())
+      expect(transfer!.destination).toBe('env-1 (http://engine.test)')
+      const bytes = new Uint8Array([26, 69, 223, 163, 5])
+      const result = transfer!.upload({ name: 'browser.webm', mimeType: 'video/webm', bytes })
+      if (foreign) await expect(result).rejects.toThrow('outside http://engine.test')
+      else await expect(result).resolves.toBe('pending-recording')
+      const uploads = vi.mocked(fake.fetch).mock.calls.filter(([url, init]) => String(url).includes('/upload/') && init?.method === 'POST')
+      expect(uploads).toHaveLength(foreign ? 0 : 1)
+      if (!foreign) { expect(String(uploads[0]![0])).toBe('http://engine.test/upload/recording'); expect(uploads[0]![1]!.body).toEqual(bytes) }
+      await instance.shutdown()
+      await expect(transfer!.upload({ name: 'browser.webm', mimeType: 'video/webm', bytes })).rejects.toThrow('Reconnect')
+    } finally { await instance.shutdown() }
+  }
 })

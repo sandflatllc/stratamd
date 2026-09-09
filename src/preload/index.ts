@@ -160,6 +160,7 @@ const api: StrataApi & {
   closePreviewTab: (tabId) => invoke<void>(IPC.closePreviewTab, tabId),
   navigatePreview: (tabId, navigation) => invoke<void>(IPC.navigatePreview, tabId, navigation),
   resizePreview: (tabId, viewport) => invoke<void>(IPC.resizePreview, tabId, viewport),
+  previewEvidenceAction: (id, action) => invoke<string | null>(IPC.previewEvidenceAction, id, action),
   resumePreviewTab: (tabId) => invoke<void>(IPC.resumePreviewTab, tabId),
   reportPreviewBounds: (report) => invoke<void>(IPC.reportPreviewBounds, report),
   reportOverlay: (open) => invoke<void>(IPC.reportOverlay, open),

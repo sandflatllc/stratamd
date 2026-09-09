@@ -1,3 +1,4 @@
+import type { BrowserEvidenceView } from './browser-evidence'
 import type { EngineSettingsEdit, ProviderEdit, ProviderEnvironment, EngineSupport } from './engine-settings'
 export type AnnotationKind = 'comment' | 'question' | 'suggestion' | 'decision'
 export type AnnotationStatus = 'open' | 'resolved' | 'orphaned'
@@ -858,6 +859,7 @@ export interface PreviewTabView {
 }
 
 export interface PreviewStateView {
+  evidence?: BrowserEvidenceView[]
   tabs: PreviewTabView[]
   /** Strata is registered with the engine as its browser host. */
   registered: boolean
@@ -1116,6 +1118,7 @@ export interface StrataApi {
   resizePreview(tabId: string, viewport: PreviewViewportRequest): Promise<void>
   /** Hands an agent tab back after the owner took control; nothing is replayed. */
   resumePreviewTab(tabId: string): Promise<void>
+  previewEvidenceAction(id: string, action: 'open' | 'retry'): Promise<string | null>
   /** Where the shown page sits in the window, whenever layout changes; null hides it. */
   reportPreviewBounds(report: PreviewBoundsReport): Promise<void>
   /** One boolean from the overlay layer: an overlay is open, so the page hides beneath it. */

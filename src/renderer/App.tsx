@@ -1,3 +1,4 @@
+import type { BrowserEvidenceView } from '../shared/browser-evidence'
 import { SettingsDialog } from './components/SettingsDialog'
 import { UsageDialog } from './components/UsageDialog'
 import { TerminalDrawer } from './components/TerminalDrawer'
@@ -76,6 +77,8 @@ export function App({ createEditor }: AppProps) {
   useEffect(consumeDocumentLaunch, [])
   const [conversationCentered, setConversationCentered] = useState(savedWorkspace.conversationCentered)
   /** Preview windows (docs/plans/open/visual-review, phase 2): one per project, a third kind of center content. */
+  const [savedEvidence, setSavedEvidence] = useState<{ projectId: string; evidence: BrowserEvidenceView; url: string; active: boolean } | null>(null)
+  useEffect(() => setSavedEvidence(null), [view.engine.server])
   const [previews, setPreviews] = useState<string[]>(savedWorkspace.previews)
   const [previewCentered, setPreviewCentered] = useState<string | null>(savedWorkspace.previewCentered)
   const [previewNavigationTab, setPreviewNavigationTab] = useState<'projects' | 'conversation'>('projects')
@@ -596,6 +599,24 @@ export function App({ createEditor }: AppProps) {
     setPreviewCentered(projectId)
     setDocumentPicker(null)
   }
+  const openBrowserEvidence = (evidence: BrowserEvidenceView, url: string) => {
+    const project = view.engine.projects.find(project => project.threads.some(thread => thread.id === evidence.threadId))
+    if (!project) { report('The conversation for this evidence is no longer available.'); return }
+    setSavedEvidence({ projectId: project.id, evidence, url, active: true })
+    showPreview(project.id)
+  }
+  const annotateSavedEvidence = () => void perform(async () => {
+    if (!savedEvidence) return
+    const project = view.engine.projects.find(project => project.id === savedEvidence.projectId)
+    const thread = project?.threads.find(thread => thread.id === savedEvidence.evidence.threadId)
+    if (!thread) throw new Error('The conversation for this screenshot is no longer available.')
+    const source = await window.strata.previewEvidenceAction(savedEvidence.evidence.id, 'open')
+    if (!source) throw new Error('The saved screenshot is no longer available.')
+    const image = await loadImage(source)
+    const bytes = Uint8Array.from(atob(source.slice(source.indexOf(',') + 1)), character => character.charCodeAt(0))
+    const staged = await window.strata.stageConversationAttachment({ name: savedEvidence.evidence.name, mimeType: 'image/png', bytes })
+    setVisualSession({ kind: 'staged', id: staged.id, name: savedEvidence.evidence.name, width: image.naturalWidth, height: image.naturalHeight, projectId: project!.id, destination: { threadId: thread.id, threadTitle: thread.title } })
+  })
   const openPreview = (projectId: string) => {
     showPreview(projectId)
     if (!previewTabs.some((tab) => tab.projectId === projectId)) void perform(async () => { const id = await window.strata.openPreviewTab({ projectId }); setActivePreviewTabs((current) => ({ ...current, [projectId]: id })) })
@@ -705,8 +726,9 @@ export function App({ createEditor }: AppProps) {
     const activeTabId = (tabs.find((tab) => tab.id === activePreviewTabs[previewShown]) ?? tabs.find((tab) => tab.kind === 'owner') ?? tabs[0])?.id ?? null
     const annotate = { active: annotating !== null && annotating.projectId === previewShown, disabled: annotateDestination(previewShown) === null, onToggle: () => { if (annotating) void annotationClose.current?.(); else if (activeTabId) startAnnotate(activeTabId, previewShown) }, overlay: annotateOverlay }
     return <main className="island editor-island preview-island" data-pane="editor" style={{ '--zoom': zoom.editor } as CSSProperties}><AmbientDecor variant="editor" /><PreviewWindow projectId={previewShown} projectTitle={project?.title ?? 'Project'} tabs={tabs} activeTabId={activeTabId} engine={view.engine} annotate={annotate}
-      onSelectTab={(id) => setActivePreviewTabs((current) => ({ ...current, [previewShown]: id }))}
-      onNewTab={() => void perform(async () => { const id = await window.strata.openPreviewTab({ projectId: previewShown }); setActivePreviewTabs((current) => ({ ...current, [previewShown]: id })) })}
+      savedMedia={savedEvidence?.projectId === previewShown ? { id: savedEvidence.evidence.id, name: savedEvidence.evidence.name, url: savedEvidence.url, mimeType: savedEvidence.evidence.mimeType, active: savedEvidence.active, onSelect: () => setSavedEvidence(current => current && { ...current, active: true }), onClose: () => setSavedEvidence(null), onAnnotate: annotateSavedEvidence } : undefined}
+      onSelectTab={(id) => { setSavedEvidence(current => current && { ...current, active: false }); setActivePreviewTabs((current) => ({ ...current, [previewShown]: id })) }}
+      onNewTab={() => void perform(async () => { setSavedEvidence(current => current && { ...current, active: false }); const id = await window.strata.openPreviewTab({ projectId: previewShown }); setActivePreviewTabs((current) => ({ ...current, [previewShown]: id })) })}
       onCloseTab={(id) => void perform(() => window.strata.closePreviewTab(id))}
       onNavigate={(id, navigation: PreviewNavigation) => void perform(() => window.strata.navigatePreview(id, navigation))}
       onResize={(id, viewport: PreviewViewportRequest) => void perform(() => window.strata.resizePreview(id, viewport))}
@@ -770,9 +792,9 @@ export function App({ createEditor }: AppProps) {
       if (hunk && action === 'revert') revert(hunk)
     },
   } : {}
-  const sideConversation = <Conversation visible={previewShown ? previewNavigationTab === 'conversation' : !conversationCentered && document?.reading.navigationTab === 'conversation'} engine={view.engine} passage={!previewShown && thread && document ? threadNode(document, thread) : undefined} placement="side" {...runConversation} {...runVisual} {...(previewShown ? {} : itemActions)} onMove={() => { if (view.engine.activeThreadId) showCenterConversation(view.engine.activeThreadId) }} />
+  const sideConversation = <Conversation onOpenBrowserEvidence={openBrowserEvidence} browserEvidence={view.preview.evidence} visible={previewShown ? previewNavigationTab === 'conversation' : !conversationCentered && document?.reading.navigationTab === 'conversation'} engine={view.engine} passage={!previewShown && thread && document ? threadNode(document, thread) : undefined} placement="side" {...runConversation} {...runVisual} {...(previewShown ? {} : itemActions)} onMove={() => { if (view.engine.activeThreadId) showCenterConversation(view.engine.activeThreadId) }} />
   // The center conversation is the editor pane for zoom: Ctrl+wheel and Ctrl+= over it scale the editor factor, as they do over a document (§6.9).
-  const centerConversation = <main className="island editor-island conversation-island" data-pane="editor" style={{ '--zoom': zoom.editor } as CSSProperties}><AmbientDecor variant="editor" />{documentPicker && (documentPicker.path === null || pickerDocument) ? <NewConversation key={`${documentPicker.path ?? "new"}:${documentPicker.projectId ?? "current"}`} engine={view.engine} {...(documentPicker.projectId ? { projectId: documentPicker.projectId } : {})} document={pickerDocument} {...(documentPicker.comment ? { comment: documentPicker.comment } : {})} onProjectChange={(projectId) => setDocumentPicker((current) => current && current.projectId !== projectId ? { ...current, projectId } : current)} onBeforeSend={async () => { if (pickerDocument) await flushBuffer() }} onStarted={showCenterConversation} /> : <Conversation engine={view.engine} placement="center" documentMeasure={panelSizes.documentMeasure} onDocumentMeasure={(value, commit) => updatePanel('documentMeasure', value, commit)} {...runConversation} {...runVisual} {...itemActions} {...(document ? { onMove: () => { setConversationCentered(false); selectNavigationTab('conversation') } } : {})} />}</main>
+  const centerConversation = <main className="island editor-island conversation-island" data-pane="editor" style={{ '--zoom': zoom.editor } as CSSProperties}><AmbientDecor variant="editor" />{documentPicker && (documentPicker.path === null || pickerDocument) ? <NewConversation key={`${documentPicker.path ?? "new"}:${documentPicker.projectId ?? "current"}`} engine={view.engine} {...(documentPicker.projectId ? { projectId: documentPicker.projectId } : {})} document={pickerDocument} {...(documentPicker.comment ? { comment: documentPicker.comment } : {})} onProjectChange={(projectId) => setDocumentPicker((current) => current && current.projectId !== projectId ? { ...current, projectId } : current)} onBeforeSend={async () => { if (pickerDocument) await flushBuffer() }} onStarted={showCenterConversation} /> : <Conversation onOpenBrowserEvidence={openBrowserEvidence} browserEvidence={view.preview.evidence} engine={view.engine} placement="center" documentMeasure={panelSizes.documentMeasure} onDocumentMeasure={(value, commit) => updatePanel('documentMeasure', value, commit)} {...runConversation} {...runVisual} {...itemActions} {...(document ? { onMove: () => { setConversationCentered(false); selectNavigationTab('conversation') } } : {})} />}</main>
 
   const flushBuffer = useCallback(async () => {
     if (mirrorTimer.current !== null) window.clearTimeout(mirrorTimer.current)

@@ -128,17 +128,17 @@ export function snapshotScript(limits: { text: number; elements: number; nodes: 
       if (!visible(el)) continue;
       const role = roleFor(el) || (el.hasAttribute('tabindex') ? 'generic' : '');
       if (!role) continue;
-      interactive.push({ tag: el.tagName.toLowerCase(), role, name: nameFor(el), selector: cssPath(el), ...rectOf(el) });
+      interactive.push({ tag: el.tagName.toLowerCase(), role, name: nameFor(el).slice(0, 200), selector: cssPath(el), ...rectOf(el) });
       if (interactive.length >= ${limits.elements}) break;
     }
     let count = 0;
     const outline = (el) => {
       if (count >= ${limits.nodes} || !visible(el)) return null;
+      count += 1;
       const role = roleFor(el);
       const children = [];
       for (const child of Array.from(el.children)) { const node = outline(child); if (node) children.push(node); }
       if (!role && children.length === 0) return null;
-      count += 1;
       const node = { role: role || 'generic', name: role ? nameFor(el).slice(0, 120) : '' };
       if (children.length) node.children = children;
       return node;

@@ -1,4 +1,5 @@
 import { validatedModelOptions } from '../../shared/custom-models'
+import type { BrowserEvidenceTransfer } from '../../shared/browser-evidence'
 import { legacyCommentNote, sentCommentsFromDelivery } from '../../core/sent-comments'
 import { installRelayClient } from './relay-install'
 import { accountForModel } from '../../core/accountState'
@@ -111,6 +112,7 @@ export interface EngineNotification { threadId: string; title: string; body: str
 
 /** The preview host the engine's browser requests go to (docs/plans/open/visual-review, phase 2). */
 export interface PreviewHostBridge {
+  setEvidenceTransfer?(transfer: BrowserEvidenceTransfer): void
   operations: readonly string[]
   handle(request: { requestId: string; threadId: string; tabId?: string | undefined; tabIdExplicit?: boolean | undefined; operation: string; input: unknown; timeoutMs: number }): Promise<{ ok: true; result: unknown } | { ok: false; error: { _tag: string; message: string; detail?: unknown } }>
   setRegistered(registered: boolean): void
@@ -1857,6 +1859,16 @@ export class T3EngineClient implements EngineReadClient {
     if (this.#previewEnvironmentId && this.#previewEnvironmentId !== identity.environmentId) { logWarn('engine', `The engine now reports another identity (${identity.environmentId}); the browser stays registered only with ${this.#previewEnvironmentId}`); return }
     if (this.#socket !== socket || socket.closed) return
     this.#previewEnvironmentId = identity.environmentId
+    const credential = this.#credential
+    host.setEvidenceTransfer?.({
+      destination: `${identity.environmentId} (${credential.server})`,
+      upload: async (input) => {
+        if (this.#socket !== socket || socket.closed || this.#credential !== credential) throw new Error(`Reconnect to ${credential.server} before transferring browser evidence`)
+        const uploaded = await this.#uploadBytes({ ...input, type: 'file' })
+        if (this.#socket !== socket || this.#credential !== credential) throw new Error(`The connection to ${credential.server} changed during transfer. The local copy is retained.`)
+        return uploaded.id
+      },
+    })
     this.#previewStream = await socket.stream(T3_RPC.previewAutomationConnect, { clientId: this.#previewClientId, environmentId: identity.environmentId, supportedOperations: [...host.operations] }, (item) => {
       const parsed = previewStreamEvent.safeParse(item)
       if (!parsed.success) { logWarn('engine', `The engine sent an unreadable preview event: ${parsed.error.message}`); return }
@@ -2362,9 +2374,13 @@ export class T3EngineClient implements EngineReadClient {
   }
 
   async #uploadBytes(input: { type: 'file' | 'image'; name: string; mimeType: string; bytes: Uint8Array }): Promise<UploadedAttachment> {
-    if (!this.#credential) throw new Error('No engine is paired')
+    const credential = this.#credential
+    if (!credential) throw new Error('No engine is paired')
     const upload = attachmentUploadResult.parse(await this.#rpc(T3_RPC.createAttachmentUploadUrl, { type: input.type, name: input.name, mimeType: input.mimeType, sizeBytes: input.bytes.byteLength }, 'attachment upload'))
-    const response = await this.#fetch(new URL(upload.relativeUrl, this.#credential.server), {
+    if (this.#credential !== credential) throw new Error(`The connection to ${credential.server} changed before the upload`)
+    const destination = new URL(upload.relativeUrl, credential.server)
+    if (destination.origin !== new URL(credential.server).origin) throw new Error(`The upload destination is outside ${credential.server}`)
+    const response = await this.#fetch(destination, {
       method: 'POST', headers: { 'content-type': input.mimeType, 'content-length': String(input.bytes.byteLength) }, body: new Uint8Array(input.bytes),
       signal: AbortSignal.timeout(10_000),
     })
