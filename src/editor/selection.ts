@@ -97,9 +97,18 @@ export function sourceSelectionForEditor(
   from: number,
   to: number,
 ): SourceSelection | null {
-  const start = blockPosition(doc, from)
-  const end = blockPosition(doc, to)
+  let start = blockPosition(doc, from)
+  let end = blockPosition(doc, to)
   if (!start || !end) return null
+  // A selection can touch the next paragraph without selecting its text.
+  // Keep outer paragraph separators out of the source range, while retaining
+  // separators between blocks whose text is actually selected.
+  while (start.index < end.index && start.textOffset === start.renderedText.length) {
+    start = blockPosition(doc, topLevelOffset(doc, start.index + 1) + 1)!
+  }
+  while (end.index > start.index && end.textOffset === 0) {
+    end = blockPosition(doc, topLevelOffset(doc, end.index) - 1)!
+  }
   const startBlock = parsed.blocks[start.index]
   const endBlock = parsed.blocks[end.index]
   if (!startBlock || !endBlock) return null

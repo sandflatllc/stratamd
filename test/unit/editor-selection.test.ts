@@ -36,6 +36,22 @@ function textPosition(
 }
 
 describe('visual selection markdown spans', () => {
+  it.each(['', '> '])('excludes outer paragraph breaks from a selection with prefix %j', prefix => {
+    const source = `Before.\n\n${prefix}Selected paragraph.\n\nAfter.`
+    const parsed = parseMarkdownForEditor(source)
+    const beforeEnd = textPosition(parsed, 'Before.') + 'Before.'.length
+    const selectedStart = textPosition(parsed, 'Selected paragraph.')
+    const selectedEnd = selectedStart + 'Selected paragraph.'.length
+    const afterStart = textPosition(parsed, 'After.')
+    const expected = { quote: 'Selected paragraph.', from: source.indexOf('Selected'), to: source.indexOf('Selected') + 'Selected paragraph.'.length, singleBlock: true }
+
+    expect(sourceSelectionForEditor(parsed, parsed.doc, selectedStart, afterStart)).toEqual(expected)
+    expect(sourceSelectionForEditor(parsed, parsed.doc, beforeEnd, selectedEnd)).toEqual(expected)
+    expect(sourceSelectionForEditor(parsed, parsed.doc, beforeEnd, afterStart)).toEqual(expected)
+    expect(sourceSelectionForEditor(parsed, parsed.doc, beforeEnd, selectedStart)).toBeNull()
+    expect(sourceSelectionForEditor(parsed, parsed.doc, selectedStart, afterStart + 1)).toMatchObject({ quote: 'Selected paragraph.\n\nA', singleBlock: false })
+  })
+
   it('preserves exact blank-line separators across top-level blocks', () => {
     const source = 'First paragraph.\r\n\r\nSecond paragraph.\r\n'
     const parsed = parseMarkdownForEditor(source)
