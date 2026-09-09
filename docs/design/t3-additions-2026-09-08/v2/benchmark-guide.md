@@ -80,3 +80,7 @@ These checks cover the design exports at the fixed benchmark size. They do not c
 - `tools/capture-benchmarks.py`: repeatable capture and comparison using agent-browser.
 
 The existing gallery service serves this directory tree at port 43871. Re-running static captures needs that service, agent-browser, Python, Pillow, and NumPy. It does not need the isolated app to remain open. Recreating original renderer exports needs a matching build, the repository's isolated Electron fixture, and the explicit Strata theme override. Never use the owner's running app or profile as a fixture.
+
+## Model option contract correction
+
+The numeric maximum-output example was replaced with T3-supported select and boolean controls: Reasoning effort and Fast mode. The invalid state shows an unsupported stored value and prevents saving. The model editor retains the approved layout and uses Strata's existing Switch. This corrects the fixture to the actual provider contract; it does not add a numeric option type or change the saved owner approval.

@@ -191,5 +191,16 @@
       560
     ],
     "verification": "All six question states recaptured; no broken assets or out-of-viewport feature controls."
+  },
+  "modelOptionContractCorrection": {
+    "status": "Fixture corrected to real T3 descriptor schema; historical approval retained",
+    "reason": "T3 supports select and boolean custom option descriptors, not the numeric maximum-output fixture",
+    "replacement": "Reasoning effort High/Low plus Fast mode boolean; invalid imported value lots remains visible and blocks saving",
+    "upstream": "packages/contracts/src/model.ts at 08463e2c",
+    "states": [
+      "edit",
+      "options",
+      "invalid"
+    ]
   }
 }

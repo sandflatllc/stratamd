@@ -1,7 +1,7 @@
 {
   "changes": [
     {
-      "height": 319.390625,
+      "height": 360.890625,
       "label": "Custom model name, supported options, and validation",
       "number": 1,
       "selector": "[data-change-id=\"1\"]",
@@ -26,6 +26,7 @@
     15
   ],
   "approval": "approved",
+  "ownerReviewNotes": "",
   "sourceCommit": "37678211593ce0f43341e591d70b8c67dad093bb",
   "sourceComponents": [
     "src/renderer/components/ProviderModels.tsx",
@@ -77,7 +78,5 @@
     "bodyOverflow": false,
     "brokenImages": [],
     "offscreenChanges": []
-  },
-  "ownerReviewNotes": "",
-  "approvalInterpretation": "Approved with comments requires those corrections; all other aspects stay approved."
+  }
 }
