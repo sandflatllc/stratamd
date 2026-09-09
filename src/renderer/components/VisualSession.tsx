@@ -49,10 +49,11 @@ export interface VisualSessionProps {
   onScroll?: ((delta: VisualPointView) => Promise<void>) | undefined
   /** An existing comment's id when editing its draft; absent when opening over a staged image. */
   commentId?: string
-  source?: { staged: string; name: string }
+  source?: { staged: string; name: string; windowCapture?: import('../../shared/window-capture').WindowCaptureContext }
   projectId: string
   destination: VisualDestinationView
   /** The card's context line: the page or image and the size, in plain words. */
+  windowCapture?: import('../../shared/window-capture').WindowCaptureContext
   place: string
   initial?: { text: string; marks: VisualMarkView[]; strokes: VisualStrokeView[]; adjustments: VisualAdjustmentView[]; requested?: VisualCaptureView | undefined }
   /** Asks the live page what is at a point or in a box; absent for an image, where every mark is a region. */
@@ -81,7 +82,7 @@ function inTextField(target: EventTarget | null): boolean {
   return target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement || (target instanceof HTMLElement && target.isContentEditable)
 }
 
-export function VisualSession({ sessionId, session: controlled, setSession: setControlled, closeRequest, capture: opened, captures: all, commentId, source, page, onScroll, projectId, destination, place, initial, describe, onAdjust, adjustStatus, notice, returnToComposer = true, onHold, onCancelAttachment, onClose, onError }: VisualSessionProps) {
+export function VisualSession({ sessionId, session: controlled, setSession: setControlled, closeRequest, capture: opened, captures: all, commentId, source, page, onScroll, projectId, destination, windowCapture, place, initial, describe, onAdjust, adjustStatus, notice, returnToComposer = true, onHold, onCancelAttachment, onClose, onError }: VisualSessionProps) {
   const captures = all && all.length ? all : [opened]
   const capture = captures[captures.length - 1]!
   const [local, setLocal] = useState(() => { const data = newVisualSession(initial); if (data.requested) data.requestedFor = JSON.stringify([data.adjusted, data.marks, data.strokes, captures.map(frame => frame.id)]); return data })
@@ -203,7 +204,7 @@ export function VisualSession({ sessionId, session: controlled, setSession: setC
         ...((data.commentId ?? commentId) ? { id: (data.commentId ?? commentId)! } : {}),
         projectId,
         threadId: data.destination.threadId,
-        ...(source && !data.commentId && !commentId ? { source: { staged: source.staged, name: source.name, width: capture.width, height: capture.height } } : {}),
+        ...(source && !data.commentId && !commentId ? { source: { staged: source.staged, name: source.name, ...(source.windowCapture ? { windowCapture: source.windowCapture } : {}), width: capture.width, height: capture.height } } : {}),
         ...(data.page ? { page: { ...data.page, captures: [...data.page.captures, ...(data.requested && data.adjusted.length ? [{ id: data.requested.id, width: data.requested.width, height: data.requested.height, scroll: data.requested.scroll ?? { x: 0, y: 0 }, scale: data.requested.scale ?? 1, requested: true }] : [])] } } : {}),
         text: data.text,
         marks: data.marks,
@@ -399,6 +400,7 @@ export function VisualSession({ sessionId, session: controlled, setSession: setC
         </div>
       </div>
       <form className="visual-card" data-pane="composer" onSubmit={(event) => { event.preventDefault(); void holdAndClose() }}>
+        {(source?.windowCapture ?? windowCapture) && <header><h3>{source?.name ?? (windowCapture?.app ? `${windowCapture.title} · ${windowCapture.app}` : windowCapture?.title)}</h3><p>{place}</p></header>}
         {notice && <p className="visual-notice" role="status">{notice}</p>}
         <textarea ref={textarea} aria-label="Visual comment" placeholder="What should change here?" value={text} disabled={busy} onChange={(event) => setText(event.target.value)} />
         {summary.length > 0 && <div className="visual-chips" aria-label="Marked things">
@@ -410,7 +412,7 @@ export function VisualSession({ sessionId, session: controlled, setSession: setC
         {onAdjust && (() => { const mark = marks.find((candidate) => candidate.id === selectedMark && candidate.kind === 'element' && candidate.identity); return mark ? <VisualAdjustments mark={mark} adjustments={adjusted} status={liveApplied.current ? adjustStatus ?? 'shown live' : 'not shown yet'} busy={busy || adjusting} canUndo={history.length > 0} onChange={(next) => void applyAdjustments(next)} onUndo={() => void undoAdjustment()} onReset={() => void resetAdjustments()} /> : null })()}
         {!onAdjust && adjusted.length > 0 && <p className="visual-adjustment-summary">{adjusted.map((adjustment) => adjustment.label).join(' · ')}</p>}
         <footer>
-          <span className="visual-context" title={`${place} · ${destination.threadTitle}`}>Send to this conversation</span>
+          <span className="visual-context" title={`${place} · ${destination.threadTitle}`}>{source?.windowCapture || windowCapture ? `Hold for ${destination.threadTitle}` : 'Send to this conversation'}</span>
           <button type="button" className="quiet-button" disabled={busy} onClick={() => void cancel()}>{source ? 'Cancel attachment' : 'Discard'}</button>
           <button type="submit" className="primary-button" disabled={busy}>Hold</button>
         </footer>

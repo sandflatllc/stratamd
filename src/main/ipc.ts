@@ -1,3 +1,4 @@
+import { windowCaptureContextSchema } from '../shared/window-capture-schema'
 import { consumeResetCreditInput } from '../shared/usage-limits'
 import { projectDefaultsEdit } from '../shared/project-defaults'
 import { documentSourceSchema } from '../shared/documents'
@@ -20,7 +21,7 @@ import { usageWindow, terminalAttachInput, terminalWriteInput, terminalResizeInp
 import { isStagedAttachmentId } from './engine/staged-attachments'
 import { isVisualCommentId } from '../core/visual-comments'
 
-type StrataIpcApi = Omit<StrataApi, 'subscribe'>
+type StrataIpcApi = Omit<StrataApi, 'subscribe' | 'onWindowCapture'>
 
 const pathSchema = z.string().min(1).max(16_384)
 const idSchema = z.string().min(1).max(512)
@@ -44,7 +45,7 @@ const holdVisualCommentSchema = z.object({
   id: visualCommentIdSchema.optional(),
   projectId: idSchema,
   threadId: idSchema,
-  source: z.object({ staged: stagedAttachmentIdSchema, name: idSchema, width: z.number().int().positive().max(32_768), height: z.number().int().positive().max(32_768) }).strict().optional(),
+  source: z.object({ windowCapture: windowCaptureContextSchema.optional(), staged: stagedAttachmentIdSchema, name: idSchema, width: z.number().int().positive().max(32_768), height: z.number().int().positive().max(32_768) }).strict().optional(),
   page: z.object({
     tabId: previewTabIdSchema,
     captures: z.array(z.object({ id: z.string().regex(/^e_/u).max(64), width: z.number().int().positive().max(32_768), height: z.number().int().positive().max(32_768), scroll: visualPointSchema, scale: z.number().positive().max(16), requested: z.boolean().optional() }).strict()).min(1).max(32),
@@ -161,6 +162,7 @@ const startThreadSchema = z.object({
   instanceId: idSchema.nullable().optional(),
 }).strict()
 const settingsSchema = z.object({
+  windowCapture: z.object({ enabled: z.boolean(), shortcut: z.boolean() }).strict().optional(),
   animatedBackground: z.boolean().optional(),
   panelSizes: z.object({
     explorerWidth: z.number().positive().finite(),
@@ -244,6 +246,7 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.discardItemReply]: z.tuple([idSchema, idSchema]),
   [IPC.dismissItem]: z.tuple([idSchema, idSchema]),
   [IPC.retainVisualEvidence]: z.tuple([idSchema, z.array(z.string().regex(/^e_[0-9a-f-]{36}$/)).max(128)]),
+  [IPC.windowCapture]: z.tuple([z.union([z.object({ action: z.enum(['status', 'choose', 'screen-settings', 'accessibility-settings']) }).strict(), z.object({ action: z.literal('capture'), token: z.string().uuid(), projectId: idSchema, threadId: idSchema, engine: idSchema.nullable() }).strict()])]),
   [IPC.holdVisualComment]: z.tuple([holdVisualCommentSchema]),
   [IPC.actVisualComment]: z.tuple([visualCommentIdSchema, z.enum(['accept', 'reopen', 'discard', 'retry', 'compare'])]),
   [IPC.openPreviewTab]: z.tuple([z.object({ projectId: idSchema, url: z.string().max(2_048).optional() }).strict()]),
@@ -507,6 +510,7 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.discardItemReply]: (threadId: string, itemId: string) => options.api.discardItemReply(threadId, itemId),
     [IPC.dismissItem]: (threadId: string, itemId: string) => options.api.dismissItem(threadId, itemId),
     [IPC.retainVisualEvidence]: (owner: string, ids: string[]) => options.api.retainVisualEvidence?.(owner, ids),
+    [IPC.windowCapture]: (input: Parameters<StrataApi['windowCapture']>[0]) => options.api.windowCapture(input),
     [IPC.holdVisualComment]: (input: Parameters<StrataApi['holdVisualComment']>[0]) => options.api.holdVisualComment(input),
     [IPC.actVisualComment]: (id: string, action: Parameters<StrataApi['actVisualComment']>[1]) => options.api.actVisualComment(id, action),
     [IPC.openPreviewTab]: (input: Parameters<StrataApi['openPreviewTab']>[0]) => options.api.openPreviewTab(input),

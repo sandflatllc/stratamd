@@ -41,7 +41,7 @@ export function VisualCommentCard({ comment, actions = {}, compact = false, chil
   return (
     <article className="visual-card-row" data-status={comment.status} data-compact={compact || undefined} aria-label={`Visual comment · ${comment.statusLabel}`}>
       <header>
-        <span className="visual-kind">Visual · comment</span>
+        <span className="visual-kind">{comment.anchor.kind === 'image' && comment.anchor.windowCapture ? comment.anchor.name : 'Visual · comment'}</span>
         <span className="visual-status" data-status={comment.status}>{comment.statusLabel}</span>
       </header>
       <div className="visual-where">{comment.place}</div>

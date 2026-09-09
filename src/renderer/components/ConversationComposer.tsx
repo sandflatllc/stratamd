@@ -3,6 +3,8 @@ import { useComposerCommands } from '../useComposerCommands'
 import { ComposerCommandMenu, commandOptionId } from './ComposerCommandMenu'
 import { openDocumentPreview } from '../documentPreview'
 import { documentKind } from '../../shared/documents'
+
+import { HeldWindowCapture } from './HeldWindowCapture'
 import './conversation-drafts.css'
 import { accountForModel } from '../../core/accountState'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
@@ -277,6 +279,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     <div className="chat-composer-box">
       {context && <div className="chat-context">{context}</div>}
       {visualComments.length > 0 && <div className="conversation-visual-staged" aria-label="Visual comments in this send">{visualComments.map((comment) => {
+        if (comment.anchor.kind === 'image' && comment.anchor.windowCapture) return <HeldWindowCapture key={comment.id} comment={comment} busy={busy} onReview={() => onOpenVisual?.(comment)} onRemove={() => void removeVisual(comment)} />
         const included = !excludedVisual.includes(comment.id)
         return <div key={comment.id} className="conversation-visual-card" data-included={included}>
           <VisualCommentCard comment={comment} compact actions={{ ...(onOpenVisual ? { onOpen: onOpenVisual } : {}) }} />

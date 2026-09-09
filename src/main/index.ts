@@ -1,3 +1,4 @@
+import { configureCaptureShortcut } from './capture/window-capture'
 import { DEFAULT_THEME_VALUES } from '../shared/bundled-themes'
 import { isAppRootNavigation } from './local-link'
 import { assertSupportedPlatform } from '../platform/runtime'
@@ -88,6 +89,12 @@ export interface StartMainOptions {
   devServerUrl?: string
 }
 
+if (process.platform === 'linux') {
+  const features = new Set(app.commandLine.getSwitchValue('enable-features').split(',').filter(Boolean))
+  features.add('GlobalShortcutsPortal')
+  features.add('WebRTCPipeWireCapturer')
+  app.commandLine.appendSwitch('enable-features', [...features].join(','))
+}
 registerPrivilegedSchemes()
 
 /**
@@ -208,6 +215,9 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
       }
     })
 
+    const syncCaptureShortcut = (state: AppView) => configureCaptureShortcut(!!state.settings.windowCapture?.enabled && !!state.settings.windowCapture.shortcut, () => { window.show(); window.focus(); window.webContents.send(IPC.captureRequested) })
+    syncCaptureShortcut(initialState)
+    window.once('closed', () => configureCaptureShortcut(false, () => undefined))
     hardenWindow(window)
     options.api.attachPreviewWindow?.(window)
     window.webContents.on('console-message', (message) => {
@@ -237,6 +247,7 @@ export async function startStrataMain(options: StartMainOptions): Promise<Browse
       keepRunning = !!state.engine.managed && state.settings.engine?.keepRunning !== false
       if (keepRunning && !tray) tray = engineTray(() => { void showAndFocus() })
       if (!keepRunning && tray) { tray.destroy(); tray = null }
+      syncCaptureShortcut(state)
       registeredIpc?.publish(state)
       const next = String(state.settings.theme.active.values['surfaces.window'] ?? '')
       if (next && next !== pageBackground) {

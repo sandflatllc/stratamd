@@ -80,7 +80,7 @@ export interface VisualCapture {
 }
 
 export type VisualAnchor =
-  | { kind: 'image'; name: string }
+  | { kind: 'image'; name: string; windowCapture?: import('../shared/window-capture').WindowCaptureContext }
   | {
       kind: 'page'
       url: string
@@ -183,7 +183,8 @@ export const VISUAL_STATUS_LABELS: Record<VisualStatus, string> = {
 export function visualPlace(anchor: VisualAnchor, captures: readonly Pick<VisualCapture, 'width' | 'height'>[]): string {
   if (anchor.kind === 'image') {
     const first = captures[0]
-    return first ? `Pasted image · ${first.width} × ${first.height}` : 'Pasted image'
+    const label = anchor.windowCapture ? anchor.windowCapture.selection === 'system-source' ? 'System capture' : 'Window capture' : 'Pasted image'
+    return first ? `${label} · ${first.width} × ${first.height}` : label
   }
   const size = anchor.viewport.preset ? anchor.viewport.preset.toLowerCase() : 'window size'
   return `${anchor.title || 'Page'} · ${size}`
@@ -415,7 +416,7 @@ export function visualCommentView(
     status,
     statusLabel: VISUAL_STATUS_LABELS[status],
     place: visualPlace(comment.anchor, comment.captures),
-    anchor: comment.anchor.kind === 'image' ? { kind: 'image', name: comment.anchor.name } : { kind: 'page', url: comment.anchor.url, title: comment.anchor.title, instance: comment.anchor.instance, preset: comment.anchor.viewport.preset, viewport: { width: comment.anchor.viewport.width, height: comment.anchor.viewport.height } },
+    anchor: comment.anchor.kind === 'image' ? { kind: 'image', name: comment.anchor.name, ...(comment.anchor.windowCapture ? { windowCapture: comment.anchor.windowCapture } : {}) } : { kind: 'page', url: comment.anchor.url, title: comment.anchor.title, instance: comment.anchor.instance, preset: comment.anchor.viewport.preset, viewport: { width: comment.anchor.viewport.width, height: comment.anchor.viewport.height } },
     title: current ? visualTitle(current) : 'Visual comment',
     summary: current ? visualSummary(current) : '',
     thumbnail: thumbnailCapture ? options.captureUrl(thumbnailCapture.markedId ?? thumbnailCapture.id) : null,

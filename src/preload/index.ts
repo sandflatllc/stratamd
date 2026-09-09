@@ -159,6 +159,8 @@ const api: StrataApi & {
   discardItemReply: (threadId, itemId) => invoke<void>(IPC.discardItemReply, threadId, itemId),
   dismissItem: (threadId, itemId) => invoke<void>(IPC.dismissItem, threadId, itemId),
   retainVisualEvidence: (owner, ids) => invoke<void>(IPC.retainVisualEvidence, owner, ids),
+  onWindowCapture: (listener) => { const wrapped = () => listener(); ipcRenderer.on(IPC.captureRequested, wrapped); return () => ipcRenderer.removeListener(IPC.captureRequested, wrapped) },
+  windowCapture: (input) => invoke(IPC.windowCapture, input),
   holdVisualComment: (input) => invoke<string>(IPC.holdVisualComment, input),
   actVisualComment: (id, action) => invoke<void>(IPC.actVisualComment, id, action),
   openPreviewTab: (input) => invoke<string>(IPC.openPreviewTab, input),

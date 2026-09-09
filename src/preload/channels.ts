@@ -55,6 +55,8 @@ export const IPC = {
   discardItemReply: 'strata:discard-item-reply',
   dismissItem: 'strata:dismiss-item',
   retainVisualEvidence: 'strata:retain-visual-evidence',
+  windowCapture: 'strata:window-capture',
+  captureRequested: 'strata:capture-requested',
   holdVisualComment: 'strata:hold-visual-comment',
   actVisualComment: 'strata:act-visual-comment',
   openPreviewTab: 'strata:open-preview-tab',
@@ -152,6 +154,6 @@ export const IPC = {
 export type SendChannel = typeof IPC.reportError
 
 /** Main→renderer pushes; everything else is a renderer invoke. */
-export type PushChannel = typeof IPC.terminalEvent | typeof IPC.stateChanged | typeof IPC.spelling | typeof IPC.windowStateChanged
+export type PushChannel = typeof IPC.captureRequested | typeof IPC.terminalEvent | typeof IPC.stateChanged | typeof IPC.spelling | typeof IPC.windowStateChanged
 
 export type InvokeChannel = Exclude<(typeof IPC)[keyof typeof IPC], PushChannel | SendChannel>

@@ -1,3 +1,4 @@
+import { windowCaptureContextSchema } from '../../shared/window-capture-schema'
 import { readFile, readdir } from 'node:fs/promises'
 import { z } from 'zod'
 import { atomicWriteFile, PRIVATE_FILE_MODE } from '../storage'
@@ -35,7 +36,7 @@ const adjustment = z.object({ markId: z.string().min(1), property: z.string().mi
 const destination = z.object({ threadId: z.string().min(1), engine: z.string().nullable() })
 const capture = z.object({ id: z.string().min(1), width: z.number().positive(), height: z.number().positive(), scroll: point.optional(), scale: z.number().positive().optional(), requested: z.boolean().optional(), markedId: z.string().optional(), takenAt: z.number() })
 const anchor = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('image'), name: z.string() }),
+  z.object({ kind: z.literal('image'), name: z.string(), windowCapture: windowCaptureContextSchema.optional() }),
   z.object({ kind: z.literal('page'), url: z.string(), title: z.string(), instance: z.string(), workingFolder: z.string().nullable(), viewport: z.object({ width: z.number(), height: z.number(), preset: z.string().nullable() }), deviceScale: z.number() }),
 ])
 const draft = z.object({ requestedCaptureId: z.string().optional(), text: z.string(), marks: z.array(mark), strokes: z.array(stroke), adjustments: z.array(adjustment), destination, updatedAt: z.number() })

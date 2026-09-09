@@ -491,7 +491,7 @@ export interface VisualDraftView {
 }
 
 export type VisualAnchorView =
-  | { kind: 'image'; name: string }
+  | { kind: 'image'; name: string; windowCapture?: import('../shared/window-capture').WindowCaptureContext }
   | { kind: 'page'; url: string; title: string; instance: string; preset: string | null; viewport: { width: number; height: number } }
 
 export interface VisualCommentView {
@@ -519,7 +519,7 @@ export interface HoldVisualCommentInput {
   projectId: string
   threadId: string
   /** A staged composer image to open the comment over; its bytes move into the evidence store. */
-  source?: { staged: string; name: string; width: number; height: number }
+  source?: { staged: string; name: string; width: number; height: number; windowCapture?: import('./window-capture').WindowCaptureContext }
   /** A page capture to open the comment over: the frames Annotate stored and the page they came from. */
   page?: { tabId: string; captures: Array<{ id: string; width: number; height: number; scroll: VisualPointView; scale: number; requested?: boolean }>; url: string; title: string; viewport: { width: number; height: number }; preset: string | null; deviceScale: number }
   text: string
@@ -827,6 +827,7 @@ export type PaneId = 'explorer' | 'editor' | 'rightRail' | 'composer' | 'themePa
 export type PaneZoom = Record<PaneId, number>
 
 export interface AppSettingsView {
+  windowCapture?: { enabled: boolean; shortcut: boolean }
   engine?: { mode: 'managed' | 'external'; keepRunning: boolean; startAtLogin: boolean }
   animatedBackground: boolean
   panelSizes: PanelSizes
@@ -1138,6 +1139,8 @@ export interface StrataApi {
   dismissItem(threadId: string, itemId: string): Promise<void>
   /** Holds a visual comment privately: creates it over a staged image or updates its draft, and keeps the marked captures as evidence. */
   retainVisualEvidence?(owner: string, ids: string[]): Promise<void>
+  onWindowCapture(listener: () => void): () => void
+  windowCapture(input: import('./window-capture').CaptureRequest): Promise<import('./window-capture').CaptureResponse>
   holdVisualComment(input: HoldVisualCommentInput): Promise<string>
   /** Looks right (accept), Still wrong (reopen), discard the draft, or retry a failed send. Accept starts no turn. */
   actVisualComment(id: string, action: VisualCommentAction): Promise<void>

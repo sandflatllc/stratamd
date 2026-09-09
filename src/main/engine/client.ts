@@ -1231,7 +1231,7 @@ export class T3EngineClient implements EngineReadClient {
       const staged = await this.#staged.read(input.source.staged)
       if (!staged) throw new Error(`Attachment ${input.source.name} is no longer staged. Attach it again.`)
       const evidence = await this.#evidence.put({ bytes: staged.bytes, width: input.source.width, height: input.source.height, mimeType: staged.meta.mimeType })
-      comment = { id: `v_${randomUUID()}`, projectId: input.projectId, engine: null, anchor: { kind: 'image', name: input.source.name }, captures: [{ id: evidence.id, width: input.source.width, height: input.source.height, takenAt: now }], draft: null, revisions: [], createdAt: now, updatedAt: now }
+      comment = { id: `v_${randomUUID()}`, projectId: input.projectId, engine: null, anchor: { kind: 'image', name: input.source.name, ...(input.source.windowCapture ? { windowCapture: input.source.windowCapture } : {}) }, captures: [{ id: evidence.id, width: input.source.width, height: input.source.height, takenAt: now }], draft: null, revisions: [], createdAt: now, updatedAt: now }
       captureIds.set(input.source.staged, evidence.id)
       this.#visual.comments[comment.id] = comment
       // On Hold the image moves into the evidence store; the staged copy leaves so no delivery can consume it.

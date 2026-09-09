@@ -1281,6 +1281,25 @@ export class StrataApplication implements StrataApi {
 
   async retainVisualEvidence(owner: string, ids: string[]): Promise<void> { await this.#engine.retainVisualEvidence?.(owner, ids) }
 
+  onWindowCapture(_listener: () => void): () => void { return () => undefined }
+
+  async windowCapture(input: import('../shared/window-capture').CaptureRequest): Promise<import('../shared/window-capture').CaptureResponse> {
+    const native = await import('./capture/window-capture')
+    if (input.action === 'status') return { status: native.captureStatus() }
+    if (input.action === 'screen-settings' || input.action === 'accessibility-settings') { await native.openCaptureSettings(input.action); return { status: native.captureStatus() } }
+    if (!this.#settings.windowCapture?.enabled) throw new Error('Enable window capture in Settings first.')
+    if (input.action === 'choose') return { sources: await native.chooseWindows() }
+    if (input.action !== 'capture') return { cancelled: true }
+    const valid = () => { const engine = this.#engine.view(); return !!this.#settings.windowCapture?.enabled && (engine.identity ?? null) === input.engine && engine.projects.some(project => project.id === input.projectId && project.threads.some(thread => thread.id === input.threadId)) }
+    if (!valid()) throw new Error('The capture conversation changed. Choose a window again.')
+    const result = await native.captureWindow(input.token)
+    if (!valid()) throw new Error('The capture conversation changed. Choose a window again.')
+    const name = result.context.app ? `${result.context.title} · ${result.context.app}` : result.context.title
+    const staged = await this.stageConversationAttachment({ name: `${name}.png`, mimeType: 'image/png', bytes: result.bytes })
+    if (!valid()) { await this.discardConversationAttachment(staged.id); throw new Error('The capture conversation changed. Choose a window again.') }
+    return { capture: { id: staged.id, name, width: result.width, height: result.height, context: result.context } }
+  }
+
   async holdVisualComment(input: Parameters<StrataApi['holdVisualComment']>[0]): Promise<string> {
     if (!this.#engine.holdVisualComment) throw new Error('This engine cannot hold visual comments')
     return this.#engine.holdVisualComment(input)
@@ -2746,6 +2765,7 @@ export class StrataApplication implements StrataApi {
 
   async updateSettings(settings: Partial<Omit<AppSettingsView, 'theme'>>): Promise<void> {
     this.#settings = await this.#settingsStore.update({
+      ...(settings.windowCapture === undefined ? {} : { windowCapture: settings.windowCapture }),
       ...(settings.animatedBackground === undefined ? {} : { ambientMotion: settings.animatedBackground }),
       ...(settings.panelSizes === undefined ? {} : { panels: settings.panelSizes }),
       ...(settings.zoom === undefined ? {} : { zoom: settings.zoom })
@@ -4193,6 +4213,7 @@ function explorerView(scan: ExplorerScanResult, sessions: Map<string, OpenDocume
 function settingsView(settings: Settings): Omit<AppSettingsView, 'theme'> {
   return {
     engine: settings.engine,
+    windowCapture: settings.windowCapture ?? { enabled: false, shortcut: false },
     animatedBackground: settings.ambientMotion,
     panelSizes: { ...settings.panels },
     zoom: { ...settings.zoom }

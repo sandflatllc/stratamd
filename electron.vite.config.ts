@@ -1,6 +1,8 @@
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync, readdirSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Plugin } from 'vite'
+
+import { execFileSync } from 'node:child_process'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -20,12 +22,20 @@ function pdfAssets(): Plugin {
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin(), {
+      name: 'selected-x11-window-helper',
+      closeBundle() {
+        if (process.platform !== 'linux') return
+        mkdirSync('out/main', { recursive: true })
+        execFileSync('cc', ['-D_POSIX_C_SOURCE=200809L', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', 'native/window-capture/x11-window.c', '-ldl', '-o', 'out/main/capture-x11'])
+      },
+    }],
     build: {
       rollupOptions: {
         input: {
           index: 'src/main/index.ts',
           cli: 'src/cli/index.ts',
+          'accessibility-worker': 'src/main/capture/accessibility-worker.ts',
         }
       }
     }

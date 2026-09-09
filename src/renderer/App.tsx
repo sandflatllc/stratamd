@@ -1,6 +1,9 @@
 import { DocumentPreview } from './components/DocumentPreview'
 import { DOCUMENT_PREVIEW_EVENT, openDocumentPreview } from './documentPreview'
 import type { DocumentSource } from '../shared/documents'
+
+import { windowCaptureNotice } from '../shared/window-capture'
+import { WindowCaptureDialog } from './components/WindowCaptureDialog'
 import type { BrowserEvidenceView } from '../shared/browser-evidence'
 import { SettingsDialog } from './components/SettingsDialog'
 import { UsageDialog } from './components/UsageDialog'
@@ -127,7 +130,7 @@ export function App({ createEditor }: AppProps) {
     if (annotating && annotating.projectId !== previewShown) void window.strata.clearPreviewOverrides(annotating.tabId).catch(() => undefined)
   }, [previewShown, annotating?.sessionId])
   const [visualFallback, setVisualFallback] = useState<{ id: string; reason: string; url: string | null } | null>(null)
-  const [visualSession, setVisualSession] = useState<{ kind: 'staged'; id: string; name: string; width: number; height: number; projectId: string; destination: VisualDestinationView } | { kind: 'comment'; id: string } | null>(null)
+  const [visualSession, setVisualSession] = useState<{ kind: 'staged'; context?: import('../shared/window-capture').WindowCaptureContext; id: string; name: string; width: number; height: number; projectId: string; destination: VisualDestinationView } | { kind: 'comment'; id: string } | null>(null)
   /** A visual comment's card opened from the conversation, with its history and actions. */
   const [visualOpen, setVisualOpen] = useState<string | null>(null)
   /** Staged images whose bytes moved into a held visual comment; the composer drops them without a discard. */
@@ -140,6 +143,8 @@ export function App({ createEditor }: AppProps) {
   /** The picker (§5.7): from Projects with no document, or from a document, carrying the popover's pending comment when there is one. */
   const [usageOpen, setUsageOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [captureOpen, setCaptureOpen] = useState(false)
+  useEffect(() => window.strata.onWindowCapture(() => setCaptureOpen(true)), [])
   const [accountsDialog, setAccountsDialog] = useState(false)
   /** The window width, for the side windows' layout budget (§6.9). */
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth)
@@ -490,7 +495,7 @@ export function App({ createEditor }: AppProps) {
     void window.strata.refreshAccounts().catch(() => undefined)
   }
   const openSettings = () => { setAccountsDialog(false); setEngineDialog(false); setSettingsOpen(true) }
-  const settingsDialogNode = settingsOpen && <SettingsDialog engine={view.engine} onClose={() => setSettingsOpen(false)} onConnections={() => { setSettingsOpen(false); setEngineDialog(true) }} />
+  const settingsDialogNode = settingsOpen && <SettingsDialog engine={view.engine} onClose={() => setSettingsOpen(false)} onWindowCapture={() => { setSettingsOpen(false); setCaptureOpen(true) }} onConnections={() => { setSettingsOpen(false); setEngineDialog(true) }} />
   const engineDialogNode = engineDialog && <EngineDialog engine={view.engine} onPair={async (request) => { sessionStorage.setItem('stratamd.reopen-engine-dialog', '1'); try { await window.strata.pairEngine(request) } catch (error) { sessionStorage.removeItem('stratamd.reopen-engine-dialog'); throw error }; report('Paired. Projects and threads come from this server now.') }} onReconnect={reconnectEngine} onClose={() => setEngineDialog(false)} onOpenAccounts={openAccounts} />
   const usageDialogNode = usageOpen && <UsageDialog connected={view.engine.state === 'connected'} onClose={() => setUsageOpen(false)} onAccounts={openAccounts} />
   const accountsDialogNode = accountsDialog && <AccountsDialog onOpenSettings={openSettings} onOpenUsage={openUsage} engine={view.engine} onPark={(instanceId, parked) => void perform(() => window.strata.parkAccount(instanceId, parked))} onTerminalDefault={(driver, selection) => void perform(() => window.strata.setTerminalDefault(driver, selection))} onClose={() => setAccountsDialog(false)} onOpenEngine={() => { setAccountsDialog(false); setEngineDialog(true) }} />
@@ -577,7 +582,7 @@ export function App({ createEditor }: AppProps) {
     if (!visualSession) return null
     if (visualSession.kind === 'staged') {
       const capture = { id: visualSession.id, url: visualImageUrl('staged', visualSession.id), width: visualSession.width, height: visualSession.height }
-      return <VisualSession key={visualSession.id} capture={capture} source={{ staged: visualSession.id, name: visualSession.name }} projectId={visualSession.projectId} destination={visualSession.destination} place={`Pasted image · ${visualSession.width} × ${visualSession.height}`} onHold={holdVisual} onCancelAttachment={async () => {
+      return <VisualSession key={visualSession.id} capture={capture} source={{ staged: visualSession.id, name: visualSession.name, ...(visualSession.context ? { windowCapture: visualSession.context } : {}) }} notice={visualSession.context ? windowCaptureNotice(visualSession.context) : null} projectId={visualSession.projectId} destination={visualSession.destination} place={`${visualSession.context ? visualSession.context.selection === "system-source" ? "System capture" : "Window capture" : "Pasted image"} · ${visualSession.width} × ${visualSession.height}`} onHold={holdVisual} onCancelAttachment={async () => {
         const key = `thread:${visualSession.destination.threadId}`
         const draft = readDraft(key)
         const attachments = (draft.attachments ?? []).filter(attachment => attachment.kind !== 'image' || attachment.id !== visualSession.id)
@@ -593,7 +598,7 @@ export function App({ createEditor }: AppProps) {
     // A held page comment reopens over its captures; the live tab answers Mark again while it still shows that page.
     const liveTab = comment.anchor.kind === 'page' ? view.preview.tabs.find((tab) => tab.id === (comment.anchor as { instance: string }).instance && tab.url.replace(/#.*$/, '') === (comment.anchor as { url: string }).url.replace(/#.*$/, '')) ?? null : null
     const clean = comment.captures.filter((frame) => !frame.requested)
-    return <VisualSession key={comment.id} capture={capture} captures={clean.length ? clean : comment.captures} commentId={comment.id} {...(comment.anchor.kind === 'page' ? { page: { tabId: comment.anchor.instance, url: comment.anchor.url, title: comment.anchor.title, viewport: comment.anchor.viewport, preset: comment.anchor.preset, deviceScale: capture.scale ?? 1, captures: clean.map(frame => ({ id: frame.id, width: frame.width, height: frame.height, scroll: frame.scroll ?? { x: 0, y: 0 }, scale: frame.scale ?? 1 })) } } : {})} projectId={comment.projectId} destination={destination} place={comment.place} initial={{ text: comment.draft.text, marks: comment.draft.marks, strokes: comment.draft.strokes, adjustments: comment.draft.adjustments, requested: comment.captures.find(capture => capture.id === comment.draft?.requestedCaptureId) }} describe={liveTab ? describeOn(liveTab.id, clean.at(-1) ?? capture) : undefined} onAdjust={liveTab ? adjustOn(liveTab.id) : undefined} adjustStatus={liveTab ? 'shown live' : 'not shown: the page is not open'} onHold={holdVisual} onClose={() => { setVisualSession(null); if (liveTab) void window.strata.clearPreviewOverrides(liveTab.id).catch(() => undefined) }} onError={reportError} />
+    return <VisualSession key={comment.id} capture={capture} captures={clean.length ? clean : comment.captures} commentId={comment.id} {...(comment.anchor.kind === 'page' ? { page: { tabId: comment.anchor.instance, url: comment.anchor.url, title: comment.anchor.title, viewport: comment.anchor.viewport, preset: comment.anchor.preset, deviceScale: capture.scale ?? 1, captures: clean.map(frame => ({ id: frame.id, width: frame.width, height: frame.height, scroll: frame.scroll ?? { x: 0, y: 0 }, scale: frame.scale ?? 1 })) } } : {})} {...(comment.anchor.kind === 'image' && comment.anchor.windowCapture ? { windowCapture: comment.anchor.windowCapture, notice: windowCaptureNotice(comment.anchor.windowCapture) } : {})} projectId={comment.projectId} destination={destination} place={comment.place} initial={{ text: comment.draft.text, marks: comment.draft.marks, strokes: comment.draft.strokes, adjustments: comment.draft.adjustments, requested: comment.captures.find(capture => capture.id === comment.draft?.requestedCaptureId) }} describe={liveTab ? describeOn(liveTab.id, clean.at(-1) ?? capture) : undefined} onAdjust={liveTab ? adjustOn(liveTab.id) : undefined} adjustStatus={liveTab ? 'shown live' : 'not shown: the page is not open'} onHold={holdVisual} onClose={() => { setVisualSession(null); if (liveTab) void window.strata.clearPreviewOverrides(liveTab.id).catch(() => undefined) }} onError={reportError} />
   })()
   const visualPanelNode = visualOpen && visualById(visualOpen) ? <VisualCommentPanel comment={visualById(visualOpen)!} actions={visualActions} notice={visualFallback?.id === visualOpen ? visualFallback.reason : null} onOpenPage={visualFallback?.id === visualOpen && visualFallback.url ? () => { const url = visualFallback.url!; const projectId = visualById(visualOpen)!.projectId; setVisualOpen(null); setVisualFallback(null); showPreview(projectId); void perform(async () => { const id = await window.strata.openPreviewTab({ projectId, url }); setActivePreviewTabs((current) => ({ ...current, [projectId]: id })) }) } : undefined} onClose={() => { setVisualOpen(null); setVisualFallback(null) }} /> : null
   // ---- Preview windows (docs/plans/open/visual-review, phase 2)
@@ -1167,6 +1172,7 @@ export function App({ createEditor }: AppProps) {
       </div>
       {dragging && <div className="drop-overlay">Drop markdown files to open</div>}
       {settingsDialogNode}
+      {captureOpen && <WindowCaptureDialog engine={view.engine} enabled={view.settings.windowCapture?.enabled ?? false} onClose={() => setCaptureOpen(false)} onCapture={(capture, target) => { setCaptureOpen(false); setVisualSession({ kind: 'staged', ...capture, context: capture.context, projectId: target.projectId, destination: { threadId: target.threadId, threadTitle: target.threadTitle } }) }} />}
       {engineDialogNode}
       {accountsDialogNode}
       {usageDialogNode}
@@ -1218,6 +1224,7 @@ export function App({ createEditor }: AppProps) {
       {document.conflicts[0] && <ConflictDialog conflict={document.conflicts[0]} fileName={document.path.split('/').pop() ?? document.path} onChoose={(choice) => void perform(() => window.strata.resolveConflict(document.path, document.conflicts[0]!.id, choice), choice === 'mine' ? 'Kept your block.' : 'Incoming block applied for review.')} />}
       {closingTab && <CloseTabDialog tab={closingTab} onChoose={(choice) => { if (choice === 'cancel') { setClosingTab(null); return } void perform(() => window.strata.closeDocument(closingTab.path, choice)).then(() => setClosingTab(null)) }} />}
       {settingsDialogNode}
+      {captureOpen && <WindowCaptureDialog engine={view.engine} enabled={view.settings.windowCapture?.enabled ?? false} onClose={() => setCaptureOpen(false)} onCapture={(capture, target) => { setCaptureOpen(false); setVisualSession({ kind: 'staged', ...capture, context: capture.context, projectId: target.projectId, destination: { threadId: target.threadId, threadTitle: target.threadTitle } }) }} />}
       {engineDialogNode}
       {accountsDialogNode}
       {usageDialogNode}

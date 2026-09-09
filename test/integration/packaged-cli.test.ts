@@ -89,6 +89,21 @@ describe('packaged layout calculations', () => {
 })
 
 describePackaged('packaged CLI', () => {
+  it('ships the native accessibility module and selected-window helper outside the archive', async () => {
+    const layout = packagedLayout(process.platform, packagedRoot!)
+    const resources = process.platform === 'darwin' ? join(layout.root, 'Contents', 'Resources') : join(layout.root, 'resources')
+    const archive = join(resources, 'app.asar')
+    const load = await executeFile(layout.gui, ['-e', 'const root=process.argv[1]; const fs=require("node:fs"); const p=require("node:path"); const a=require(p.join(root,"node_modules/@crowecawcaw/xa11y")); if(typeof a.App.byPid!=="function")throw Error("Native accessibility missing"); if(!fs.existsSync(p.join(root,"out/main/accessibility-worker.js")))throw Error("Worker missing"); console.log("native accessibility loaded")', archive], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } })
+    expect(load.stdout.trim()).toBe('native accessibility loaded')
+    if (process.platform === 'linux') {
+      const helper = join(resources, 'app.asar.unpacked', 'out', 'main', 'capture-x11')
+      expect((await stat(helper)).mode & 0o111).not.toBe(0)
+      // Invalid input exits before opening a display. No owner window is queried.
+      await expect(executeFile(helper, ['invalid'])).rejects.toMatchObject({ code: 1 })
+    }
+    expect(await readFile(join(resources, 'resources', 'licenses', 't3-window-capture.txt'), 'utf8')).toContain('T3 Tools Inc.')
+  })
+
   it('runs from the packaged build and setup links that packaged executable', async () => {
     const layout = packagedLayout(process.platform, packagedRoot!)
     expect((await stat(layout.cli)).mode & 0o111).not.toBe(0)

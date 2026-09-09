@@ -10,7 +10,7 @@ import { Switch } from './Switch'
 import { GeneratedModelField } from './GeneratedModelField'
 import { BackgroundSettingsDialog } from './BackgroundSettingsDialog'
 
-export function SettingsDialog({ engine, onClose, onConnections }: { engine: EngineView; onClose(): void; onConnections(): void }) {
+export function SettingsDialog({ engine, onClose, onConnections, onWindowCapture }: { engine: EngineView; onClose(): void; onConnections(): void; onWindowCapture?(): void }) {
   const form = useEngineSettings()
   const [scope, setScope] = useState('computer')
   const tabs = (projectDirty = false) => <div className="defaults-tabs" role="tablist" aria-label="Settings scope"><button role="tab" aria-selected={scope === 'computer'} disabled={projectDirty || form.busy || form.dirty} onClick={() => setScope('computer')}>Computer</button>{engine.projects.map(project => <button key={project.id} role="tab" aria-selected={scope === project.id} disabled={projectDirty || form.busy || form.dirty} onClick={() => setScope(project.id)}>{project.title.toLowerCase().endsWith('project') ? project.title : `${project.title} project`}</button>)}</div>
@@ -29,6 +29,7 @@ export function SettingsDialog({ engine, onClose, onConnections }: { engine: Eng
   return <SetupDialog title="Settings" subtitle={engine.managed ? "Defaults on this computer. Existing conversations keep their choices." : "Defaults on the connected engine. Existing conversations keep their choices."} onClose={onClose} className="engine-settings-dialog" footer={<><button type="button" className="quiet-button" onClick={onClose}>Cancel</button><button type="button" className="primary-button" disabled={form.busy || !form.dirty} onClick={() => void form.save()}>{form.busy ? 'Saving…' : 'Save changes'}</button></>}>
     {tabs()}
     <section className="settings-connections"><h3>Connections</h3><p>Connect this computer to T3 on your phone, or choose the server that runs your agents.</p><button className="quiet-button" disabled={form.dirty || form.busy} onClick={onConnections}>Connections</button>{form.dirty && <p className="engine-hint">Save your settings changes before opening Connections.</p>}</section>
+    <section><h3>Window capture</h3><button type="button" className="quiet-button" onClick={onWindowCapture}>Capture a window</button></section>
     {form.error && <div role="alert" className="send-error"><p>{form.error}</p><button className="quiet-button" onClick={() => void form.reload()}>Reload and discard changes</button></div>}
     {!settings && !form.error && <p>Reading engine settings…</p>}
     {settings && <fieldset className="setup-fields" disabled={form.busy}>

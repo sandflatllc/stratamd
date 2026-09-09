@@ -72,6 +72,8 @@ function fakeApi(): StrataApi {
     queueItemReply: vi.fn(async () => undefined),
     discardItemReply: vi.fn(async () => undefined),
     dismissItem: vi.fn(async () => undefined),
+    onWindowCapture: vi.fn(() => () => undefined),
+    windowCapture: vi.fn(async () => ({ cancelled: true as const })),
     holdVisualComment: vi.fn(async () => 'v_test'),
     actVisualComment: vi.fn(async () => undefined),
     openPreviewTab: vi.fn(async () => 'tab_00000000-0000-4000-8000-000000000000'),
