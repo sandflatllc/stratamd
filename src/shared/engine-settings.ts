@@ -14,6 +14,7 @@ export const backgroundOverridesSchema = z.object({
   pauseWhenClientLowPower: z.boolean().nullable().optional(), pauseWhenOnBattery: z.boolean().nullable().optional(),
 }).strict()
 export const engineSettingsPatchSchema = z.object({
+  defaultModelSelection: generatedModelSchema.nullable().optional(),
   defaultThreadEnvMode: z.enum(['local', 'worktree']).optional(), newWorktreesStartFromOrigin: z.boolean().optional(),
   addProjectBaseDirectory: z.string().max(16384).optional(), sidebarAutoSettleOnMerge: z.boolean().optional(),
   sidebarAutoSettleAfterDays: z.number().int().min(1).max(90).nullable().optional(),

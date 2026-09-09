@@ -1,4 +1,4 @@
-import { supportsOption } from '../shared/custom-models'
+import { supportsOption, validatedModelOptions } from '../shared/custom-models'
 import { accountForModel } from '../core/accountState'
 import { engineStorage, engineStorageKey } from './engineStorage'
 import { flagshipModel } from '../shared/modelSelection'
@@ -184,12 +184,12 @@ export function selectionForModel(model: EngineModelView, access: ComposerSelect
 export function rememberedSelection(projectId: string, instanceId: string): ComposerSelection | undefined {
   try { return JSON.parse(engineStorage.getItem(`stratamd.conversation-account-defaults.v1:${projectId}:${instanceId}`) ?? 'null') ?? undefined } catch { return undefined }
 }
-export function initialSelection(engine: EngineView, projectId: string): ComposerSelection {
+export function initialSelection(engine: EngineView, projectId: string, useConfiguredDefaults = false): ComposerSelection {
   const models = availableModels(engine)
   const usable = (instanceId: string | null | undefined, model: string) => !engine.accounts.some((account) => account.instanceId === instanceId && !accountForModel(account, model).usable)
   try {
     const saved = JSON.parse(engineStorage.getItem(`stratamd.conversation-defaults.v1:${projectId}`) ?? 'null') as ComposerSelection | null
-    if (saved && usable(saved.instanceId, saved.model) && models.some((model) => model.slug === saved.model && model.instanceId === saved.instanceId)) return saved
+    if (!useConfiguredDefaults && saved && usable(saved.instanceId, saved.model) && models.some((model) => model.slug === saved.model && model.instanceId === saved.instanceId)) return saved
   } catch { /* Use the project's defaults. */ }
   const project = engine.projects.find((candidate) => candidate.id === projectId)
   const previous = project?.threads.filter((thread) => !thread.archived).toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
@@ -200,7 +200,7 @@ export function initialSelection(engine: EngineView, projectId: string): Compose
   if (!model) return { model: '', instanceId: null, options: [], effort: null, access: 'approval-required' }
   const result = selectionForModel(model, previous?.access ?? 'approval-required')
   if (model.instanceId === instanceId && model.slug === slug) {
-    result.options = selected?.options ?? previous?.options ?? (previous?.effort ? [{ id: 'effort', value: previous.effort }] : result.options ?? [])
+    result.options = selected ? validatedModelOptions(model, selected.options ?? result.options ?? []) : previous?.options ?? (previous?.effort ? [{ id: 'effort', value: previous.effort }] : result.options ?? [])
     result.effort = String(result.options?.find((option) => option.id === 'effort' || option.id === 'reasoningEffort')?.value ?? '') || null
   }
   return result

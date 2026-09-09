@@ -113,7 +113,7 @@ export const orchestrationSession = z.object({
   updatedAt: isoDate,
 }).passthrough()
 export const orchestrationProject = z.object({
-  id, title: id, workspaceRoot: id, defaultModelSelection: modelSelection.nullable(),
+  id, title: id, workspaceRoot: id, defaultModelSelection: modelSelection.nullable(), defaultThreadEnvMode: z.enum(['local', 'worktree']).nullable().optional(),
   scripts: z.array(z.unknown()), createdAt: isoDate, updatedAt: isoDate, deletedAt: isoDate.nullable(),
 }).passthrough()
 export const orchestrationProjectShell = orchestrationProject.omit({ deletedAt: true }).passthrough()

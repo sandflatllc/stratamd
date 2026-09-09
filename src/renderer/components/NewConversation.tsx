@@ -1,3 +1,4 @@
+import { effectiveDefaults } from '../../shared/project-defaults'
 import { useEffect, useState } from 'react'
 import type { ConversationInput, CreateDraftRequest, DocumentView, EngineView } from '../../shared/contracts'
 import { initialSelection, readDraft, writeDraft } from '../conversationDrafts'
@@ -23,15 +24,22 @@ export function NewConversation({ engine, projectId: initialProjectId, document,
   const [adding, setAdding] = useState(false)
   const project = engine.projects.find((candidate) => candidate.id === projectId)
   const draftKey = document ? `document:${document.path}:${projectId}` : `new:${projectId}`
+  const [defaults, setDefaults] = useState<ReturnType<typeof initialSelection> | null>(null)
+  const [defaultsReady, setDefaultsReady] = useState(false)
   const [workspace, setWorkspace] = useState<WorkspaceChoice>(() => readDraft(draftKey).workspace ?? { kind: 'current' })
   useEffect(() => {
     let active = true
     const stored = readDraft(draftKey)
     setWorkspace(stored.workspace ?? { kind: 'current' })
-    if (!stored.workspace && !stored.threadId && project) void Promise.all([window.strata.readEngineSettings(), window.strata.listEngineRefs(project.workspaceRoot, '')]).then(([settings, refs]) => {
-      if (!active || readDraft(draftKey).workspace || settings.defaultThreadEnvMode !== 'worktree' || !refs.isRepo) return
-      setWorkspace({ kind: 'worktree', baseBranch: refs.refs.find(ref => ref.isDefault && !ref.isRemote)?.name ?? refs.refs.find(ref => ref.current)?.name ?? '', startFromOrigin: settings.newWorktreesStartFromOrigin === true && refs.hasPrimaryRemote })
-    }).catch(() => undefined)
+    setDefaultsReady(false)
+    if (project) void Promise.all([window.strata.readEngineProjectDefaults(projectId), window.strata.readEngineSettings(), window.strata.listEngineRefs(project.workspaceRoot, '').catch(() => null)]).then(([values, settings, refs]) => {
+      if (!active) return
+      const effective = effectiveDefaults(values)
+      const projected = { ...engine, projects: engine.projects.map(value => value.id === projectId ? { ...value, defaultModelSelection: effective.model ? { ...effective.model, options: effective.model.options ?? [] } : null } : value) }
+      setDefaults(initialSelection(projected, projectId, effective.model !== null))
+      if (!readDraft(draftKey).workspace && !stored.threadId && effective.environment === 'worktree' && refs?.isRepo) setWorkspace({ kind: 'worktree', baseBranch: refs.refs.find(ref => ref.isDefault && !ref.isRemote)?.name ?? refs.refs.find(ref => ref.current)?.name ?? '', startFromOrigin: settings.newWorktreesStartFromOrigin === true && refs.hasPrimaryRemote })
+    }).catch(() => { if (active) setDefaults(initialSelection(engine, projectId)) }).finally(() => { if (active) setDefaultsReady(true) })
+    else setDefaultsReady(true)
     return () => { active = false }
   }, [draftKey, project?.workspaceRoot])
   const changeWorkspace = (value: WorkspaceChoice) => { setWorkspace(value); writeDraft(draftKey, { ...readDraft(draftKey), workspace: value }) }
@@ -53,7 +61,7 @@ export function NewConversation({ engine, projectId: initialProjectId, document,
     <div className="new-conversation-body">
       <h1>What would you like to work on{project ? <> in <span>{project.title}</span></> : null}?</h1>
       {document && !containing && <p>No project contains {document.path}. Choose a project or add its folder.</p>}
-      <ConversationComposer key={draftKey} engine={engine} projectId={projectId} draftKey={draftKey} initial={initialSelection(engine, projectId)} centered workspaceControls={project ? <WorkspaceControls key={draftKey} project={project} value={workspace} onChange={changeWorkspace} disabled={!!readDraft(draftKey).threadId} /> : undefined} canSendContext={!!document} context={document ? <><span title={document.path}>▤ {document.path.split('/').at(-1)}</span>{document.drafts.length > 0 && <span>{document.drafts.length} held draft{document.drafts.length === 1 ? '' : 's'}</span>}{comment && <span title={comment.text}>Comment: {comment.text}</span>}</> : undefined} onSend={send} />
+      {defaultsReady ? <ConversationComposer key={draftKey} engine={engine} projectId={projectId} draftKey={draftKey} initial={defaults ?? initialSelection(engine, projectId)} centered workspaceControls={project ? <WorkspaceControls key={draftKey} project={project} value={workspace} onChange={changeWorkspace} disabled={!!readDraft(draftKey).threadId} /> : undefined} canSendContext={!!document} context={document ? <><span title={document.path}>▤ {document.path.split('/').at(-1)}</span>{document.drafts.length > 0 && <span>{document.drafts.length} held draft{document.drafts.length === 1 ? '' : 's'}</span>}{comment && <span title={comment.text}>Comment: {comment.text}</span>}</> : undefined} onSend={send} /> : <p>Reading conversation defaults…</p>}
     </div>
   </section>
 }

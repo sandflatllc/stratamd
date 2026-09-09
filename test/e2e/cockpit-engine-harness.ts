@@ -14,6 +14,8 @@ export interface FakeEngineOptions {
 
   consumeResetCredit?: () => unknown
   settings?: Record<string, unknown>
+  projectDefaults?: Record<string, unknown>
+  projectFile?: string
   /** The one-time codes the fake accepts at the token endpoint; each returns a session token derived from it. */
   pairingCodes?: string[]
   /** The workspace root of the one seeded project; a scenario's document folder makes it the containing project (§5.7). */
@@ -129,6 +131,8 @@ export interface FakeEngine {
   setOnline(value: boolean): void
   setMessage(value: string): void
   setWorkspaceRoot(value: string): void
+  setProjectDefaults(patch: Record<string, unknown>): void
+  setProjectFile(contents: string): void
   setSettings(patch: Record<string, unknown>): void
   setProviders(value: unknown[]): void
   finish(): void
@@ -158,6 +162,8 @@ export interface FakeEngine {
  * only learns of changes the way it would from T3, never by polling.
  */
 export async function startEngine(options: FakeEngineOptions = {}): Promise<FakeEngine> {
+  let projectDefaults: Record<string, unknown> = { defaultThreadEnvMode: null, ...options.projectDefaults }
+  let projectFile = options.projectFile ?? '{}'
   const liveAt = new Date().toISOString()
   let online = true
   const pairingCodes = new Set(options.pairingCodes ?? ['pair-code-1'])
@@ -216,7 +222,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   const shellJson = () => ({
     snapshotSequence: sequence,
     projects: [
-      { id: 'p1', title: 'Cockpit project', workspaceRoot, defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at },
+      { id: 'p1', title: 'Cockpit project', workspaceRoot, defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at, ...projectDefaults },
       ...(options.projectsParity ? [{ id: 'p2', title: 'Second project', workspaceRoot: '/tmp/second', defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at }] : []),
       ...createdProjects.map((project) => ({ id: project.id, title: project.title, workspaceRoot: project.workspaceRoot, defaultModelSelection: null, scripts: [], createdAt: at, updatedAt: at })),
     ],
@@ -299,6 +305,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       return { attachmentId, relativeUrl: `/upload/${attachmentId}`, expiresAt: Date.now() + 60_000 }
     }
     if (tag === 'server.getUsageSummary') return usageFixture(payload as unknown as import('../../src/shared/usage').UsageSummaryInput)
+    if (tag === 'projects.readFile') return { relativePath: 't3.json', contents: projectFile, byteLength: Buffer.byteLength(projectFile), truncated: false }
     if (tag === 'server.getSettings') return settings
     if (tag === 'server.updateSettings') { settings = { ...settings, ...payload.patch as object }; providerInstances = settings.providerInstances as typeof providerInstances; return settings }
     if (tag === 'vcs.listRefs') return { refs: ['master', 'develop'].filter(name => !payload.query || name.includes(String(payload.query))).map(name => ({ name, current: name === 'master', isDefault: name === 'master', worktreePath: null })), isRepo: true, hasPrimaryRemote: true, totalCount: 2, nextCursor: null }
@@ -375,6 +382,7 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
         if (command.type === 'thread.approval.respond') approvalOpen = false
         if (command.type === 'thread.user-input.respond' || command.type === 'thread.user-input.dismiss') { inputOpen = false; inputResolution = command }
         if (command.type === 'thread.create') createdThreads.push({ branch: command.branch as string | null, worktreePath: command.worktreePath as string | null, id: String(command.threadId), projectId: String(command.projectId), title: String(command.title), modelSelection: command.modelSelection, runtimeMode: String(command.runtimeMode) })
+        if (command.type === 'project.meta.update') { const { type: _type, commandId: _commandId, projectId: _projectId, ...patch } = command; projectDefaults = { ...projectDefaults, ...patch } }
         if (command.type === 'project.create') createdProjects.push({ id: String(command.projectId), title: String(command.title), workspaceRoot: String(command.workspaceRoot) })
         const threadId = String(command.threadId)
         const meta = threadMeta.get(threadId) ?? {}
@@ -503,6 +511,8 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     failNextUpload: (after = 0) => { uploadsUntilFailure = after },
     failNextTurn: () => { rejectNextTurn = true },
     failNextModelSettings: () => { rejectNextModelSettings = true },
+    setProjectDefaults: patch => { projectDefaults = { ...projectDefaults, ...patch }; broadcast() },
+    setProjectFile: contents => { projectFile = contents },
     setSettings: (patch) => { settings = { ...settings, ...patch }; providerInstances = settings.providerInstances as typeof providerInstances },
     setProviders: (value) => { providers = value; broadcast() },
     finish: () => { stop(); broadcast() },

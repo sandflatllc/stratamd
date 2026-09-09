@@ -24,6 +24,8 @@ export const IPC = {
   computer: 'strata:computer',
   providerSetup: 'strata:provider-setup',
   readEngineSupport: 'strata:readEngineSupport',
+  readEngineProjectDefaults: 'strata:readEngineProjectDefaults',
+  editEngineProjectDefaults: 'strata:editEngineProjectDefaults',
   readEngineSettings: 'strata:readEngineSettings',
   editEngineSettings: 'strata:editEngineSettings',
   editEngineProvider: 'strata:editEngineProvider',

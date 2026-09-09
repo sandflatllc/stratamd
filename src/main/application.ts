@@ -1080,6 +1080,14 @@ export class StrataApplication implements StrataApi {
     return this.#engine.usageSummary(window)
   }
 
+  async readEngineProjectDefaults(projectId: string) {
+    if (!this.#engine.readProjectDefaults) throw new Error('This engine does not support project defaults')
+    return this.#engine.readProjectDefaults(projectId)
+  }
+  async editEngineProjectDefaults(edit: import('../shared/project-defaults').ProjectDefaultsEdit) {
+    if (!this.#engine.editProjectDefaults) throw new Error('This engine does not support project defaults')
+    return this.#engine.editProjectDefaults(edit)
+  }
   async readEngineSettings() {
     if (!this.#engine.readSettings) throw new Error('The engine does not support readSettings')
     return this.#engine.readSettings()

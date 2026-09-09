@@ -1,3 +1,4 @@
+import { checkedInEnvironment, mergeProjectDefaults, type ProjectDefaults, type ProjectDefaultsEdit } from '../../shared/project-defaults'
 import { validatedModelOptions } from '../../shared/custom-models'
 import type { BrowserEvidenceTransfer } from '../../shared/browser-evidence'
 import { inputPayload, pendingUserInputs } from '../../core/user-input'
@@ -218,6 +219,8 @@ export interface EngineReadClient {
   reloadStoredState?(): Promise<void>
   connectionRequest?(action: string, payload?: unknown): Promise<unknown>
   installRelayClient?(signal: AbortSignal, progress: (message: string) => void): Promise<void>
+  readProjectDefaults?(projectId: string): Promise<ProjectDefaults>
+  editProjectDefaults?(edit: ProjectDefaultsEdit): Promise<ProjectDefaults>
   readSettings?(): Promise<EngineSettings>
   editSettings?(edit: EngineSettingsEdit): Promise<EngineSettings>
   editProvider?(edit: ProviderEdit): Promise<void>
@@ -567,6 +570,7 @@ export class T3EngineClient implements EngineReadClient {
       id: project.id,
       title: project.title,
       workspaceRoot: project.workspaceRoot,
+      defaultThreadEnvMode: project.defaultThreadEnvMode ?? null,
       defaultModelSelection: project.defaultModelSelection ? { ...project.defaultModelSelection, options: publicOptions(project.defaultModelSelection.options) } : null,
       visualComments: this.#visualCommentsFor(project.id),
       threads: (this.#shell?.threads ?? []).filter((thread) => thread.projectId === project.id).map((thread) => {
@@ -1677,6 +1681,35 @@ export class T3EngineClient implements EngineReadClient {
     })
   }
 
+  async readProjectDefaults(projectId: string): Promise<ProjectDefaults> {
+    const identity = this.#identity ?? null
+    const [response, settings] = await Promise.all([this.#request(T3_HTTP.shell), this.readSettings()])
+    const project = shellSnapshot.parse(await response.json()).projects.find(value => value.id === projectId)
+    if (!project) throw new Error(`Project was not found: ${projectId}`)
+    let checkedIn: ProjectDefaults['checkedIn'] = null
+    try {
+      const file = await this.#rpcOrSocket('projects.readFile', { cwd: project.workspaceRoot, relativePath: 't3.json' }, 'project defaults')
+      if (isSettingsRecord(file) && typeof file.contents === 'string') checkedIn = checkedInEnvironment(file.contents, file.truncated !== false)
+    } catch { /* Missing or unreadable checked-in settings inherit the computer default. */ }
+    if (identity !== (this.#identity ?? null)) throw new Error('The selected engine changed. Reopen Settings.')
+    const model = generatedModelSchema.strip().safeParse(settings.defaultModelSelection)
+    return { identity, projectId, defaultModelSelection: project.defaultModelSelection ? { ...project.defaultModelSelection, options: publicOptions(project.defaultModelSelection.options) } : null, defaultThreadEnvMode: project.defaultThreadEnvMode ?? null, checkedIn, computerModel: model.success ? model.data : null, computerEnvironment: settings.defaultThreadEnvMode === 'worktree' ? 'worktree' : 'local' }
+  }
+
+  async editProjectDefaults(edit: ProjectDefaultsEdit): Promise<ProjectDefaults> {
+    return this.#operations.run(() => this.#serializeSettings(async () => {
+      if (edit.identity !== (this.#identity ?? null)) throw new Error('The selected engine changed. Reopen Settings before saving.')
+      const current = await this.readProjectDefaults(edit.projectId)
+      const patch = mergeProjectDefaults(current, edit)
+      if (patch.defaultModelSelection) {
+        const selected = patch.defaultModelSelection
+        selected.options = validatedModelOptions(this.#models.find(model => model.instanceId === selected.instanceId && model.slug === selected.model), selected.options ?? [])
+      }
+      await this.#dispatch({ type: 'project.meta.update', commandId: `strata-project-defaults-${randomUUID()}`, projectId: edit.projectId, ...patch })
+      return this.readProjectDefaults(edit.projectId)
+    }))
+  }
+
   async readSettings(): Promise<EngineSettings> {
     const identity = this.#identity
     const settings = engineSettingsResult.parse(await this.#rpcOrSocket(T3_RPC.readSettings, {}, 'settings'))
@@ -1731,6 +1764,10 @@ export class T3EngineClient implements EngineReadClient {
       if (edit.identity !== (this.#identity ?? null)) throw new Error('The selected engine changed. Reopen Settings before saving.')
       const current = await this.readSettings()
       const patch = mergeEngineSettings(current, edit)
+      if (patch.defaultModelSelection) {
+        const selected = patch.defaultModelSelection
+        selected.options = validatedModelOptions(this.#models.find(model => model.instanceId === selected.instanceId && model.slug === selected.model), selected.options ?? [])
+      }
       if (patch.addProjectBaseDirectory?.trim()) await this.browseFolder(patch.addProjectBaseDirectory.trim().replace(/\/$/, '') + '/')
       const saved = engineSettingsResult.parse(await this.#rpcOrSocket('server.updateSettings', { patch }, 'settings update'))
       this.#configFetchedAt = 0

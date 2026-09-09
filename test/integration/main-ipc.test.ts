@@ -37,6 +37,8 @@ function fakeApi(): StrataApi {
     editEngineSettings: vi.fn(async () => ({ providerInstances: {} })),
     editEngineProvider: vi.fn(async () => undefined),
     readEngineSupport: vi.fn(async () => ({ sourceControl: [], problems: [] })),
+    readEngineProjectDefaults: vi.fn(async () => ({ identity: null, projectId: 'p1', checkedIn: null, computerModel: null, computerEnvironment: 'local' as const })),
+    editEngineProjectDefaults: vi.fn(async () => ({ identity: null, projectId: 'p1', checkedIn: null, computerModel: null, computerEnvironment: 'local' as const })),
     readEngineSettings: vi.fn(async () => ({ providerInstances: {} })),
     browseEngineFolder: vi.fn(async () => ({ parentPath: '/projects', entries: [] })),
     lookupEngineRepository: vi.fn(async () => ({ provider: 'github', nameWithOwner: 'owner/repo', url: 'https://github.com/owner/repo', sshUrl: 'git@github.com:owner/repo.git' })),

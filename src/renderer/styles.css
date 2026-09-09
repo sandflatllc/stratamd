@@ -2505,3 +2505,15 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .account-reset-confirm button + button { margin-left: 8px; }
 
 .account-source-row { grid-template-columns: minmax(0, 1fr) 250px; }
+
+.defaults-tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--line); margin-bottom: 20px; overflow-x: auto; flex-shrink: 0; }
+.defaults-tabs button { border: 0; border-bottom: 2px solid transparent; padding: 14px 4px; background: transparent; color: var(--text); white-space: nowrap; }
+.defaults-tabs button[aria-selected="true"] { border-bottom-color: var(--accent); }
+.defaults-row { display: flex; justify-content: space-between; gap: 20px; border-top: 1px solid var(--line); padding: 12px 0; }
+.defaults-row small { display: block; color: var(--muted); margin-top: 8px; font-size: 12px; }
+.defaults-row > div:last-child { text-align: right; }
+.defaults-row button { display: block; margin: 4px 0 0 auto; }
+
+.engine-settings-dialog .setup-fields > .defaults-field { padding: 0; border-bottom: 0; }
+.defaults-model-change { font-size: 12px; }
+.defaults-model-change[open] { display: grid; gap: 8px; }

@@ -133,6 +133,8 @@ const api: StrataApi & {
   computer: request => invoke(IPC.computer, request),
   providerSetup: request => invoke(IPC.providerSetup, request),
   readEngineSupport: () => invoke(IPC.readEngineSupport),
+  readEngineProjectDefaults: projectId => invoke(IPC.readEngineProjectDefaults, projectId),
+  editEngineProjectDefaults: edit => invoke(IPC.editEngineProjectDefaults, edit),
   readEngineSettings: () => invoke(IPC.readEngineSettings),
   editEngineSettings: edit => invoke(IPC.editEngineSettings, edit),
   editEngineProvider: edit => invoke(IPC.editEngineProvider, edit),

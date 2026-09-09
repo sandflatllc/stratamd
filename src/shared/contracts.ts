@@ -346,6 +346,7 @@ export interface EngineProjectView {
   id: string
   title: string
   workspaceRoot: string
+  defaultThreadEnvMode?: 'local' | 'worktree' | null
   defaultModelSelection?: { instanceId: string; model: string; options?: ModelOption[] } | null
   threads: EngineThreadView[]
   /** Visual comments owned by this project: private drafts and sent revisions over an image or a captured page. */
@@ -1084,6 +1085,8 @@ export interface StrataApi {
   computer?(request: import('./computer').ComputerRequest): Promise<import('./computer').ComputerView>
   providerSetup?(request: import('./provider-setup').ProviderSetupRequest): Promise<import('./provider-setup').ProviderSetupView>
   readEngineSupport(): Promise<EngineSupport>
+  readEngineProjectDefaults(projectId: string): Promise<import('./project-defaults').ProjectDefaults>
+  editEngineProjectDefaults(edit: import('./project-defaults').ProjectDefaultsEdit): Promise<import('./project-defaults').ProjectDefaults>
   readEngineSettings(): Promise<EngineSettings>
   editEngineSettings(edit: EngineSettingsEdit): Promise<EngineSettings>
   editEngineProvider(edit: ProviderEdit): Promise<void>

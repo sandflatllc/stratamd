@@ -1,4 +1,5 @@
 import { consumeResetCreditInput } from '../shared/usage-limits'
+import { projectDefaultsEdit } from '../shared/project-defaults'
 import { isLocalPage } from './local-link'
 import { recoveryRequest } from '../shared/engine-recovery'
 import { computerRequest } from '../shared/computer'
@@ -215,6 +216,8 @@ const argumentSchemas: Record<InvokeChannel, z.ZodType> = {
   [IPC.computer]: z.tuple([computerRequest]),
   [IPC.providerSetup]: z.tuple([providerSetupRequest]),
   [IPC.readEngineSupport]: z.tuple([]),
+  [IPC.readEngineProjectDefaults]: z.tuple([idSchema]),
+  [IPC.editEngineProjectDefaults]: z.tuple([projectDefaultsEdit]),
   [IPC.readEngineSettings]: z.tuple([]),
   [IPC.editEngineSettings]: z.tuple([engineSettingsEditSchema]),
   [IPC.editEngineProvider]: z.tuple([providerEditSchema]),
@@ -471,6 +474,8 @@ export function registerStrataIpc(options: RegisterIpcOptions): RegisteredIpc {
     [IPC.computer]: (request: import('../shared/computer').ComputerRequest) => { if (!options.api.computer) throw new Error('Computer controls are unavailable'); return options.api.computer(request) },
     [IPC.providerSetup]: (request: import('../shared/provider-setup').ProviderSetupRequest) => { if (!options.api.providerSetup) throw new Error('Provider setup is unavailable'); return options.api.providerSetup(request) },
     [IPC.readEngineSupport]: () => options.api.readEngineSupport(),
+    [IPC.readEngineProjectDefaults]: projectId => options.api.readEngineProjectDefaults(projectId),
+    [IPC.editEngineProjectDefaults]: edit => options.api.editEngineProjectDefaults(edit),
     [IPC.readEngineSettings]: () => options.api.readEngineSettings(),
     [IPC.editEngineSettings]: (edit: Parameters<StrataApi['editEngineSettings']>[0]) => options.api.editEngineSettings(edit),
     [IPC.editEngineProvider]: (edit: Parameters<StrataApi['editEngineProvider']>[0]) => options.api.editEngineProvider(edit),
