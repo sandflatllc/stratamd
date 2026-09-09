@@ -12,6 +12,8 @@ export type SupportedImageType = typeof SUPPORTED_IMAGE_TYPES[number]
 /** T3's per-image ceiling on a provider turn. */
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 /** Text files keep the composer's original limit. */
+export const MAX_BINARY_BYTES = 50 * 1024 * 1024
+export const BINARY_MIME_PATTERN = /^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/u
 export const MAX_TEXT_BYTES = 2 * 1024 * 1024
 /** T3 refuses a turn carrying more; Strata's generated context file counts toward it. */
 export const MAX_ATTACHMENTS = 8
@@ -27,6 +29,7 @@ export type FileClass =
   | { kind: 'image'; mimeType: SupportedImageType }
   | { kind: 'unsupported-image'; mimeType: string }
   | { kind: 'text' }
+  | { kind: 'binary'; mimeType: string }
 
 /**
  * Drags from other apps and shell pipes hand over files with an empty or
@@ -38,9 +41,12 @@ export function classifyFile(file: { name: string; type: string }): FileClass {
   if (declared === '' || declared === 'application/octet-stream') {
     const dot = file.name.lastIndexOf('.')
     const inferred = dot > 0 ? EXTENSION_TYPES[file.name.slice(dot + 1).toLowerCase()] : undefined
-    return inferred ? { kind: 'image', mimeType: inferred } : { kind: 'text' }
+    if (inferred) return { kind: 'image', mimeType: inferred }
+    const extension = file.name.slice(dot + 1).toLowerCase()
+    if (dot > 0 && /^(md|markdown|txt|json|csv|ts|tsx|js|jsx|py|html|htm|css|xml|yaml|yml|toml|sh|sql|log)$/u.test(extension)) return { kind: 'text' }
+    return { kind: 'binary', mimeType: declared || ({ pdf: 'application/pdf', zip: 'application/zip' } as Record<string, string>)[extension] || 'application/octet-stream' }
   }
-  if (!declared.startsWith('image/')) return { kind: 'text' }
+  if (!declared.startsWith('image/')) return declared.startsWith('text/') || /^(application\/(json|xml|javascript|x-yaml))$/u.test(declared) ? { kind: 'text' } : { kind: 'binary', mimeType: declared }
   return isSupportedImageType(declared) ? { kind: 'image', mimeType: declared } : { kind: 'unsupported-image', mimeType: declared }
 }
 
@@ -67,6 +73,7 @@ export function attachmentLimitMessage(reserved: 0 | 1): string {
 export type AcceptedFile<File extends { name: string; size: number; type: string }> =
   | { kind: 'image'; file: File; name: string; mimeType: SupportedImageType }
   | { kind: 'text'; file: File; name: string }
+  | { kind: 'binary'; file: File; name: string; mimeType: string }
 
 export interface AcceptFilesResult<File extends { name: string; size: number; type: string }> {
   accepted: AcceptedFile<File>[]
@@ -95,12 +102,20 @@ export function acceptFiles<File extends { name: string; size: number; type: str
     if (classification.kind === 'unsupported-image') { refuse(`${file.name} is a ${classification.mimeType} image. Attach a PNG, JPEG, GIF, or WebP image.`); continue }
     if (classification.kind === 'image' && file.size > MAX_IMAGE_BYTES) { refuse(`Image ${file.name} is larger than the ${megabytes(MAX_IMAGE_BYTES)} limit.`); continue }
     if (classification.kind === 'text' && file.size > MAX_TEXT_BYTES) { refuse(`File ${file.name} exceeds the ${megabytes(MAX_TEXT_BYTES)} attachment limit.`); continue }
+    if (classification.kind === 'binary' && file.size > MAX_BINARY_BYTES) { refuse(`File ${file.name} exceeds the 50 MB attachment limit.`); continue }
     if (file.size === 0) { refuse(`${file.name} is empty.`); continue }
     if (currentCount + accepted.length + reserved >= MAX_ATTACHMENTS) { refuse(attachmentLimitMessage(reserved)); continue }
     if (classification.kind === 'image') {
       const name = options.pasted ? pastedImageName(classification.mimeType, options.now ?? new Date()) : file.name
       accepted.push({ kind: 'image', file, name, mimeType: classification.mimeType })
-    } else accepted.push({ kind: 'text', file, name: file.name })
+    } else if (classification.kind === 'binary') accepted.push({ kind: 'binary', file, name: file.name, mimeType: classification.mimeType })
+    else accepted.push({ kind: 'text', file, name: file.name })
   }
   return refusal ? { accepted, refusal } : { accepted }
+}
+
+/** Compact file label for the existing attachment card; the MIME remains available in its title. */
+export function binaryFileLabel(name: string): string {
+  const extension = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : ''
+  return /^[a-z0-9]{1,5}$/iu.test(extension) ? extension.toUpperCase() : 'FILE'
 }

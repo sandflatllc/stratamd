@@ -1,12 +1,13 @@
+import { BINARY_MIME_PATTERN, MAX_BINARY_BYTES, MAX_IMAGE_BYTES, isSupportedImageType } from '../../core/composer-attachments'
 import { randomUUID } from 'node:crypto'
 import { readdir, readFile, stat, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { atomicWriteFile, ensurePrivateDirectory, isRecord, PRIVATE_FILE_MODE } from '../storage'
 
 /**
- * Images the composer has accepted but not yet sent (PRD §6.0). The bytes
+ * Files the composer has accepted but not yet sent (PRD §6.0). The bytes
  * live here, in the data directory, the moment the owner pastes or picks
- * them, so a draft survives reload however large its images are. The
+ * them, so a draft survives reload however large its files are. The
  * renderer keeps only the id and a thumbnail. A file leaves when its upload
  * succeeds, when the owner removes it, or when the sweep finds nothing
  * referencing it.
@@ -47,6 +48,9 @@ export class StagedAttachmentStore {
 
   async stage(input: { name: string; mimeType: string; bytes: Uint8Array }): Promise<StagedAttachment> {
     if (input.bytes.byteLength === 0) throw new Error(`Attachment ${input.name} is empty`)
+    if (!BINARY_MIME_PATTERN.test(input.mimeType) || input.mimeType.length > 100) throw new Error(`Attachment ${input.name} has an invalid MIME type`)
+    const limit = isSupportedImageType(input.mimeType) ? MAX_IMAGE_BYTES : MAX_BINARY_BYTES
+    if (input.bytes.byteLength > limit) throw new Error(`Attachment ${input.name} exceeds the ${limit / (1024 * 1024)} MB limit`)
     await this.#initialize()
     const record: StagedAttachment = { id: `a_${randomUUID()}`, name: input.name, mimeType: input.mimeType, sizeBytes: input.bytes.byteLength, createdAt: this.#now() }
     const paths = this.#paths(record.id)

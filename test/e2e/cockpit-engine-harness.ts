@@ -112,11 +112,13 @@ export interface FakeEngine {
   uploads: string[]
   /** Upload text by attachment id, so a turn's attachment can be read back regardless of upload order. */
   uploadsById: Map<string, string>
+  uploadBytesById: Map<string, Buffer>
   /** Each upload's declared content type and byte length, so a spec can tell an image upload from Markdown. */
   uploadRequests: Array<{ attachmentId: string; contentType: string; byteLength: number }>
   tokenRequests: string[]
   rpcRequests: Array<{ tag: string; payload: unknown }>
   /** Offline refuses HTTP and drops every socket, as a stopped server would; online again accepts new connections. */
+  failNextUpload(): void
   failNextTurn(): void
   failNextModelSettings(): void
   setOnline(value: boolean): void
@@ -166,6 +168,8 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
   const commands: Array<Record<string, unknown>> = []
   const uploads: string[] = []
   const uploadsById = new Map<string, string>()
+  const uploadBytesById = new Map<string, Buffer>()
+  let rejectNextUpload = false
   const uploadRequests: FakeEngine['uploadRequests'] = []
   let uploadCount = 0
   let rejectNextTurn = false
@@ -333,6 +337,8 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
       request.on('data', (piece) => chunks.push(Buffer.from(piece)))
       request.on('end', () => {
         const bytes = Buffer.concat(chunks)
+        if (rejectNextUpload) { rejectNextUpload = false; response.statusCode = 503; response.end(); return }
+        uploadBytesById.set(attachmentId, bytes)
         const text = bytes.toString('utf8')
         uploads.push(text); uploadsById.set(attachmentId, text)
         uploadRequests.push({ attachmentId, contentType: String(request.headers['content-type'] ?? ''), byteLength: bytes.byteLength })
@@ -471,12 +477,14 @@ export async function startEngine(options: FakeEngineOptions = {}): Promise<Fake
     commands,
     uploads,
     uploadsById,
+    uploadBytesById,
     uploadRequests,
     tokenRequests,
     rpcRequests,
     setOnline: (value) => { online = value; if (!value) dropSockets() },
     setMessage: (value) => { message = value; broadcast() },
     setWorkspaceRoot: (value) => { workspaceRoot = value; broadcast() },
+    failNextUpload: () => { rejectNextUpload = true },
     failNextTurn: () => { rejectNextTurn = true },
     failNextModelSettings: () => { rejectNextModelSettings = true },
     setSettings: (patch) => { settings = { ...settings, ...patch }; providerInstances = settings.providerInstances as typeof providerInstances },

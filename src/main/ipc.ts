@@ -12,7 +12,7 @@ import { electronFileOps, type FileOps } from './file-ops'
 import { logError, logRendererReport } from './log'
 import { annotationContextSchema } from './validation'
 import type { WindowController } from './window-controls'
-import { MAX_ATTACHMENTS, MAX_IMAGE_BYTES, MAX_TEXT_BYTES, SUPPORTED_IMAGE_TYPES } from '../core/composer-attachments'
+import { BINARY_MIME_PATTERN, MAX_BINARY_BYTES, MAX_ATTACHMENTS, MAX_IMAGE_BYTES, MAX_TEXT_BYTES, SUPPORTED_IMAGE_TYPES } from '../core/composer-attachments'
 import { usageWindow, terminalAttachInput, terminalWriteInput, terminalResizeInput, terminalTarget, worktreeRequest, cloneRepositoryInput } from './engine/t3-contract'
 import { isStagedAttachmentId } from './engine/staged-attachments'
 import { isVisualCommentId } from '../core/visual-comments'
@@ -70,14 +70,15 @@ const conversationTurnSchema = z.object({
   visual: z.array(visualCommentIdSchema).max(64).optional(),
   attachments: z.array(z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('text'), name: idSchema, text: z.string().max(MAX_TEXT_BYTES) }).strict(),
+    z.object({ kind: z.literal('binary'), id: stagedAttachmentIdSchema, name: idSchema, mimeType: z.string().max(100).regex(BINARY_MIME_PATTERN), sizeBytes: z.number().int().positive().max(MAX_BINARY_BYTES) }).strict(),
     // Image bytes never cross this channel; the renderer staged them and names the id (§6.0).
     z.object({ kind: z.literal('image'), id: stagedAttachmentIdSchema, name: idSchema, mimeType: z.enum(SUPPORTED_IMAGE_TYPES), sizeBytes: z.number().int().positive().max(MAX_IMAGE_BYTES) }).strict(),
   ])).max(MAX_ATTACHMENTS).optional(),
 }).strict()
 const stageAttachmentSchema = z.object({
   name: idSchema,
-  mimeType: z.enum(SUPPORTED_IMAGE_TYPES),
-  bytes: z.instanceof(Uint8Array).refine((bytes) => bytes.byteLength >= 1 && bytes.byteLength <= MAX_IMAGE_BYTES, 'Image size out of range'),
+  mimeType: z.string().max(100).regex(BINARY_MIME_PATTERN),
+  bytes: z.instanceof(Uint8Array).refine((bytes) => bytes.byteLength >= 1 && bytes.byteLength <= MAX_BINARY_BYTES, 'File size out of range'),
 }).strict()
 const sendRequestSchema = z.object({
   conversation: z.record(idSchema, z.object({ deliveryId: idSchema, comments: z.record(idSchema, z.number().int().positive()), replies: z.record(idSchema, textSchema) }).strict()).optional(),

@@ -262,16 +262,17 @@ export interface ConversationInput {
   access: EngineThreadView['access']
   instanceId?: string | null
   options?: ModelOption[]
-  /** At most 8 with Strata's generated context file (§6.0); images reference bytes the main process staged. */
+  /** At most 8 with Strata's generated context file (§6.0); images and binary files reference bytes the main process staged. */
   attachments?: ConversationAttachment[]
   /** Held visual comments to send: each freezes one revision and carries its marked screenshots. */
   visual?: string[]
 }
 
-/** A file the composer sends with a turn: text travels inline, an image by the id the main process staged it under. */
+/** A file the composer sends with a turn: text travels inline, images and binary files by the id the main process staged it under. */
 export type ConversationAttachment =
   | { kind: 'text'; name: string; text: string }
   | { kind: 'image'; id: string; name: string; mimeType: string; sizeBytes: number }
+  | { kind: 'binary'; id: string; name: string; mimeType: string; sizeBytes: number }
 
 /** T3's latest turn: the fold label, timing, and the stopped state come from here (§6.9). */
 export interface EngineTurnView {
@@ -1094,7 +1095,7 @@ export interface StrataApi {
   /** Keeps a pasted or picked image in the data directory until it is sent or removed (§6.0). */
   stageConversationAttachment(input: { name: string; mimeType: string; bytes: Uint8Array }): Promise<{ id: string; sizeBytes: number }>
   discardConversationAttachment(id: string): Promise<void>
-  /** The ids every draft still references; staged images nothing references are deleted. */
+  /** The ids every draft still references; staged files nothing references are deleted. */
   retainConversationAttachments(ids: string[]): Promise<void>
   /** Queues a reply to a message-anchored item; the row shows Drafted until the Send carrying it is acknowledged (§5.4). */
   holdMessageComment(threadId: string, input: { id?: string; messageId: string; from: number; to: number; kind: DraftKind; text: string }): Promise<string>

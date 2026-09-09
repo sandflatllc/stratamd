@@ -623,7 +623,7 @@ export class T3EngineClient implements EngineReadClient {
           activities,
           comments: this.#conversations.threads[thread.id]?.comments ?? [],
           outcomes: this.#conversations.threads[thread.id]?.outcomes ?? [],
-          deliveries: (this.#conversations.threads[thread.id]?.prepared ?? []).map(entry => ({ messageId: entry.messageId, text: entry.attachments.map(a => a.kind === 'text' ? a.text : `[Image ${a.name}]`).join('\n'), phase: entry.attachments.every(a => a.uploaded) ? 'prepared' as const : 'uploading' as const })),
+          deliveries: (this.#conversations.threads[thread.id]?.prepared ?? []).map(entry => ({ messageId: entry.messageId, text: entry.attachments.map(a => a.kind === 'text' ? a.text : `[${a.kind === 'binary' ? 'File' : 'Image'} ${a.name}]`).join('\n'), phase: entry.attachments.every(a => a.uploaded) ? 'prepared' as const : 'uploading' as const })),
           items: (() => { const explicit = postedMessageItems(messages, thread.id); return applyConversationState([...explicit.filter(item => !this.#conversations.threads[thread.id]?.comments?.some(comment => comment.id === item.id)), ...(this.#conversations.threads[thread.id]?.comments ?? []).map((comment): import("../../shared/contracts").ItemView => ({ id: comment.id, kind: comment.kind, status: comment.state === "held" || comment.state === "pending" ? "drafted" : isOwnerComment(comment) || comment.state === "resolved" ? "done" : "open", review: "unreviewed", text: comment.text, quote: comment.selection, order: 0, threadId: thread.id, turnId: messages.find(message => message.id === comment.anchor.message)?.turnId ?? null, messageId: comment.anchor.message, annotationId: null, hunkId: null, inferred: false, source: { kind: "message", anchor: comment.anchor }, discussion: comment.replies, ...(comment.options ? { options: comment.options } : {}), unavailable: !resolveMessageAnchor(comment, messages.find(message => message.id === comment.anchor.message)) })), ...askItems(messages, thread.id, this.#conversations.threads[thread.id])], this.#conversations.threads[thread.id]) })(),
           documents,
         }
@@ -983,7 +983,7 @@ export class T3EngineClient implements EngineReadClient {
       const budget = sendCapacity({ files: userAttachments.length, visualImages: visualDrafts.reduce((count, comment) => count + visualCaptureIds(comment).length, 0), visualComments: visualDrafts.length, contextFile: contextNeeded })
       if (budget.refusal) throw new Error(budget.refusal)
     } else if (userAttachments.length + (contextNeeded ? 1 : 0) > MAX_ATTACHMENTS) throw new Error(attachmentLimitMessage(contextNeeded ? 1 : 0))
-    for (const attachment of userAttachments) if (attachment.kind === 'image' && !(await this.#staged.exists(attachment.id))) throw new Error(`Attachment ${attachment.name} is no longer staged. Attach it again.`)
+    for (const attachment of userAttachments) if (attachment.kind !== 'text' && !(await this.#staged.exists(attachment.id))) throw new Error(`Attachment ${attachment.name} is no longer staged. Attach it again.`)
     const workspace = input.workspace ?? state?.workspace
     if (workspace && (thread.worktreePath || thread.latestUserMessageAt)) throw new Error(`Thread ${threadId} already has a working copy or a first turn`)
     // A page comment re-checks its marks immediately before Send: refused, with the draft kept, only when the page was
@@ -1044,7 +1044,7 @@ export class T3EngineClient implements EngineReadClient {
     const contextFile: PreparedAttachment | undefined = contextNeeded ? { kind: 'text', name: `conversation-${messageId}.md`, text: renderConversationDelivery(input.context ?? conversationDelivery(threadId, messageId, comments, queued ?? {}, messages, outcomes)) } : undefined
     const sentComments = contextFile?.kind === 'text' ? sentCommentsFromDelivery(contextFile.text, threadId, messageId, input.text.trim() || frozen.length || queued ? text : '') : null
     const attachmentInputs: PreparedAttachment[] = [
-      ...userAttachments.map((attachment): PreparedAttachment => attachment.kind === 'image' ? { kind: 'image', id: attachment.id, name: attachment.name, mimeType: attachment.mimeType, sizeBytes: attachment.sizeBytes } : { kind: 'text', name: attachment.name, text: attachment.text }),
+      ...userAttachments.map((attachment): PreparedAttachment => attachment.kind !== 'text' ? { kind: attachment.kind, id: attachment.id, name: attachment.name, mimeType: attachment.mimeType, sizeBytes: attachment.sizeBytes } : { kind: 'text', name: attachment.name, text: attachment.text }),
       ...visualAttachments,
       ...(contextFile ? [contextFile] : []),
     ]
@@ -1288,8 +1288,8 @@ export class T3EngineClient implements EngineReadClient {
       if (attachment.uploaded) continue
       try { attachment.uploaded = await this.#uploadAttachment(attachment) }
       catch (error) {
-        if (error instanceof MissingStagedAttachmentError || error instanceof MissingEvidenceError) await this.#abandonPrepared(threadId, messageId)
-        throw error
+        if (error instanceof MissingStagedAttachmentError || error instanceof MissingEvidenceError) { await this.#abandonPrepared(threadId, messageId); throw error }
+        throw new Error(`${attachment.name} could not be sent. Your message and files are still held. ${error instanceof Error ? error.message : String(error)}`)
       }
       await writeConversationsStore(this.#conversationsPath, this.#conversations)
     }
@@ -2361,10 +2361,10 @@ export class T3EngineClient implements EngineReadClient {
       if (!evidence) throw new MissingEvidenceError(attachment.name)
       return this.#uploadBytes({ type: 'image', name: attachment.name, mimeType: evidence.meta.mimeType, bytes: evidence.bytes })
     }
-    if (attachment.kind === 'image') {
+    if (attachment.kind === 'image' || attachment.kind === 'binary') {
       const staged = await this.#staged.read(attachment.id)
       if (!staged) throw new MissingStagedAttachmentError(attachment.name)
-      const uploaded = await this.#uploadBytes({ type: 'image', name: attachment.name, mimeType: attachment.mimeType, bytes: staged.bytes })
+      const uploaded = await this.#uploadBytes({ type: attachment.kind === 'image' ? 'image' : 'file', name: staged.meta.name, mimeType: staged.meta.mimeType, bytes: staged.bytes })
       await this.#staged.discard(attachment.id)
       return uploaded
     }
@@ -2418,7 +2418,7 @@ export class T3EngineClient implements EngineReadClient {
     await this.#staged.discard(id)
   }
 
-  /** Saved preparations keep their images too; only what neither a draft nor a preparation names is deleted. */
+  /** Saved preparations keep their staged files too; only what neither a draft nor a preparation names is deleted. */
   async retainAttachments(ids: readonly string[]): Promise<void> {
     if (!this.#operations.accepting) return
     return this.#operations.run(() => this.#retainAttachments(ids))
@@ -2426,7 +2426,7 @@ export class T3EngineClient implements EngineReadClient {
 
   async #retainAttachments(ids: readonly string[]): Promise<void> {
     const keep = new Set(ids)
-    for (const state of Object.values(this.#conversations.threads)) for (const prepared of state.prepared ?? []) for (const attachment of prepared.attachments) if (attachment.kind === 'image' && !attachment.uploaded) keep.add(attachment.id)
+    for (const state of Object.values(this.#conversations.threads)) for (const prepared of state.prepared ?? []) for (const attachment of prepared.attachments) if ((attachment.kind === 'image' || attachment.kind === 'binary') && !attachment.uploaded) keep.add(attachment.id)
     await this.#staged.sweep(keep)
   }
 

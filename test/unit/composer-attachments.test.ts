@@ -13,8 +13,8 @@ describe('classifyFile (§6.0)', () => {
   it('infers the type from the extension when the browser hands over none', () => {
     expect(classifyFile(file('photo.jpeg', ''))).toEqual({ kind: 'image', mimeType: 'image/jpeg' })
     expect(classifyFile(file('anim.GIF', 'application/octet-stream'))).toEqual({ kind: 'image', mimeType: 'image/gif' })
-    expect(classifyFile(file('data.bin', 'application/octet-stream'))).toEqual({ kind: 'text' })
-    expect(classifyFile(file('noext', ''))).toEqual({ kind: 'text' })
+    expect(classifyFile(file('data.bin', 'application/octet-stream'))).toEqual({ kind: 'binary', mimeType: 'application/octet-stream' })
+    expect(classifyFile(file('noext', ''))).toEqual({ kind: 'binary', mimeType: 'application/octet-stream' })
   })
 })
 
@@ -64,4 +64,12 @@ describe('acceptFiles', () => {
     expect(acceptFiles(7, [file('one-more.png', 'image/png')], 1).accepted).toHaveLength(0)
     expect(acceptFiles(7, [file('one-more.png', 'image/png')], 0).accepted).toHaveLength(1)
   })
+})
+
+it('accepts original binary MIME types to 50 MB, retaining the generated context slot', () => {
+  const files = [file('report.pdf', 'application/pdf', 50 * 1024 * 1024), file('export.zip', 'application/zip')]
+  expect(acceptFiles(0, files, 1).accepted).toMatchObject([{ kind: 'binary', mimeType: 'application/pdf' }, { kind: 'binary', mimeType: 'application/zip' }])
+  expect(acceptFiles(0, [file('too-large.zip', 'application/zip', 50 * 1024 * 1024 + 1)], 0).refusal).toContain('too-large.zip exceeds the 50 MB')
+  expect(acceptFiles(7, files, 1).accepted).toHaveLength(0)
+  expect(classifyFile(file('report.pdf', ''))).toEqual({ kind: 'binary', mimeType: 'application/pdf' })
 })

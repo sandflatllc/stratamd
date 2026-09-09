@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -52,19 +52,19 @@ async function client(fake: ReturnType<typeof engine>, directory: string) {
   return instance
 }
 
-describe('composer image attachments (§6.0)', () => {
+describe.each(['image', 'binary'] as const)('composer %s attachments (§6.0)', (attachmentKind) => {
   it('uploads a pasted image with its real type before dispatching, then drops the staged bytes', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'strata-image-upload-'))
     const fake = engine()
     const instance = await client(fake, directory)
     const staged = await instance.stageAttachment({ name: 'pasted-image-2026-09-05-12-00-00.png', mimeType: 'image/png', bytes: png })
     expect(await stagedFiles(directory)).toHaveLength(2)
-    await instance.startTurn('t1', { ...turn, text: '', attachments: [{ kind: 'image', id: staged.id, name: 'pasted-image-2026-09-05-12-00-00.png', mimeType: 'image/png', sizeBytes: staged.sizeBytes }] })
-    expect(uploadPayloads(fake.server)).toEqual([{ type: 'image', name: 'pasted-image-2026-09-05-12-00-00.png', mimeType: 'image/png', sizeBytes: png.byteLength }])
+    await instance.startTurn('t1', { ...turn, text: '', attachments: [{ kind: attachmentKind, id: staged.id, name: 'pasted-image-2026-09-05-12-00-00.png', mimeType: 'image/png', sizeBytes: staged.sizeBytes }] })
+    expect(uploadPayloads(fake.server)).toEqual([{ type: attachmentKind === 'image' ? 'image' : 'file', name: 'pasted-image-2026-09-05-12-00-00.png', mimeType: 'image/png', sizeBytes: png.byteLength }])
     expect(fake.uploads).toHaveLength(1)
     expect(fake.uploads[0]!.contentType).toBe('image/png')
     expect([...fake.uploads[0]!.bytes]).toEqual([...png])
-    expect(fake.commands[0]).toMatchObject({ message: { text: 'Attached pasted-image-2026-09-05-12-00-00.png.', attachments: [{ type: 'image', id: 'upload-1', name: 'pasted-image-2026-09-05-12-00-00.png', mimeType: 'image/png', sizeBytes: png.byteLength }] } })
+    expect(fake.commands[0]).toMatchObject({ message: { text: 'Attached pasted-image-2026-09-05-12-00-00.png.', attachments: [{ type: attachmentKind === 'image' ? 'image' : 'file', id: 'upload-1', name: 'pasted-image-2026-09-05-12-00-00.png', mimeType: 'image/png', sizeBytes: png.byteLength }] } })
     expect(await stagedFiles(directory)).toEqual([])
     await instance.shutdown()
   })
@@ -74,10 +74,10 @@ describe('composer image attachments (§6.0)', () => {
     const fake = engine()
     const instance = await client(fake, directory)
     const staged = await instance.stageAttachment({ name: 'shot.png', mimeType: 'image/png', bytes: png })
-    await instance.startTurn('t1', { ...turn, text: 'Compare these.', attachments: [{ kind: 'text', name: 'notes.md', text: '# Notes' }, { kind: 'image', id: staged.id, name: 'shot.png', mimeType: 'image/png', sizeBytes: staged.sizeBytes }] })
-    expect(uploadPayloads(fake.server).map((payload) => [payload.type, payload.mimeType])).toEqual([['file', 'text/markdown'], ['image', 'image/png']])
+    await instance.startTurn('t1', { ...turn, text: 'Compare these.', attachments: [{ kind: 'text', name: 'notes.md', text: '# Notes' }, { kind: attachmentKind, id: staged.id, name: 'shot.png', mimeType: 'image/png', sizeBytes: staged.sizeBytes }] })
+    expect(uploadPayloads(fake.server).map((payload) => [payload.type, payload.mimeType])).toEqual([['file', 'text/markdown'], [attachmentKind === 'image' ? 'image' : 'file', 'image/png']])
     expect(fake.uploads.map((upload) => upload.contentType)).toEqual(['text/markdown', 'image/png'])
-    expect(fake.commands[0]).toMatchObject({ message: { text: 'Compare these.', attachments: [{ type: 'file', name: 'notes.md' }, { type: 'image', name: 'shot.png' }] } })
+    expect(fake.commands[0]).toMatchObject({ message: { text: 'Compare these.', attachments: [{ type: 'file', name: 'notes.md' }, { type: attachmentKind === 'image' ? 'image' : 'file', name: 'shot.png' }] } })
     await instance.shutdown()
   })
 
@@ -89,7 +89,7 @@ describe('composer image attachments (§6.0)', () => {
     await instance.queueItemReply('t1', items()[0]!.id, 'Audience')
     const images = await Promise.all(Array.from({ length: 8 }, async (_, index) => {
       const staged = await instance.stageAttachment({ name: `shot-${index}.png`, mimeType: 'image/png', bytes: png })
-      return { kind: 'image' as const, id: staged.id, name: `shot-${index}.png`, mimeType: 'image/png', sizeBytes: staged.sizeBytes }
+      return { kind: attachmentKind, id: staged.id, name: `shot-${index}.png`, mimeType: 'image/png', sizeBytes: staged.sizeBytes }
     }))
     // Eight owner files plus the replies file would be nine: refused before anything is written, the reply still queued.
     await expect(instance.startTurn('t1', { ...turn, text: 'Too many', attachments: images, replies: { [items()[0]!.id]: 'Audience' } })).rejects.toThrow(attachmentLimitMessage(1))
@@ -101,7 +101,7 @@ describe('composer image attachments (§6.0)', () => {
     // Seven fit: eight uploads, the context file last.
     await instance.startTurn('t1', { ...turn, text: 'Seven fit', attachments: images.slice(0, 7), replies: { [items()[0]!.id]: 'Audience' } })
     expect(fake.uploads).toHaveLength(8)
-    expect(uploadPayloads(fake.server).map((payload) => payload.type)).toEqual([...Array.from({ length: 7 }, () => 'image'), 'file'])
+    expect(uploadPayloads(fake.server).map((payload) => payload.type)).toEqual([...Array.from({ length: 7 }, () => attachmentKind === 'image' ? 'image' : 'file'), 'file'])
     const attachments = (fake.commands[0]!.message as { attachments: Array<{ name: string }> }).attachments
     expect(attachments).toHaveLength(8)
     expect(attachments[7]!.name).toMatch(/^conversation-.*\.md$/)
@@ -114,7 +114,7 @@ describe('composer image attachments (§6.0)', () => {
     const first = await client(fake, directory)
     const removed = await first.stageAttachment({ name: 'removed.png', mimeType: 'image/png', bytes: png })
     await first.discardAttachment(removed.id)
-    await expect(first.startTurn('t1', { ...turn, text: 'Gone', attachments: [{ kind: 'image', id: removed.id, name: 'removed.png', mimeType: 'image/png', sizeBytes: png.byteLength }] })).rejects.toThrow('Attachment removed.png is no longer staged')
+    await expect(first.startTurn('t1', { ...turn, text: 'Gone', attachments: [{ kind: attachmentKind, id: removed.id, name: 'removed.png', mimeType: 'image/png', sizeBytes: png.byteLength }] })).rejects.toThrow('Attachment removed.png is no longer staged')
     expect(fake.uploads).toHaveLength(0)
 
     // A dispatch that loses its response leaves the preparation saved with its upload done; a second image still waits.
@@ -122,7 +122,7 @@ describe('composer image attachments (§6.0)', () => {
     await first.queueItemReply('t1', items()[0]!.id, 'Audience')
     const kept = await first.stageAttachment({ name: 'kept.png', mimeType: 'image/png', bytes: png })
     fake.failDispatch(true)
-    await expect(first.startTurn('t1', { ...turn, messageId: 'lost', text: 'Saved', attachments: [{ kind: 'image', id: kept.id, name: 'kept.png', mimeType: 'image/png', sizeBytes: png.byteLength }], replies: { [items()[0]!.id]: 'Audience' } })).rejects.toThrow()
+    await expect(first.startTurn('t1', { ...turn, messageId: 'lost', text: 'Saved', attachments: [{ kind: attachmentKind, id: kept.id, name: 'kept.png', mimeType: 'image/png', sizeBytes: png.byteLength }], replies: { [items()[0]!.id]: 'Audience' } })).rejects.toThrow()
     await first.shutdown()
     fake.failDispatch(false)
     // The image uploaded before the dispatch, so its staged bytes are already gone; the preparation keeps the uploaded reference and resumes without a second upload.
@@ -147,7 +147,7 @@ describe('composer image attachments (§6.0)', () => {
     const failingClient = new T3EngineClient({ dataDirectory: directory, fetch: fake.fetch, webSocket: failing.WebSocket, now: () => Date.parse(at), publishDelayMs: 0 })
     await first.shutdown()
     await failingClient.initialize()
-    await expect(failingClient.startTurn('t1', { ...turn, messageId: 'swept', text: 'Saved', attachments: [{ kind: 'image', id: staged.id, name: 'later.png', mimeType: 'image/png', sizeBytes: png.byteLength }], replies: { [items()[0]!.id]: 'Audience' } })).rejects.toThrow()
+    await expect(failingClient.startTurn('t1', { ...turn, messageId: 'swept', text: 'Saved', attachments: [{ kind: attachmentKind, id: staged.id, name: 'later.png', mimeType: 'image/png', sizeBytes: png.byteLength }], replies: { [items()[0]!.id]: 'Audience' } })).rejects.toThrow()
     await failingClient.shutdown()
     expect(fake.uploads).toHaveLength(0)
     await new StagedAttachmentStore(join(directory, 'composer-attachments')).discard(staged.id)
@@ -172,7 +172,7 @@ describe('composer image attachments (§6.0)', () => {
     await instance.shutdown()
     const offline = new T3EngineClient({ dataDirectory: directory, fetch: fake.fetch, webSocket: failing.WebSocket, now: () => Date.parse(at), publishDelayMs: 0 })
     await offline.initialize()
-    await expect(offline.startTurn('t1', { ...turn, messageId: 'held', text: 'Later', attachments: [{ kind: 'image', id: prepared.id, name: 'prepared.png', mimeType: 'image/png', sizeBytes: png.byteLength }] })).rejects.toThrow()
+    await expect(offline.startTurn('t1', { ...turn, messageId: 'held', text: 'Later', attachments: [{ kind: attachmentKind, id: prepared.id, name: 'prepared.png', mimeType: 'image/png', sizeBytes: png.byteLength }] })).rejects.toThrow()
     await offline.retainAttachments([drafted.id])
     expect((await stagedFiles(directory)).filter((name) => name.endsWith('.bin')).toSorted()).toEqual([`${drafted.id}.bin`, `${prepared.id}.bin`].toSorted())
     expect(await stagedFiles(directory)).not.toContain(`${orphan.id}.bin`)
@@ -213,4 +213,33 @@ describe('saved preparations from before images (§6.0)', () => {
     expect(fake.commands[1]).toMatchObject({ message: { attachments: [{ type: 'file', id: 'upload-9', name: 'b.md', sizeBytes: 10 }] } })
     await instance.shutdown()
   })
+})
+
+
+it('restores original PDF and ZIP bytes and MIME, and retries a frozen binary send after restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'strata-binary-original-'))
+  const fake = engine()
+  const first = await client(fake, directory)
+  const files = await Promise.all(['pdf', 'zip'].map(async extension => {
+    const name = extension === 'pdf' ? 'inspection-report.pdf' : 'inspection-export.zip'
+    const mimeType = `application/${extension}`
+    const bytes = await readFile(join('test/fixtures/attachments', name))
+    const staged = await first.stageAttachment({ name, mimeType, bytes })
+    return { bytes, attachment: { kind: 'binary' as const, ...staged, name, mimeType } }
+  }))
+  await first.shutdown()
+  const second = await client(fake, directory)
+  fake.failDispatch(true)
+  await expect(second.startTurn('t1', { ...turn, messageId: 'binary-retry', text: 'Original note', attachments: files.map(file => file.attachment) })).rejects.toThrow('Lost dispatch response')
+  expect(fake.uploads.map(upload => Buffer.from(upload.bytes))).toEqual(files.map(file => file.bytes))
+  expect(fake.uploads.map(upload => upload.contentType)).toEqual(['application/pdf', 'application/zip'])
+  expect(uploadPayloads(fake.server)).toEqual(files.map(({ attachment, bytes }) => ({ type: 'file', name: attachment.name, mimeType: attachment.mimeType, sizeBytes: bytes.length })))
+  const original = fake.commands[0]
+  await second.shutdown()
+  fake.failDispatch(false)
+  const third = new T3EngineClient({ dataDirectory: directory, fetch: fake.fetch, webSocket: fake.server.WebSocket, now: () => Date.parse(at), publishDelayMs: 0 })
+  await third.initialize()
+  expect(fake.uploads).toHaveLength(2)
+  expect(fake.commands[1]).toEqual(original)
+  await third.shutdown()
 })

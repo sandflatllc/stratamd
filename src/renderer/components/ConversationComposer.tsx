@@ -10,9 +10,9 @@ import { ContextWindowMeter } from './ContextWindowMeter'
 import { FolderIcon, FolderGit2Icon, GitBranchIcon } from '../icons/lucide'
 import { ModelPicker } from './ModelPicker'
 import { availableModels, clearDraftContent, draftSelection, flushDrafts, onDraftStorage, readDraft, rememberedSelection, rememberSelection, selectionForModel, writeDraft, type ComposerSelection, type DraftAttachment } from '../conversationDrafts'
-import { acceptFiles, classifyFile, SUPPORTED_IMAGE_TYPES } from '../../core/composer-attachments'
+import { acceptFiles, binaryFileLabel, classifyFile } from '../../core/composer-attachments'
 
-const PICKER_ACCEPT = ['text/*', '.md', '.markdown', '.json', '.csv', '.ts', '.tsx', '.js', '.py', ...SUPPORTED_IMAGE_TYPES].join(',')
+
 
 /** A preview small enough to live in the draft; the real bytes stay with the main process. */
 async function thumbnailFor(file: File): Promise<string | undefined> {
@@ -85,6 +85,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
   const sending = useRef(false)
   const attachmentGeneration = useRef(0)
   const [error, setError] = useState('')
+  const [sendFailed, setSendFailed] = useState(false)
   const root = useRef<HTMLFormElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -136,9 +137,12 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
         if (entry.kind === 'image') {
           const [staged, thumbnail] = await Promise.all([window.strata.stageConversationAttachment({ name: entry.name, mimeType: entry.mimeType, bytes: new Uint8Array(await entry.file.arrayBuffer()) }), thumbnailFor(entry.file)])
           next = { kind: 'image', id: staged.id, name: entry.name, mimeType: entry.mimeType, sizeBytes: staged.sizeBytes, ...(thumbnail ? { thumbnail } : {}) }
+        } else if (entry.kind === 'binary') {
+          const staged = await window.strata.stageConversationAttachment({ name: entry.name, mimeType: entry.mimeType, bytes: new Uint8Array(await entry.file.arrayBuffer()) })
+          next = { kind: 'binary', id: staged.id, name: entry.name, mimeType: entry.mimeType, sizeBytes: staged.sizeBytes }
         } else next = { kind: 'text', name: entry.name, text: await entry.file.text() }
         if (generation !== attachmentGeneration.current) {
-          if (next.kind === 'image') void window.strata.discardConversationAttachment(next.id).catch(() => {})
+          if (next.kind !== 'text') void window.strata.discardConversationAttachment(next.id).catch(() => {})
           continue
         }
         const list = [...latestAttachments.current, next]
@@ -152,7 +156,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     const removed = latestAttachments.current[index]
     const list = latestAttachments.current.filter((_, position) => position !== index)
     setAttachments(list); persist(text, selection, list)
-    if (removed?.kind === 'image') window.strata.discardConversationAttachment(removed.id).catch(() => { /* The startup sweep deletes what a failed discard left behind. */ })
+    if (removed && removed.kind !== 'text') window.strata.discardConversationAttachment(removed.id).catch(() => { /* The startup sweep deletes what a failed discard left behind. */ })
   }
   const removeVisual = async (comment: VisualCommentView) => {
     if (busy || sending.current) return
@@ -214,14 +218,14 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     const removed = latestAttachments.current
     const { messageId: _messageId, attachments: _attachments, ...saved } = readDraft(draftKey)
     setUnsaved(!writeDraft(draftKey, { ...saved, text: '' }, { immediate: true }))
-    setText(''); setAttachments([]); setError(''); setMenu(null)
-    for (const attachment of removed) if (attachment.kind === 'image') window.strata.discardConversationAttachment(attachment.id).catch(() => { /* Startup sweep removes unreferenced files. */ })
+    setText(''); setAttachments([]); setError(''); setSendFailed(false); setMenu(null)
+    for (const attachment of removed) if (attachment.kind !== 'text') window.strata.discardConversationAttachment(attachment.id).catch(() => { /* Startup sweep removes unreferenced files. */ })
     input.current?.focus()
   }
   const canSend = Boolean(text.trim() || attachments.length || queuedCount || canSendContext || includedVisual.length) && !capacity.refusal
   const send = async () => {
     if (sending.current || busy || !valid || !canSend) return
-    sending.current = true; setBusy(true); setError(''); setMenu(null)
+    sending.current = true; setBusy(true); setError(''); setSendFailed(false); setMenu(null)
     try {
       const messageId = readDraft(draftKey).messageId ?? deliveryId ?? crypto.randomUUID()
       writeDraft(draftKey, { ...readDraft(draftKey), messageId }, { immediate: true })
@@ -230,7 +234,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
       await onSend({ ...selection, messageId, commandId: `strata-${messageId}`, text: text.trim(), ...(outgoing.length ? { attachments: outgoing } : {}), ...(includedVisual.length ? { visual: includedVisual.map((comment) => comment.id) } : {}) })
       // The preparation owns the staged images now; clearing the list must not discard them.
       setUnsaved(!clearDraftContent(draftKey, selection, thread ? initial : undefined)); setText(''); setAttachments([])
-    } catch (failure) { setError(failure instanceof Error ? failure.message : 'The message could not be sent. Try again.') }
+    } catch (failure) { setError(failure instanceof Error ? failure.message : 'The message could not be sent. Try again.'); setSendFailed(true) }
     finally { sending.current = false; setBusy(false) }
   }
   return <form ref={root} className="chat-composer" data-centered={centered} aria-label="Conversation composer" onSubmit={(event) => { event.preventDefault(); void send() }} onKeyDown={(event) => {
@@ -246,7 +250,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
           <div className="conversation-visual-card-actions"><label><input type="checkbox" checked={included} disabled={busy} onChange={() => setExcludedVisual((current) => included ? [...current, comment.id] : current.filter((id) => id !== comment.id))} />Include</label><button type="button" aria-label={`Remove held visual comment: ${comment.title}`} title="Remove held comment" disabled={busy} onClick={() => void removeVisual(comment)}>×</button></div>
         </div>
       })}</div>}
-      {attachments.length > 0 && <div className="conversation-attachments">{attachments.map((attachment, index) => <div key={attachment.kind === 'image' ? attachment.id : `${attachment.name}:${index}`} className="conversation-attachment-preview" data-kind={attachment.kind}>{attachment.kind === 'image' && (onMarkUpImage ? <button type="button" className="conversation-attachment-markup" aria-label={`Mark up ${attachment.name}`} title="Mark up this image" disabled={busy} onClick={() => onMarkUpImage(attachment)}><img src={attachment.thumbnail ?? ''} alt="" /></button> : <img src={attachment.thumbnail ?? ''} alt="" />)}<strong title={attachment.name}>{attachment.name}</strong><button type="button" aria-label={`Remove ${attachment.name}`} disabled={busy} onClick={() => removeAttachment(index)}>×</button></div>)}</div>}
+      {attachments.length > 0 && <div className="conversation-attachments">{attachments.map((attachment, index) => <div key={attachment.kind !== 'text' ? attachment.id : `${attachment.name}:${index}`} className="conversation-attachment-preview" data-kind={attachment.kind}>{attachment.kind === 'image' && (onMarkUpImage ? <button type="button" className="conversation-attachment-markup" aria-label={`Mark up ${attachment.name}`} title="Mark up this image" disabled={busy} onClick={() => onMarkUpImage(attachment)}><img src={attachment.thumbnail ?? ''} alt="" /></button> : <img src={attachment.thumbnail ?? ''} alt="" />)}{attachment.kind === 'binary' && <span aria-hidden="true">{binaryFileLabel(attachment.name)}</span>}<strong title={attachment.name}>{attachment.name}</strong>{attachment.kind === 'binary' && <small title={attachment.mimeType}>{binaryFileLabel(attachment.name)} · {attachment.sizeBytes < 1024 * 1024 ? `${Math.ceil(attachment.sizeBytes / 1024)} KB` : `${(attachment.sizeBytes / (1024 * 1024)).toFixed(1)} MB`}</small>}<button type="button" aria-label={`Remove ${attachment.name}`} disabled={busy} onClick={() => removeAttachment(index)}>×</button></div>)}</div>}
       <textarea ref={input} aria-label="Message conversation" placeholder="Ask for changes, send follow-ups, or attach a file" value={text} disabled={busy} onChange={(event) => { setText(event.target.value); persist(event.target.value, selection, latestAttachments.current) }} onKeyDown={(event) => {
         if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); void send() }
       }} onPaste={(event) => {
@@ -273,7 +277,7 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
         <div className="chat-control"><button type="button" className="chat-pill" aria-label="Conversation access" aria-expanded={menu === 'access'} disabled={busy} onClick={() => setMenu(menu === 'access' ? null : 'access')}>{access[1]}<span aria-hidden="true">⌄</span></button>
           {menu === 'access' && <div ref={popup} popover="manual" className="chat-menu chat-access-menu" role="region" aria-label="Access modes">{accessModes.map(([id, label, description]) => <button type="button" aria-pressed={selection.access === id} key={id} onClick={() => { choose({ ...selection, access: id }); setMenu(null) }}>{label}<span className="chat-option-description">{description}</span></button>)}</div>}
         </div>
-        <div className="chat-send-actions"><input ref={fileInput} className="conversation-attachment-input" type="file" accept={PICKER_ACCEPT} multiple hidden onChange={(event) => {
+        <div className="chat-send-actions"><input ref={fileInput} className="conversation-attachment-input" type="file" multiple hidden onChange={(event) => {
           const files = Array.from(event.target.files ?? []); event.target.value = ''
           if (files.length) void stageFiles(files, false)
         }} /><button type="button" aria-label="Attach file" disabled={busy || canSendContext} onClick={() => fileInput.current?.click()}>＋</button><ContextWindowMeter activities={boundThread?.activities ?? []} />{running && !busy && onStop
@@ -292,6 +296,6 @@ export function ConversationComposer({ deliveryId, engine, thread, projectId, dr
     {(attachments.length > 0 || includedVisual.length > 0) && <small className="conversation-capacity" role="status" data-over={capacity.refusal ? '' : undefined}>{capacity.refusal ?? capacity.line}</small>}
     {account?.usable === false && <p role="alert">{account.name} cannot take a turn: {account.reason ?? account.state}. Choose another model or account.</p>}
     {unsaved && <p className="conversation-draft-unsaved" role="status">This draft could not be saved and will not survive reload.</p>}
-    {error && <p className="send-error" role="alert">{error}</p>}
+    {error && <div className="send-error" role="alert">{error}{sendFailed && <button type="button" className="chat-pill" disabled={busy || !canSend} onClick={() => void send()}>Retry send</button>}</div>}
   </form>
 }

@@ -1709,6 +1709,11 @@ button.conversation-file-chip:hover, .conversation-file-row:is(button):hover { b
 .conversation-attachment-input { display: none; }
 .conversation-attachments { display: flex; flex-wrap: wrap; gap: 6px; }
 .conversation-attachment-preview { display: grid; width: min(220px, 100%); grid-template-columns: minmax(0, 1fr) 24px; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 8px; padding: 5px; background: var(--surfaces-inset); }
+.conversation-attachment-preview[data-kind="binary"] { width: min(250px, 100%); grid-template-columns: 30px minmax(0, 1fr) 24px; column-gap: 7px; row-gap: 3px; }
+.conversation-attachment-preview[data-kind="binary"] > span { grid-column: 1; grid-row: 1 / 3; font-size: calc(11px * var(--zoom, 1)); }
+.conversation-attachment-preview[data-kind="binary"] > strong { grid-column: 2; grid-row: 1; }
+.conversation-attachment-preview[data-kind="binary"] > small { grid-column: 2; grid-row: 2; color: var(--muted); font-size: calc(10px * var(--zoom, 1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-attachment-preview[data-kind="binary"] > button { grid-column: 3; grid-row: 1 / 3; }
 .conversation-attachment-preview[data-kind="image"] { grid-template-columns: 30px minmax(0, 1fr) 24px; }
 .conversation-attachment-preview > span { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 5px; background: var(--card-2); color: var(--muted); }
 .conversation-attachment-preview > img { width: 30px; height: 30px; border-radius: 5px; object-fit: cover; background: var(--card-2); }

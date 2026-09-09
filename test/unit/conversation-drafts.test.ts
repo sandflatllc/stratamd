@@ -111,11 +111,11 @@ it('reports when local storage refuses a draft, and the draft still reads back f
 it('collects the staged image ids across every saved draft for the startup sweep', () => {
   const values = new Map<string, string>()
   vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key), get length() { return values.size }, key: (index: number) => [...values.keys()][index] ?? null })
-  expect(writeDraft('thread:a', { text: '', attachments: [{ kind: 'image', id: 'a_1', name: 'one.png', mimeType: 'image/png', sizeBytes: 5 }, { kind: 'text', name: 'n.md', text: 'x' }] })).toBe(true)
+  expect(writeDraft('thread:a', { text: '', attachments: [{ kind: 'image', id: 'a_1', name: 'one.png', mimeType: 'image/png', sizeBytes: 5 }, { kind: 'text', name: 'n.md', text: 'x' }, { kind: 'binary', id: 'a_3', name: 'export.zip', mimeType: 'application/zip', sizeBytes: 50 }] })).toBe(true)
   localStorage.setItem('stratamd.conversation-draft.v1:thread:b', JSON.stringify({ text: 'saved elsewhere', attachments: [{ kind: 'image', id: 'a_2', name: 'two.png', mimeType: 'image/png', sizeBytes: 5 }] }))
   localStorage.setItem('stratamd.conversation-defaults.v1:p', JSON.stringify({ model: 'x' }))
   localStorage.setItem('stratamd.conversation-draft.v1:thread:c', '{not json')
-  expect(draftAttachmentIds().toSorted()).toEqual(['a_1', 'a_2'])
+  expect(draftAttachmentIds().toSorted()).toEqual(['a_1', 'a_2', 'a_3'])
   clearDraft('thread:a')
   expect(draftAttachmentIds()).toEqual(['a_2'])
 })

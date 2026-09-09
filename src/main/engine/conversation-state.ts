@@ -47,6 +47,7 @@ export interface UploadedAttachment { type: 'file' | 'image'; id: string; name: 
 export type PreparedAttachment = (
   | { kind: 'text'; name: string; text: string }
   | { kind: 'image'; id: string; name: string; mimeType: string; sizeBytes: number }
+  | { kind: 'binary'; id: string; name: string; mimeType: string; sizeBytes: number }
   /** A marked screenshot read from the visual evidence store by id; copied for upload, never consumed. */
   | { kind: 'evidence'; id: string; name: string; mimeType: string; sizeBytes: number }
 ) & { uploaded?: UploadedAttachment }
@@ -60,7 +61,7 @@ export function normalizePreparedAttachment(value: unknown): PreparedAttachment 
   const uploaded = isRecord(value.uploaded) && typeof value.uploaded.id === 'string' && typeof value.uploaded.name === 'string' && typeof value.uploaded.mimeType === 'string' && typeof value.uploaded.sizeBytes === 'number'
     ? { uploaded: { type: value.uploaded.type === 'image' ? 'image' as const : 'file' as const, id: value.uploaded.id, name: value.uploaded.name, mimeType: value.uploaded.mimeType, sizeBytes: value.uploaded.sizeBytes } }
     : {}
-  if (value.kind === 'image' || value.kind === 'evidence') {
+  if (value.kind === 'image' || value.kind === 'binary' || value.kind === 'evidence') {
     if (typeof value.id !== 'string' || typeof value.mimeType !== 'string' || typeof value.sizeBytes !== 'number') return null
     return { kind: value.kind, id: value.id, name: value.name, mimeType: value.mimeType, sizeBytes: value.sizeBytes, ...uploaded }
   }

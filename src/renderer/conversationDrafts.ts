@@ -116,8 +116,8 @@ export function draftAttachmentIds(): string[] {
   const ids = new Set<string>()
   const keys: string[] = []
   try { for (let index = 0; index < engineStorage.length; index += 1) { const key = engineStorage.key(index); if (key?.startsWith(prefix)) keys.push(key) } } catch { /* No storage means no saved drafts. */ }
-  for (const key of keys) for (const attachment of parseDraft(engineStorage.getItem(key))?.attachments ?? []) if (attachment.kind === 'image') ids.add(attachment.id)
-  for (const draft of memory.values()) for (const attachment of draft.attachments ?? []) if (attachment.kind === 'image') ids.add(attachment.id)
+  for (const key of keys) for (const attachment of parseDraft(engineStorage.getItem(key))?.attachments ?? []) if (attachment.kind !== 'text') ids.add(attachment.id)
+  for (const draft of memory.values()) for (const attachment of draft.attachments ?? []) if (attachment.kind !== 'text') ids.add(attachment.id)
   return [...ids]
 }
 export function clearDraft(key: string): void {
