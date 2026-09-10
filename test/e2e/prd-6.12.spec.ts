@@ -6,7 +6,6 @@ import {
   Scenario,
   allHunks,
   externalText,
-  lineEndKey,
   primaryKey,
   projectRoot,
   save,
@@ -78,7 +77,7 @@ async function closeTab(value: Scenario, choice?: 'Save' | 'Discard'): Promise<v
   const page = value.page!
   const path = (await page.evaluate(() => window.strata.getState())).activeDocument!.path
   await openDocsMenu(page)
-  await page.getByRole('menu', { name: 'Open docs' }).getByRole('button', { name: `Close ${path.split('/').at(-1)}`, exact: true }).click()
+  await page.getByRole('menu', { name: 'Open docs' }).getByRole('button', { name: `Close ${basename(path)}`, exact: true }).click()
   if (!choice) return
   const dialog = page.getByRole('dialog', { name: /Close .*\.md/i })
   await expect(dialog).toBeVisible()
@@ -250,14 +249,22 @@ test.describe('PRD §6.12 acceptance scenarios', () => {
     await attachAll(value, engine, [['t1', 'Agent A']])
 
     const editor = value.page!.getByRole('textbox', { name: /document editor/i })
-    await editor.locator('p').filter({ hasText: 'Base.' }).click({ position: { x: 4, y: 8 } })
-    await value.page!.keyboard.press(lineEndKey)
+    await selectTextInVisualEditor(value.page!, 'Base.')
+    await value.page!.keyboard.press('ArrowRight')
+    await expect.poll(() => editor.evaluate(root => {
+      const selection = window.getSelection()
+      return selection?.isCollapsed && root.contains(selection.anchorNode) && selection.anchorOffset === 5
+    })).toBe(true)
     await value.page!.keyboard.type(' Owner')
     await value.waitForBuffer(ownerEdit)
 
     await agentEdits(value, engine, 't1', 'Base. Owner', 'Base. Owner', 'Base. Owner Agent.')
-    await editor.locator('p').filter({ hasText: 'Base.' }).click({ position: { x: 4, y: 8 } })
-    await value.page!.keyboard.press(lineEndKey)
+    await selectTextInVisualEditor(value.page!, ' Agent.')
+    await value.page!.keyboard.press('ArrowRight')
+    await expect.poll(() => editor.evaluate(root => {
+      const selection = window.getSelection()
+      return selection?.isCollapsed && root.contains(selection.anchorNode) && selection.anchorOffset === selection.anchorNode?.textContent?.length
+    })).toBe(true)
     await value.page!.keyboard.type(' Later')
     await value.waitForBuffer(laterEdit)
 

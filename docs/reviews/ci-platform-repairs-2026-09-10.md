@@ -32,3 +32,11 @@ Run 34423383493 passed the corrected path assertions. Its first two document sce
 The Save scenario also exposed ordinary Windows rename refusing an open destination. Atomic document publication now uses FileRenameInfoEx with replace-existing and POSIX semantics, preserving the existing temporary-file write, sync and conflict checks. The native storage regression overwrites the destination twice while retaining an old read descriptor and verifies both the published bytes and the old reader's bytes. Filesystems without the extended API fall back to ordinary rename and retain its sharing restrictions. Microsoft documents the [rename information API](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_rename_info); [Git's corresponding Windows fix](https://code.googlesource.com/git/+/391bceae4350136a05d977573caeaa07059f2136) describes the open-target restriction.
 
 The Windows log and original archive are retained as `ci/windows-34423383493.log` and `ci/windows-34423383493.zip` under the evidence directory above.
+
+## Remaining Windows fixture assumptions
+
+Run 34424475929 passed native open-file replacement and the first Save scenario, then exposed two fixture assumptions. External atomic edits now use the native rename helper too, and close-tab lookup uses the platform basename instead of splitting on `/`. Forced shutdown completed without the previous afterEach hangs.
+
+A focused local check also inserted the undo scenario's setup text at the beginning of its paragraph after an unchecked End key. Setup now selects the exact text, collapses right, and verifies the caret before typing. The failed record is `2026-09-10T01-21-46-370Z-bf363621`.
+
+The separate unresolved preview-navigation failure is recorded in test/e2e/README.md with its original trace and diagnostic repetitions; it is not treated as resolved by a later pass.

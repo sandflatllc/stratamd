@@ -2,11 +2,12 @@ import { _electron as electron, expect, type ElectronApplication, type Page, typ
 import { execFile, type ChildProcess } from 'node:child_process'
 import { promisify } from 'node:util'
 import { constants, realpathSync } from 'node:fs'
-import { access, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AnnotationContext } from '../../src/shared/contracts'
+import { atomicRename } from '../../src/platform/atomic-rename'
 import { settledBox } from './geometry'
 import { scenarioEvidence } from './test'
 import { DISPLAYS_VARIABLE, SERIAL_COMMAND, parseDisplays } from './display'
@@ -356,7 +357,7 @@ export class Scenario {
   async atomicWrite(path: string, content: string | Buffer): Promise<void> {
     const temporary = `${path}.stratamd-acceptance-tmp`
     await writeFile(temporary, content)
-    await rename(temporary, path)
+    await atomicRename(temporary, path)
   }
 
   async waitForBuffer(expected: string, timeoutMs = 5_000): Promise<void> {
