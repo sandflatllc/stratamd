@@ -49,10 +49,11 @@ export interface DocumentInspection {
   annotations?: Annotation[]
 }
 
-// Canonicalizes TMPDIR before any scenario path derives from it (macOS /var
-// symlink). The vitest setup file does the same for unit tests; it registers
+// Canonicalizes temporary paths before any scenario derives from them (macOS
+// /var symlink and Windows short names). Vitest setup does the same; it registers
 // vitest hooks, so Playwright cannot import it.
 process.env.TMPDIR = realpathSync(tmpdir())
+if (process.platform === 'win32') process.env.TEMP = process.env.TMPDIR
 
 const here = dirname(fileURLToPath(import.meta.url))
 export const projectRoot = resolve(here, '../..')

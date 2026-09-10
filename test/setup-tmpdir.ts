@@ -8,6 +8,7 @@ import { join } from 'node:path'
 // lookup. Canonicalizing TMPDIR once makes every tmpdir() caller consistent;
 // a no-op on Linux.
 process.env.TMPDIR = realpathSync(tmpdir())
+if (process.platform === 'win32') process.env.TEMP = process.env.TMPDIR
 
 // Anything that derives a location from the environment (the failure log,
 // the default ghost store) lands in a per-file scratch directory
