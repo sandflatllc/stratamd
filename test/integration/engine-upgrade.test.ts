@@ -29,6 +29,10 @@ async function upgradeFixture(name: string) {
   const stop = () => phase('stop engine and client', async () => { await manager?.stop(); await client?.shutdown() })
   const cleanup = async () => { try { await stop() } finally { await rm(root, { recursive: true, force: true }) } }
   const start = () => phase('start engine', async () => {
+    // A failed attempt may still own a lock and scheduled recovery. Dispose it
+    // before a retry replaces the fixture's only handle to that manager.
+    await manager?.stop()
+    await client?.shutdown()
     client = new T3EngineClient({ dataDirectory: root, terminalShimDirectory: null, reserveLocalSetup: () => { maintenance = true }, localSetupBusy: () => maintenance })
     await client.initialize(false)
     manager = new LocalEngineManager({ directory: join(root, 'engine'), bundle,
@@ -36,7 +40,13 @@ async function upgradeFixture(name: string) {
       connect: (address, token, identity) => client!.pair(address, token, identity), reconnect: () => client!.reconnect(), changed: () => undefined,
       authenticate: async address => { const credential = JSON.parse(await readFile(join(root, 'engine-credential.json'), 'utf8')); return (await fetch(address + '/api/orchestration/shell', { headers: { authorization: `Bearer ${credential.accessToken}` } })).ok },
     })
-    await manager.start(); expect(manager.view().state).toBe('running')
+    await manager.start()
+    if (manager.view().state !== 'running') {
+      const failure = JSON.stringify(manager.view())
+      await manager.stop()
+      await client.shutdown()
+      throw new Error(`Engine startup did not reach running: ${failure}`)
+    }
   })
   try {
     await phase('copy official bundle', () => copyRuntimeDirectory(process.env.STRATAMD_ENGINE_BUNDLE!, bundle))
