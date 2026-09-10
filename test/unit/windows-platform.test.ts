@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, open, rename } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, open, rename, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
@@ -68,7 +68,7 @@ describe.skipIf(process.platform !== 'win32')('Windows native storage and proces
       const descriptor = await open(path, 'r')
       try {
         await rename(path, moved)
-        expect((await pathForDescriptor(descriptor.fd))?.replace(/^\\\\\?\\/, '')).toBe(moved)
+        expect(await pathForDescriptor(descriptor.fd)).toBe(await realpath(moved))
       } finally { await descriptor.close() }
       await atomicWriteFile(moved, '# Changed\r\n')
       expect(await readFile(moved, 'utf8')).toBe('# Changed\r\n')
