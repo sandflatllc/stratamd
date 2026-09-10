@@ -1,12 +1,14 @@
 import { app, BrowserWindow, nativeImage, type WebContentsView } from 'electron'
 import { createServer } from 'node:http'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { execFileSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import assert from 'node:assert/strict'
 import { PreviewHost } from '../../src/main/preview/host'
 const root = process.env.STRATA_COMPOSITION_OUTPUT!
+const execute = promisify(execFile)
 app.setPath('userData', join(root, 'profile'))
 app.on('window-all-closed', () => {})
 app.whenReady().then(async () => {
@@ -39,7 +41,9 @@ app.whenReady().then(async () => {
    const rgb=expectedPage?.match(/\d+/g)?.map(Number)
    const deadline=Date.now()+5000
    while(true){
-     execFileSync('import',['-window','root',desktop])
+     // Electron's main thread must stay free to process the native repaint
+     // whose pixels this external capture is checking.
+     await execute('import',['-window','root',desktop])
      const image=nativeImage.createFromPath(desktop), bytes=image.toBitmap(),offset=(80*image.getSize().width+80)*4
      const shellVisible=bytes[offset]===238&&bytes[offset+1]===68&&bytes[offset+2]===0
      // A guest capture can succeed while its native view stays blank. Read the
