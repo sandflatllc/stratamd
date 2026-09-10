@@ -111,27 +111,28 @@ function workerDisplay(testInfo: TestInfo): string | undefined {
 const CLOSE_TIMEOUT_MS = 5_000
 const EXIT_TIMEOUT_MS = 2_000
 
-async function killApplication(child: ChildProcess): Promise<void> {
+async function killApplication(child: ChildProcess, electronPids: number[]): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return
   if (process.platform !== 'win32') { child.kill('SIGKILL'); return }
-  // Kill the tree while its root still exists. Killing just Electron's main
-  // process leaves Chromium children holding the isolated profile open.
+  // Chromium helpers hold the profile open, but the separately spawned engine
+  // must survive an app crash. Never use taskkill /T here.
   try {
-    await promisify(execFile)('taskkill', ['/PID', String(child.pid), '/T', '/F'], { timeout: 5000, windowsHide: true })
+    const pids = [...new Set([child.pid!, ...electronPids])]
+    await promisify(execFile)('taskkill', [...pids.flatMap(pid => ['/PID', String(pid)]), '/F'], { timeout: 5000, windowsHide: true })
   } catch (error) {
     if (child.exitCode === null && child.signalCode === null) throw error
   }
 }
 
 /** Resolves once the process has exited, killing it if the wait runs out. */
-async function processExit(child: ChildProcess, timeoutMs: number): Promise<void> {
+async function processExit(child: ChildProcess, timeoutMs: number, electronPids: number[]): Promise<void> {
   const exited = () => child.exitCode !== null || child.signalCode !== null
   if (exited()) return
   await new Promise<void>((resolveExit, reject) => {
     const onExit = () => { clearTimeout(timer); resolveExit() }
     const timer = setTimeout(() => {
       child.removeListener('exit', onExit)
-      void killApplication(child).then(resolveExit, reject)
+      void killApplication(child, electronPids).then(resolveExit, reject)
     }, timeoutMs)
     child.once('exit', onExit)
   })
@@ -302,12 +303,24 @@ export class Scenario {
     this.page = undefined
     if (!app) return
 
+    let electronPids: number[] = []
+    if (process.platform === 'win32') {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        electronPids = await Promise.race([
+          app.evaluate(({ app }) => app.getAppMetrics().map(process => process.pid)),
+          new Promise<number[]>((_, reject) => { timer = setTimeout(() => reject(new Error('Electron process lookup timed out')), EXIT_TIMEOUT_MS) }),
+        ])
+      } catch { /* An already closed app has no live metrics connection. */ }
+      finally { clearTimeout(timer) }
+    }
+
     if (crash) {
       let child: ChildProcess
       try { child = app.process() } catch { return }
       if (child.exitCode !== null || child.signalCode !== null) return
-      await killApplication(child)
-      await processExit(child, EXIT_TIMEOUT_MS)
+      await killApplication(child, electronPids)
+      await processExit(child, EXIT_TIMEOUT_MS, electronPids)
       return
     }
 
@@ -323,9 +336,9 @@ export class Scenario {
         new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error('Electron did not close within the bound')), CLOSE_TIMEOUT_MS))
       ])
     } catch {
-      if (child) await killApplication(child)
+      if (child) await killApplication(child, electronPids)
     }
-    if (child) await processExit(child, EXIT_TIMEOUT_MS)
+    if (child) await processExit(child, EXIT_TIMEOUT_MS, electronPids)
   }
 
   async dispose(): Promise<void> {
