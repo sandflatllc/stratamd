@@ -8,7 +8,7 @@ import { copyRuntimeDirectory } from '../../src/platform/runtime-copy'
 
 // Each preparation phase has its own 30-second bound. The test starts from
 // an installed update and checks the owner-facing restoration workflow.
-const prepared = withManagedScenario(base).extend<{ bundleScenario: Scenario; recoveryScenario: Scenario }>({
+const prepared = withManagedScenario(base).extend<{ bundleScenario: Scenario; stagedScenario: Scenario; recoveryScenario: Scenario }>({
   bundleScenario: [async ({ managedScenario }, use) => {
     if (!process.env.STRATAMD_ENGINE_BUNDLE) { base.skip(); return }
     const scenario = await managedScenario('# Before update\n')
@@ -19,9 +19,12 @@ const prepared = withManagedScenario(base).extend<{ bundleScenario: Scenario; re
     await writeFile(join(bundle, 'runtime.json'), JSON.stringify({ ...manifest, version: manifest.version + '-ui-old' }))
     await use(scenario)
   }, { timeout: 30000 }],
-  recoveryScenario: [async ({ bundleScenario: scenario }, use) => {
+  stagedScenario: [async ({ bundleScenario: scenario }, use) => {
     const bundle = scenario.env.STRATAMD_ENGINE_BUNDLE!
     await stageRuntime(bundle, join(scenario.env.XDG_DATA_HOME!, 'stratamd/engine'))
+    await use(scenario)
+  }, { timeout: 30000 }],
+  recoveryScenario: [async ({ stagedScenario: scenario }, use) => {
     const page = await scenario.launch()
     await expect.poll(async () => (await page.evaluate(() => window.strata.getState()).catch(() => null))?.engine.managed?.state, { timeout: 20000 }).toBe('running')
     await page.evaluate(() => window.strata.parkAccount('codex', true))
@@ -29,12 +32,16 @@ const prepared = withManagedScenario(base).extend<{ bundleScenario: Scenario; re
   }, { timeout: 30000 }],
 })
 
-const test = prepared.extend<{ updatedScenario: Scenario }>({
-  updatedScenario: [async ({ recoveryScenario: scenario }, use) => {
+const test = prepared.extend<{ updateRuntimeScenario: Scenario; updatedScenario: Scenario }>({
+  updateRuntimeScenario: [async ({ recoveryScenario: scenario }, use) => {
     const bundle = scenario.env.STRATAMD_ENGINE_BUNDLE!
     const manifest = JSON.parse(await readFile(join(bundle, 'runtime.json'), 'utf8'))
-    const page = scenario.page!
     await writeFile(join(bundle, 'runtime.json'), JSON.stringify({ ...manifest, version: manifest.version.replace(/-ui-old$/, '-ui-new') }))
+    await stageRuntime(bundle, join(scenario.env.XDG_DATA_HOME!, 'stratamd/engine'))
+    await use(scenario)
+  }, { timeout: 30000 }],
+  updatedScenario: [async ({ updateRuntimeScenario: scenario }, use) => {
+    const page = scenario.page!
     await page.evaluate(() => window.strata.engineRecovery!({ action: 'update' }))
     await expect.poll(async () => (await page.evaluate(() => window.strata.getState()).catch(() => null))?.engine.managed?.version, { timeout: 30000 }).toContain('ui-new')
     await use(scenario)

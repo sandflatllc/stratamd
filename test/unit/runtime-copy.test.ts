@@ -1,8 +1,10 @@
 import { afterEach, expect, it } from 'vitest'
-import { lstat, mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readFile, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { copyRuntimeDirectory } from '../../src/platform/runtime-copy'
+import { copyRuntimeDirectory, publishRuntimeDirectory } from '../../src/platform/runtime-copy'
+import { spawn } from 'node:child_process'
+import { once } from 'node:events'
 
 const roots: string[] = []
 afterEach(async () => Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))))
@@ -30,4 +32,32 @@ it('refuses an unavailable source instead of reporting a successful empty copy',
   const root = await mkdtemp(join(tmpdir(), 'strata-runtime-copy-'))
   roots.push(root)
   await expect(copyRuntimeDirectory(join(root, 'missing'), join(root, 'destination'))).rejects.toThrow()
+})
+
+it('keeps the original error when a runtime cannot be published', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'strata-runtime-publish-'))
+  roots.push(root)
+  await expect(publishRuntimeDirectory(join(root, 'missing'), join(root, 'runtime'))).rejects.toMatchObject({ code: 'ENOENT' })
+})
+
+it.skipIf(process.platform !== 'win32')('publishes a runtime after a Windows working-directory lock is released', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'strata-runtime-publish-'))
+  roots.push(root)
+  const source = join(root, 'pending'), destination = join(root, 'runtime')
+  await mkdir(source)
+  await writeFile(join(source, 'runtime.json'), 'verified')
+  const child = spawn(process.execPath, ['-e', "process.stdout.write('ready'); process.stdin.once('data', () => process.exit(0))"], { cwd: source, stdio: ['pipe', 'pipe', 'pipe'] })
+  const closed = once(child, 'close')
+  let release: ReturnType<typeof setTimeout> | undefined
+  try {
+    await once(child.stdout, 'data')
+    await expect(rename(source, destination)).rejects.toMatchObject({ code: 'EPERM' })
+    release = setTimeout(() => child.stdin.write('release'), 150)
+    await publishRuntimeDirectory(source, destination)
+    expect(await readFile(join(destination, 'runtime.json'), 'utf8')).toBe('verified')
+  } finally {
+    clearTimeout(release)
+    if (child.exitCode === null) child.kill()
+    await closed
+  }
 })

@@ -340,7 +340,8 @@ describe('StrataApplication: reading state, tables, and the walkthrough', () => 
     expect(await marker()).toBe('reviewed')
 
     const outsideEdit = original.replace('Body.', 'Outside body.')
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    // Finish the queued mirror write before the fixture makes its external edit.
+    await value.app.save(value.path)
     await value.store.writeBuffer(value.path, outsideEdit)
     await value.app.recheckFocused()
     let outside = (await value.app.getState()).activeDocument!

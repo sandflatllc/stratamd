@@ -9,13 +9,14 @@ test('dropdowns remain clickable above the workspace, scroll, and restore keyboa
   const engine = await startEngine()
   const scenario = await seededScenario(testInfo, engine.origin)
   try {
-    const page = await scenario.launch()
-    await page.setViewportSize({ width: 1100, height: 760 })
+    const files = [scenario.file]
     for (let i = 0; i < 24; i++) {
       const path = join(dirname(scenario.file), `notes-${String(i).padStart(2, '0')}.md`)
       await writeFile(path, `# Notes ${i}\n`)
-      await page.evaluate((file) => window.strata.openDocument(file), path)
+      files.push(path)
     }
+    const page = await scenario.launch(files)
+    await page.setViewportSize({ width: 1100, height: 760 })
     const docs = page.getByRole('button', { name: 'Docs menu', exact: true })
     const menu = page.getByRole('menu', { name: 'Open docs', exact: true })
     await docs.click()

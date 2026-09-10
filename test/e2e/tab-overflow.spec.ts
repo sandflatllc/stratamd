@@ -9,13 +9,14 @@ test.afterEach(async () => { await value?.dispose() })
 
 async function openDocuments(testInfo: TestInfo, count: number): Promise<Page> {
   value = await Scenario.create(testInfo, '# One\n')
-  const page = await value.launch()
-  await page.setViewportSize({ width: 1100, height: 760 })
+  const files = [value.file]
   for (let i = 2; i <= count; i += 1) {
     const file = join(dirname(value.file), `meeting-notes-${String(i).padStart(2, '0')}.md`)
     await writeFile(file, `# Doc ${i}\n`)
-    await page.evaluate((path) => window.strata.openDocument(path), file)
+    files.push(file)
   }
+  const page = await value.launch(files)
+  await page.setViewportSize({ width: 1100, height: 760 })
   await openDocsMenu(page)
   await expect(page.getByRole('menu', { name: 'Open docs' }).getByRole('menuitem')).toHaveCount(count)
   return page

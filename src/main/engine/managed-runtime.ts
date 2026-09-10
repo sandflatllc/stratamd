@@ -1,7 +1,7 @@
-import { copyRuntimeDirectory } from '../../platform/runtime-copy'
+import { copyRuntimeDirectory, publishRuntimeDirectory } from '../../platform/runtime-copy'
 import { assertSupportedPlatform } from '../../platform/runtime'
 import { execFile } from 'node:child_process'
-import { readFile, readlink, rename, rm, stat } from 'node:fs/promises'
+import { readFile, readlink, rm, stat } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { Worker } from 'node:worker_threads'
@@ -26,7 +26,7 @@ export async function stageRuntime(bundle: string, root: string): Promise<Staged
     try {
       await copyRuntimeDirectory(bundle, pending)
       await verifyRuntime({ ...manifest, directory: pending })
-      await rename(pending, directory)
+      await publishRuntimeDirectory(pending, directory)
       // Rename preserves the runtime just verified; do not load every native module twice on a cold launch.
       verifications.set(directory, verifications.get(pending) ?? Promise.resolve())
       verifications.delete(pending)

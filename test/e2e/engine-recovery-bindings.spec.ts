@@ -8,7 +8,7 @@ import type { Scenario } from './harness'
 import { GhostStore } from '../../src/main/storage'
 import { threadCreateCommand } from '../../src/main/engine/t3-contract'
 
-const prepared = withManagedScenario(base).extend<{ bundleScenario: Scenario; linkedScenario: Scenario }>({
+const prepared = withManagedScenario(base).extend<{ bundleScenario: Scenario; stagedScenario: Scenario; linkedScenario: Scenario }>({
   bundleScenario: [async ({ managedScenario }, use) => {
     if (!process.env.STRATAMD_ENGINE_BUNDLE) { base.skip(); return }
     const scenario = await managedScenario('# Linked document\n')
@@ -19,8 +19,11 @@ const prepared = withManagedScenario(base).extend<{ bundleScenario: Scenario; li
     await writeFile(join(bundle, 'runtime.json'), JSON.stringify({ ...manifest, version: manifest.version + '-bindings-old' }))
     await use(scenario)
   }, { timeout: 30000 }],
-  linkedScenario: [async ({ bundleScenario: scenario }, use) => {
+  stagedScenario: [async ({ bundleScenario: scenario }, use) => {
     await stageRuntime(scenario.env.STRATAMD_ENGINE_BUNDLE!, join(scenario.env.XDG_DATA_HOME!, 'stratamd/engine'))
+    await use(scenario)
+  }, { timeout: 30000 }],
+  linkedScenario: [async ({ stagedScenario: scenario }, use) => {
     const page = await scenario.launch()
     await expect.poll(async () => (await page.evaluate(() => window.strata.getState()).catch(() => null))?.engine.managed?.state, { timeout: 20000 }).toBe('running')
     const state = await page.evaluate(() => window.strata.getState())
@@ -39,12 +42,16 @@ const prepared = withManagedScenario(base).extend<{ bundleScenario: Scenario; li
   }, { timeout: 30000 }],
 })
 
-const test = prepared.extend<{ updatedScenario: Scenario }>({
-  updatedScenario: [async ({ linkedScenario: scenario }, use) => {
+const test = prepared.extend<{ updateRuntimeScenario: Scenario; updatedScenario: Scenario }>({
+  updateRuntimeScenario: [async ({ linkedScenario: scenario }, use) => {
     const bundle = scenario.env.STRATAMD_ENGINE_BUNDLE!
     const manifest = JSON.parse(await readFile(join(bundle, 'runtime.json'), 'utf8'))
-    const page = scenario.page!
     await writeFile(join(bundle, 'runtime.json'), JSON.stringify({ ...manifest, version: manifest.version.replace(/-bindings-old$/, '-bindings-new') }))
+    await stageRuntime(bundle, join(scenario.env.XDG_DATA_HOME!, 'stratamd/engine'))
+    await use(scenario)
+  }, { timeout: 30000 }],
+  updatedScenario: [async ({ updateRuntimeScenario: scenario }, use) => {
+    const page = scenario.page!
     await page.evaluate(() => window.strata.engineRecovery!({ action: 'update' }))
     await expect.poll(async () => (await page.evaluate(() => window.strata.getState()).catch(() => null))?.engine.managed?.version, { timeout: 20000 }).toContain('bindings-new')
     await use(scenario)

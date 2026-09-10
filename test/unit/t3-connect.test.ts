@@ -5,6 +5,38 @@ import { expect, it } from 'vitest'
 import { T3Connect } from '../../src/main/engine/connect'
 import { setStartAtLogin } from '../../src/main/start-at-login'
 
+it('lets recovery replace engine data while a connection status check is running', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'strata-connect-recovery-'))
+  const directory = join(root, 'runtime'), baseDirectory = join(root, 't3')
+  const ready = join(root, 'ready'), release = join(root, 'release')
+  let pending: Promise<unknown> | undefined
+  try {
+    await mkdir(join(directory, 'node_modules/t3/dist'), { recursive: true })
+    await mkdir(baseDirectory)
+    const status = { desired: false, authenticated: false, linked: false, cloudUserId: null, publishAgentActivity: false, relayClient: { status: 'missing' } }
+    await writeFile(join(directory, 'status.json'), JSON.stringify(status))
+    await writeFile(join(baseDirectory, 'status.json'), JSON.stringify(status))
+    await writeFile(join(directory, 'node_modules/t3/dist/bin.mjs'), `
+      import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+      import { setTimeout } from 'node:timers/promises';
+      writeFileSync(${JSON.stringify(ready)}, 'ready');
+      while (!existsSync(${JSON.stringify(release)})) await setTimeout(10);
+      console.log(readFileSync('status.json', 'utf8'));
+    `)
+    pending = new T3Connect().status({ directory, baseDirectory, executable: process.execPath })
+    void pending.catch(() => undefined)
+    await expect.poll(() => readFile(ready, 'utf8').catch(() => '')).toBe('ready')
+    await rm(baseDirectory, { recursive: true })
+    await mkdir(baseDirectory)
+    await writeFile(release, 'release')
+    await expect(pending).resolves.toEqual(status)
+  } finally {
+    await writeFile(release, 'release')
+    await pending?.catch(() => undefined)
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 it('keeps Connect authorization ephemeral, cancels its own child, and reports rejected authorization without claiming a connection', async () => {
   const root = await mkdtemp(join(tmpdir(), 'strata-connect-job-'))
   const control = new T3Connect()

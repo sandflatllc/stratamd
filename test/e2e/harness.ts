@@ -223,7 +223,9 @@ export class Scenario {
     await writeFile(path, `${JSON.stringify({ theme: 'strata-vivid', ...settings }, null, 2)}\n`)
   }
 
-  async launch(file = this.file, extraArgs: string[] = []): Promise<Page> {
+  async launch(file: string | readonly string[] = this.file, extraArgs: string[] = []): Promise<Page> {
+    const files = typeof file === 'string' ? [file] : file
+    if (files.length === 0) throw new Error('Scenario.launch needs at least one document')
     await access(mainEntry, constants.R_OK)
     // Tests that wrote no settings still get an explicit theme so visual
     // assertions never depend on the fallback path.
@@ -234,7 +236,7 @@ export class Scenario {
       await this.writeSettings({})
     }
     this.app = await electron.launch({
-      args: [...launchArgs, ...extraArgs, mainEntry, file],
+      args: [...launchArgs, ...extraArgs, mainEntry, ...files],
       cwd: projectRoot,
       tracesDir: this.rawTraces,
       env: this.env
@@ -247,7 +249,7 @@ export class Scenario {
     }
     this.page = await this.app.firstWindow()
     await this.page.waitForLoadState('domcontentloaded')
-    await expect.poll(async () => (await this.page!.evaluate(() => window.strata.getState())).activeDocument?.path).toBe(file)
+    await expect.poll(async () => (await this.page!.evaluate(() => window.strata.getState())).activeDocument?.path).toBe(files.at(-1))
     await expect(this.page.getByRole('button', { name: 'Docs menu', exact: true })).toBeVisible()
     return this.page
   }

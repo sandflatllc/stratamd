@@ -1,8 +1,21 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { rename } from 'node:fs/promises'
+import { setTimeout } from 'node:timers/promises'
 import { isDarwin, isWindows } from './runtime'
 
 const execute = promisify(execFile)
+
+/** Windows can retain a sharing lock briefly after a runtime probe exits. */
+export async function publishRuntimeDirectory(source: string, destination: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try { await rename(source, destination); return } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (!isWindows() || !['EPERM', 'EACCES', 'EBUSY'].includes(code ?? '') || attempt === 5) throw error
+      await setTimeout(100 * (attempt + 1))
+    }
+  }
+}
 
 /** Preserve relative dependency links without the per-file JS scheduling cost of fs.cp. */
 export async function copyRuntimeDirectory(source: string, destination: string): Promise<void> {

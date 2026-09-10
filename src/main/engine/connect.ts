@@ -34,7 +34,8 @@ export class T3Connect {
     const env: NodeJS.ProcessEnv = { ...engineEnvironment(), PATH: `${dirname(context.executable)}${pathDelimiter}${process.env.PATH ?? ''}`, BROWSER: 'false', NO_COLOR: '1' }
     // Strata runs on the browser's computer even when its parent shell came through SSH.
     delete env.SSH_CONNECTION; delete env.SSH_TTY
-    return { executable: context.executable, args: [join(context.directory, 'node_modules/t3/dist/bin.mjs'), 'connect', ...args, '--base-dir', context.baseDirectory], options: { cwd: context.baseDirectory, env } }
+    // Recovery replaces the data directory. A process cwd would lock it on Windows.
+    return { executable: context.executable, args: [join(context.directory, 'node_modules/t3/dist/bin.mjs'), 'connect', ...args, '--base-dir', context.baseDirectory], options: { cwd: context.directory, env } }
   }
   async status(context: LocalRuntimeContext, refresh = false): Promise<ConnectStatus> {
     const key = context.directory + ':' + context.baseDirectory

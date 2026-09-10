@@ -1,4 +1,4 @@
-import { expect, test, type Page } from './test'
+import { expect, test, type Page, type Locator } from './test'
 import { readdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { paintCommentSheet } from '../../src/shared/visual-comment-sheet'
@@ -68,6 +68,25 @@ function agentReplies(engine: FakeEngine, id: string, revision: number, text: st
   return engine.postAssistant('t1', `${text}\n\n\`\`\`strata\n${JSON.stringify([{ verb: 'reply', anchor: { item: id }, revision, text, ready }])}\n\`\`\``)
 }
 
+type LiveVisual = { engine: FakeEngine; scenario: Awaited<ReturnType<typeof seededScenario>>; page: Page; conversation: Locator }
+const visualTest = test.extend<{ nativeAnswer: boolean; reviewDocument: boolean; liveVisual: LiveVisual }>({
+  nativeAnswer: [false, { option: true }],
+  reviewDocument: [false, { option: true }],
+  liveVisual: [async ({ nativeAnswer, reviewDocument }, use, testInfo) => {
+    const engine = await startEngine(nativeAnswer ? { userInputResponseMode: 'message' } : { pendingRequests: false })
+    const scenario = await seededScenario(testInfo, engine.origin, '# Review\n\nThe clients table.\n', 'visual-loop.md')
+    engine.setWorkspaceRoot(dirname(scenario.file))
+    try {
+      const page = reviewDocument ? await scenario.launch() : await scenario.launchEmpty()
+      const conversation = await openLiveThread(page)
+      if (reviewDocument) await selectNavigationTab(page, 'Conversation')
+      await use({ engine, scenario, page, conversation })
+    } finally {
+      try { await scenario.dispose() } finally { await engine.close() }
+    }
+  }, { timeout: 30000 }],
+})
+
 test('1: with no document open, a pasted screenshot opens the session, and Hold survives a relaunch', async ({}, testInfo) => {
   const engine = await startEngine({ pendingRequests: false })
   const scenario = await seededScenario(testInfo, engine.origin)
@@ -119,105 +138,95 @@ test('1: with no document open, a pasted screenshot opens the session, and Hold 
   }
 })
 
-for (const nativeAnswer of [false, true]) test(`2: eight files including a visual sheet${nativeAnswer ? ' and a native answer' : ''} send without an extra context file`, async ({}, testInfo) => {
-  const engine = await startEngine(nativeAnswer ? { userInputResponseMode: 'message' } : { pendingRequests: false })
-  const fileCount = nativeAnswer ? 6 : 7
-  const scenario = await seededScenario(testInfo, engine.origin)
-  const progress: Array<{ stage: string; elapsedMs: number }> = []
-  let sentAt = 0
-  try {
-    const page = await scenario.launchEmpty()
-    const conversation = await openLiveThread(page)
-    await expect(conversation.getByRole('textbox', { name: 'Message conversation' })).toBeVisible()
-    if (nativeAnswer) {
-      await conversation.getByRole('button', { name: 'Approve', exact: true }).click()
-      await conversation.getByRole('button', { name: 'Answer question', exact: true }).click()
-      const answer = page.getByRole('dialog', { name: 'Answer question', exact: true })
-      await answer.getByLabel('Attach to answer release', { exact: true }).setInputFiles([1, 2].map(index => ({ name: `answer-${index}.txt`, mimeType: 'text/plain', buffer: Buffer.from(`Native answer file ${index}`) })))
-      await answer.getByRole('button', { name: 'Hold answer', exact: true }).click()
-    }
-    await conversation.locator('.conversation-attachment-input').setInputFiles(Array.from({ length: fileCount }, (_, index) => index + 1).map((index) => ({ name: `notes-${index}.md`, mimeType: 'text/markdown', buffer: Buffer.from(`# Notes ${index}\n`) })))
-    await expect(conversation.locator('.conversation-attachment-preview')).toHaveCount(fileCount)
-    const initialFiles = fileCount + (nativeAnswer ? 2 : 0)
-    await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${initialFiles} files · ${initialFiles} of 8`)
-    if (nativeAnswer) {
-      // The ninth file is now refused at staging, before any response or upload.
+for (const nativeAnswer of [false, true]) visualTest.describe(nativeAnswer ? 'with a native answer' : 'with ordinary attachments', () => {
+  visualTest.use({ nativeAnswer })
+  visualTest(`2: eight files including a visual sheet${nativeAnswer ? ' and a native answer' : ''} send without an extra context file`, async ({ liveVisual: { engine, scenario, page, conversation } }, testInfo) => {
+    const fileCount = nativeAnswer ? 6 : 7
+    const progress: Array<{ stage: string; elapsedMs: number }> = []
+    let sentAt = 0
+    try {
+      await expect(conversation.getByRole('textbox', { name: 'Message conversation' })).toBeVisible()
+      if (nativeAnswer) {
+        await conversation.getByRole('button', { name: 'Approve', exact: true }).click()
+        await conversation.getByRole('button', { name: 'Answer question', exact: true }).click()
+        const answer = page.getByRole('dialog', { name: 'Answer question', exact: true })
+        await answer.getByLabel('Attach to answer release', { exact: true }).setInputFiles([1, 2].map(index => ({ name: `answer-${index}.txt`, mimeType: 'text/plain', buffer: Buffer.from(`Native answer file ${index}`) })))
+        await answer.getByRole('button', { name: 'Hold answer', exact: true }).click()
+      }
+      await conversation.locator('.conversation-attachment-input').setInputFiles(Array.from({ length: fileCount }, (_, index) => index + 1).map((index) => ({ name: `notes-${index}.md`, mimeType: 'text/markdown', buffer: Buffer.from(`# Notes ${index}\n`) })))
+      await expect(conversation.locator('.conversation-attachment-preview')).toHaveCount(fileCount)
+      const initialFiles = fileCount + (nativeAnswer ? 2 : 0)
+      await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${initialFiles} files · ${initialFiles} of 8`)
+      if (nativeAnswer) {
+        // The ninth file is now refused at staging, before any response or upload.
+        await pasteScreenshot(page)
+        await expect(conversation.getByRole('alert')).toContainText('at most 8 attachments')
+        await expect(page.getByRole('dialog', { name: 'Mark up the image' })).toHaveCount(0)
+        expect(engine.uploadRequests).toEqual([])
+        expect(engine.commands.filter(command => command.type === 'thread.user-input.respond' || command.type === 'thread.turn.start')).toEqual([])
+        await conversation.getByLabel('Held answers for input-1', { exact: true }).getByRole('button', { name: 'Review', exact: true }).click()
+        const answer = page.getByRole('dialog', { name: 'Answer question', exact: true })
+        await answer.getByRole('button', { name: 'Remove answer-2.txt', exact: true }).click()
+        await answer.getByRole('button', { name: 'Hold answer', exact: true }).click()
+      }
+      const combinedFiles = fileCount + (nativeAnswer ? 1 : 0)
       await pasteScreenshot(page)
-      await expect(conversation.getByRole('alert')).toContainText('at most 8 attachments')
-      await expect(page.getByRole('dialog', { name: 'Mark up the image' })).toHaveCount(0)
-      expect(engine.uploadRequests).toEqual([])
-      expect(engine.commands.filter(command => command.type === 'thread.user-input.respond' || command.type === 'thread.turn.start')).toEqual([])
-      await conversation.getByLabel('Held answers for input-1', { exact: true }).getByRole('button', { name: 'Review', exact: true }).click()
-      const answer = page.getByRole('dialog', { name: 'Answer question', exact: true })
-      await answer.getByRole('button', { name: 'Remove answer-2.txt', exact: true }).click()
-      await answer.getByRole('button', { name: 'Hold answer', exact: true }).click()
-    }
-    const combinedFiles = fileCount + (nativeAnswer ? 1 : 0)
-    await pasteScreenshot(page)
-    const dialog = await markUp(page, 'Marked beside ordinary files.')
-    await dialog.getByRole('button', { name: 'Hold' }).click()
-    await expect(dialog).toBeHidden()
-    await expect(conversation.locator('.conversation-attachment-preview')).toHaveCount(fileCount)
-    await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${combinedFiles} files and 1 marked screenshot · ${combinedFiles + 1} of 8`)
-    // Setting the comment aside for this send keeps it held and drops it from the count.
-    await conversation.getByRole('checkbox', { name: 'Include', exact: true }).uncheck()
-    await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${combinedFiles} files · ${combinedFiles} of 8`)
-    await expect(conversation.locator('.conversation-visual-card .visual-status')).toHaveText('held')
-    await conversation.getByRole('checkbox', { name: 'Include', exact: true }).check()
-    await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${combinedFiles} files and 1 marked screenshot · ${combinedFiles + 1} of 8`)
-    // The composer sends one image per visual comment, with exact matching details in the message.
-    await conversation.getByRole('textbox', { name: 'Message conversation' }).fill('Both at once')
-    const stop = conversation.getByRole('button', { name: 'Stop' })
-    if (await stop.isVisible()) await stop.click()
-    sentAt = Date.now()
-    await conversation.getByRole('button', { name: 'Send', exact: true }).click()
-    if (nativeAnswer) await expect.poll(() => engine.commands.filter(command => command.type === 'thread.user-input.respond').length).toBe(1)
-    // Eight durable uploads precede dispatch. Observe each completed upload so
-    // the dispatch assertion does not also time the entire preparation sequence.
-    for (let count = 1; count <= 8; count += 1) {
-      await expect.poll(() => engine.uploadRequests.length, { message: `Original file upload ${count} of 8 completes` }).toBeGreaterThanOrEqual(count)
-      progress.push({ stage: `upload ${count}`, elapsedMs: Date.now() - sentAt })
-    }
-    await expect.poll(() => engine.commands.filter((command) => command.type === 'thread.turn.start').length).toBe(1)
-    progress.push({ stage: 'dispatch', elapsedMs: Date.now() - sentAt })
-    const turn = engine.commands.find((command) => command.type === 'thread.turn.start')!.message as { text: string; attachments: Array<{ type: string; name: string }> }
-    expect(turn.text).toContain('Both at once')
-    expect(turn.text).toContain('Marked beside ordinary files.')
-    expect(turn.attachments.map((attachment) => attachment.type)).toEqual([...Array(fileCount).fill('file'), 'image'])
-    expect(engine.uploadRequests).toHaveLength(8)
-    if (nativeAnswer) {
-      const response = engine.commands.find(command => command.type === 'thread.user-input.respond') as { attachmentsByQuestionId: { release: Array<{ id: string; name: string }> } }
-      expect(response.attachmentsByQuestionId.release).toHaveLength(1)
-      expect(response.attachmentsByQuestionId.release[0]!.name).toBe('answer-1.txt')
-      expect(engine.uploadBytesById.get(response.attachmentsByQuestionId.release[0]!.id)).toEqual(Buffer.from('Native answer file 1'))
-    }
-    expect(turn.attachments[fileCount]!.name).toMatch(/^visual-[0-9a-f]{8}-r1-1\.png$/)
-    const store = JSON.parse(await readFile(join(scenario.env.XDG_DATA_HOME!, 'stratamd', 'engine-visual-comments.json'), 'utf8'))
-    const records = Object.values(store.comments) as Array<{ revisions: Array<{ evidence: string[] }> }>
-    const exported = await readFile(join(scenario.env.XDG_DATA_HOME!, 'stratamd', 'visual-evidence', `${records[0]!.revisions[0]!.evidence[0]}.bin`))
-    expect(exported.readUInt32BE(16)).toBe(720) // 320 px screenshot plus a 400 px note column.
-    expect(exported.readUInt32BE(20)).toBeGreaterThanOrEqual(200)
-    await testInfo.attach('sent-comment-sheet', { body: exported, contentType: 'image/png' })
-    await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).engine.projects.flatMap(project => project.threads).flatMap(thread => thread.messages).some(message => message.role === 'user' && message.text === 'Both at once')).toBe(true)
+      const dialog = await markUp(page, 'Marked beside ordinary files.')
+      await dialog.getByRole('button', { name: 'Hold' }).click()
+      await expect(dialog).toBeHidden()
+      await expect(conversation.locator('.conversation-attachment-preview')).toHaveCount(fileCount)
+      await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${combinedFiles} files and 1 marked screenshot · ${combinedFiles + 1} of 8`)
+      // Setting the comment aside for this send keeps it held and drops it from the count.
+      await conversation.getByRole('checkbox', { name: 'Include', exact: true }).uncheck()
+      await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${combinedFiles} files · ${combinedFiles} of 8`)
+      await expect(conversation.locator('.conversation-visual-card .visual-status')).toHaveText('held')
+      await conversation.getByRole('checkbox', { name: 'Include', exact: true }).check()
+      await expect(conversation.locator('.conversation-capacity')).toHaveText(`Send carries ${combinedFiles} files and 1 marked screenshot · ${combinedFiles + 1} of 8`)
+      // The composer sends one image per visual comment, with exact matching details in the message.
+      await conversation.getByRole('textbox', { name: 'Message conversation' }).fill('Both at once')
+      const stop = conversation.getByRole('button', { name: 'Stop' })
+      if (await stop.isVisible()) await stop.click()
+      sentAt = Date.now()
+      await conversation.getByRole('button', { name: 'Send', exact: true }).click()
+      if (nativeAnswer) await expect.poll(() => engine.commands.filter(command => command.type === 'thread.user-input.respond').length).toBe(1)
+      // Eight durable uploads precede dispatch. Observe each completed upload so
+      // the dispatch assertion does not also time the entire preparation sequence.
+      for (let count = 1; count <= 8; count += 1) {
+        await expect.poll(() => engine.uploadRequests.length, { message: `Original file upload ${count} of 8 completes` }).toBeGreaterThanOrEqual(count)
+        progress.push({ stage: `upload ${count}`, elapsedMs: Date.now() - sentAt })
+      }
+      await expect.poll(() => engine.commands.filter((command) => command.type === 'thread.turn.start').length).toBe(1)
+      progress.push({ stage: 'dispatch', elapsedMs: Date.now() - sentAt })
+      const turn = engine.commands.find((command) => command.type === 'thread.turn.start')!.message as { text: string; attachments: Array<{ type: string; name: string }> }
+      expect(turn.text).toContain('Both at once')
+      expect(turn.text).toContain('Marked beside ordinary files.')
+      expect(turn.attachments.map((attachment) => attachment.type)).toEqual([...Array(fileCount).fill('file'), 'image'])
+      expect(engine.uploadRequests).toHaveLength(8)
+      if (nativeAnswer) {
+        const response = engine.commands.find(command => command.type === 'thread.user-input.respond') as { attachmentsByQuestionId: { release: Array<{ id: string; name: string }> } }
+        expect(response.attachmentsByQuestionId.release).toHaveLength(1)
+        expect(response.attachmentsByQuestionId.release[0]!.name).toBe('answer-1.txt')
+        expect(engine.uploadBytesById.get(response.attachmentsByQuestionId.release[0]!.id)).toEqual(Buffer.from('Native answer file 1'))
+      }
+      expect(turn.attachments[fileCount]!.name).toMatch(/^visual-[0-9a-f]{8}-r1-1\.png$/)
+      const store = JSON.parse(await readFile(join(scenario.env.XDG_DATA_HOME!, 'stratamd', 'engine-visual-comments.json'), 'utf8'))
+      const records = Object.values(store.comments) as Array<{ revisions: Array<{ evidence: string[] }> }>
+      const exported = await readFile(join(scenario.env.XDG_DATA_HOME!, 'stratamd', 'visual-evidence', `${records[0]!.revisions[0]!.evidence[0]}.bin`))
+      expect(exported.readUInt32BE(16)).toBe(720) // 320 px screenshot plus a 400 px note column.
+      expect(exported.readUInt32BE(20)).toBeGreaterThanOrEqual(200)
+      await testInfo.attach('sent-comment-sheet', { body: exported, contentType: 'image/png' })
+      await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).engine.projects.flatMap(project => project.threads).flatMap(thread => thread.messages).some(message => message.role === 'user' && message.text === 'Both at once')).toBe(true)
 
-    await expect(conversation.locator('.conversation-visual-card')).toHaveCount(0)
-  } finally {
-    await testInfo.attach('combined-delivery-progress', { body: Buffer.from(JSON.stringify({ progress, elapsedMs: sentAt ? Date.now() - sentAt : 0, uploads: engine.uploadRequests, commands: engine.commands.map(command => command.type), rpc: engine.rpcRequests.map(request => request.tag) })), contentType: 'application/json' })
-    await scenario.dispose()
-    await engine.close()
-  }
+      await expect(conversation.locator('.conversation-visual-card')).toHaveCount(0)
+    } finally {
+      await testInfo.attach('combined-delivery-progress', { body: Buffer.from(JSON.stringify({ progress, elapsedMs: sentAt ? Date.now() - sentAt : 0, uploads: engine.uploadRequests, commands: engine.commands.map(command => command.type), rpc: engine.rpcRequests.map(request => request.tag) })), contentType: 'application/json' })
+    }
+  })
 })
 
-test('3: Send now, a ready reply by revision, Looks right without a turn, Still wrong as a new revision, and a late reply that changes nothing', async ({}, testInfo) => {
-  const engine = await startEngine({ pendingRequests: false })
-  const scenario = await seededScenario(testInfo, engine.origin, '# Review\n\nThe clients table.\n', 'visual-loop.md')
-  engine.setWorkspaceRoot(dirname(scenario.file))
-  try {
-    const page = await scenario.launch()
-    await selectNavigationTab(page, 'Projects')
-    const conversation = await openLiveThread(page)
-    await selectNavigationTab(page, 'Conversation')
-    await expect(conversation.getByRole('textbox', { name: 'Message conversation' })).toBeVisible()
+const revisionTest = visualTest.extend<{ sentVisual: LiveVisual & { id: string; card: Locator } }>({
+  sentVisual: [async ({ liveVisual }, use) => {
+    const { engine, page, conversation } = liveVisual
     await pasteScreenshot(page)
     const dialog = await markUp(page, 'Move the button into the header row.')
     await dialog.getByRole('button', { name: 'Hold' }).click()
@@ -243,6 +252,23 @@ test('3: Send now, a ready reply by revision, Looks right without a turn, Still 
     await expect(card.locator('.visual-status')).toHaveText('sent')
     await expect(card.locator('.visual-where')).toHaveText('Pasted image · 320 × 200')
 
+    await use({ ...liveVisual, id, card })
+  }, { timeout: 30000 }],
+})
+revisionTest.describe('sent visual revisions', () => {
+  revisionTest.use({ reviewDocument: true })
+
+  revisionTest('a ready reply can be accepted without starting another turn', async ({ sentVisual: { engine, id, card, conversation } }) => {
+    agentReplies(engine, id, 1, 'Moved the button into the header row.', true)
+    await expect(card.locator('.visual-status')).toHaveText('ready for review')
+    await expect(conversation.locator('.conversation-visual-reply')).toContainText('ready for review')
+    await card.getByRole('button', { name: 'Looks right' }).click()
+    await expect(card.locator('.visual-status')).toHaveText('done')
+    await expect(card).toContainText('Accepted')
+    expect(engine.commands.filter(command => command.type === 'thread.turn.start')).toHaveLength(1)
+  })
+
+  revisionTest('Still wrong sends a new revision and a late reply leaves that revision unchanged', async ({ sentVisual: { engine, page, conversation, id, card } }) => {
     // A ready reply naming revision 1 moves the card to ready for review.
     agentReplies(engine, id, 1, 'Moved the button into the header row.', true)
     await expect(card.locator('.visual-status')).toHaveText('ready for review')
@@ -276,10 +302,7 @@ test('3: Send now, a ready reply by revision, Looks right without a turn, Still 
     await expect(card.locator('.visual-status')).toHaveText('done')
     await expect(card).toContainText('Accepted')
     expect(engine.commands.filter((command) => command.type === 'thread.turn.start')).toHaveLength(2)
-  } finally {
-    await scenario.dispose()
-    await engine.close()
-  }
+  })
 })
 
 test('4: a failed Send stays retryable and retry sends the frozen revision, not a newer draft', async ({}, testInfo) => {
