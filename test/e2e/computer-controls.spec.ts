@@ -1,18 +1,13 @@
 import { expect, test as base } from './test'
-import { withManagedScenario } from './managed-test'
+import { waitForManagedEngine, withManagedScenario } from './managed-test'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 const test = withManagedScenario(base)
 
-test('This computer manages real pairing links and login choices in an isolated stock environment @managed', async ({ managedScenario }, testInfo) => {
+test('This computer manages real pairing links and login choices in an isolated stock environment @managed', async ({ runningScenario: scenario }, testInfo) => {
   test.skip(!process.env.STRATAMD_ENGINE_BUNDLE, 'Requires the stock runtime')
-  const scenario = await managedScenario('# Connections stay separate\n')
-  const page = await scenario.launch()
-  // Learning the engine identity intentionally reloads the renderer during startup.
-  await expect(async () => {
-    expect((await page.evaluate(() => window.strata.getState())).engine.managed?.state).toBe('running')
-  }).toPass({ timeout: 20000 })
+  const page = scenario.page!
   await page.getByRole('button', { name: 'StrataMD menu' }).click()
   await page.getByRole('menuitem', { name: 'This computer', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Connections', exact: true })
@@ -43,14 +38,9 @@ test('This computer manages real pairing links and login choices in an isolated 
   await expect(dialog.getByText('This Strata session', { exact: false })).toBeVisible()
 })
 
-test('This computer writes the tray choice to settings @managed', async ({ managedScenario }) => {
+test('This computer writes the tray choice to settings @managed', async ({ runningScenario: scenario }) => {
   test.skip(!process.env.STRATAMD_ENGINE_BUNDLE, 'Requires the stock runtime')
-  const scenario = await managedScenario('# Tray choice survives restart\n')
-  const page = await scenario.launch()
-  // Learning the engine identity intentionally reloads the renderer during startup.
-  await expect(async () => {
-    expect((await page.evaluate(() => window.strata.getState())).engine.managed?.state).toBe('running')
-  }).toPass({ timeout: 20000 })
+  const page = scenario.page!
   await page.getByRole('button', { name: 'StrataMD menu' }).click()
   await page.getByRole('menuitem', { name: 'This computer', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Connections', exact: true })
@@ -59,14 +49,11 @@ test('This computer writes the tray choice to settings @managed', async ({ manag
   await expect.poll(async () => JSON.parse(await readFile(join(scenario.env.XDG_CONFIG_HOME!, 'stratamd/settings.json'), 'utf8')).engine.keepRunning).toBe(false)
 })
 
-test('a saved tray choice stops the owned engine on window close @managed', async ({ managedScenario }) => {
+test('a saved tray choice stops the owned engine on window close @managed', async ({ installedScenario: scenario }) => {
   test.skip(!process.env.STRATAMD_ENGINE_BUNDLE, 'Requires the stock runtime')
-  const scenario = await managedScenario('# Saved tray choice loads on launch\n')
   await scenario.writeSettings({ engine: { mode: 'managed', keepRunning: false } })
   const page = await scenario.launch()
-  await expect(async () => {
-    expect((await page.evaluate(() => window.strata.getState())).engine.managed?.state).toBe('running')
-  }).toPass({ timeout: 20000 })
+  await waitForManagedEngine(page)
   expect((await page.evaluate(() => window.strata.getState())).settings.engine?.keepRunning).toBe(false)
   const running = JSON.parse(await readFile(join(scenario.env.XDG_DATA_HOME!, 'stratamd/engine/runtime.json'), 'utf8'))
   await scenario.captureEvidence()

@@ -110,8 +110,11 @@ describePackaged('packaged CLI', () => {
 
   it('runs from the packaged build and setup links that packaged executable', async () => {
     const layout = packagedLayout(process.platform, packagedRoot!)
-    if (process.platform !== 'win32') expect((await stat(layout.cli)).mode & 0o111).not.toBe(0)
-    expect((await stat(layout.gui)).mode & 0o111).not.toBe(0)
+    expect((await stat(layout.gui)).isFile()).toBe(true)
+    if (process.platform !== 'win32') {
+      expect((await stat(layout.cli)).mode & 0o111).not.toBe(0)
+      expect((await stat(layout.gui)).mode & 0o111).not.toBe(0)
+    }
 
     const help = await executeCli(layout.cli, ['--agent-help'])
     expect(help.stderr).toBe('')

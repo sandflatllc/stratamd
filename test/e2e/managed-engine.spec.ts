@@ -1,14 +1,15 @@
-import { expect, test } from './test'
-import { readFile } from 'node:fs/promises'
+import { expect, test as base } from './test'
+import { withManagedScenario } from './managed-test'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { startEngine, seededScenario } from './cockpit-engine-harness'
-import { Scenario } from './harness'
+import { startEngine, credentialPath } from './cockpit-engine-harness'
+import { setSource, save } from './harness'
+
+const test = withManagedScenario(base)
 
 test.describe('managed engine @managed', () => {
   test.skip(!process.env.STRATAMD_ENGINE_BUNDLE, 'Set STRATAMD_ENGINE_BUNDLE to the staged stock runtime')
-  test('opens documents immediately, connects locally, restarts after a crash and retains identity', async ({}, testInfo) => {
-    const scenario = await Scenario.create(testInfo, '# Available during engine startup\n')
-    scenario.env.STRATAMD_ENGINE_MODE = 'managed'
+  test('connects locally, restarts after a crash and retains identity', async ({ installedScenario: scenario }, testInfo) => {
     try {
       const page = await scenario.launch()
       await expect(page.getByRole('button', { name: 'Engine status' })).toContainText('Connected', { timeout: 20000 })
@@ -31,15 +32,18 @@ test.describe('managed engine @managed', () => {
       const state = await scenario.page?.evaluate(() => window.strata.getState()).catch(() => null)
       await testInfo.attach('managed-state', { body: JSON.stringify(state?.engine), contentType: 'application/json' })
       throw error
-    } finally { await scenario.stop(); await scenario.dispose() }
+    }
   })
 })
 
-test('external connection switches to the managed engine with separate drafts and a retained credential @managed', async ({}, testInfo) => {
+test('external connection switches to the managed engine with separate drafts and a retained credential @managed', async ({ installedScenario: scenario }) => {
   test.skip(!process.env.STRATAMD_ENGINE_BUNDLE, 'Requires the stock runtime')
   const external = await startEngine()
   external.complete()
-  const scenario = await seededScenario(testInfo, external.origin)
+  scenario.env.STRATAMD_ENGINE_MODE = 'external'
+  const path = credentialPath(scenario)
+  await mkdir(join(path, '..'), { recursive: true })
+  await writeFile(path, JSON.stringify({ formatVersion: 1, server: external.origin, accessToken: 'test-session', expiresAt: Date.now() + 3_600_000 }))
   try {
     const page = await scenario.launch()
     await expect(page.getByRole('button', { name: 'Engine status' })).toContainText('Connected')
@@ -56,39 +60,32 @@ test('external connection switches to the managed engine with separate drafts an
     expect(credential.server).toBe(external.origin)
     expect(await page.evaluate(() => localStorage.getItem('stratamd.conversation-draft.v1:thread:t1'))).toContain('External only')
     expect(external.commands).toEqual([])
-  } finally { await scenario.stop(); await scenario.dispose(); await external.close() }
+  } finally { await external.close() }
 })
 
-test('an app crash adopts only its surviving authenticated engine @managed', async ({}, testInfo) => {
+test('an app crash adopts only its surviving authenticated engine @managed', async ({ runningScenario: scenario }) => {
   test.skip(!process.env.STRATAMD_ENGINE_BUNDLE, 'Requires the stock runtime')
-  const scenario = await Scenario.create(testInfo, '# Survives an app crash\n')
-  scenario.env.STRATAMD_ENGINE_MODE = 'managed'
   const path = join(scenario.env.XDG_DATA_HOME!, 'stratamd/engine/runtime.json')
-  try {
-    let page = await scenario.launch()
-    await expect(async () => { expect((await page.evaluate(() => window.strata.getState())).engine.managed?.state).toBe('running') }).toPass({ timeout: 20000 })
-    const first = JSON.parse(await readFile(path, 'utf8'))
-    await scenario.stop(true)
-    page = await scenario.launch()
-    // A fresh renderer reloads when it learns the surviving engine's identity.
-    await expect(async () => {
-      expect((await page.evaluate(() => window.strata.getState())).engine.managed?.state).toBe('running')
-    }).toPass({ timeout: 5000 })
-    expect(JSON.parse(await readFile(path, 'utf8')).pid).toBe(first.pid)
-    await expect(page.getByRole('button', { name: 'Engine status' })).toContainText('Connected')
-  } finally { await scenario.stop(); await scenario.dispose() }
+  let page = scenario.page!
+  const first = JSON.parse(await readFile(path, 'utf8'))
+  await scenario.stop(true)
+  page = await scenario.launch()
+  await expect(page.getByRole('button', { name: 'Engine status' })).toContainText('Connected', { timeout: 20000 })
+  // A fresh renderer reloads when it learns the surviving engine's identity.
+  await expect(async () => {
+    expect((await page.evaluate(() => window.strata.getState())).engine.managed?.state).toBe('running')
+  }).toPass({ timeout: 5000 })
+  expect(JSON.parse(await readFile(path, 'utf8')).pid).toBe(first.pid)
+  await expect(page.getByRole('button', { name: 'Engine status' })).toContainText('Connected')
 })
 
-test('managed tray close retains a preview form and its capture @managed', async ({}, testInfo) => {
+test('managed tray close retains a preview form and its capture @managed', async ({ runningScenario: scenario }) => {
   test.skip(!process.env.STRATAMD_ENGINE_BUNDLE, 'Requires the stock runtime')
   const { startPreviewPage } = await import('./preview-page')
-  const { writeFile } = await import('node:fs/promises')
   const site = await startPreviewPage()
-  const scenario = await Scenario.create(testInfo, '# Tray preview\n')
-  scenario.env.STRATAMD_ENGINE_MODE = 'managed'
+
   try {
-    const page = await scenario.launch()
-    await expect(async () => { expect((await page.evaluate(() => window.strata.getState())).engine.managed?.state).toBe('running') }).toPass({ timeout: 20000 })
+    const page = scenario.page!
     const projectId = await page.evaluate(workspaceRoot => window.strata.createEngineProject({ title: 'Tray preview', workspaceRoot }), scenario.root)
     const tabId = await page.evaluate(({ projectId, url }) => window.strata.openPreviewTab({ projectId, url }), { projectId, url: site.origin })
     await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).preview.tabs.find(tab => tab.id === tabId)?.title).toBe('Clients · Mesa Office')
@@ -100,5 +97,14 @@ test('managed tray close retains a preview form and its capture @managed', async
     expect(await scenario.app!.evaluate(async ({ webContents }, url) => webContents.getAllWebContents().find(contents => contents.getURL().startsWith(url))!.executeJavaScript("document.getElementById('name').value"), site.origin)).toBe('Kept in tray')
     expect((await page.evaluate(() => window.strata.getState())).preview.tabs.some(tab => tab.id === tabId)).toBe(true)
     expect((await page.evaluate(tab => window.strata.capturePreviewFrame(tab), tabId)).capture.width).toBeGreaterThan(0)
-  } finally { await scenario.stop(); await scenario.dispose(); await site.close() }
+  } finally { await site.close() }
+})
+
+test('a cold-profile document can be edited and saved without waiting for the managed engine @managed', async ({ managedScenario }) => {
+  test.skip(!process.env.STRATAMD_ENGINE_BUNDLE, 'Requires the stock runtime')
+  const scenario = await managedScenario('# Cold launch\n')
+  const page = await scenario.launch()
+  await setSource(page, '# Edited during first launch\n')
+  await save(page)
+  expect(await readFile(scenario.file, 'utf8')).toBe('# Edited during first launch\n')
 })

@@ -66,3 +66,13 @@ Linux run 34429162969 failed clean signoff after its first three simultaneous ap
 Local stress record 2026-09-10T03-12-22-134Z-92c14063 exposed a reading-controls test that combined live edits, disk persistence, placement changes, screenshots, a second app launch and restored controls within one 30-second deadline. The trace progressed through its checks and ran out of time after the second launch. Live editing/persistence and fresh-app restoration now run independently, with the same deadlines and assertions.
 
 The timeout also exposed an evidence-cleanup TypeError because Playwright had disposed the client behind ElectronApplication.process(). A focused closed-client regression reproduced that exact failure in 2026-09-10T03-19-01-511Z-739d2a50. The scenario now captures the child handle at launch and uses that retained handle for cleanup, even after the Playwright client closes.
+
+## Windows installed-runtime fixtures
+
+Windows run 34431301533 passed all 13 managed integration checks, including cold installation and upgrade transitions. Its first three desktop checks exhausted their 20-second readiness predicate in the starting state on every attempt. Successful serial integration startup measurements were about 26 seconds. The UI checks had included installation of the stock runtime inside the readiness interval.
+
+Managed desktop fixtures now install and verify the runtime in a separately bounded 30-second setup step. Settings and tray checks can also begin with a running engine in a separate 30-second fixture. The UI deadlines stay unchanged. A dedicated cold-profile check edits and saves before waiting for the engine, and integration coverage still proves cold startup and native pairing. Surviving-process adoption waits for the existing connection-readiness condition before its five-second durable-state check. Startup logs from isolated test profiles are attached before teardown, so subsequent failures retain stage timings.
+
+The packaged-launcher test now checks Unix execute bits only on Unix. Windows execution is proved by launching the packaged executable and CLI; the binary must still be a regular file on every platform.
+
+The two rollback desktop checks now prepare the old installation, linked document/account state, and installed update in separate bounded fixtures. Each setup phase remains capped at 30 seconds. The test body checks restoration from that prepared update; real upgrade transitions are still asserted in setup and in the managed integration suite. This follows the same installed-state boundary as the integration repair and avoids combining multiple native runtime copies with an entire recovery workflow in one UI budget.
