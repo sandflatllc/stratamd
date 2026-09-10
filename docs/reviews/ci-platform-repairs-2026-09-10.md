@@ -48,3 +48,9 @@ Static review before the Windows managed checks found that taskkill /T would als
 The macOS full suite in run 34424475924 passed 327 desktop checks, but failed two attachment previews and retried a third. The first-attempt trace shows the preview counter increasing while an older delayed thread navigation restores the conversation to the center. Opening any preview now cancels the pending thread-navigation intent.
 
 The existing PDF scenario holds the thread-open IPC acknowledgment, opens the attachment, then releases the older action and advances the renderer clock. Before the fix, this controlled ordering reproduced preview loss at the post-release assertion in `2026-09-10T01-50-29-215Z-295f2965`. The original macOS log/archive and extracted document-preview traces remain under the CI evidence directory.
+
+## Windows runtime copy cost
+
+Windows run 34425660842 successfully prepared the native stock runtime, then timed out 11 of 13 managed integration cases. Phase logs show the first official bundle copy taking 106 seconds; retries and later cases overlap the unfinished work and later copies take 118–192 seconds. This is setup work exceeding the whole-test budget, not an established server-start failure.
+
+Windows runtime copying now uses native Robocopy with eight copy threads, zero retries, explicit link preservation and checked return codes. This also reduces product cold-start and backup copy work. The focused Windows stage includes real copy tests for independent bytes, relative links, empty directories, paths with spaces and a missing-source failure. No test worker count, timeout or retry policy changes. [Microsoft documents the copy options and return codes](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/robocopy).
