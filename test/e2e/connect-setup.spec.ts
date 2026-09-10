@@ -5,11 +5,9 @@ import type { ComputerRequest } from '../../src/shared/computer'
 
 const test = withManagedScenario(base)
 
-test('Settings guides account authorization, download consent and device handoff while cloud readiness arrives later @managed', async ({ managedScenario }, testInfo) => {
+test('Settings guides account authorization, download consent and device handoff while cloud readiness arrives later @managed', async ({ runningScenario: scenario }, testInfo) => {
   test.skip(!process.env.STRATAMD_ENGINE_BUNDLE, 'Requires the stock runtime')
-  const scenario = await managedScenario('# Connection setup\n')
-  const page = await scenario.launch()
-  await expect(async () => { expect((await page.evaluate(() => window.strata.getState())).engine.managed?.state).toBe('running') }).toPass({ timeout: 20000 })
+  const page = scenario.page!
   const initial = await page.evaluate(() => window.strata.computer!({ action: 'status' }))
   // Only this disposable app's IPC is substituted. Backend command/installer behavior has separate coverage.
   await scenario.app!.evaluate(({ ipcMain }, { initial, channels }) => {
