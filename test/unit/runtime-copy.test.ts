@@ -51,7 +51,7 @@ it.skipIf(process.platform !== 'win32')('publishes a runtime after a Windows wor
   let release: ReturnType<typeof setTimeout> | undefined
   try {
     await once(child.stdout, 'data')
-    await expect(rename(source, destination)).rejects.toMatchObject({ code: 'EPERM' })
+    await expect(rename(source, destination)).rejects.toMatchObject({ code: 'EBUSY' })
     release = setTimeout(() => child.stdin.write('release'), 150)
     await publishRuntimeDirectory(source, destination)
     expect(await readFile(join(destination, 'runtime.json'), 'utf8')).toBe('verified')
