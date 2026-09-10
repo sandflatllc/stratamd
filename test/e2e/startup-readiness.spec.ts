@@ -1,5 +1,4 @@
-import { _electron as electron } from '@playwright/test'
-import { expect, test } from './test'
+import { _electron as electron, expect, test } from './test'
 import { Scenario } from './harness'
 
 test('launch readiness includes the initial window load before state assertions', async ({}, testInfo) => {
