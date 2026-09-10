@@ -1,9 +1,11 @@
 import { reviewCapture } from './captures'
 import { expect, test, type Locator } from './test'
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { openAppMenu } from './harness'
 import { seededScenario, startEngine } from './cockpit-engine-harness'
+
+const strongRedShadow = /(?:color\(srgb 1 0 0\)|rgb\(255, 0, 0\)) 0px 24px 72px 8px/
 
 async function expectFrame(panel: Locator) {
   const history = panel.locator('.conversation-messages')
@@ -91,7 +93,6 @@ test('shared reading controls preview and persist document and transcript layout
     await expect(theme.locator('.theme-sample-transcript')).toHaveCSS('box-shadow', /(?:color\(srgb 0 0 0 \/ 0\)|rgba\(0, 0, 0, 0\)) 0px 0px 0px 0px/)
     await strength.press('End')
     await expect(strength).toHaveAttribute('aria-valuetext', '300%')
-    const strongRedShadow = /(?:color\(srgb 1 0 0\)|rgb\(255, 0, 0\)) 0px 24px 72px 8px/
     await expect(theme.locator('.theme-sample-transcript')).toHaveCSS('box-shadow', strongRedShadow)
     await expect(documentPanel).toHaveCSS('background-color', 'rgb(32, 48, 64)')
     await expect(documentPanel).toHaveCSS('border-top-color', 'rgb(96, 112, 128)')
@@ -110,8 +111,23 @@ test('shared reading controls preview and persist document and transcript layout
     await page.getByRole('button', { name: 'Open in center' }).click()
     await expect(page.locator('.conversation-panel[data-placement="center"] .conversation-messages')).toHaveCSS('box-shadow', strongRedShadow)
     await reviewCapture(page, { path: testInfo.outputPath('transcript-shadow-center.png') })
-    await page.getByRole('button', { name: 'Move to side' }).click()
-    await scenario.stop()
+  } finally { await scenario.dispose(); await engine.close() }
+})
+
+test('saved reading controls restore both panels and allow layout and shadow changes', async ({}, testInfo) => {
+  const engine = await startEngine()
+  const scenario = await seededScenario(testInfo, engine.origin)
+  try {
+    // The editing case proves this disk format is written. This case loads it
+    // in a fresh app so restoration has its own independent test budget.
+    const directory = join(String(scenario.env.XDG_CONFIG_HOME), 'stratamd', 'themes')
+    await mkdir(directory, { recursive: true })
+    await writeFile(join(directory, 'saved-reading-controls.json'), JSON.stringify({ name: 'Saved reading controls', surfaces: {
+      'transcript-style': 'panel', transcript: '#203040', 'transcript-border': '#607080',
+      'transcript-shadow-style': 'drop-shadow', 'transcript-shadow': '#ff0000',
+      'transcript-shadow-strength': 3, panel: '#15141a',
+    } }))
+    await scenario.writeSettings({ theme: 'saved-reading-controls' })
     const restored = await scenario.launch()
     await expect(restored.locator('.app-shell')).toHaveAttribute('data-transcript-style', 'panel')
     await expect(restored.locator('.app-shell')).toHaveAttribute('data-transcript-shadow', 'drop-shadow')

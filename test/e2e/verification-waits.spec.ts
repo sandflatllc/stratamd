@@ -2,6 +2,15 @@ import { expect, test } from './test'
 import { readFile } from 'node:fs/promises'
 import { Scenario, save, setSource } from './harness'
 
+test('evidence cleanup tolerates an already-closed Electron client', async ({}, info) => {
+  const scenario = await Scenario.create(info, '# Closed client\n')
+  try {
+    await scenario.launch()
+    await scenario.app!.close()
+    await expect(scenario.captureEvidence()).resolves.toBeUndefined()
+  } finally { await scenario.dispose() }
+})
+
 // The setup helper must observe each completed request even when the earlier
 // toast is still visible and the requested save does not change any bytes.
 test('successive no-op and edited saves each acknowledge their own request', async ({}, info) => {

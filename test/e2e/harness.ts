@@ -153,6 +153,7 @@ export class Scenario {
   readonly env: Record<string, string>
   app: ElectronApplication | undefined
   page: Page | undefined
+  private child: ChildProcess | undefined
 
   private constructor(root: string, file: string, runtimeRoot: string, env: Record<string, string>, testInfo: TestInfo) {
     this.testInfo = testInfo
@@ -238,6 +239,7 @@ export class Scenario {
       tracesDir: this.rawTraces,
       env: this.env
     })
+    this.child = this.app.process()
     this.launches += 1
     if (!process.env.STRATAMD_PERF_PROFILE) {
       await this.app.context().tracing.start({ screenshots: true, snapshots: true, sources: true })
@@ -258,6 +260,7 @@ export class Scenario {
       tracesDir: this.rawTraces,
       env: this.env
     })
+    this.child = this.app.process()
     this.launches += 1
     if (!process.env.STRATAMD_PERF_PROFILE) {
       await this.app.context().tracing.start({ screenshots: true, snapshots: true, sources: true })
@@ -271,7 +274,8 @@ export class Scenario {
 
   async captureEvidence(): Promise<void> {
     const app = this.app
-    if (!app || !this.tracing) return
+    const child = this.child
+    if (!app || !child || !this.tracing) return
     this.tracing = false
     const name = `electron-${this.testInfo.parallelIndex}-${this.testInfo.testId.replace(/[^a-zA-Z0-9]/g, '').slice(-12)}-${[...scenarioEvidence(this.testInfo)].indexOf(this)}-${this.launches}`
     const trace = this.testInfo.outputPath(`${name}.zip`)
@@ -287,7 +291,6 @@ export class Scenario {
     } catch (error) {
       // A process may exit through a native close action before teardown. Raw
       // trace data is already in this invocation's directory, even on a crash.
-      const child = app.process()
       if ((child.exitCode === null && child.signalCode === null) || !/Target page, context or browser has been closed/.test(String(error))) throw error
       await this.testInfo.attach('electron-trace-note', { body: `Electron exited before archive export. Raw trace: ${this.rawTraces}`, contentType: 'text/plain' })
     }
@@ -299,8 +302,10 @@ export class Scenario {
 
   private async closeApplication(crash: boolean): Promise<void> {
     const app = this.app
+    const child = this.child
     this.app = undefined
     this.page = undefined
+    this.child = undefined
     if (!app) return
 
     let electronPids: number[] = []
@@ -316,9 +321,7 @@ export class Scenario {
     }
 
     if (crash) {
-      let child: ChildProcess
-      try { child = app.process() } catch { return }
-      if (child.exitCode !== null || child.signalCode !== null) return
+      if (!child || child.exitCode !== null || child.signalCode !== null) return
       await killApplication(child, electronPids)
       await processExit(child, EXIT_TIMEOUT_MS, electronPids)
       return
@@ -328,8 +331,6 @@ export class Scenario {
     // otherwise hold the scenario's single-instance lock into the next launch
     // and eat the test budget in silence; the close is bounded and the exit
     // verified.
-    let child: ChildProcess | undefined
-    try { child = app.process() } catch { child = undefined }
     try {
       await Promise.race([
         app.close(),

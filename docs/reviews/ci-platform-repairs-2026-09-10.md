@@ -60,3 +60,9 @@ Run 34427552364 passed native copying and all 16 document scenarios, but managed
 Run 34429163051 reduced the first copy to 14 seconds and passed nine managed cases. Four upgrade cases still included preparing the prior installation inside their transition deadline. Their suite fixtures now prepare that installation before the transition test, with separate one-minute preparation and cleanup bounds. The transition bodies retain their existing one-minute limit and all identity, settings, backup and restored-runtime assertions. The independent managed-engine case still tests cold startup.
 
 Linux run 34429162969 failed clean signoff after its first three simultaneous app launches left their state IPC requests pending. The HTML, CSS and JavaScript loaded, but the initial state never arrived before the five-second assertion deadline. All three retries passed; the cause remains open in the Electron README. Original traces and logs are retained, without a speculative product fix or a longer assertion deadline.
+
+## Reading controls and closed-client evidence
+
+Local stress record 2026-09-10T03-12-22-134Z-92c14063 exposed a reading-controls test that combined live edits, disk persistence, placement changes, screenshots, a second app launch and restored controls within one 30-second deadline. The trace progressed through its checks and ran out of time after the second launch. Live editing/persistence and fresh-app restoration now run independently, with the same deadlines and assertions.
+
+The timeout also exposed an evidence-cleanup TypeError because Playwright had disposed the client behind ElectronApplication.process(). A focused closed-client regression reproduced that exact failure in 2026-09-10T03-19-01-511Z-739d2a50. The scenario now captures the child handle at launch and uses that retained handle for cleanup, even after the Playwright client closes.
