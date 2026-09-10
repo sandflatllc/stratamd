@@ -60,6 +60,7 @@ describe('Windows platform contracts', () => {
 
 describe.skipIf(process.platform !== 'win32')('Windows native storage and process ownership', () => {
   it('saves, follows renames, and releases kernel file locks on descriptor close', async () => {
+    expect(tmpdir()).toBe(await realpath(tmpdir()))
     const root = await mkdtemp(join(tmpdir(), 'strata-win-storage-'))
     try {
       await ensurePrivateDirectory(join(root, 'data'))

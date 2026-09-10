@@ -52,7 +52,8 @@ export interface DocumentInspection {
 // Canonicalizes temporary paths before any scenario derives from them (macOS
 // /var symlink and Windows short names). Vitest setup does the same; it registers
 // vitest hooks, so Playwright cannot import it.
-process.env.TMPDIR = realpathSync(tmpdir())
+// Use the native resolver so Windows 8.3 names match fs/promises.realpath.
+process.env.TMPDIR = realpathSync.native(tmpdir())
 if (process.platform === 'win32') process.env.TEMP = process.env.TMPDIR
 
 const here = dirname(fileURLToPath(import.meta.url))

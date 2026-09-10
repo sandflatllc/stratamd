@@ -7,7 +7,8 @@ import { join } from 'node:path'
 // os.tmpdir() would name the same file by a second spelling and miss every
 // lookup. Canonicalizing TMPDIR once makes every tmpdir() caller consistent;
 // a no-op on Linux.
-process.env.TMPDIR = realpathSync(tmpdir())
+// The native resolver also expands Windows 8.3 names; the JS resolver doesn't.
+process.env.TMPDIR = realpathSync.native(tmpdir())
 if (process.platform === 'win32') process.env.TEMP = process.env.TMPDIR
 
 // Anything that derives a location from the environment (the failure log,
