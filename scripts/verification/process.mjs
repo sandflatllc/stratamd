@@ -1,12 +1,19 @@
 import { toolCommand } from '../tool-command.mjs'
-import { execFileSync, spawn } from 'node:child_process'
+import { execFileSync, fork, spawn } from 'node:child_process'
 import { createWriteStream, statSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { resolve } from 'node:path'
 
 export async function runProcess(command, args, { cwd, env, log, signal, streamOutput = Boolean(process.env.CI), progress }) {
   signal.throwIfAborted()
+  const windows = process.platform === 'win32'
+  const native = windows ? createRequire(import.meta.url)(resolve(cwd, 'native/unix-support/build/Release/unix_support.node')) : null
+  let job
   const stream = createWriteStream(log)
   const invocation = toolCommand(command, args, cwd)
-  const child = spawn(invocation.command, invocation.args, { cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = windows
+    ? fork(new URL('./windows-child.mjs', import.meta.url), [], { cwd, env, silent: true, execArgv: [], windowsHide: true })
+    : spawn(invocation.command, invocation.args, { cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
   child.stdout.on('data', chunk => { stream.write(chunk); if (streamOutput) process.stdout.write(chunk) })
   child.stderr.on('data', chunk => { stream.write(chunk); if (streamOutput) process.stderr.write(chunk) })
   const diagnostic = error => {
@@ -14,7 +21,13 @@ export async function runProcess(command, args, { cwd, env, log, signal, streamO
     stream.write(message)
     if (streamOutput) process.stderr.write(message)
   }
-  const killGroup = how => { if (process.platform === 'win32') return; if (!child.pid) return; try { process.kill(-child.pid, how) } catch (error) { if (error.code !== 'ESRCH') diagnostic(error) } }
+  const killGroup = how => {
+    if (windows) { if (job) { native.closeProcessJob(job); job = null } return }
+    if (!child.pid) return
+    try { process.kill(-child.pid, how) } catch (error) { if (error.code !== 'ESRCH') diagnostic(error) }
+  }
+  // Close inherited pipe handles held by stragglers before waiting for `close`.
+  if (windows) child.once('exit', () => killGroup('SIGKILL'))
   // Electron and managed children may own separate process groups. Capture
   // descendants before terminating the parent, while ownership is observable.
   const processRows = () => execFileSync('ps', ['-axo', 'pid=,ppid=,lstart='], { encoding: 'utf8' }).trim().split('\n').map(line => {
@@ -34,8 +47,9 @@ export async function runProcess(command, args, { cwd, env, log, signal, streamO
   const cancel = () => {
     if (terminating) return
     terminating = true
-    if (process.platform === 'win32') {
-      if (child.pid) { try { execFileSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }) } catch (error) { if (child.exitCode === null) diagnostic(error) } }
+    if (windows) {
+      killGroup('SIGKILL')
+      child.kill()
       return
     }
     const owned = new Set([child.pid])
@@ -83,6 +97,12 @@ export async function runProcess(command, args, { cwd, env, log, signal, streamO
     await new Promise((accept, reject) => {
       child.once('error', reject)
       child.once('close', (code, reason) => code === 0 && !watchdogError ? accept() : reject(watchdogError ?? new Error(`${command} exited ${code ?? reason}; see ${log}`)))
+      if (windows) {
+        try {
+          job = native.createProcessJob(child.pid)
+          child.send(invocation, error => { if (error) { cancel(); reject(error) } })
+        } catch (error) { cancel(); reject(error) }
+      }
     })
     signal.throwIfAborted()
   } finally {

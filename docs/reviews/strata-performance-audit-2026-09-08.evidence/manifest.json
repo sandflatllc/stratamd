@@ -1,0 +1,57 @@
+{
+  "date": "2026-09-08",
+  "head": "00fbeeae16d5327a9ef9c0c1b973e30699f7243e",
+  "source": "/home/dillonc/Projects/StrataMD",
+  "baselineVerification": "/home/dillonc/.cache/stratamd-verification/runs/2026-09-08T15-24-29-815Z-a07fbe7e",
+  "versions": {
+    "electron": "44.1.0",
+    "@playwright/test": "1.62.1",
+    "vitest": "4.1.11",
+    "typescript": "7.0.2",
+    "electron-vite": "5.0.0"
+  },
+  "platform": "Linux-7.2.2-1-cachyos-x86_64-with-glibc2.44",
+  "productChangesInstalled": false,
+  "baselineGate": {
+    "typecheck": "passed",
+    "unitTests": 30,
+    "electronTests": 4,
+    "skipped": 0,
+    "fullReleaseGateRun": false
+  },
+  "measurementNotes": [
+    "Linux Xvfb, synthetic documents and isolated app stores; desktop GPU and CPU budgets not calibrated.",
+    "Host had other Electron applications running; no unknown process was stopped.",
+    "Double requestAnimationFrame timings are frame-opportunity estimates, not hardware key-to-screen latency.",
+    "Node microbenchmarks exclude Electron IPC, React and paint unless explicitly described.",
+    "Experiment changed only InlineMarkdown memoization and identical table stylesheet assignment in disposable candidate.",
+    "Candidate product source and build restored to baseline after experiment.",
+    "Original keystroke raw trace was overwritten by the profiler fixed output filename; baseline summary remains in logs/keystroke.log."
+  ],
+  "failedAttempts": [
+    {
+      "run": "tabs audit-20260908",
+      "cause": "Obsolete .tabs .tab selector, replaced with Docs menu in isolated test copy; corrected run passed."
+    },
+    {
+      "run": "smoke audit-20260908 rich and table-heavy",
+      "cause": "Same obsolete tab selector; corrected runs passed."
+    },
+    {
+      "run": "input first attempt",
+      "cause": "Diagnostic fixture expected First thread but had default title; explicit fixture title fixed."
+    },
+    {
+      "run": "input corrected attempt",
+      "cause": "Diagnostic launch arguments used wrong helper parameter; supplied file before extraArgs; corrected run passed."
+    }
+  ],
+  "limits": [
+    "No macOS profile",
+    "No desktop GPU A/B across all themes",
+    "No hours-long soak",
+    "No populated managed-server database startup decomposition",
+    "No terminal/browser stress interaction run",
+    "No full release gate or visual-equivalence validation for experimental changes"
+  ]
+}

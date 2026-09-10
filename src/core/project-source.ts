@@ -11,6 +11,17 @@ export function parentPath(path: string): string {
   return index < 0 ? '~' : index === 0 ? '/' : /^[a-z]:$/i.test(clean.slice(0, index)) ? clean.slice(0, index) + '/' : clean.slice(0, index)
 }
 export function joinPath(parent: string, child: string): string { return `${slashPath(parent).replace(/\/+$/, '')}/${child.replace(/^\/+/, '')}` }
+export function folderCrumbs(path: string): Array<{ label: string; path: string }> {
+  const clean = slashPath(path)
+  const root = clean.match(/^\/\/[^/]+\/[^/]+/)?.[0] ?? clean.match(/^[a-z]:\//i)?.[0] ?? (clean.startsWith('/') ? '/' : '')
+  const crumbs = root ? [{ label: root, path: root }] : []
+  let current = root
+  for (const part of clean.slice(root.length).split('/').filter(Boolean)) {
+    current = current ? joinPath(current, part) : part
+    crumbs.push({ label: part, path: current })
+  }
+  return crumbs
+}
 export function repositoryFolderName(repository: string): string {
   return repository.replace(/[?#].*$/, '').replace(/\/+$/, '').split(/[/:]/).at(-1)?.replace(/\.git$/, '') ?? ''
 }

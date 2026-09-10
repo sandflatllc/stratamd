@@ -1,4 +1,3 @@
-import { windowsProcessArguments } from '../../platform/windows-process'
 import { randomUUID } from 'node:crypto'
 import { isDarwin, isWindows } from '../../platform/runtime'
 import { execFile } from 'node:child_process'
@@ -22,9 +21,8 @@ export async function verifiedProcess(record: OwnedProcess): Promise<boolean> {
     if (stamp.bootId !== record.bootId || stamp.startTime !== record.startTime) return false
     if (isWindows()) {
       const info = unixSupportBinding().processInfo?.(record.pid)
-      const args = await windowsProcessArguments(record.pid)
-      const index = args.indexOf('--base-dir')
-      if (index < 0 || args[index + 1] !== record.baseDirectory || unixSupportBinding().processInfo?.(record.pid).startTime !== stamp.startTime) return false
+      // Kernel creation time pins the exact process incarnation. The manager
+      // separately validates its data directory and authenticates adoption.
       return !!info && info.startTime === stamp.startTime && (await realpath(info.executable)).toLowerCase() === (await realpath(record.executable)).toLowerCase()
     }
     if (!isDarwin()) {

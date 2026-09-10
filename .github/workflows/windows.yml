@@ -33,7 +33,7 @@ jobs:
           node node_modules/node-gyp/bin/node-gyp.js rebuild --directory native/unix-support
       - name: Windows native contracts and document workflows
         working-directory: strata
-        run: node scripts/verify.mjs focused --task windows-ci --unit test/unit/windows-platform.test.ts --unit test/unit/windows-lifecycle.test.ts --unit test/unit/platform-paths.test.ts --unit test/unit/platform-fonts.test.ts --unit test/unit/link-target.test.ts --e2e test/e2e/prd-6.12.spec.ts
+        run: node scripts/verify.mjs focused --task windows-ci --unit test/unit/windows-verification-process.test.ts --unit test/unit/account-shims.test.ts --unit test/unit/local-usage.test.ts --unit test/unit/platform-commands.test.ts --unit test/unit/windows-process-health.test.ts --unit test/unit/engine-native.test.ts --unit test/unit/windows-platform.test.ts --unit test/unit/windows-lifecycle.test.ts --unit test/unit/platform-paths.test.ts --unit test/unit/platform-fonts.test.ts --unit test/unit/link-target.test.ts --e2e test/e2e/prd-6.12.spec.ts
       - name: Bundled engine on Windows
         working-directory: strata
         run: node scripts/verify.mjs managed --task windows-ci

@@ -1,0 +1,50 @@
+{
+  "annotations": [
+    {
+      "count": 20,
+      "documentBytes": 108000,
+      "medianMs": 1.570731000000002,
+      "p95Ms": 3.7886510000000015
+    },
+    {
+      "count": 100,
+      "documentBytes": 108000,
+      "medianMs": 8.616604999999993,
+      "p95Ms": 11.129619000000005
+    },
+    {
+      "count": 500,
+      "documentBytes": 108000,
+      "medianMs": 56.727678999999966,
+      "p95Ms": 79.77507700000001
+    },
+    {
+      "count": 1000,
+      "documentBytes": 108000,
+      "medianMs": 207.94495199999983,
+      "p95Ms": 226.40993899999967
+    }
+  ],
+  "parseCache": [
+    {
+      "messages": 0,
+      "bytesPerMessage": 1950,
+      "retainedHeapDeltaMB": -0.0956268310546875
+    },
+    {
+      "messages": 50,
+      "bytesPerMessage": 1950,
+      "retainedHeapDeltaMB": 6.800209045410156
+    },
+    {
+      "messages": 200,
+      "bytesPerMessage": 1950,
+      "retainedHeapDeltaMB": 27.6575927734375
+    },
+    {
+      "messages": 500,
+      "bytesPerMessage": 1950,
+      "retainedHeapDeltaMB": 69.45806121826172
+    }
+  ]
+}

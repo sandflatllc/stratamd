@@ -1,0 +1,485 @@
+{
+  "reviewDate": "2026-09-08",
+  "reviewType": "Codebase and orchestration report card; no product fixes",
+  "threadEvidence": {
+    "database": "/home/dillonc/.local/share/stratamd/engine/t3/userdata/state.sqlite",
+    "access": "SQLite URI mode=ro; queries restricted to Strata project",
+    "projectId": "cd3e8f0c-884f-4258-91cf-2d86db30b102",
+    "createdAt": "2026-08-28T20:41:13.656Z",
+    "initialCounts": {
+      "threads": 205,
+      "userRoleMessages": 1252,
+      "assistantRoleMessages": 5468,
+      "archivedThreads": 27
+    },
+    "sample": [
+      {
+        "thread_id": "fcaa0b92-391c-4e08-ace1-47e89af9f21a",
+        "title": "StrataMD PRD Gap & Usability Review",
+        "created_at": "2026-08-28T20:42:05.600Z",
+        "messages": 111,
+        "user_messages": 45
+      },
+      {
+        "thread_id": "6808abf7-9fcb-48b4-bdf3-45ebe7d0d8ed",
+        "title": "Build Product to PRD",
+        "created_at": "2026-08-29T01:42:56.605Z",
+        "messages": 85,
+        "user_messages": 19
+      },
+      {
+        "thread_id": "b74d1ab0-f301-4e54-9d6f-50be1ecf2938",
+        "title": "Define T3 Code\u2013Strata Integration",
+        "created_at": "2026-08-31T16:48:25.031Z",
+        "messages": 28,
+        "user_messages": 9
+      },
+      {
+        "thread_id": "094ba18d-7ea6-47a3-8d83-b64f76d2346f",
+        "title": "Implement Strata Cockpit v1",
+        "created_at": "2026-09-03T20:59:59.539Z",
+        "messages": 58,
+        "user_messages": 7
+      },
+      {
+        "thread_id": "688e6c3b-b90a-459b-92db-eb898745261b",
+        "title": "Review Cockpit Merge Changes",
+        "created_at": "2026-09-03T21:58:36.280Z",
+        "messages": 146,
+        "user_messages": 42
+      },
+      {
+        "thread_id": "c919f87b-4dec-4ca2-b36d-c6bbc21af107",
+        "title": "Implement Cockpit V1 Behaviors",
+        "created_at": "2026-09-04T04:32:27.083Z",
+        "messages": 67,
+        "user_messages": 7
+      },
+      {
+        "thread_id": "0eeb7e29-4f74-44df-a9ec-82461ff58b4c",
+        "title": "Review E2E Test Isolation Plan",
+        "created_at": "2026-09-05T19:20:43.496Z",
+        "messages": 39,
+        "user_messages": 14
+      },
+      {
+        "thread_id": "94b9d32f-87ee-43e1-a63a-7c612a5501f6",
+        "title": "Bundle T3 Server in Strata",
+        "created_at": "2026-09-06T03:19:15.615Z",
+        "messages": 48,
+        "user_messages": 17
+      },
+      {
+        "thread_id": "cb4c722d-d123-4a99-bfd0-394fa4a756a3",
+        "title": "I need you to do a full review of the last two imp...",
+        "created_at": "2026-09-06T15:54:36.832Z",
+        "messages": 31,
+        "user_messages": 1
+      },
+      {
+        "thread_id": "3bbf6351-db85-4445-ae93-7cf8233ed2ac",
+        "title": "Test Suite Speed, Reliability, Value",
+        "created_at": "2026-09-07T04:21:27.040Z",
+        "messages": 33,
+        "user_messages": 4
+      },
+      {
+        "thread_id": "30cede09-616b-4a0e-bb69-f6c594ade129",
+        "title": "Improve Test Suite Reliability",
+        "created_at": "2026-09-07T15:56:46.582Z",
+        "messages": 8,
+        "user_messages": 2
+      },
+      {
+        "thread_id": "40c40281-adc2-4d8c-bd45-2e9e88c97be9",
+        "title": "Eliminate Test Suite Flakes",
+        "created_at": "2026-09-07T16:04:14.714Z",
+        "messages": 74,
+        "user_messages": 7
+      }
+    ],
+    "sampling": "Selected messages, not complete transcripts, from 12 milestone/review threads. Counts include pasted instructions and annotation deliveries. Not a random sample or a failure-rate estimate."
+  },
+  "sourceInventory": {
+    "typescriptFiles": 272,
+    "typescriptLines": 56288,
+    "over1000": 9,
+    "over500": 23,
+    "largest": [
+      [
+        4249,
+        "src/main/application.ts"
+      ],
+      [
+        2670,
+        "src/main/engine/client.ts"
+      ],
+      [
+        1898,
+        "src/renderer/terminal/ghostty/surface.ts"
+      ],
+      [
+        1794,
+        "src/editor/index.ts"
+      ],
+      [
+        1385,
+        "src/core/annotations.ts"
+      ],
+      [
+        1283,
+        "src/editor/markdown.ts"
+      ],
+      [
+        1237,
+        "src/shared/contracts.ts"
+      ],
+      [
+        1229,
+        "src/renderer/terminal/ghostty/core.ts"
+      ],
+      [
+        1177,
+        "src/renderer/App.tsx"
+      ],
+      [
+        934,
+        "src/main/preview/host.ts"
+      ],
+      [
+        913,
+        "src/main/storage.ts"
+      ],
+      [
+        874,
+        "src/renderer/transcriptCoordinator.ts"
+      ],
+      [
+        762,
+        "src/core/state.ts"
+      ],
+      [
+        735,
+        "src/core/markdown/components.ts"
+      ],
+      [
+        664,
+        "src/editor/schema.ts"
+      ],
+      [
+        659,
+        "src/renderer/model.ts"
+      ],
+      [
+        653,
+        "src/main/ipc.ts"
+      ],
+      [
+        631,
+        "src/cli/setup.ts"
+      ],
+      [
+        623,
+        "src/editor/commands.ts"
+      ],
+      [
+        605,
+        "src/editor/components.ts"
+      ]
+    ],
+    "initialCommitCount": 158,
+    "initialHead": "022ef9c61dee92aecb4ebeb1743f109ef03322d0",
+    "note": "Includes adapted/vendored terminal code and type declarations; excludes CSS, native code, and tests from line totals."
+  },
+  "verification": [
+    {
+      "id": "2026-09-08T08-32-29-935Z-65d660e0",
+      "mode": "full",
+      "status": "failed",
+      "head": "022ef9c61dee92aecb4ebeb1743f109ef03322d0",
+      "started": "2026-09-08T08:32:29.935Z",
+      "finished": "2026-09-08T08:38:15.160Z",
+      "commandDurationMs": 345225,
+      "taskDurationMs": 345225,
+      "fingerprint": "af1623854bc9254d58df5a3cfee6b2449da23d849bd03a0d1387ed0f2697a69b",
+      "buildIdentity": "8277a4b70565491feeb33dfef22c03aa36761174e7919afca8543ca14c59194f",
+      "coverage": {
+        "mode": "full",
+        "unit": [],
+        "e2e": [],
+        "repetitions": 1,
+        "ordinaryWorkers": 6,
+        "managedWorkers": 1,
+        "clipboardWorkers": 1,
+        "totalWorkers": 7,
+        "retries": {
+          "unit": 0,
+          "electron": 0
+        }
+      },
+      "sourceFingerprint": "23399078900ee6a97b2a31a6225a960a6e7ae1e280f7be59426e46f547ae3f7b",
+      "evidenceDirectory": "/home/dillonc/.cache/stratamd-verification/runs/2026-09-08T08-32-29-935Z-65d660e0",
+      "results": {
+        "unit": {
+          "passed": 1039,
+          "failed": 0,
+          "skipped": [
+            {
+              "file": "/home/dillonc/.cache/stratamd-verification/runs/2026-09-08T08-32-29-935Z-65d660e0/candidate/test/integration/engine-upgrade.test.ts",
+              "title": "folder replacement upgrades, archives newer work on rollback, pins the restored runtime and recovers a failed launch"
+            },
+            {
+              "file": "/home/dillonc/.cache/stratamd-verification/runs/2026-09-08T08-32-29-935Z-65d660e0/candidate/test/integration/engine-upgrade.test.ts",
+              "title": "an interrupted transition archives changed data before recovering the matching backup"
+            },
+            {
+              "file": "/home/dillonc/.cache/stratamd-verification/runs/2026-09-08T08-32-29-935Z-65d660e0/candidate/test/integration/managed-attachments.test.ts",
+              "title": "uploads Markdown and an image through the stock engine before dispatch"
+            },
+            {
+              "file": "/home/dillonc/.cache/stratamd-verification/runs/2026-09-08T08-32-29-935Z-65d660e0/candidate/test/integration/managed-connections.test.ts",
+              "title": "stock pairing links and sessions revoke independently, local Connect stays signed out, and explicit LAN restart retains the environment"
+            },
+            {
+              "file": "/home/dillonc/.cache/stratamd-verification/runs/2026-09-08T08-32-29-935Z-65d660e0/candidate/test/integration/managed-engine.test.ts",
+              "title": "starts the unmodified bundled server, pairs automatically, and stops only its owned child"
+            },
+            {
+              "file": "/home/dillonc/.cache/stratamd-verification/runs/2026-09-08T08-32-29-935Z-65d660e0/candidate/test/integration/managed-settings.test.ts",
+              "title": "stock settings survive engine restart and actual host/client signals enforce background policy"
+            },
+            {
+              "file": "/home/dillonc/.cache/stratamd-verification/runs/2026-09-08T08-32-29-935Z-65d660e0/candidate/test/integration/packaged-cli.test.ts",
+              "title": "packaged CLI runs from the packaged build and setup links that packaged executable"
+            }
+          ],
+          "retried": [],
+          "failures": []
+        },
+        "electron": {
+          "stats": {
+            "startTime": "2026-09-08T08:33:05.439Z",
+            "duration": 308927.992,
+            "expected": 261,
+            "skipped": 7,
+            "unexpected": 1,
+            "flaky": 0
+          },
+          "skipped": [
+            {
+              "file": "computer-controls.spec.ts",
+              "line": 7,
+              "title": "This computer manages real pairing links, tray and login choices in an isolated stock environment @managed",
+              "project": "managed",
+              "status": "skipped",
+              "attempts": [
+                {
+                  "status": "skipped",
+                  "durationMs": 3,
+                  "retry": 0
+                }
+              ]
+            },
+            {
+              "file": "engine-recovery-bindings.spec.ts",
+              "line": 9,
+              "title": "engine rollback restores an existing document conversation link and Lead without starting an agent turn @managed",
+              "project": "managed",
+              "status": "skipped",
+              "attempts": [
+                {
+                  "status": "skipped",
+                  "durationMs": 1,
+                  "retry": 0
+                }
+              ]
+            },
+            {
+              "file": "engine-recovery.spec.ts",
+              "line": 7,
+              "title": "restoring through This computer keeps newer document text and restores matching account preferences @managed",
+              "project": "managed",
+              "status": "skipped",
+              "attempts": [
+                {
+                  "status": "skipped",
+                  "durationMs": 1,
+                  "retry": 0
+                }
+              ]
+            },
+            {
+              "file": "managed-engine.spec.ts",
+              "line": 37,
+              "title": "external connection switches to the managed engine with separate drafts and a retained credential @managed",
+              "project": "managed",
+              "status": "skipped",
+              "attempts": [
+                {
+                  "status": "skipped",
+                  "durationMs": 2,
+                  "retry": 0
+                }
+              ]
+            },
+            {
+              "file": "managed-engine.spec.ts",
+              "line": 61,
+              "title": "an app crash adopts only its surviving authenticated engine @managed",
+              "project": "managed",
+              "status": "skipped",
+              "attempts": [
+                {
+                  "status": "skipped",
+                  "durationMs": 1,
+                  "retry": 0
+                }
+              ]
+            },
+            {
+              "file": "managed-engine.spec.ts",
+              "line": 78,
+              "title": "managed tray close retains a preview form and its capture @managed",
+              "project": "managed",
+              "status": "skipped",
+              "attempts": [
+                {
+                  "status": "skipped",
+                  "durationMs": 1,
+                  "retry": 0
+                }
+              ]
+            },
+            {
+              "file": "managed-engine.spec.ts",
+              "line": 9,
+              "title": "opens documents immediately, connects locally, restarts after a crash and retains identity",
+              "project": "managed",
+              "status": "skipped",
+              "attempts": [
+                {
+                  "status": "skipped",
+                  "durationMs": 0,
+                  "retry": 0
+                }
+              ]
+            }
+          ],
+          "flaky": [],
+          "failures": [
+            {
+              "file": "preview-window.spec.ts",
+              "line": 149,
+              "title": "a panel beside the page leaves it showing; dragged over the page it hides it, and closing it brings the page back",
+              "project": "ordinary",
+              "status": "unexpected",
+              "attempts": [
+                {
+                  "status": "failed",
+                  "durationMs": 5010,
+                  "retry": 0
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "2026-09-08T08-39-24-203Z-c0ab79d4",
+      "mode": "focused",
+      "status": "passed",
+      "head": "576a3a114936a0c7281890657f28ebb70d81c5da",
+      "started": "2026-09-08T08:39:24.203Z",
+      "finished": "2026-09-08T08:39:55.108Z",
+      "commandDurationMs": 30905,
+      "taskDurationMs": 445173,
+      "fingerprint": "84f1286eab0f9f2f6c52c145c5b3026a3eb31dd2c63da2f35e824c6f048f900f",
+      "buildIdentity": "8277a4b70565491feeb33dfef22c03aa36761174e7919afca8543ca14c59194f",
+      "coverage": {
+        "mode": "focused",
+        "unit": [],
+        "e2e": [
+          "test/e2e/preview-window.spec.ts:149"
+        ],
+        "repetitions": 3,
+        "ordinaryWorkers": 6,
+        "managedWorkers": 1,
+        "clipboardWorkers": 1,
+        "totalWorkers": 7,
+        "retries": {
+          "unit": 0,
+          "electron": 0
+        }
+      },
+      "sourceFingerprint": "58867dca3dae63fb7ed53446113b76731b7369e2cc205affef7866e9c99615ef",
+      "evidenceDirectory": "/home/dillonc/.cache/stratamd-verification/runs/2026-09-08T08-39-24-203Z-c0ab79d4",
+      "results": {
+        "electron": {
+          "stats": {
+            "startTime": "2026-09-08T08:39:48.061Z",
+            "duration": 4777.071,
+            "expected": 3,
+            "skipped": 0,
+            "unexpected": 0,
+            "flaky": 0
+          },
+          "skipped": [],
+          "flaky": [],
+          "failures": []
+        }
+      }
+    }
+  ],
+  "candidateComparison": {
+    "changedFiles": [
+      "README.md",
+      "docs/readme/02-workspace.md"
+    ],
+    "addedFiles": [],
+    "removedFiles": [],
+    "productAndTestsIdentical": true,
+    "method": "Compare retained files listed in the two run reports byte by byte; exclude generated build output."
+  },
+  "saveRace": {
+    "proof": "save-race-proof.mjs",
+    "result": "save-race-result.json",
+    "source": "src/main/files.ts and src/main/storage.ts",
+    "scope": "Actual file save helper with injected file-read scheduling and real disposable disk writes; not a full-app recovery proof or frequency measurement."
+  },
+  "navigationFinding": {
+    "failure": "preview-window.spec.ts:149; null preview-hole bounding box at line 174",
+    "observed": "Trace resolves a visible preview-hole, then shows the theme sample document before the bounding-box use. App openTheme starts asynchronous sample opening; active-document adoption clears centered preview.",
+    "status": "Open. Three focused repetitions passed; no product fix or controlled delayed-completion regression was performed.",
+    "frame": "preview-navigation-failure.jpeg"
+  },
+  "routineTimingBeforeAudit": {
+    "completedRoutineTasks": 2,
+    "medianMs": 709435,
+    "slowestMs": 986096,
+    "firstTenRemaining": 8,
+    "auditExcludedFromRoutineClaims": true
+  },
+  "hostedCI": {
+    "latestVisibleCheckAt": "2026-08-31T23:28:08Z",
+    "head": "d173a595156167602acc5420d6add10ed5e7a200",
+    "conclusion": "success",
+    "url": "https://github.com/sandflatllc/stratamd/actions/runs/33450806803",
+    "method": "gh run list --limit 8 --json workflowName,status,conclusion,headSha,createdAt,url"
+  },
+  "notPerformed": [
+    "Exhaustive review of all source or threads",
+    "Model-family performance comparison",
+    "Token/billing cost analysis",
+    "New desktop performance measurements",
+    "Fresh screen-reader session",
+    "Penetration test",
+    "Dependency vulnerability scan",
+    "Managed-runtime mode",
+    "Packaged mode",
+    "Stress mode",
+    "macOS execution",
+    "Live provider sign-in",
+    "Physical-device checks"
+  ]
+}

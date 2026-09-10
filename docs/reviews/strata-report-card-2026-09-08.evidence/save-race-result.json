@@ -1,0 +1,8 @@
+{
+  "fixture": "/home/dillonc/Projects/_tmp/strata-save-proof-EfDmQF/plan.md",
+  "interleaving": "external writer finishes after final read and before replacement rename",
+  "injected": true,
+  "status": "saved",
+  "final": "owner save\n",
+  "externalUpdatePreserved": false
+}

@@ -1,0 +1,12 @@
+--- baseline/tables.ts
++++ experiment/tables.ts
+@@ -381,7 +381,8 @@
+     const currentCell = state.focusedRow !== null && state.focusedColumn !== null
+       ? `.strata-source-table tbody > tr:nth-child(${state.focusedRow + 2}) > *:nth-child(${state.focusedColumn + 1}) { outline:2px solid var(--controls-focus); outline-offset:-3px; background:color-mix(in srgb, var(--controls-selected) 16%, transparent); }`
+       : ''
+-    this.#style.textContent = `${state.columnWidths.map((width, index) => width ? `.strata-source-table tr > *:nth-child(${index + 1}), .strata-table-derived tr > *:nth-child(${index + 1}) { width:${width}px; min-width:${width}px; }` : '').join('\n')}\n${currentCell}`
++    const nextStyleText = `${state.columnWidths.map((width, index) => width ? `.strata-source-table tr > *:nth-child(${index + 1}), .strata-table-derived tr > *:nth-child(${index + 1}) { width:${width}px; min-width:${width}px; }` : '').join('\n')}\n${currentCell}`
++    if (this.#style.textContent !== nextStyleText) this.#style.textContent = nextStyleText
+     if (transformed) this.#renderDerived(state)
+ 
+     const bodyRows = Math.max(0, this.#node.childCount - 1)

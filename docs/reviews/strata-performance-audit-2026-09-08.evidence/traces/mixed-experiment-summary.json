@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "variant": "default",
+  "corpus": {
+    "shape": "rich",
+    "requestedBytes": 100000,
+    "bytes": 100574,
+    "lines": 1750,
+    "topLevelBlocks": 480,
+    "sections": 79,
+    "tables": 79,
+    "tableCells": 948,
+    "listItems": 316,
+    "taskItems": 158,
+    "codeBlocks": 79,
+    "codeBytes": 5433,
+    "images": 3,
+    "seed": 1729
+  },
+  "keystrokes": 40,
+  "perKeystrokeSelfMs": {
+    "other": 2.01,
+    "script": 25.63,
+    "style": 2.25,
+    "layout": 4.26,
+    "paint": 1.22,
+    "gc": 0.8
+  },
+  "topEvents": [
+    {
+      "name": "FunctionCall",
+      "totalMs": 649.8,
+      "perKeystrokeMs": 16.25
+    },
+    {
+      "name": "EventDispatch",
+      "totalMs": 369.6,
+      "perKeystrokeMs": 9.24
+    },
+    {
+      "name": "UpdateLayoutTree",
+      "totalMs": 90,
+      "perKeystrokeMs": 2.25
+    },
+    {
+      "name": "RunTask",
+      "totalMs": 76.8,
+      "perKeystrokeMs": 1.92
+    },
+    {
+      "name": "PrePaint",
+      "totalMs": 57.4,
+      "perKeystrokeMs": 1.43
+    },
+    {
+      "name": "Layout",
+      "totalMs": 50.1,
+      "perKeystrokeMs": 1.25
+    },
+    {
+      "name": "HitTest",
+      "totalMs": 40,
+      "perKeystrokeMs": 1
+    },
+    {
+      "name": "Paint",
+      "totalMs": 25.7,
+      "perKeystrokeMs": 0.64
+    },
+    {
+      "name": "Layerize",
+      "totalMs": 23.1,
+      "perKeystrokeMs": 0.58
+    },
+    {
+      "name": "Commit",
+      "totalMs": 22.7,
+      "perKeystrokeMs": 0.57
+    },
+    {
+      "name": "V8.GC_MC_MARK_EMBEDDER_TRACING",
+      "totalMs": 12.5,
+      "perKeystrokeMs": 0.31
+    },
+    {
+      "name": "TimerFire",
+      "totalMs": 3.9,
+      "perKeystrokeMs": 0.1
+    },
+    {
+      "name": "V8.GC_MC_INCREMENTAL",
+      "totalMs": 3.3,
+      "perKeystrokeMs": 0.08
+    },
+    {
+      "name": "V8.GC_MC_INCREMENTAL_EMBEDDER_TRACING",
+      "totalMs": 3.1,
+      "perKeystrokeMs": 0.08
+    }
+  ],
+  "topFunctions": [
+    {
+      "function": "(idle)",
+      "selfMs": 6906.5
+    },
+    {
+      "function": "(program)",
+      "selfMs": 996.7
+    },
+    {
+      "function": "dispatchTransaction [index-BM38WBxi.js]",
+      "selfMs": 168.3
+    },
+    {
+      "function": "querySelectorAll",
+      "selfMs": 85.7
+    },
+    {
+      "function": "tryCreateCoreMarkdownEdits [index-BM38WBxi.js]",
+      "selfMs": 41.2
+    },
+    {
+      "function": "render [index-BM38WBxi.js]",
+      "selfMs": 38.2
+    },
+    {
+      "function": "(anonymous) [index-BM38WBxi.js]",
+      "selfMs": 37.3
+    },
+    {
+      "function": "(garbage collector)",
+      "selfMs": 33.3
+    },
+    {
+      "function": "caretPositionFromPoint",
+      "selfMs": 11.2
+    },
+    {
+      "function": "start [index-BM38WBxi.js]",
+      "selfMs": 7.8
+    },
+    {
+      "function": "compile [index-BM38WBxi.js]",
+      "selfMs": 7.8
+    },
+    {
+      "function": "getAnimations",
+      "selfMs": 6.4
+    },
+    {
+      "function": "subtokenize [index-BM38WBxi.js]",
+      "selfMs": 5.5
+    },
+    {
+      "function": "visit2 [index-BM38WBxi.js]",
+      "selfMs": 5.2
+    },
+    {
+      "function": "commitBeforeMutationEffects [index-BM38WBxi.js]",
+      "selfMs": 5.1
+    },
+    {
+      "function": "splice [index-BM38WBxi.js]",
+      "selfMs": 5
+    },
+    {
+      "function": "get isLeaf [index-BM38WBxi.js]",
+      "selfMs": 4.9
+    },
+    {
+      "function": "nodesBetween [index-BM38WBxi.js]",
+      "selfMs": 4.8
+    },
+    {
+      "function": "querySelector",
+      "selfMs": 4.8
+    },
+    {
+      "function": "tableReferenceKey [index-BM38WBxi.js]",
+      "selfMs": 4.6
+    }
+  ],
+  "keydownToPaintMs": {
+    "p50": 28.882,
+    "p95": 36.794,
+    "max": 111.308
+  },
+  "totalTraceEvents": 16247
+}

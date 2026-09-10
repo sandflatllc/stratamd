@@ -1,8 +1,6 @@
 import { terminateProcessTree } from '../../platform/process-tree'
-import { executableCandidates, pathDelimiter, nodeCommand } from '../../platform/commands'
+import { findExecutable, pathDelimiter, nodeCommand } from '../../platform/commands'
 import { spawn } from 'node:child_process'
-import { access } from 'node:fs/promises'
-import { constants } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { EngineSettings } from '../../shared/contracts'
@@ -15,9 +13,7 @@ export function resolveProviderHome(path: string, cwd: string): string {
   return value === '~' ? homedir() : value.startsWith('~/') ? resolve(homedir(), value.slice(2)) : resolve(cwd, value)
 }
 export async function findProviderExecutable(binary: string, cwd: string, searchPath = process.env.PATH ?? ''): Promise<string | null> {
-  const candidates = executableCandidates(binary, cwd, searchPath)
-  for (const path of candidates) { try { await access(path, constants.X_OK); return path } catch { /* Try the next configured search directory. */ } }
-  return null
+  return findExecutable(binary, cwd, searchPath)
 }
 export async function measureLocalUsage(context: LocalRuntimeContext | null, helper: string, provider: EngineProviderInstance, settings: EngineSettings, signal: AbortSignal): Promise<AccountMeasurement | null> {
   if (!context || signal.aborted || !provider.installed || !provider.enabled || provider.auth.status !== 'authenticated' || !['codex', 'claudeAgent'].includes(provider.driver)) return null
@@ -54,7 +50,8 @@ export async function measureLocalUsage(context: LocalRuntimeContext | null, hel
       } catch { finish(null) }
     })
     child.stdin.on('error', () => undefined)
-    child.stdin.end(JSON.stringify({ driver: provider.driver, binary, command, email: provider.auth.email, cwd: context.baseDirectory, sdk: join(context.directory, 'node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs') }))
+    const claudeExecutable = command.executable === context.executable && command.args.length > 1 ? command.args[0] : binary
+    child.stdin.end(JSON.stringify({ driver: provider.driver, binary: claudeExecutable, command, email: provider.auth.email, cwd: context.baseDirectory, sdk: join(context.directory, 'node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs') }))
     if (signal.aborted) stop()
   })
 }

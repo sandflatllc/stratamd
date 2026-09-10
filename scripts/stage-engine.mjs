@@ -1,3 +1,4 @@
+import { pruneNativeBuild } from './engine-native.mjs'
 import { applyEngineBackport } from './engine-backport.mjs'
 import { createHash } from 'node:crypto'
 import { readFile, writeFile, mkdir, rm, readdir, lstat, readlink, copyFile } from 'node:fs/promises'
@@ -63,10 +64,7 @@ run(executable, ['--input-type=module', '-e', "import {createRequire} from 'node
 // node-gyp emits machine paths in Makefiles, config.gypi and object files.
 // Keep only runtime native modules and the PTY spawn helper from build outputs.
 const nativeBuild = join(destination, 'node_modules/node-pty/build')
-try {
-  for (const entry of await readdir(nativeBuild)) if (entry !== 'Release') await rm(join(nativeBuild, entry), { recursive: true, force: true })
-  for (const entry of await readdir(join(nativeBuild, 'Release'))) if (!windows && !entry.endsWith('.node') && entry !== 'spawn-helper') await rm(join(nativeBuild, 'Release', entry), { recursive: true, force: true })
-} catch (error) { if (error.code !== 'ENOENT') throw error }
+await pruneNativeBuild(nativeBuild)
 for (const entry of await readdir(join(destination, 'node_modules/node-pty/node-addon-api'))) if (entry.endsWith('.target.mk')) await rm(join(destination, 'node_modules/node-pty/node-addon-api', entry))
 await writeFile(join(destination, 'build-provenance.json'), JSON.stringify({ t3SourceCommit: source.t3SourceCommit, backport, nodeArchiveSHA256: source.nodeArchives[target], headers: windows ? 'node-gyp target headers and import library, verified by node-gyp' : 'node/include/node from the verified Node archive', toolchain: process.platform === 'linux' ? linuxToolchain : `native ${process.platform} build; reproducibility unverified` }, null, 2) + '\n')
 const lock = JSON.parse(await readFile(join(destination, 'package-lock.json'), 'utf8'))

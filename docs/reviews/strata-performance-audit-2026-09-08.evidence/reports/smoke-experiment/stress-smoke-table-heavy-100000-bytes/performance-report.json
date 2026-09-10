@@ -1,0 +1,1853 @@
+{
+  "schemaVersion": 1,
+  "runId": "smoke-table-heavy-100395",
+  "startedAt": "2026-09-08T15:37:37.718Z",
+  "finishedAt": "2026-09-08T15:38:02.096Z",
+  "profile": "smoke",
+  "environment": {
+    "gitCommit": "unknown",
+    "gitDirty": true,
+    "platform": "linux",
+    "release": "7.2.2-1-cachyos",
+    "arch": "x64",
+    "cpuModel": "AMD Ryzen 7 5800X3D 8-Core Processor",
+    "logicalCpus": 16,
+    "totalMemoryMB": 64200.08203125,
+    "node": "v24.20.0",
+    "electron": "44.1.0",
+    "chrome": "152.0.7977.65",
+    "displayMode": "xvfb"
+  },
+  "corpus": {
+    "shape": "table-heavy",
+    "requestedBytes": 100000,
+    "bytes": 100395,
+    "lines": 2481,
+    "topLevelBlocks": 333,
+    "sections": 165,
+    "tables": 165,
+    "tableCells": 9075,
+    "listItems": 0,
+    "taskItems": 0,
+    "codeBlocks": 0,
+    "codeBytes": 0,
+    "images": 0,
+    "seed": 1729
+  },
+  "readyMs": 5797.87075,
+  "actions": [
+    {
+      "name": "tab-switch-large",
+      "durationMs": 822.142831000001,
+      "renderer": {
+        "capturedAt": 6649.300000011921,
+        "frames": 10,
+        "frameP50Ms": 16.699999999999818,
+        "frameP95Ms": 550.1000000000004,
+        "frameP99Ms": 550.1000000000004,
+        "framesOver50Ms": 2,
+        "maximumFrameMs": 550.1000000000004,
+        "longTasks": 2,
+        "longTaskTotalMs": 589,
+        "maximumLongTaskMs": 455,
+        "longAnimationFrames": 2,
+        "maximumLongAnimationFrameMs": 502.90000000596046,
+        "domNodes": 31258,
+        "heapUsedBytes": 44989808,
+        "heapLimitBytes": 4395630592,
+        "scrollHeight": 131424
+      }
+    },
+    {
+      "name": "scroll-full-document",
+      "durationMs": 922.5959090000015,
+      "renderer": {
+        "capturedAt": 7577.5,
+        "frames": 42,
+        "frameP50Ms": 16.699999999999818,
+        "frameP95Ms": 33.400000000000546,
+        "frameP99Ms": 49.899999999999636,
+        "framesOver50Ms": 0,
+        "maximumFrameMs": 49.899999999999636,
+        "longTasks": 0,
+        "longTaskTotalMs": 0,
+        "maximumLongTaskMs": 0,
+        "longAnimationFrames": 0,
+        "maximumLongAnimationFrameMs": 0,
+        "domNodes": 31258,
+        "heapUsedBytes": 63608233,
+        "heapLimitBytes": 4395630592,
+        "scrollHeight": 131424
+      }
+    },
+    {
+      "name": "type-heading-paint",
+      "durationMs": 225.4895379999998,
+      "renderer": {
+        "capturedAt": 9939.200000017881,
+        "frames": 113,
+        "frameP50Ms": 16.69999999999891,
+        "frameP95Ms": 16.799999999999272,
+        "frameP99Ms": 133.3000000000011,
+        "framesOver50Ms": 2,
+        "maximumFrameMs": 183.30000000000018,
+        "longTasks": 2,
+        "longTaskTotalMs": 306,
+        "maximumLongTaskMs": 161,
+        "longAnimationFrames": 2,
+        "maximumLongAnimationFrameMs": 205.59999999403954,
+        "domNodes": 31258,
+        "heapUsedBytes": 57686047,
+        "heapLimitBytes": 4395630592,
+        "scrollHeight": 131464
+      }
+    },
+    {
+      "name": "input-to-buffer-durable",
+      "durationMs": 1746.0329550000006,
+      "renderer": {
+        "capturedAt": 11473,
+        "frames": 2,
+        "frameP50Ms": 11.200000000000728,
+        "frameP95Ms": 1483.199999999999,
+        "frameP99Ms": 1483.199999999999,
+        "framesOver50Ms": 1,
+        "maximumFrameMs": 1483.199999999999,
+        "longTasks": 1,
+        "longTaskTotalMs": 1480,
+        "maximumLongTaskMs": 1480,
+        "longAnimationFrames": 0,
+        "maximumLongAnimationFrameMs": 0,
+        "domNodes": 31258,
+        "heapUsedBytes": 96114762,
+        "heapLimitBytes": 4395630592,
+        "scrollHeight": 131464
+      }
+    },
+    {
+      "name": "toggle-source-roundtrip",
+      "durationMs": 3019.9205390000025,
+      "renderer": {
+        "capturedAt": 14498.800000011921,
+        "frames": 13,
+        "frameP50Ms": 66.59999999999854,
+        "frameP95Ms": 1633.199999999999,
+        "frameP99Ms": 1633.199999999999,
+        "framesOver50Ms": 7,
+        "maximumFrameMs": 1633.199999999999,
+        "longTasks": 5,
+        "longTaskTotalMs": 845,
+        "maximumLongTaskMs": 206,
+        "longAnimationFrames": 8,
+        "maximumLongAnimationFrameMs": 1629.0999999940395,
+        "domNodes": 31258,
+        "heapUsedBytes": 88874415,
+        "heapLimitBytes": 4395630592,
+        "scrollHeight": 131464
+      }
+    },
+    {
+      "name": "add-annotation",
+      "durationMs": 224.983741,
+      "renderer": {
+        "capturedAt": 14728,
+        "frames": 6,
+        "frameP50Ms": 16.69999999999891,
+        "frameP95Ms": 149.89999999999964,
+        "frameP99Ms": 149.89999999999964,
+        "framesOver50Ms": 1,
+        "maximumFrameMs": 149.89999999999964,
+        "longTasks": 1,
+        "longTaskTotalMs": 131,
+        "maximumLongTaskMs": 131,
+        "longAnimationFrames": 1,
+        "maximumLongAnimationFrameMs": 128.09999999403954,
+        "domNodes": 31265,
+        "heapUsedBytes": 92025413,
+        "heapLimitBytes": 4395630592,
+        "scrollHeight": 131464
+      }
+    },
+    {
+      "name": "external-edit-to-review",
+      "durationMs": 8962.953317,
+      "renderer": {
+        "capturedAt": 23694.40000000596,
+        "frames": 124,
+        "frameP50Ms": 16.69999999999891,
+        "frameP95Ms": 16.799999999999272,
+        "frameP99Ms": 1633.2999999999993,
+        "framesOver50Ms": 4,
+        "maximumFrameMs": 4683.0999999999985,
+        "longTasks": 2,
+        "longTaskTotalMs": 4683,
+        "maximumLongTaskMs": 4324,
+        "longAnimationFrames": 4,
+        "maximumLongAnimationFrameMs": 4661.0999999940395,
+        "domNodes": 31287,
+        "heapUsedBytes": 88812070,
+        "heapLimitBytes": 4395630592,
+        "scrollHeight": 131523
+      }
+    },
+    {
+      "name": "save-document",
+      "durationMs": 349.3484690000005,
+      "renderer": {
+        "capturedAt": 24052.59999999404,
+        "frames": 11,
+        "frameP50Ms": 16.700000000000728,
+        "frameP95Ms": 149.90000000000146,
+        "frameP99Ms": 149.90000000000146,
+        "framesOver50Ms": 1,
+        "maximumFrameMs": 149.90000000000146,
+        "longTasks": 1,
+        "longTaskTotalMs": 134,
+        "maximumLongTaskMs": 134,
+        "longAnimationFrames": 2,
+        "maximumLongAnimationFrameMs": 144.10000002384186,
+        "domNodes": 31295,
+        "heapUsedBytes": 102223606,
+        "heapLimitBytes": 4395630592,
+        "scrollHeight": 131523
+      }
+    }
+  ],
+  "renderer": {
+    "capturedAt": 24052.59999999404,
+    "frames": 321,
+    "frameP50Ms": 66.59999999999854,
+    "frameP95Ms": 1633.199999999999,
+    "frameP99Ms": 1633.2999999999993,
+    "framesOver50Ms": 18,
+    "maximumFrameMs": 4683.0999999999985,
+    "longTasks": 14,
+    "longTaskTotalMs": 8168,
+    "maximumLongTaskMs": 4324,
+    "longAnimationFrames": 19,
+    "maximumLongAnimationFrameMs": 4661.0999999940395,
+    "domNodes": 31295,
+    "heapUsedBytes": 102223606,
+    "heapLimitBytes": 4395630592,
+    "scrollHeight": 131523
+  },
+  "process": {
+    "samples": 38,
+    "peakWorkingSetMB": 1266.73828125,
+    "endingWorkingSetMB": 1259.62109375,
+    "averageCpuPercent": 9.755192211872616,
+    "peakCpuPercent": 52.290427927100254,
+    "averageCpuByType": {
+      "Browser": 3.1856050575256787,
+      "GPU": 0.13098438671377688,
+      "Utility": 0,
+      "Tab": 6.438602767633159
+    },
+    "peakWorkingSetByTypeMB": {
+      "Browser": 354.62890625,
+      "GPU": 132.265625,
+      "Utility": 84.16796875,
+      "Tab": 734.35546875
+    }
+  },
+  "processSamples": [
+    {
+      "at": 1788881863575,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 321528,
+          "peakWorkingSetKB": 322880
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 133360,
+          "peakWorkingSetKB": 133360
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86188,
+          "peakWorkingSetKB": 86188
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 426104,
+          "peakWorkingSetKB": 432076
+        }
+      ]
+    },
+    {
+      "at": 1788881864078,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0.7448205181170143,
+          "idleWakeupsPerSecond": 391,
+          "workingSetKB": 321876,
+          "peakWorkingSetKB": 322880
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0.49653320516156196,
+          "idleWakeupsPerSecond": 8,
+          "workingSetKB": 133912,
+          "peakWorkingSetKB": 133912
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86188,
+          "peakWorkingSetKB": 86188
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 6.827345130985719,
+          "idleWakeupsPerSecond": 151,
+          "workingSetKB": 444540,
+          "peakWorkingSetKB": 444540
+        }
+      ]
+    },
+    {
+      "at": 1788881864581,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 12,
+          "workingSetKB": 321816,
+          "peakWorkingSetKB": 322880
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0.2488646793328834,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 134604,
+          "peakWorkingSetKB": 134604
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86188,
+          "peakWorkingSetKB": 86188
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 6.470881035340966,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 525816,
+          "peakWorkingSetKB": 526272
+        }
+      ]
+    },
+    {
+      "at": 1788881865083,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0.24911315716050858,
+          "idleWakeupsPerSecond": 96,
+          "workingSetKB": 322444,
+          "peakWorkingSetKB": 323944
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0.6227766872266011,
+          "idleWakeupsPerSecond": 14,
+          "workingSetKB": 135440,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86188,
+          "peakWorkingSetKB": 86188
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 7.348340221675761,
+          "idleWakeupsPerSecond": 56,
+          "workingSetKB": 541328,
+          "peakWorkingSetKB": 542904
+        }
+      ]
+    },
+    {
+      "at": 1788881865583,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0.12498650145784256,
+          "idleWakeupsPerSecond": 60,
+          "workingSetKB": 322500,
+          "peakWorkingSetKB": 323944
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0.499775101204458,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 134840,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86188,
+          "peakWorkingSetKB": 86188
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 7.245377449187418,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 549952,
+          "peakWorkingSetKB": 549996
+        }
+      ]
+    },
+    {
+      "at": 1788881867979,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 1.2507079006717803,
+          "idleWakeupsPerSecond": 312,
+          "workingSetKB": 333184,
+          "peakWorkingSetKB": 333184
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0.2501956530006465,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 134248,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86188,
+          "peakWorkingSetKB": 86188
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 5.505527549659859,
+          "idleWakeupsPerSecond": 82,
+          "workingSetKB": 565820,
+          "peakWorkingSetKB": 565820
+        }
+      ]
+    },
+    {
+      "at": 1788881867983,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 6.9352558695272615,
+          "idleWakeupsPerSecond": 73,
+          "workingSetKB": 362292,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0.1643510264444746,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 134248,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86188,
+          "peakWorkingSetKB": 86188
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 1.216225739912295,
+          "idleWakeupsPerSecond": 174,
+          "workingSetKB": 578148,
+          "peakWorkingSetKB": 578148
+        }
+      ]
+    },
+    {
+      "at": 1788881867986,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 34.11572052401747,
+          "idleWakeupsPerSecond": 2199,
+          "workingSetKB": 360856,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 134248,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86188,
+          "peakWorkingSetKB": 86188
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 578148,
+          "peakWorkingSetKB": 578148
+        }
+      ]
+    },
+    {
+      "at": 1788881867988,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 25.02001601281025,
+          "idleWakeupsPerSecond": 2002,
+          "workingSetKB": 361300,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 134248,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86188,
+          "peakWorkingSetKB": 86188
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 578148,
+          "peakWorkingSetKB": 578148
+        }
+      ]
+    },
+    {
+      "at": 1788881868085,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 154,
+          "workingSetKB": 361492,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0.6423432682425488,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 134248,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86188,
+          "peakWorkingSetKB": 86188
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 9.626244994352604,
+          "idleWakeupsPerSecond": 267,
+          "workingSetKB": 576420,
+          "peakWorkingSetKB": 578540
+        }
+      ]
+    },
+    {
+      "at": 1788881868587,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 6,
+          "workingSetKB": 361320,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 2,
+          "workingSetKB": 134120,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86188,
+          "peakWorkingSetKB": 86188
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 6.347995626604424,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 576516,
+          "peakWorkingSetKB": 578540
+        }
+      ]
+    },
+    {
+      "at": 1788881869089,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 30,
+          "workingSetKB": 361696,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 134120,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86188,
+          "peakWorkingSetKB": 86188
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 6.231567024740817,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 576468,
+          "peakWorkingSetKB": 578540
+        }
+      ]
+    },
+    {
+      "at": 1788881869589,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0.12484743643267926,
+          "idleWakeupsPerSecond": 56,
+          "workingSetKB": 361748,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0.12484294757195448,
+          "idleWakeupsPerSecond": 2,
+          "workingSetKB": 133944,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86188,
+          "peakWorkingSetKB": 86188
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 8.863813866899973,
+          "idleWakeupsPerSecond": 324,
+          "workingSetKB": 611956,
+          "peakWorkingSetKB": 611956
+        }
+      ]
+    },
+    {
+      "at": 1788881870089,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0.24997100336360983,
+          "idleWakeupsPerSecond": 62,
+          "workingSetKB": 361944,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0.37494525799233314,
+          "idleWakeupsPerSecond": 12,
+          "workingSetKB": 133124,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86188,
+          "peakWorkingSetKB": 86188
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 6.498778229692817,
+          "idleWakeupsPerSecond": 2,
+          "workingSetKB": 631472,
+          "peakWorkingSetKB": 632880
+        }
+      ]
+    },
+    {
+      "at": 1788881870590,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0.12497075684289877,
+          "idleWakeupsPerSecond": 88,
+          "workingSetKB": 362332,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0.12497525489952989,
+          "idleWakeupsPerSecond": 4,
+          "workingSetKB": 129172,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 9.248113384869487,
+          "idleWakeupsPerSecond": 78,
+          "workingSetKB": 623464,
+          "peakWorkingSetKB": 635576
+        }
+      ]
+    },
+    {
+      "at": 1788881871092,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 18,
+          "workingSetKB": 362372,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 129656,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 6.468421167858515,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 626388,
+          "peakWorkingSetKB": 635576
+        }
+      ]
+    },
+    {
+      "at": 1788881871594,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 4,
+          "workingSetKB": 362412,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0.12436424995423395,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 129656,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 6.840197077270846,
+          "idleWakeupsPerSecond": 70,
+          "workingSetKB": 629336,
+          "peakWorkingSetKB": 635576
+        }
+      ]
+    },
+    {
+      "at": 1788881872097,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 2,
+          "workingSetKB": 362380,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 2,
+          "workingSetKB": 129568,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 6.717059540015763,
+          "idleWakeupsPerSecond": 8,
+          "workingSetKB": 645392,
+          "peakWorkingSetKB": 646160
+        }
+      ]
+    },
+    {
+      "at": 1788881872598,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0.6241249767825509,
+          "idleWakeupsPerSecond": 62,
+          "workingSetKB": 361676,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0.12482399816259075,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 129144,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 7.613275555644308,
+          "idleWakeupsPerSecond": 66,
+          "workingSetKB": 615944,
+          "peakWorkingSetKB": 660688
+        }
+      ]
+    },
+    {
+      "at": 1788881874716,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 4.475269659859616,
+          "idleWakeupsPerSecond": 84,
+          "workingSetKB": 363140,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0.2486379612482819,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 129144,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 2.486834697113481,
+          "idleWakeupsPerSecond": 159,
+          "workingSetKB": 616548,
+          "peakWorkingSetKB": 660688
+        }
+      ]
+    },
+    {
+      "at": 1788881874721,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 6.757908993286269,
+          "idleWakeupsPerSecond": 41,
+          "workingSetKB": 334308,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0.27031001314787906,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 129144,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 0.8881625692766804,
+          "idleWakeupsPerSecond": 184,
+          "workingSetKB": 617332,
+          "peakWorkingSetKB": 660688
+        }
+      ]
+    },
+    {
+      "at": 1788881874724,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 12.667207134171058,
+          "idleWakeupsPerSecond": 1826,
+          "workingSetKB": 334064,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 129144,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 206,
+          "workingSetKB": 617468,
+          "peakWorkingSetKB": 660688
+        }
+      ]
+    },
+    {
+      "at": 1788881874726,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 26.106934001670844,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 334076,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 129144,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 26.18349392542941,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 618012,
+          "peakWorkingSetKB": 660688
+        }
+      ]
+    },
+    {
+      "at": 1788881875110,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0.3258449812052615,
+          "idleWakeupsPerSecond": 21,
+          "workingSetKB": 328012,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 129144,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 6.189005719944234,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 620780,
+          "peakWorkingSetKB": 660688
+        }
+      ]
+    },
+    {
+      "at": 1788881875610,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 10,
+          "workingSetKB": 327920,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 129144,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 6.992923161760299,
+          "idleWakeupsPerSecond": 34,
+          "workingSetKB": 621252,
+          "peakWorkingSetKB": 660688
+        }
+      ]
+    },
+    {
+      "at": 1788881876112,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0.12462835823574102,
+          "idleWakeupsPerSecond": 34,
+          "workingSetKB": 328328,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 129144,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 6.231827989582378,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 620576,
+          "peakWorkingSetKB": 660688
+        }
+      ]
+    },
+    {
+      "at": 1788881876615,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 2,
+          "workingSetKB": 328328,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 2,
+          "workingSetKB": 127744,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 6.207454109533259,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 620596,
+          "peakWorkingSetKB": 660688
+        }
+      ]
+    },
+    {
+      "at": 1788881877115,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 2,
+          "workingSetKB": 328328,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 127744,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 10.748903611831594,
+          "idleWakeupsPerSecond": 342,
+          "workingSetKB": 699528,
+          "peakWorkingSetKB": 699528
+        }
+      ]
+    },
+    {
+      "at": 1788881877617,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 2,
+          "workingSetKB": 328328,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0.12462214565437593,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 127744,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 6.230672454047545,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 699344,
+          "peakWorkingSetKB": 699344
+        }
+      ]
+    },
+    {
+      "at": 1788881878120,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 2,
+          "workingSetKB": 328328,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 127744,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 6.330823513522639,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 699516,
+          "peakWorkingSetKB": 699516
+        }
+      ]
+    },
+    {
+      "at": 1788881878622,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 2,
+          "workingSetKB": 328328,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 2,
+          "workingSetKB": 127444,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 6.230585495595724,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 699580,
+          "peakWorkingSetKB": 699580
+        }
+      ]
+    },
+    {
+      "at": 1788881879124,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 4,
+          "workingSetKB": 328224,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 127444,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 6.219041610861133,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 699644,
+          "peakWorkingSetKB": 699644
+        }
+      ]
+    },
+    {
+      "at": 1788881879626,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 40,
+          "workingSetKB": 328084,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 127444,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 7.102527602665168,
+          "idleWakeupsPerSecond": 32,
+          "workingSetKB": 712828,
+          "peakWorkingSetKB": 712828
+        }
+      ]
+    },
+    {
+      "at": 1788881880129,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0.12426163735086118,
+          "idleWakeupsPerSecond": 8,
+          "workingSetKB": 328828,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 4,
+          "workingSetKB": 128168,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 11.432343391807285,
+          "idleWakeupsPerSecond": 42,
+          "workingSetKB": 735608,
+          "peakWorkingSetKB": 743620
+        }
+      ]
+    },
+    {
+      "at": 1788881880632,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 2,
+          "workingSetKB": 328828,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0.12421150536394965,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 128168,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 6.334245464680247,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 736648,
+          "peakWorkingSetKB": 743620
+        }
+      ]
+    },
+    {
+      "at": 1788881881134,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0.1245401975904959,
+          "idleWakeupsPerSecond": 2,
+          "workingSetKB": 328828,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 128168,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 6.850557211868055,
+          "idleWakeupsPerSecond": 74,
+          "workingSetKB": 748088,
+          "peakWorkingSetKB": 748088
+        }
+      ]
+    },
+    {
+      "at": 1788881881639,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0.37109092816273376,
+          "idleWakeupsPerSecond": 14,
+          "workingSetKB": 331356,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 2,
+          "workingSetKB": 127656,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 7.048328284916677,
+          "idleWakeupsPerSecond": 30,
+          "workingSetKB": 751980,
+          "peakWorkingSetKB": 761468
+        }
+      ]
+    },
+    {
+      "at": 1788881882095,
+      "processes": [
+        {
+          "pid": 144522,
+          "type": "Browser",
+          "name": null,
+          "cpuPercent": 0.41077163725906873,
+          "idleWakeupsPerSecond": 210,
+          "workingSetKB": 330904,
+          "peakWorkingSetKB": 372472
+        },
+        {
+          "pid": 144559,
+          "type": "GPU",
+          "name": null,
+          "cpuPercent": 0.41083374051521837,
+          "idleWakeupsPerSecond": 22,
+          "workingSetKB": 129288,
+          "peakWorkingSetKB": 135528
+        },
+        {
+          "pid": 144561,
+          "type": "Utility",
+          "name": "Network Service",
+          "cpuPercent": 0,
+          "idleWakeupsPerSecond": 0,
+          "workingSetKB": 86148,
+          "peakWorkingSetKB": 86148
+        },
+        {
+          "pid": 144568,
+          "type": "Tab",
+          "name": null,
+          "cpuPercent": 5.890010760912683,
+          "idleWakeupsPerSecond": 110,
+          "workingSetKB": 743512,
+          "peakWorkingSetKB": 761468
+        }
+      ]
+    }
+  ],
+  "violations": [
+    {
+      "metric": "ready",
+      "actual": 5797.87075,
+      "limit": 1000,
+      "unit": "ms"
+    },
+    {
+      "metric": "action.type-heading-paint",
+      "actual": 225.4895379999998,
+      "limit": 100,
+      "unit": "ms"
+    },
+    {
+      "metric": "action.input-to-buffer-durable",
+      "actual": 1746.0329550000006,
+      "limit": 1000,
+      "unit": "ms"
+    },
+    {
+      "metric": "action.toggle-source-roundtrip",
+      "actual": 3019.9205390000025,
+      "limit": 1000,
+      "unit": "ms"
+    },
+    {
+      "metric": "action.external-edit-to-review",
+      "actual": 8962.953317,
+      "limit": 1000,
+      "unit": "ms"
+    },
+    {
+      "metric": "renderer.maximumLongTask",
+      "actual": 4324,
+      "limit": 200,
+      "unit": "ms"
+    }
+  ],
+  "classification": "degraded",
+  "failure": null
+}

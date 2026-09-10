@@ -1,4 +1,5 @@
 import { isWindows } from '../platform/runtime'
+import { findExecutable } from '../platform/commands'
 import { chmod, mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
@@ -27,12 +28,14 @@ export async function writeTerminalShims(directory: string, accounts: readonly T
   for (const account of accounts) {
     const path = join(directory, isWindows() ? account.name + '.cmd' : account.name)
     if (!/^[A-Za-z0-9_.-]+$/u.test(account.name) || !/^[A-Z_][A-Z0-9_]*$/u.test(account.homeVariable)) throw new Error(`Refusing to write a launcher named ${account.name}`)
+    const command = await findExecutable(account.command, process.cwd(), process.env.PATH ?? '', [path])
+    if (!command) throw new Error(`Cannot write ${path}: provider ${account.command} was not found outside the launcher itself.`)
     if (isWindows()) {
       const literal = (value: string) => { if (/[\r\n\"]/.test(value)) throw new Error(`Invalid launcher path ${path}`); return value.replace(/%/g, '%%') }
-      await writeFile(path, `@echo off\r\nsetlocal DisableDelayedExpansion\r\nset "${account.homeVariable}=${literal(account.home)}"\r\n"${literal(account.command)}" %*\r\n`)
+      await writeFile(path, `@echo off\r\nsetlocal DisableDelayedExpansion\r\nset "${account.homeVariable}=${literal(account.home)}"\r\n"${literal(command)}" %*\r\n`)
       paths.push(path); continue
     }
-    await writeFile(path, `#!/bin/sh\nexec env ${account.homeVariable}=${shellQuote(account.home)} ${shellQuote(account.command)} "$@"\n`, { mode: 0o700 })
+    await writeFile(path, `#!/bin/sh\nexec env ${account.homeVariable}=${shellQuote(account.home)} ${shellQuote(command)} "$@"\n`, { mode: 0o700 })
     await chmod(path, 0o700)
     paths.push(path)
   }

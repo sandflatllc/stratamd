@@ -9,6 +9,7 @@
 #include <windows.h>
 #include <io.h>
 #include <stdio.h>
+#include <stdlib.h>
 #else
 #include <sys/file.h>
 #endif
@@ -105,6 +106,59 @@ static napi_value get_path_for_fd(napi_env env, napi_callback_info info) {
 #endif
 
 #if defined(_WIN32)
+typedef struct { HANDLE handle; } process_job;
+
+static void finalize_process_job(napi_env env, void *data, void *hint) {
+  process_job *job = (process_job *)data;
+  if (job->handle) CloseHandle(job->handle);
+  free(job);
+}
+
+/* The caller's bootstrap waits for IPC before spawning the actual command. */
+static napi_value create_process_job(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1], value;
+  uint32_t pid;
+  if (napi_get_cb_info(env, info, &argc, argv, NULL, NULL) != napi_ok || argc != 1 ||
+      napi_get_value_uint32(env, argv[0], &pid) != napi_ok || pid == 0) {
+    napi_throw_type_error(env, NULL, "createProcessJob requires a positive PID"); return NULL;
+  }
+  process_job *job = (process_job *)calloc(1, sizeof(process_job));
+  if (!job) { napi_throw_error(env, NULL, "Cannot allocate process job"); return NULL; }
+  job->handle = CreateJobObjectW(NULL, NULL);
+  JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {0};
+  limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+  HANDLE process = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, FALSE, pid);
+  if (!job->handle || !process || !SetInformationJobObject(job->handle, JobObjectExtendedLimitInformation, &limits, sizeof(limits)) ||
+      !AssignProcessToJobObject(job->handle, process)) {
+    char message[128];
+    snprintf(message, sizeof(message), "Cannot assign verification process to Windows job (error %lu)", (unsigned long)GetLastError());
+    if (process) CloseHandle(process);
+    finalize_process_job(env, job, NULL);
+    napi_throw_error(env, NULL, message); return NULL;
+  }
+  CloseHandle(process);
+  if (napi_create_external(env, job, finalize_process_job, NULL, &value) != napi_ok) {
+    finalize_process_job(env, job, NULL);
+    napi_throw_error(env, NULL, "Cannot return process job"); return NULL;
+  }
+  return value;
+}
+
+static napi_value close_process_job(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1], value;
+  void *data = NULL;
+  if (napi_get_cb_info(env, info, &argc, argv, NULL, NULL) != napi_ok || argc != 1 ||
+      napi_get_value_external(env, argv[0], &data) != napi_ok || !data) {
+    napi_throw_type_error(env, NULL, "closeProcessJob requires a process job"); return NULL;
+  }
+  process_job *job = (process_job *)data;
+  if (job->handle) { CloseHandle(job->handle); job->handle = NULL; }
+  napi_get_undefined(env, &value);
+  return value;
+}
+
 static napi_value process_info(napi_env env, napi_callback_info info) {
   size_t argc = 1;
   napi_value argv[1], value, start, executable;
@@ -153,6 +207,10 @@ static napi_value initialize(napi_env env, napi_value exports) {
   napi_value process_function;
   napi_create_function(env, "processInfo", NAPI_AUTO_LENGTH, process_info, NULL, &process_function);
   napi_set_named_property(env, exports, "processInfo", process_function);
+  napi_create_function(env, "createProcessJob", NAPI_AUTO_LENGTH, create_process_job, NULL, &process_function);
+  napi_set_named_property(env, exports, "createProcessJob", process_function);
+  napi_create_function(env, "closeProcessJob", NAPI_AUTO_LENGTH, close_process_job, NULL, &process_function);
+  napi_set_named_property(env, exports, "closeProcessJob", process_function);
 #endif
   return exports;
 }

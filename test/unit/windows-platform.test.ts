@@ -1,4 +1,3 @@
-import { windowsArguments } from '../../src/platform/windows-process'
 import { mkdtemp, readFile, rm, open, rename } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -18,9 +17,6 @@ import { windowCapturePlatform } from '../../src/platform/window-capture'
 import { setStartAtLogin } from '../../src/main/start-at-login'
 
 describe('Windows platform contracts', () => {
-  it('parses quoted Windows engine arguments without shell evaluation', () => {
-    expect(windowsArguments('\"C:\\Program Files\\node.exe\" server.mjs --base-dir \"C:\\Users\\Dillon Smith\\engine\"')).toEqual(['C:\\Program Files\\node.exe', 'server.mjs', '--base-dir', 'C:\\Users\\Dillon Smith\\engine'])
-  })
   it('uses roaming config and local data, with isolated overrides', () => {
     const context = { platform: 'win32', home: 'C:\\Users\\Dillon', env: {} }
     expect(getConfigDirectory(context)).toBe('C:\\Users\\Dillon\\AppData\\Roaming\\stratamd')
@@ -85,7 +81,8 @@ describe.skipIf(process.platform !== 'win32')('Windows native storage and proces
   it('verifies a live process by kernel creation time and executable', async () => {
     const record = { pid: process.pid, ...await processStamp(process.pid), executable: process.execPath, baseDirectory: process.cwd() }
     expect(unixSupportBinding().processInfo?.(process.pid).startTime).toBe(record.startTime)
-    expect(await verifiedProcess(record)).toBe(false)
+    expect(await verifiedProcess(record)).toBe(true)
+    expect(await verifiedProcess({ ...record, executable: join(process.cwd(), 'different.exe') })).toBe(false)
     expect(await verifiedProcess({ ...record, startTime: 'different-incarnation' })).toBe(false)
   })
 })

@@ -31,6 +31,20 @@ const profilerFixture = JSON.stringify({
 })
 
 describe('platform font discovery', () => {
+  it('reads Unicode Windows families, single results, and failures', async () => {
+    const windows = (stdout: string) => queryInstalledFontFamilies(async (file, args) => {
+      expect(file).toBe('powershell.exe')
+      expect(args.join(' ')).toContain('InstalledFontCollection')
+      expect(args.join(' ')).toContain('UTF8Encoding')
+      return { stdout }
+    }, 'win32')
+    expect(await windows('["Segoe UI","游ゴシック"]')).toEqual(['Segoe UI', '游ゴシック'])
+    expect(await windows('"Segoe UI"')).toEqual(['Segoe UI'])
+    expect(await windows('[]')).toEqual([])
+    expect(await windows('not JSON')).toBeNull()
+    expect(await windows('[12]')).toBeNull()
+    expect(await queryInstalledFontFamilies(async () => { throw new Error('PowerShell unavailable') }, 'win32')).toBeNull()
+  })
   it('parses fc-list output taking the canonical family per line', () => {
     expect(fontFamiliesFromFcList('Noto Sans,Noto Sans CJK\nAbel\nAbel\n\nZilla Slab')).toEqual([
       'Noto Sans',

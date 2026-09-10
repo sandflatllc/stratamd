@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-09-08T15:34:09.181Z",
+  "finishedAt": "2026-09-08T15:34:52.913Z",
+  "displayMode": "xvfb",
+  "sizeCycle": [
+    100000,
+    10000,
+    50000,
+    100000,
+    250000
+  ],
+  "rungs": [
+    {
+      "openFiles": 1,
+      "lastOpenMs": 0,
+      "switchToFirstMs": 182.9096720000016,
+      "switchBackMs": 335.14306000000033,
+      "mainFdCount": 125,
+      "process": {
+        "samples": 9,
+        "peakWorkingSetMB": 767.44140625,
+        "endingWorkingSetMB": 764.1640625,
+        "averageCpuPercent": 1.2901542814289497,
+        "peakCpuPercent": 1.617407890453299,
+        "averageCpuByType": {
+          "Browser": 0.014021103657351363,
+          "GPU": 0.2774625410425052,
+          "Utility": 0,
+          "Tab": 0.9986706367290936
+        },
+        "peakWorkingSetByTypeMB": {
+          "Browser": 255.37890625,
+          "GPU": 130.3984375,
+          "Utility": 83.85546875,
+          "Tab": 299.7890625
+        }
+      }
+    },
+    {
+      "openFiles": 5,
+      "lastOpenMs": 1352.6644309999992,
+      "switchToFirstMs": 1288.455446,
+      "switchBackMs": 961.0033619999995,
+      "mainFdCount": 133,
+      "process": {
+        "samples": 9,
+        "peakWorkingSetMB": 1016.7890625,
+        "endingWorkingSetMB": 1012.63671875,
+        "averageCpuPercent": 2.033325239339412,
+        "peakCpuPercent": 6.492853962731592,
+        "averageCpuByType": {
+          "Browser": 0.17669736659429003,
+          "GPU": 0.3222614107452467,
+          "Utility": 0,
+          "Tab": 1.5343664619998756
+        },
+        "peakWorkingSetByTypeMB": {
+          "Browser": 325.046875,
+          "GPU": 129.5234375,
+          "Utility": 83.85546875,
+          "Tab": 480.390625
+        }
+      }
+    },
+    {
+      "openFiles": 10,
+      "lastOpenMs": 1737.4385580000016,
+      "switchToFirstMs": 1315.8511450000005,
+      "switchBackMs": 1008.543156000007,
+      "mainFdCount": 143,
+      "process": {
+        "samples": 9,
+        "peakWorkingSetMB": 1268.5234375,
+        "endingWorkingSetMB": 776.48046875,
+        "averageCpuPercent": 2.4827791595952684,
+        "peakCpuPercent": 6.9810418543607895,
+        "averageCpuByType": {
+          "Browser": 0.1707433171729099,
+          "GPU": 0.31447675265254094,
+          "Utility": 0,
+          "Tab": 1.997559089769817
+        },
+        "peakWorkingSetByTypeMB": {
+          "Browser": 345.69140625,
+          "GPU": 128.60546875,
+          "Utility": 83.8828125,
+          "Tab": 710.53515625
+        }
+      }
+    }
+  ]
+}

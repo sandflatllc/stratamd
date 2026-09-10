@@ -1,0 +1,26 @@
+{
+  "date": "2026-09-08",
+  "strataRevision": "00fbeeae16d5327a9ef9c0c1b973e30699f7243e",
+  "bundledT3": "0.0.38",
+  "upstreamRevision": "061543e9e5b54ec0048725c37d52fef2962df173",
+  "ui": "Existing built Strata in isolated XDG directories and Electron profile, real stock engine, signed out. Menu and This computer inspected through agent-browser. Screenshots visually inspected.",
+  "cliProbes": [
+    {
+      "command": "connect link --headless --base-dir <disposable>",
+      "input": "no",
+      "result": "Required relay download prompt accepted piped input; setup cancelled; process exit code 0; no download or authorization."
+    },
+    {
+      "command": "connect login --headless --base-dir <disposable>",
+      "result": "Printed hosted authorization URL and waited for authorization code. Process terminated before browser login. URL not retained."
+    }
+  ],
+  "notTested": [
+    "Hosted account authorization",
+    "Actual tunnel provisioning and external reachability",
+    "Phone discovery or conversations",
+    "Device sleep and wake",
+    "Notifications"
+  ],
+  "sourceChanges": false
+}

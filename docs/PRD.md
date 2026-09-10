@@ -1,12 +1,12 @@
 # StrataMD product requirements
 
-Status: draft v30 · 2026-09-06 · personal Linux and macOS tool
+Status: draft v30 · 2026-09-06 · personal Linux, macOS and Windows tool
 
 ## 1. Summary
 
 StrataMD is a desktop Markdown editor and the owner's cockpit for working with agents. The bundled official T3 server is its default engine; an external T3 server can also be paired. T3 runs agents and owns projects, threads, turns, and messages; Strata shows the conversation, documents, and every item that needs the owner in one window. The owner edits rendered Markdown, reviews external changes as track-changes, answers anchored items where they sit, and sends document rounds back as T3 turns.
 
-StrataMD runs on the owner's Linux workstation or a Mac on macOS 13 or newer. Its file-only `stratamd` tool opens Markdown files, inspects themes, installs the bundled skill, and diagnoses local paths. It does not carry agent traffic.
+StrataMD targets Linux, macOS 13 or newer, and Windows 10/11 x64. Native Windows verification is required before its release. Its file-only `stratamd` tool opens Markdown files, inspects themes, installs the bundled skill, and diagnoses local paths. It does not carry agent traffic.
 
 ## 2. Goals
 

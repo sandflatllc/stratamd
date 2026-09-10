@@ -274,3 +274,4 @@ Fable repair regressions (2026-09-09): `test/unit/engine-client.test.ts` covers 
 | Windows data/config locations, drive-letter links, native frame and login registration | `test/unit/windows-platform.test.ts` |
 | Windows save/rename, descriptor locks and process incarnation checks | Windows-only cases in `test/unit/windows-platform.test.ts` |
 | Windows document workflows, managed runtime and installed CLI | `.github/workflows/windows.yml`; native execution required before release signoff |
+| Windows installed font families | `test/unit/platform-fonts.test.ts`: Unicode and single/multiple PowerShell results, malformed output and command failure; native listing remains a host check. |

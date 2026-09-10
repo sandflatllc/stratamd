@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { joinPath, parentPath, parseGithubRepository, parseGitUrl, repositoryFolderName } from '../../src/core/project-source'
+import { folderCrumbs, joinPath, parentPath, parseGithubRepository, parseGitUrl, repositoryFolderName } from '../../src/core/project-source'
 
 describe('project sources', () => {
+  it('keeps drive and network roots complete in folder breadcrumbs', () => {
+    expect(folderCrumbs('C:\\Users\\Owner')).toEqual([{ label: 'C:/', path: 'C:/' }, { label: 'Users', path: 'C:/Users' }, { label: 'Owner', path: 'C:/Users/Owner' }])
+    expect(folderCrumbs('\\\\server\\share\\folder')).toEqual([{ label: '//server/share', path: '//server/share' }, { label: 'folder', path: '//server/share/folder' }])
+    expect(folderCrumbs('/home/owner').map(crumb => crumb.path)).toEqual(['/', '/home', '/home/owner'])
+    expect(folderCrumbs('~/Projects').map(crumb => crumb.path)).toEqual(['~', '~/Projects'])
+  })
   it('accepts the supported clone protocols without treating local paths or shell text as URLs', () => {
     for (const url of ['https://github.com/org/repo.git', 'ssh://git@host/org/repo.git', 'git@host:org/repo.git']) expect(parseGitUrl(url)).toBe(url)
     for (const url of ['/home/repo', 'file:///repo', 'https://host/', 'git@host:repo extra', 'git clone https://host/repo']) expect(parseGitUrl(url)).toBeNull()

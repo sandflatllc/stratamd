@@ -1,0 +1,16 @@
+[
+  {
+    "launch": 0,
+    "readyMs": 846.8907100000006,
+    "connectedMs": 5795.115718,
+    "state": "connected",
+    "managed": "running"
+  },
+  {
+    "launch": 1,
+    "readyMs": 922.2327019999993,
+    "connectedMs": 3935.1916630000014,
+    "state": "connected",
+    "managed": "running"
+  }
+]

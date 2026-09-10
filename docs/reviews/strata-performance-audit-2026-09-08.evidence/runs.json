@@ -1,0 +1,24 @@
+[
+  {
+    "profile": "keystroke",
+    "status": "passed",
+    "ms": 18683
+  },
+  {
+    "profile": "idle",
+    "status": "passed",
+    "ms": 23997
+  },
+  {
+    "profile": "tabs",
+    "status": "failed",
+    "error": "Error: xvfb-run exited 1; see /tmp/strata-performance-audit-20260908/tabs.log",
+    "ms": 45792
+  },
+  {
+    "profile": "smoke",
+    "status": "failed",
+    "error": "Error: xvfb-run exited 1; see /tmp/strata-performance-audit-20260908/smoke.log",
+    "ms": 73373
+  }
+]

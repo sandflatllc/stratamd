@@ -1,0 +1,93 @@
+{
+  "commentBaseline": [
+    {
+      "name": "0 existing replies",
+      "medianMs": 23.2,
+      "p95Ms": 24.8,
+      "maxMs": 25.5,
+      "longTasks": 1
+    },
+    {
+      "name": "20 existing replies",
+      "medianMs": 54.3,
+      "p95Ms": 75.2,
+      "maxMs": 76,
+      "longTasks": 25
+    },
+    {
+      "name": "80 existing replies",
+      "medianMs": 191.8,
+      "p95Ms": 202.2,
+      "maxMs": 228.6,
+      "longTasks": 25
+    }
+  ],
+  "commentExperiment": [
+    {
+      "name": "0 existing replies",
+      "medianMs": 23.3,
+      "p95Ms": 26.8,
+      "maxMs": 27.4,
+      "longTasks": 1
+    },
+    {
+      "name": "20 existing replies",
+      "medianMs": 24.6,
+      "p95Ms": 26.6,
+      "maxMs": 27.5,
+      "longTasks": 0
+    },
+    {
+      "name": "80 existing replies",
+      "medianMs": 64.4,
+      "p95Ms": 66.9,
+      "maxMs": 67.2,
+      "longTasks": 25
+    }
+  ],
+  "conversationDraft": [
+    {
+      "name": "100 draft characters",
+      "medianMs": 21.5,
+      "p95Ms": 34,
+      "maxMs": 34.3,
+      "longTasks": 0
+    },
+    {
+      "name": "20000 draft characters",
+      "medianMs": 18.4,
+      "p95Ms": 29,
+      "maxMs": 30.7,
+      "longTasks": 0
+    },
+    {
+      "name": "100000 draft characters",
+      "medianMs": 22,
+      "p95Ms": 31.8,
+      "maxMs": 32.4,
+      "longTasks": 1
+    }
+  ],
+  "arrows": [
+    {
+      "activeUpdates": false,
+      "medianMs": 31.8,
+      "p95Ms": 32.4,
+      "maxMs": 126.2,
+      "longTasks": 1,
+      "maxLongTaskMs": 107,
+      "moves": 60,
+      "serverUpdates": 0
+    },
+    {
+      "activeUpdates": true,
+      "medianMs": 74,
+      "p95Ms": 83.6,
+      "maxMs": 97.4,
+      "longTasks": 59,
+      "maxLongTaskMs": 79,
+      "moves": 60,
+      "serverUpdates": 58
+    }
+  ]
+}

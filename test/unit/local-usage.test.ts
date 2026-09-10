@@ -1,13 +1,34 @@
-import { mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
+import * as commands from '../../src/platform/commands'
 import { measureLocalUsage } from '../../src/main/engine/local-usage'
 import type { EngineProviderInstance } from '../../src/main/engine/accounts'
 
+it('hands the Claude SDK the JavaScript entry behind a Windows npm launcher', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'claude-cmd-usage-'))
+  const launcher = join(root, 'claude.cmd'), entry = join(root, 'cli.js')
+  const sdk = join(root, 'node_modules/@anthropic-ai/claude-agent-sdk')
+  const resolveCommand = commands.nodeCommand
+  const spy = vi.spyOn(commands, 'nodeCommand').mockImplementation((binary, args, node) => resolveCommand(binary, args, node, 'win32'))
+  try {
+    await mkdir(sdk, { recursive: true })
+    await writeFile(launcher, '@echo off\r\n"%dp0%\\node.exe" "%dp0%\\cli.js" %*\r\n', { mode: 0o700 })
+    await writeFile(entry, '')
+    await writeFile(join(sdk, 'sdk.mjs'), `export function query({options}) {
+      if (options.pathToClaudeCodeExecutable !== ${JSON.stringify(entry)}) throw new Error('SDK cannot spawn a cmd launcher');
+      return { close() {}, async usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET() { return { rate_limits_available: true, rate_limits: { five_hour: { utilization: 12, resets_at: null } } } } };
+    }`)
+    const provider: EngineProviderInstance = { instanceId: 'work', driver: 'claudeAgent', displayName: 'Work', homePath: root, enabled: true, installed: true, status: 'ready', auth: { status: 'authenticated' } }
+    const result = await measureLocalUsage({ executable: process.execPath, directory: root, baseDirectory: root }, resolve('resources/engine-helpers/usage.mjs'), provider, { providerInstances: { work: { driver: 'claudeAgent', config: { binaryPath: launcher } } } }, new AbortController().signal)
+    expect(result).toMatchObject({ session: { usedPercent: 12 } })
+  } finally { spy.mockRestore(); await rm(root, { recursive: true, force: true }) }
+})
+
 it('reads duration-based Codex windows, rejects a different account, and cancels an owned worker', async () => {
   const root = await mkdtemp(join(tmpdir(), 'strata-usage-'))
-  const binary = join(root, 'codex')
+  const binary = join(root, 'codex.cjs')
   const context = { executable: process.execPath, directory: root, baseDirectory: root }
   const provider: EngineProviderInstance = { instanceId: 'work', driver: 'codex', displayName: 'Work', homePath: root, enabled: true, installed: true, status: 'ready', auth: { status: 'authenticated', email: 'test@example.com' } }
   const settings = { providerInstances: { work: { driver: 'codex', config: { binaryPath: binary, homePath: root } } } }
@@ -32,7 +53,7 @@ it('expands custom Claude homes and preserves the server Fable window without es
   const { mkdir } = await import('node:fs/promises')
   const { homedir } = await import('node:os')
   const { relative } = await import('node:path')
-  const root = await mkdtemp(join(tmpdir(), 'strata-claude-usage-'))
+  const root = await mkdtemp(join(process.platform === 'win32' ? homedir() : tmpdir(), 'strata-claude-usage-'))
   const sdk = join(root, 'node_modules/@anthropic-ai/claude-agent-sdk')
   const provider: EngineProviderInstance = { instanceId: 'claude-work', driver: 'claudeAgent', displayName: 'Work', homePath: root, enabled: true, installed: true, status: 'ready', auth: { status: 'authenticated', email: 'test@example.com' } }
   try {

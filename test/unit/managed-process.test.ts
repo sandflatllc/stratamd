@@ -11,7 +11,7 @@ it('admits one owner and does not remove the live owner lock', async () => {
     const original = await readFile(join(root, 'lock'), 'utf8')
     await expect(takeEngineLock(root)).rejects.toThrow('owns')
     expect(await readFile(join(root, 'lock'), 'utf8')).toBe(original)
-    expect(await verifiedProcess({ pid: process.pid, ...await processStamp(process.pid), executable: process.execPath, baseDirectory: root })).toBe(false)
+    expect(await verifiedProcess({ pid: process.pid, ...await processStamp(process.pid), executable: process.execPath, baseDirectory: root })).toBe(process.platform === 'win32')
   } finally { await release(); await rm(root, { recursive: true, force: true }) }
 })
 
