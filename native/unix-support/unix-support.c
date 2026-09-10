@@ -7,7 +7,7 @@
 #include <string.h>
 #if defined(_WIN32)
 #include <windows.h>
-#include <io.h>
+#include <uv.h>
 #include <stdio.h>
 #include <stdlib.h>
 #else
@@ -70,7 +70,8 @@ static napi_value try_lock(napi_env env, napi_callback_info info) {
   }
 #if defined(_WIN32)
   OVERLAPPED overlapped = {0};
-  BOOL locked = LockFileEx((HANDLE)_get_osfhandle(fd), LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &overlapped);
+  /* Node owns the descriptor table; the addon's CRT may have a different one. */
+  BOOL locked = LockFileEx(uv_get_osfhandle(fd), LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &overlapped);
   if (!locked && GetLastError() != ERROR_LOCK_VIOLATION) {
     napi_throw_error(env, NULL, "LockFileEx failed"); return NULL;
   }
@@ -96,7 +97,7 @@ static napi_value get_path_for_fd(napi_env env, napi_callback_info info) {
       napi_get_value_int32(env, argv[0], &fd) != napi_ok || fd < 0) {
     napi_throw_type_error(env, NULL, "getPathForFd requires a file descriptor"); return NULL;
   }
-  DWORD length = GetFinalPathNameByHandleW((HANDLE)_get_osfhandle(fd), path, 32768, FILE_NAME_NORMALIZED);
+  DWORD length = GetFinalPathNameByHandleW(uv_get_osfhandle(fd), path, 32768, FILE_NAME_NORMALIZED);
   if (!length || length >= 32768) {
     napi_throw_error(env, NULL, "GetFinalPathNameByHandleW failed"); return NULL;
   }

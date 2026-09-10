@@ -29,3 +29,9 @@ The Windows cleanup implementation follows Microsoft's [job creation and close s
 Task record: `windows-fable-repairs-20260909` under `/home/dillonc/.cache/stratamd-verification/`. The task record retains focused, full, stress, managed and packaged invocations, including failures and skips.
 
 The owner's existing uncommitted test-history row and 49 project review/release files are included by the explicit “commit all changes” instruction. The running Strata process will not be restarted; launcher installation selects the new package for the next launch.
+
+## Native CI follow-up
+
+The first native Windows run, [34420062338](https://github.com/sandflatllc/stratamd/actions/runs/34420062338), passed provider lookup, usage, process identity and job cleanup checks, but the storage contract worker exited unexpectedly. The native addon called its own C runtime's `_get_osfhandle` with a file descriptor allocated by Node. The addon now asks Node's exported `uv_get_osfhandle`, so the runtime that owns the descriptor resolves its Windows handle. This applies to both file locks and rename tracking. The existing native storage test exercises both operations. See the [libuv descriptor API](https://docs.libuv.org/en/v1.x/fs.html#c.uv_get_osfhandle).
+
+The original failure log is retained at `docs/plans/open/windows-fable-repairs-20260909/ci/windows-34420062338.log`. Native verification of this correction is required before Windows signoff.
