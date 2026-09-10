@@ -2,23 +2,33 @@ import { expect, test as base } from './test'
 import { withManagedScenario } from './managed-test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { setSource } from './harness'
+import { setSource, type Scenario } from './harness'
+import { stageRuntime } from '../../src/main/engine/managed-runtime'
 import { copyRuntimeDirectory } from '../../src/platform/runtime-copy'
 
-const test = withManagedScenario(base)
+// Preparing the stock runtime is fixture work. Its own 30-second bound keeps
+// copying and native verification separate from the 30-second UI workflow.
+const test = withManagedScenario(base).extend<{ recoveryScenario: Scenario }>({
+  recoveryScenario: [async ({ managedScenario }, use) => {
+    if (!process.env.STRATAMD_ENGINE_BUNDLE) { test.skip(); return }
+    const scenario = await managedScenario('# Before update\n')
+    const bundle = join(scenario.root, 'bundle')
+    await copyRuntimeDirectory(process.env.STRATAMD_ENGINE_BUNDLE, bundle)
+    const manifest = JSON.parse(await readFile(join(bundle, 'runtime.json'), 'utf8')); delete manifest.integrity
+    scenario.env.STRATAMD_ENGINE_BUNDLE = bundle
+    await writeFile(join(bundle, 'runtime.json'), JSON.stringify({ ...manifest, version: manifest.version + '-ui-old' }))
+    await stageRuntime(bundle, join(scenario.env.XDG_DATA_HOME!, 'stratamd/engine'))
+    await use(scenario)
+  }, { timeout: 30000 }],
+})
 
-test('restoring through This computer keeps newer document text and restores matching account preferences @managed', async ({ managedScenario }) => {
-  test.skip(!process.env.STRATAMD_ENGINE_BUNDLE, 'Requires the stock runtime')
-  const scenario = await managedScenario('# Before update\n')
-  const bundle = join(scenario.root, 'bundle')
-  await copyRuntimeDirectory(process.env.STRATAMD_ENGINE_BUNDLE!, bundle)
-  const manifest = JSON.parse(await readFile(join(bundle, 'runtime.json'), 'utf8')); delete manifest.integrity
-  scenario.env.STRATAMD_ENGINE_BUNDLE = bundle
-  await writeFile(join(bundle, 'runtime.json'), JSON.stringify({ ...manifest, version: manifest.version + '-ui-old' }))
+test('restoring through This computer keeps newer document text and restores matching account preferences @managed', async ({ recoveryScenario: scenario }) => {
+  const bundle = scenario.env.STRATAMD_ENGINE_BUNDLE!
+  const manifest = JSON.parse(await readFile(join(bundle, 'runtime.json'), 'utf8'))
   const page = await scenario.launch()
   await expect.poll(async () => (await page.evaluate(() => window.strata.getState()).catch(() => null))?.engine.managed?.state, { timeout: 20000 }).toBe('running')
   await page.evaluate(() => window.strata.parkAccount('codex', true))
-  await writeFile(join(bundle, 'runtime.json'), JSON.stringify({ ...manifest, version: manifest.version + '-ui-new' }))
+  await writeFile(join(bundle, 'runtime.json'), JSON.stringify({ ...manifest, version: manifest.version.replace(/-ui-old$/, '-ui-new') }))
   await page.evaluate(() => window.strata.engineRecovery!({ action: 'update' }))
   await expect.poll(async () => (await page.evaluate(() => window.strata.getState()).catch(() => null))?.engine.managed?.version, { timeout: 30000 }).toContain('ui-new')
   // A stopped state during the transition can open the recovery dialog.

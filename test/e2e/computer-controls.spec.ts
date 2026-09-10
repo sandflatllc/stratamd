@@ -43,10 +43,10 @@ test('This computer manages real pairing links and login choices in an isolated 
   await expect(dialog.getByText('This Strata session', { exact: false })).toBeVisible()
 })
 
-test('This computer persists the tray choice and stops its owned engine on window close @managed', async ({ managedScenario }) => {
+test('This computer writes the tray choice to settings @managed', async ({ managedScenario }) => {
   test.skip(!process.env.STRATAMD_ENGINE_BUNDLE, 'Requires the stock runtime')
   const scenario = await managedScenario('# Tray choice survives restart\n')
-  let page = await scenario.launch()
+  const page = await scenario.launch()
   // Learning the engine identity intentionally reloads the renderer during startup.
   await expect(async () => {
     expect((await page.evaluate(() => window.strata.getState())).engine.managed?.state).toBe('running')
@@ -56,9 +56,14 @@ test('This computer persists the tray choice and stops its owned engine on windo
   const dialog = page.getByRole('dialog', { name: 'Connections', exact: true })
   await dialog.getByLabel('Keep running in the tray').uncheck()
   await expect.poll(async () => (await page.evaluate(() => window.strata.getState())).settings.engine?.keepRunning).toBe(false)
-  await scenario.stop()
-  page = await scenario.launch()
-  // Learning the engine identity intentionally reloads the renderer during startup.
+  await expect.poll(async () => JSON.parse(await readFile(join(scenario.env.XDG_CONFIG_HOME!, 'stratamd/settings.json'), 'utf8')).engine.keepRunning).toBe(false)
+})
+
+test('a saved tray choice stops the owned engine on window close @managed', async ({ managedScenario }) => {
+  test.skip(!process.env.STRATAMD_ENGINE_BUNDLE, 'Requires the stock runtime')
+  const scenario = await managedScenario('# Saved tray choice loads on launch\n')
+  await scenario.writeSettings({ engine: { mode: 'managed', keepRunning: false } })
+  const page = await scenario.launch()
   await expect(async () => {
     expect((await page.evaluate(() => window.strata.getState())).engine.managed?.state).toBe('running')
   }).toPass({ timeout: 20000 })
