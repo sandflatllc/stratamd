@@ -70,6 +70,8 @@ Rules the unit tests enforce: `test/unit/e2e-timing-rules.test.ts` fails on a fi
 
 ## Known flakes
 
+The September 10 Linux first-launch failures also exposed an incomplete readiness boundary. Run `34438410556` requested initial state while fonts and the window load were pending. Controlled record `2026-09-10T05-14-52-607Z-e1c47cf7` proves the old harness returned before the load event; `2026-09-10T05-18-15-765Z-05797acd` passes the corrected boundary and affected focused repetitions. Launch now waits for `load`, with unchanged state-assertion and whole-test deadlines. This does not by itself identify the internal IPC stall in the original traces.
+
 Entries are grouped by test and mechanism. Earlier passing repeats do not clear an unresolved mechanism. Paths describe the original evidence; availability below was checked during the September 6 repair.
 
 | Test | Seen | Evidence | Status |

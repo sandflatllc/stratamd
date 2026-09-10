@@ -248,7 +248,9 @@ export class Scenario {
       this.tracing = true
     }
     this.page = await this.app.firstWindow()
-    await this.page.waitForLoadState('domcontentloaded')
+    // The initial fonts and window load can still be pending at DOMContentLoaded.
+    // Finish startup before applying the state assertion's five-second budget.
+    await this.page.waitForLoadState('load')
     await expect.poll(async () => (await this.page!.evaluate(() => window.strata.getState())).activeDocument?.path).toBe(files.at(-1))
     await expect(this.page.getByRole('button', { name: 'Docs menu', exact: true })).toBeVisible()
     return this.page
@@ -269,7 +271,7 @@ export class Scenario {
       this.tracing = true
     }
     this.page = await this.app.firstWindow()
-    await this.page.waitForLoadState('domcontentloaded')
+    await this.page.waitForLoadState('load')
     await expect(this.page.getByRole('button', { name: 'StrataMD menu' })).toBeVisible()
     return this.page
   }
