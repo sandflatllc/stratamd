@@ -6,8 +6,8 @@
 #include <errno.h>
 #include <string.h>
 #if defined(_WIN32)
-#include <windows.h>
 #include <uv.h>
+#include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
 #else
