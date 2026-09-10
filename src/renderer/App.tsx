@@ -606,6 +606,7 @@ export function App({ createEditor }: AppProps) {
   const previewTabs = view.preview.tabs
   const previewProjectIds = [...new Set([...previews, ...previewTabs.map((tab) => tab.projectId)])].filter((id) => view.engine.projects.some((project) => project.id === id))
   const showPreview = (projectId: string) => {
+    cancelEngineNavigation()
     setPreviews((current) => current.includes(projectId) ? current : [...current, projectId])
     setPreviewCentered(projectId)
     setDocumentPicker(null)

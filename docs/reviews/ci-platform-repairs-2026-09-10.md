@@ -42,3 +42,9 @@ A focused local check also inserted the undo scenario's setup text at the beginn
 The separate unresolved preview-navigation failure is recorded in test/e2e/README.md with its original trace and diagnostic repetitions; it is not treated as resolved by a later pass.
 
 Static review before the Windows managed checks found that taskkill /T would also kill the detached engine. Shutdown now targets only the Electron main and helper processes reported by the app, with bounded metrics collection. This retains Windows profile cleanup without turning an app-crash test into an engine crash.
+
+## Preview navigation supersedes older thread actions
+
+The macOS full suite in run 34424475924 passed 327 desktop checks, but failed two attachment previews and retried a third. The first-attempt trace shows the preview counter increasing while an older delayed thread navigation restores the conversation to the center. Opening any preview now cancels the pending thread-navigation intent.
+
+The existing PDF scenario holds the thread-open IPC acknowledgment, opens the attachment, then releases the older action and advances the renderer clock. Before the fix, this controlled ordering reproduced preview loss at the post-release assertion in `2026-09-10T01-50-29-215Z-295f2965`. The original macOS log/archive and extracted document-preview traces remain under the CI evidence directory.

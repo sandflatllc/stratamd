@@ -34,8 +34,27 @@ test('PDF pages really render, paginate and zoom with boundaries and cleanup', a
   await scenario.writeSettings({ theme: 'strata-night' })
   try {
     const page = await scenario.launchEmpty()
+    await page.clock.install()
+    // An older thread-open acknowledgment must not replace a newer file preview.
+    await scenario.app!.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (...args: unknown[]) => Promise<unknown>> })._invokeHandlers
+      const original = handlers.get('strata:open-conversation')!
+      const gate = { waiting: false, release: () => {} }
+      const pending = new Promise<void>(resolve => { gate.release = resolve })
+      Object.assign(globalThis, { __threadNavigationGate: gate })
+      handlers.set('strata:open-conversation', async (...args) => {
+        const result = await original(...args)
+        gate.waiting = true
+        await pending
+        return result
+      })
+    })
     await scenario.app!.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]!.setContentSize(1440, 1000) })
     await attach(page, 'inspection-report.pdf', 'application/pdf', threePagePdf())
+    await expect.poll(() => scenario.app!.evaluate(() => (globalThis as unknown as { __threadNavigationGate: { waiting: boolean } }).__threadNavigationGate.waiting)).toBe(true)
+    await scenario.app!.evaluate(() => (globalThis as unknown as { __threadNavigationGate: { release(): void } }).__threadNavigationGate.release())
+    await page.clock.runFor(250)
+    await expect(page.getByRole('region', { name: 'Cockpit project preview', exact: true })).toBeVisible()
     const canvas = page.locator('.document-paper canvas')
     await expect(canvas).toHaveAttribute('data-page', '1')
     await expect(page.getByLabel('PDF page')).toHaveText('1 of 3')
