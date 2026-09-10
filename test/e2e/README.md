@@ -24,6 +24,8 @@ These names follow the PRD and design handoff and make the same controls availab
 - `managed` runs stock-runtime checks one at a time when a bundle is supplied.
 - `clipboard` runs the tests tagged `@clipboard` one at a time on a single worker.
 
+Managed mode also runs its Vitest integration files on one worker. Each starts native servers and copies the stock runtime. Windows run 34427552364 showed concurrent copies taking 49 seconds initially and up to 199 seconds after timed-out attempts overlapped retries. The managed cap covers this disk-heavy preparation as well as the Electron checks; ordinary unit tests and desktop workers retain their existing scheduling.
+
 Windows verification commands start in a native kill-on-close job before they can spawn children. Command exit and cancellation close that job, including detached descendants that retain output pipes. `test/unit/windows-verification-process.test.ts` checks both paths and preserves an unrelated process.
 
 On macOS and Windows the global worker count is one, so the projects run one after the other: a Mac has one desktop, one focus, and one clipboard, and two Electron apps on it would compete for both.
