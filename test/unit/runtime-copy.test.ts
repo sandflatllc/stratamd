@@ -19,7 +19,7 @@ it('copies runtime files independently while preserving relative dependency link
   await copyRuntimeDirectory(source, destination)
   expect((await lstat(join(destination, 'empty'))).isDirectory()).toBe(true)
   expect((await lstat(join(destination, 'runtime.js'))).isSymbolicLink()).toBe(true)
-  expect(await readlink(join(destination, 'runtime.js'))).toBe('packages/runtime.js')
+  expect(await readlink(join(destination, 'runtime.js'))).toBe(await readlink(join(source, 'runtime.js')))
 
   await writeFile(join(destination, 'packages/runtime.js'), 'changed')
   expect(await readFile(join(source, 'packages/runtime.js'), 'utf8')).toBe('original')
