@@ -1,5 +1,6 @@
 import { _electron as electron, expect, type ElectronApplication, type Page, type TestInfo } from '@playwright/test'
-import type { ChildProcess } from 'node:child_process'
+import { execFile, type ChildProcess } from 'node:child_process'
+import { promisify } from 'node:util'
 import { constants, realpathSync } from 'node:fs'
 import { access, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -109,13 +110,29 @@ function workerDisplay(testInfo: TestInfo): string | undefined {
 const CLOSE_TIMEOUT_MS = 5_000
 const EXIT_TIMEOUT_MS = 2_000
 
+async function killApplication(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return
+  if (process.platform !== 'win32') { child.kill('SIGKILL'); return }
+  // Kill the tree while its root still exists. Killing just Electron's main
+  // process leaves Chromium children holding the isolated profile open.
+  try {
+    await promisify(execFile)('taskkill', ['/PID', String(child.pid), '/T', '/F'], { timeout: 5000, windowsHide: true })
+  } catch (error) {
+    if (child.exitCode === null && child.signalCode === null) throw error
+  }
+}
+
 /** Resolves once the process has exited, killing it if the wait runs out. */
 async function processExit(child: ChildProcess, timeoutMs: number): Promise<void> {
   const exited = () => child.exitCode !== null || child.signalCode !== null
   if (exited()) return
-  await new Promise<void>((resolveExit) => {
-    const timer = setTimeout(() => { child.kill('SIGKILL'); resolveExit() }, timeoutMs)
-    child.once('exit', () => { clearTimeout(timer); resolveExit() })
+  await new Promise<void>((resolveExit, reject) => {
+    const onExit = () => { clearTimeout(timer); resolveExit() }
+    const timer = setTimeout(() => {
+      child.removeListener('exit', onExit)
+      void killApplication(child).then(resolveExit, reject)
+    }, timeoutMs)
+    child.once('exit', onExit)
   })
 }
 
@@ -288,11 +305,8 @@ export class Scenario {
       let child: ChildProcess
       try { child = app.process() } catch { return }
       if (child.exitCode !== null || child.signalCode !== null) return
-      await new Promise<void>((resolveClose) => {
-        const timer = setTimeout(resolveClose, 2_000)
-        child.once('exit', () => { clearTimeout(timer); resolveClose() })
-        child.kill('SIGKILL')
-      })
+      await killApplication(child)
+      await processExit(child, EXIT_TIMEOUT_MS)
       return
     }
 
@@ -308,7 +322,7 @@ export class Scenario {
         new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error('Electron did not close within the bound')), CLOSE_TIMEOUT_MS))
       ])
     } catch {
-      child?.kill('SIGKILL')
+      if (child) await killApplication(child)
     }
     if (child) await processExit(child, EXIT_TIMEOUT_MS)
   }

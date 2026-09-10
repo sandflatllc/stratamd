@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 interface UnixSupportBinding {
   tryLock(descriptor: number): boolean
   processInfo?(pid: number): { startTime: string; executable: string }
+  replaceFile?(source: string, target: string): void
   /** Darwin only: Linux resolves descriptors through /proc instead. */
   getPathForFd?(descriptor: number): string
 }

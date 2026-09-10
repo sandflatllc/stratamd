@@ -1,4 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { expect, test } from './test'
@@ -7,12 +8,14 @@ import { openAppMenu } from './harness'
 import { openThread } from './cockpit-agent'
 
 async function isolatedBus(env: Record<string, string>): Promise<ChildProcess> {
+  const registryPath = ['/usr/libexec/at-spi2-registryd', '/usr/lib/at-spi2-registryd'].find(path => existsSync(path))
+  if (!registryPath) throw new Error('Window capture tests require the at-spi2-core accessibility registry')
   const bus = spawn('dbus-daemon', ['--session', '--nofork', '--print-address=1'], { env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
   const address = await new Promise<string>((resolve, reject) => { bus.once('error', reject); bus.stdout!.once('data', data => resolve(String(data).trim())) })
   env.DBUS_SESSION_BUS_ADDRESS = address
   const result = execFileSync('gdbus', ['call', '--session', '--dest', 'org.a11y.Bus', '--object-path', '/org/a11y/bus', '--method', 'org.a11y.Bus.GetAddress'], { env, encoding: 'utf8' })
   const accessibilityAddress = /'([^']+)'/.exec(result)![1]!
-  const registry = spawn('/usr/lib/at-spi2-registryd', [], { env, stdio: 'ignore' })
+  const registry = spawn(registryPath, [], { env, stdio: 'ignore' })
   bus.once('exit', () => registry.kill())
   await expect.poll(() => { try { return execFileSync('gdbus', ['call', '--address', accessibilityAddress, '--dest', 'org.freedesktop.DBus', '--object-path', '/org/freedesktop/DBus', '--method', 'org.freedesktop.DBus.NameHasOwner', 'org.a11y.atspi.Registry'], { env, encoding: 'utf8' }).includes('true') } catch { return false } }).toBe(true)
   return bus
@@ -20,6 +23,7 @@ async function isolatedBus(env: Record<string, string>): Promise<ChildProcess> {
 function stopBus(bus: ChildProcess) { if (bus.pid) { try { process.kill(-bus.pid, 'SIGTERM') } catch { /* already exited */ } } }
 
 test('native selected window is reviewed, privately held, and only delivered on Send', async ({}, testInfo) => {
+  test.skip(process.platform !== 'linux', 'X11/AT-SPI native proof runs on Linux')
   const engine = await startEngine({ pendingRequests: false })
   engine.complete()
   const scenario = await seededScenario(testInfo, engine.origin)
@@ -96,7 +100,7 @@ test('native accessibility belongs to the selected GTK window and survives a hel
     await scenario.writeSettings({ theme: 'strata-night', windowCapture: { enabled: true, shortcut: false } })
     const page = await scenario.launchEmpty()
     await openThread(page, 'Live engine thread')
-    fixture = spawn('python3', ['-c', `import gi\ngi.require_version('Gtk','3.0')\ngi.require_version('GdkX11','3.0')\nfrom gi.repository import Gtk,GdkX11,GLib\nGLib.set_prgname('Inspection app')\nGLib.set_application_name('Inspection app')\nw=Gtk.Window(title='Accessible inspection')\nw.set_default_size(838,815)\nb=Gtk.Box(orientation=Gtk.Orientation.VERTICAL)\nb.pack_start(Gtk.Label(label='Selected-window accessibility proof'),False,False,20)\nb.pack_start(Gtk.Button(label='Review this selected window'),False,False,20)\nw.add(b)\nw.show_all()\nprint(w.get_window().get_xid(),flush=True)\nGtk.main()`], { env: { ...scenario.env, NO_AT_BRIDGE: '0' }, stdio: ['ignore', 'pipe', 'pipe'] })
+    fixture = spawn('/usr/bin/python3', ['-c', `import gi\ngi.require_version('Gtk','3.0')\ngi.require_version('GdkX11','3.0')\nfrom gi.repository import Gtk,GdkX11,GLib\nGLib.set_prgname('Inspection app')\nGLib.set_application_name('Inspection app')\nw=Gtk.Window(title='Accessible inspection')\nw.set_default_size(838,815)\nb=Gtk.Box(orientation=Gtk.Orientation.VERTICAL)\nb.pack_start(Gtk.Label(label='Selected-window accessibility proof'),False,False,20)\nb.pack_start(Gtk.Button(label='Review this selected window'),False,False,20)\nw.add(b)\nw.show_all()\nprint(w.get_window().get_xid(),flush=True)\nGtk.main()`], { env: { ...scenario.env, NO_AT_BRIDGE: '0' }, stdio: ['ignore', 'pipe', 'pipe'] })
     const id = await new Promise<string>((resolve, reject) => { fixture!.once('error', reject); fixture!.stdout!.once('data', data => resolve(String(data).trim())) })
     execFileSync('xprop', ['-id', id, '-f', 'WM_STATE', '32c', '-set', 'WM_STATE', '1, 0'], { env: scenario.env })
     await page.setViewportSize({ width: 1440, height: 1000 })

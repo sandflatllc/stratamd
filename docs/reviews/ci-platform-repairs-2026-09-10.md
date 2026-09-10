@@ -20,3 +20,15 @@ No worker count, retry policy or UI test timeout was increased. Full, managed an
 ## Evidence
 
 Saved CI logs and the original macOS artifact are under `docs/plans/open/windows-fable-repairs-20260909/ci/`. The extracted macOS traces are under `ci/mac-evidence/runs/2026-09-10T00-42-15-484Z-b2cc1242/test-results/`. They retain the first attempts.
+
+## Linux accessibility prerequisites
+
+The Linux job in run 34422348467 passed 333 desktop checks but failed the two native window-capture scenarios because `org.a11y.Bus` was unavailable. Ubuntu CI now installs at-spi2-core and the GTK Python bindings used by the synthetic window. The test locates the registry in Ubuntu's libexec directory or the lib directory used on the workstation. Its GTK window uses system Python, which owns the distro's GI modules, rather than setup-python's separate installation. The X11-specific capture proof explicitly runs on Linux; the separate macOS permission-dialog check remains available.
+
+## Windows replacement and forced test shutdown
+
+Run 34423383493 passed the corrected path assertions. Its first two document scenarios completed their assertions but stalled during cleanup, because killing only Electron's main process left Chromium children holding the profile open. Forced scenario shutdown now invokes taskkill on the live owned process tree before waiting for its exit. It does not target the owner's running app.
+
+The Save scenario also exposed ordinary Windows rename refusing an open destination. Atomic document publication now uses FileRenameInfoEx with replace-existing and POSIX semantics, preserving the existing temporary-file write, sync and conflict checks. The native storage regression overwrites the destination twice while retaining an old read descriptor and verifies both the published bytes and the old reader's bytes. Filesystems without the extended API fall back to ordinary rename and retain its sharing restrictions. Microsoft documents the [rename information API](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_rename_info); [Git's corresponding Windows fix](https://code.googlesource.com/git/+/391bceae4350136a05d977573caeaa07059f2136) describes the open-target restriction.
+
+The Windows log and original archive are retained as `ci/windows-34423383493.log` and `ci/windows-34423383493.zip` under the evidence directory above.

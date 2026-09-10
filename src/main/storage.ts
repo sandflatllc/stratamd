@@ -6,7 +6,6 @@ import {
   readFile,
   readdir,
   realpath,
-  rename,
   rm,
   stat,
   unlink,
@@ -15,6 +14,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { contentHash } from '../core/diff.js'
 import { isWindows } from '../platform/runtime.js'
+import { atomicRename } from '../platform/atomic-rename.js'
 import { getDataDirectory as getPlatformDataDirectory } from '../platform/paths.js'
 import { currentProcessIdentity, identityMatches } from '../platform/process-identity.js'
 
@@ -248,7 +248,7 @@ export async function atomicWriteFile(
       }
       if (actualHash !== options.expectedTargetHash) throw new AtomicWriteConflictError(actualHash)
     }
-    await rename(temporary, target)
+    await atomicRename(temporary, target)
     if (options.fsync !== false) await syncDirectory(parent)
   } catch (error) {
     await handle?.close().catch(() => undefined)

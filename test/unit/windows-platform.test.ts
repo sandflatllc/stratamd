@@ -70,6 +70,10 @@ describe.skipIf(process.platform !== 'win32')('Windows native storage and proces
       try {
         await rename(path, moved)
         expect(await pathForDescriptor(descriptor.fd)).toBe(await realpath(moved))
+        await atomicWriteFile(moved, '# First replacement\r\n')
+        await atomicWriteFile(moved, '# Second replacement\r\n')
+        expect(await readFile(moved, 'utf8')).toBe('# Second replacement\r\n')
+        expect(await descriptor.readFile('utf8')).toBe('# Original\r\n')
       } finally { await descriptor.close() }
       await atomicWriteFile(moved, '# Changed\r\n')
       expect(await readFile(moved, 'utf8')).toBe('# Changed\r\n')

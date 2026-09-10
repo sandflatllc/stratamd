@@ -45,7 +45,7 @@ jobs:
       - run: xvfb-run --auto-servernum npx electron scripts/fetch-spell-dictionary.mjs
         timeout-minutes: 5
       # Native desktop-composition evidence needs the X11 capture command.
-      - run: sudo apt-get update && sudo apt-get install -y imagemagick gcc-13 g++-13 make
+      - run: sudo apt-get update && sudo apt-get install -y imagemagick gcc-13 g++-13 make at-spi2-core python3-gi gir1.2-gtk-3.0 x11-utils
         timeout-minutes: 10
       - run: ./node_modules/.bin/node-gyp rebuild --directory native/unix-support
         timeout-minutes: 5

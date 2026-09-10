@@ -10,6 +10,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
+napi_value replace_file(napi_env env, napi_callback_info info);
 #else
 #include <sys/file.h>
 #endif
@@ -212,6 +213,8 @@ static napi_value initialize(napi_env env, napi_value exports) {
   napi_set_named_property(env, exports, "createProcessJob", process_function);
   napi_create_function(env, "closeProcessJob", NAPI_AUTO_LENGTH, close_process_job, NULL, &process_function);
   napi_set_named_property(env, exports, "closeProcessJob", process_function);
+  napi_create_function(env, "replaceFile", NAPI_AUTO_LENGTH, replace_file, NULL, &process_function);
+  napi_set_named_property(env, exports, "replaceFile", process_function);
 #endif
   return exports;
 }
